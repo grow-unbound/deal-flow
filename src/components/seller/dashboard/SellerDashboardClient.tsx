@@ -230,7 +230,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
     label: location.name,
     meta: (
       <span>
-        Open primary demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })} · Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}
+        Open demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })} · Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}
       </span>
     ),
     metaClassName: 'text-sm text-cream-600',
@@ -329,10 +329,10 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
             subtitle: 'Last 90 days',
             body: {
               tiles: [
-                { label: 'Purchasing', value: formatMetricValue('customers', Number(customerActivity.purchasing_customers_90d ?? 0)) },
-                { label: 'Repeat', value: formatMetricValue('customers', Number(customerActivity.repeat_customers_90d ?? 0)) },
-                { label: 'Inactive', value: formatMetricValue('customers', Number(customerActivity.inactive_customers_90d ?? 0)), tone: Number(customerActivity.inactive_customers_90d ?? 0) > 0 ? 'warn' : undefined },
-                { label: 'Overdue', value: formatMetricValue('customers', Number(customerActivity.overdue_customers_now ?? 0)), tone: Number(customerActivity.overdue_customers_now ?? 0) > 0 ? 'warn' : undefined },
+                { label: 'Purchasing Customers', value: formatMetricValue('customers', Number(customerActivity.purchasing_customers_90d ?? 0)) },
+                { label: 'Repeat Customers', value: formatMetricValue('customers', Number(customerActivity.repeat_customers_90d ?? 0)) },
+                { label: 'Inactive Customers', value: formatMetricValue('customers', Number(customerActivity.inactive_customers_90d ?? 0)), tone: Number(customerActivity.inactive_customers_90d ?? 0) > 0 ? 'warn' : undefined },
+                { label: 'Overdue Customers', value: formatMetricValue('customers', Number(customerActivity.overdue_customers_now ?? 0)), tone: Number(customerActivity.overdue_customers_now ?? 0) > 0 ? 'warn' : undefined },
               ],
               columns: 'two-by-two',
             },
@@ -388,7 +388,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         />
         <PerformanceCard
           title="Location comparison"
-          subtitle="Invoiced sales, open primary demand, and overdue by location"
+          subtitle="Invoiced sales, open demand, and overdue by location"
           bodyClassName="p-0"
           actions={(
             <button
@@ -454,7 +454,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         open={locationComparisonSheetOpen}
         onOpenChange={setLocationComparisonSheetOpen}
         title="Location comparison"
-        subtitle="Invoiced sales, open primary demand, and overdue by location"
+        subtitle="Invoiced sales, open demand, and overdue by location"
         columns={[
           { label: 'Location' },
           { label: 'Summary', width: '55%' },
@@ -465,7 +465,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
             <td className="px-5 py-4 text-sm font-medium text-cream-900">{location.name}</td>
             <td className="px-5 py-4 text-sm text-cream-700">
               <div>Invoiced {formatCurrency(Number(location.invoiced_sales_90d ?? 0), { compactFractionDigits: 2 })}</div>
-              <div>Open primary demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })}</div>
+              <div>Open demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })}</div>
               <div>Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}</div>
             </td>
           </tr>

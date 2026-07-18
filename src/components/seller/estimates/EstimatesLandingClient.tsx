@@ -31,8 +31,8 @@ import { formatCompactInr, formatDate, formatMetricValue } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-type SortOption = 'Recent first' | 'Total amount (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
-const SORT_OPTIONS: SortOption[] = ['Recent first', 'Total amount (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
+type SortOption = 'Recent first' | 'Value (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
+const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
 const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = {
   draft: 0,
   sent: 1,
@@ -65,7 +65,7 @@ function buyerGeographyLabel(row: EstimateLandingRow) {
 }
 
 function sourceLabel(row: EstimateLandingRow) {
-  return row.source_label;
+  return row.source_kind === 'buyer_app' ? 'Buyer App' : 'Direct';
 }
 
 function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean {
@@ -76,6 +76,7 @@ function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean 
     row.buyer_name,
     row.location_name,
     row.source_label,
+    row.source_detail,
     row.campaign_name ?? null,
     row.place_of_supply ?? null,
   ]
@@ -194,7 +195,7 @@ function EstimatesLandingContent({
           return false;
         }
 
-        if (filters.source.length > 0 && !filters.source.includes(row.source_label)) {
+        if (filters.source.length > 0 && !filters.source.includes(sourceLabel(row))) {
           return false;
         }
 
@@ -209,7 +210,7 @@ function EstimatesLandingContent({
         return true;
       })
       .sort((a, b) => {
-      if (sortBy === 'Total amount (high → low)') return b.total_amount - a.total_amount;
+      if (sortBy === 'Value (high → low)') return b.total_amount - a.total_amount;
       if (sortBy === 'Status (workflow order)') return compareStatusRows(a, b);
       if (sortBy === 'Expiry (soonest first)') {
         const aExpiry = a.expires_at ? new Date(a.expires_at).getTime() : Number.POSITIVE_INFINITY;
@@ -294,25 +295,25 @@ function EstimatesLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Estimate value created',
+                  label: 'Estimate value · MTD',
                   value: formatMetricValue('estimate value', kpis?.total_gmv_this_period ?? 0),
-                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates ${period}`,
+                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates`,
                 },
                 {
                   label: 'Open estimates',
                   value: formatMetricValue('estimate value', kpis?.open_estimate_value ?? 0),
-                  sub: `${kpis?.open_estimates_this_period ?? 0} open estimates ${period}`,
+                  sub: `${kpis?.open_estimates_this_period ?? 0} open estimates`,
                   tone: 'accent',
                 },
                 {
                   label: 'Awaiting action 3+ days',
                   value: formatMetricValue('estimate value', pulseAggregates?.sent_awaiting_value ?? 0),
-                  sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending ${period}`,
+                  sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending conversion`,
                 },
                 {
                   label: 'Expiring in 7 days',
                   value: formatMetricValue('estimate value', pulseAggregates?.expiring_soon_value ?? 0),
-                  sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates ${period}`,
+                  sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
                 },
               ]}
             />

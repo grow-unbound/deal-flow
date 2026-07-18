@@ -542,9 +542,10 @@ export async function GET(request: NextRequest) {
       const createdByLabel = creatorMap.get(row.created_by ?? '') ?? 'Team member';
       const linked = buildLinked(row, orderById, estimateById);
       const linkedOrder = row.order_id ? orderById.get(row.order_id) : null;
-      const sourceKind = linked.type === 'direct' ? 'direct' : row.is_buyer_app_invoice ? 'buyer_app' : 'converted';
-      const sourceLabel = sourceKind === 'buyer_app' ? 'Buyer App' : linked.label;
-      const sourceDetail = linked.type === 'direct' ? `Created by ${createdByLabel}` : `Converted by ${createdByLabel}`;
+      const convertedLabel = linked.type !== 'direct' && linked.label !== '—' ? linked.label : null;
+      const sourceKind = convertedLabel ? 'converted' : row.is_buyer_app_invoice ? 'buyer_app' : 'direct';
+      const sourceLabel = convertedLabel ?? (row.is_buyer_app_invoice ? 'BUYER_APP' : '');
+      const sourceDetail = convertedLabel && row.is_buyer_app_invoice ? 'BUYER_APP' : '';
       const campaignId = linkedOrder?.campaign_id ?? (row.estimate_id ? estimateById.get(row.estimate_id)?.campaign_id ?? null : null);
       const campaignName = campaignId ? catalogsById.get(campaignId) ?? null : null;
       return {

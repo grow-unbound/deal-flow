@@ -21,7 +21,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn, formatCompactInr } from '@/lib/utils';
+import { cn, formatCompactInr, formatMetricValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
@@ -35,8 +35,8 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
-type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Trend (high → low)' | 'Recent activity';
-const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Trend (high → low)', 'Recent activity'];
+type SortOption = 'Recent activity' | 'Sales (high → low)' | 'Outstanding (high → low)';
+const SORT_OPTIONS: SortOption[] = ['Recent activity', 'Sales (high → low)', 'Outstanding (high → low)'];
 
 function formatDate(value: string | null) {
   if (!value) return 'Never';
@@ -186,7 +186,7 @@ function CustomersLandingContent({
         status: [] as string[],
         due: [] as string[],
       },
-      sortBy: 'Sales (high → low)' as SortOption,
+      sortBy: 'Recent activity' as SortOption,
       search: '',
     },
   });
@@ -231,8 +231,7 @@ function CustomersLandingContent({
 
     return [...locallyFiltered].sort((a, b) => {
         if (sortBy === 'Sales (high → low)') return b.spend_mtd - a.spend_mtd;
-        if (sortBy === 'Sales (low → high)') return a.spend_mtd - b.spend_mtd;
-        if (sortBy === 'Trend (high → low)') return b.growth_pct - a.growth_pct;
+        if (sortBy === 'Outstanding (high → low)') return b.dues - a.dues;
         const aDate = a.last_order_at ? Date.parse(a.last_order_at) : 0;
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
@@ -291,26 +290,26 @@ function CustomersLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customers who purchased',
+            label: 'Active Customers · Last 90 Days',
             value: `${kpis?.active ?? 0}`,
-            sub: `${kpis?.active_pct ?? 0}% of active customers`,
+            sub: `${kpis?.active_pct ?? 0}% purchased at least once`,
           },
           {
             label: `Invoiced sales · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.spend_mtd ?? 0),
+            value: formatMetricValue('sales', kpis?.spend_mtd ?? 0),
             sub: `${kpis?.invoiced_customer_count ?? 0} customers`,
             tone: 'accent',
           },
           {
-            label: 'Inactive 90D w/ prior-year sales',
+            label: 'Inactive customers last 90 days',
             value: String(kpis?.dormant_over_30d ?? 0),
-            sub: `${formatCompactInr(kpis?.dormant_prior_year_value ?? 0)} prior-year value`,
+            sub: `${formatMetricValue('sales', kpis?.dormant_prior_year_value ?? 0)} previous sales`,
             tone: 'warn',
           },
           {
             label: 'Overdue amount',
-            value: formatCompactInr(kpis?.overdue_sum ?? 0),
-            sub: `across ${kpis?.overdue_customer_count ?? 0} customers`,
+            value: formatMetricValue('sales', kpis?.overdue_sum ?? 0),
+            sub: `${kpis?.overdue_customer_count ?? 0} customers`,
           },
         ]}
       />
@@ -395,8 +394,8 @@ function CustomersLandingContent({
         columns={[
           { label: 'Customer', width: '360px', minWidth: 340, maxWidth: 420, className: 'px-5' },
           { label: 'Customer Group', minWidth: 180, maxWidth: 240, className: 'px-5' },
-          { label: 'Pricing setup', minWidth: 220, maxWidth: 280, className: 'px-5' },
-          { label: `Invoiced sales · ${metricSuffix}`, align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+          { label: 'Price List', minWidth: 220, maxWidth: 280, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
           { label: 'Outstanding Due', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
           { label: 'Overdue', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Last sale', minWidth: 130, maxWidth: 150, className: 'px-5' },
@@ -423,7 +422,7 @@ function CustomersLandingContent({
             >
               <td className="px-5 py-3.5">
                 <div className="ent flex items-center gap-3">
-                  <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} />
+                  {/* <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} /> */}
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
                     <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
@@ -444,15 +443,15 @@ function CustomersLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatMetricValue('sales', buyer.spend_mtd)}</span>
               </td>
-              <td className="px-5 py-3.5 text-right text-sm text-cream-800">
-                <span className="tabular-inline">{formatCompactInr(buyer.dues)}</span>
+              <td className="px-5 py-3.5 text-right text-md font-medium tabular-nums text-cream-800">
+                <span className="tabular-inline">{formatMetricValue('sales', buyer.dues)}</span>
               </td>
               <td className="px-5 py-3.5 text-right text-sm text-cream-800">
                 <div className="flex flex-col items-end">
                   <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
-                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatCompactInr(buyer.overdue_amount) : '-'}
+                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatMetricValue('sales', buyer.overdue_amount) : '-'}
                   </span>
                   {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
                 </div>

@@ -241,4 +241,81 @@ describe('products landing integration', () => {
     expect(screen.getAllByText('Alpha Water')).toHaveLength(1);
     expect(screen.getByText('1 of 1 products')).toBeInTheDocument();
   });
+
+  it('shows full callout counts and the complete overlay list', async () => {
+    useFlagMock.mockReturnValue(true);
+    useRoleMock.mockReturnValue({ isSellerAssistant: false });
+    useTenantProductsMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        kpis: {
+          active_skus: 4,
+          total_skus: 4,
+          archived_skus: 0,
+          out_of_stock: 0,
+          low_stock: 0,
+          recently_sold_out_of_stock: 0,
+          products_sold: 0,
+          brand_count: 2,
+          category_count: 1,
+          revenue_mtd: 0,
+          revenue_prev_mtd: 0,
+          revenue_growth_pct: 0,
+        },
+        products: [],
+        brands: ['Alpha', 'Beta'],
+        filters: { groups: productFilterGroups },
+        todays_read: {
+          recently_sold_out_of_stock: [],
+          running_low: [],
+          no_sale_90d: [
+            { id: 'p1', name: 'Alpha Syrup', sku: 'ALP-1', brand: 'Alpha', brand_initials: 'AL', brand_hue: 'teal', on_hand: 12 },
+            { id: 'p2', name: 'Beta Juice', sku: 'BET-2', brand: 'Beta', brand_initials: 'BE', brand_hue: 'ember', on_hand: 8 },
+            { id: 'p3', name: 'Citrus Mix', sku: 'CIT-3', brand: 'Alpha', brand_initials: 'AL', brand_hue: 'cream', on_hand: 16 },
+            { id: 'p4', name: 'Delta Soda', sku: 'DEL-4', brand: 'Beta', brand_initials: 'BE', brand_hue: 'teal', on_hand: 10 },
+          ],
+        },
+      },
+    });
+    useTenantProductsInfiniteMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        pages: [
+          {
+            products: [],
+            kpis: {
+              active_skus: 4,
+              total_skus: 4,
+              archived_skus: 0,
+              out_of_stock: 0,
+              low_stock: 0,
+              revenue_mtd: 0,
+              revenue_prev_mtd: 0,
+              revenue_growth_pct: 0,
+            },
+            nextCursor: null,
+            total: 0,
+          },
+        ],
+      },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    });
+
+    render(<ProductsLandingClient initialData={null} />);
+
+    const button = screen.getByRole('button', { name: /open full stock with no sale in 90 days list/i });
+    expect(button).toHaveTextContent('4');
+    expect(screen.queryByText('Citrus Mix')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delta Soda')).not.toBeInTheDocument();
+
+    fireEvent.click(button);
+
+    expect(await screen.findByText('4 items')).toBeInTheDocument();
+    expect(screen.getByText('Citrus Mix')).toBeInTheDocument();
+    expect(screen.getByText('Delta Soda')).toBeInTheDocument();
+  });
 });

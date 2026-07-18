@@ -126,4 +126,78 @@ describe('customers landing client', () => {
 
     expect(screen.getByText('Add buyer form')).toBeInTheDocument();
   });
+
+  it('shows full callout counts and the complete overlay list', async () => {
+    useCustomersLandingMock.mockReturnValue({
+      data: {
+        kpis: {
+          total: 4,
+          cohort_count: 0,
+          active: 4,
+          active_pct: 100,
+          spend_mtd: 0,
+          spend_growth_pct: 0,
+          dormant_over_30d: 0,
+          outstanding_dues: 0,
+          buyers_with_dues: 0,
+          invoiced_customer_count: 0,
+          overdue_sum: 0,
+          overdue_customer_count: 0,
+          dormant_prior_year_value: 0,
+        },
+        callouts: {
+          needs_call: [
+            {
+              id: 'buyer-1',
+              business_name: 'Acme Retail',
+              invoice_count: 2,
+              days_overdue: 14,
+              dues: 12000,
+              avatar: { initials: 'AR', hue: 'teal' },
+            },
+            {
+              id: 'buyer-2',
+              business_name: 'Beacon Stores',
+              invoice_count: 1,
+              days_overdue: 9,
+              dues: 8000,
+              avatar: { initials: 'BS', hue: 'ember' },
+            },
+            {
+              id: 'buyer-3',
+              business_name: 'Cedar Mart',
+              invoice_count: 3,
+              days_overdue: 21,
+              dues: 15000,
+              avatar: { initials: 'CM', hue: 'cream' },
+            },
+            {
+              id: 'buyer-4',
+              business_name: 'Delta Traders',
+              invoice_count: 2,
+              days_overdue: 5,
+              dues: 6000,
+              avatar: { initials: 'DT', hue: 'teal' },
+            },
+          ],
+          win_back: [],
+        },
+        buyers: [],
+        filters: { groups: [] },
+      },
+    });
+
+    render(<CustomersLandingClient initialData={null} />);
+
+    const button = screen.getByRole('button', { name: /open full collect overdue balances list/i });
+    expect(button).toHaveTextContent('4');
+    expect(screen.queryByText('Cedar Mart')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delta Traders')).not.toBeInTheDocument();
+
+    fireEvent.click(button);
+
+    expect(await screen.findByText('4 items')).toBeInTheDocument();
+    expect(screen.getByText('Cedar Mart')).toBeInTheDocument();
+    expect(screen.getByText('Delta Traders')).toBeInTheDocument();
+  });
 });
