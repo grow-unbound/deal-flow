@@ -90,9 +90,9 @@ describe('warehouse detail page', () => {
 
     render(<WarehouseDetailPage id="8b19a144-55b0-4e46-bd87-0979e6d1df51" />);
 
-    expect(screen.getByRole('button', { name: 'Details' })).toHaveClass('border-teal-500');
-    expect(screen.getByRole('button', { name: 'Performance' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Stock/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveClass('border-ember-500');
+    expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Stock/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit warehouse' })).toBeInTheDocument();
     expect(screen.getByText('Warehouse details')).toBeInTheDocument();
   });

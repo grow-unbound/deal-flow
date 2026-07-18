@@ -14,6 +14,9 @@ vi.mock('@/hooks/useBrands', () => ({
   useTenantBrandDetail: (...args: unknown[]) => useTenantBrandDetailMock(...args),
   useUpdateTenantBrand: (...args: unknown[]) => useUpdateTenantBrandMock(...args),
   useArchiveTenantBrand: (...args: unknown[]) => useArchiveTenantBrandMock(...args),
+  useCreateTenantBrand: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTenantBrands: () => ({ data: undefined }),
+  useSearchMasterBrands: () => ({ data: undefined, isLoading: false }),
 }));
 
 import { BrandDetailPage } from '@/components/seller/brands/detail';
@@ -78,15 +81,15 @@ describe('brand detail page', () => {
   it('defaults to performance tab and shows breadcrumb link', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
+    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
     expect(screen.getByRole('link', { name: 'Brands' })).toHaveAttribute('href', '/brands');
   });
 
   it('shows buyers/catalogs count badges on tabs', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('button', { name: /Buyers1|Buyers\s*1/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Catalogs1|Catalogs\s*1/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Buyers1|Buyers\s*1/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Catalogs1|Catalogs\s*1/i })).toBeInTheDocument();
   });
 
   it('renders archive control in header', () => {

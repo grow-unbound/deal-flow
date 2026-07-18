@@ -13,11 +13,75 @@ export interface SellerDashboardTenantSummary {
   location_names: string[];
 }
 
+export interface MetricsV2PortfolioItem {
+  id: string;
+  label: string;
+  time_basis: string;
+  feasibility: 'READY' | 'REWORK' | 'ON-OPEN' | 'CONDITIONAL';
+  available: boolean;
+  unavailable_reason?: string | null;
+  value?: number | null;
+  count?: number | null;
+  unit?: string | null;
+  meta?: Record<string, unknown>;
+}
+
+export interface SellerDashboardBusinessFlowMeta {
+  primary_demand_kind?: 'orders' | 'estimates' | 'none';
+  invoice_value_this_month?: number;
+  invoice_count_this_month?: number;
+  order_value_this_month?: number;
+  order_count_this_month?: number;
+  estimate_value_this_month?: number;
+  estimate_count_this_month?: number;
+  orders_enabled?: boolean;
+  estimates_enabled?: boolean;
+}
+
+export interface SellerDashboardMixEntry {
+  id: string;
+  name: string;
+  value: number;
+}
+
+export interface SellerDashboardLocationComparisonEntry {
+  location_id: string;
+  name: string;
+  invoiced_sales_90d: number;
+  open_primary_demand_value: number | null;
+  overdue_amount: number;
+}
+
+export interface SellerDashboardSalesMixMeta {
+  brands?: SellerDashboardMixEntry[];
+  categories?: SellerDashboardMixEntry[];
+  locations?: SellerDashboardLocationComparisonEntry[];
+}
+
+export interface SellerDashboardCustomerActivityMeta {
+  purchasing_customers_90d?: number;
+  repeat_customers_90d?: number;
+  inactive_customers_90d?: number;
+  overdue_customers_now?: number;
+}
+
+export interface MetricsV2DashboardPortfolio {
+  as_of: string;
+  commercial_horizon_days: number;
+  table_period: null;
+  primary_demand_kind: 'orders' | 'estimates' | 'none';
+  calculation_version: number;
+  source_watermark: string | null;
+  freshness: Record<string, unknown>;
+  availability: Record<string, unknown>;
+  metrics: MetricsV2PortfolioItem[];
+  actions: MetricsV2PortfolioItem[];
+  explore: MetricsV2PortfolioItem[];
+}
+
 export interface SellerDashboardMetric {
   label: string;
   value: number;
-  delta?: number;
-  delta_label?: string;
   sub?: string;
   tone?: 'accent' | 'warn';
   href?: string;
@@ -34,6 +98,7 @@ export interface SellerDashboardCalloutRow {
 }
 
 export interface SellerDashboardCalloutItem {
+  id: string;
   kind: 'risk' | 'info' | 'opportunity';
   eyebrow: string;
   hint: string;
@@ -61,15 +126,6 @@ export interface SellerDashboardFeed {
   rows: SellerDashboardFeedRow[];
 }
 
-export interface SellerDashboardBrandRow {
-  id: string;
-  initials: string;
-  name: string;
-  pct: number;
-  trend_label: string;
-  hue: EntityAvatarHue;
-}
-
 export interface SellerDashboardRecentActivityRow {
   id: string;
   kind: SellerDashboardDocKind;
@@ -87,7 +143,6 @@ export interface SellerDashboardRecentActivityRow {
 export interface SellerAdminDashboardSection {
   metrics: SellerDashboardMetric[];
   callouts: SellerDashboardCalloutItem[];
-  top_brands: SellerDashboardBrandRow[];
   recent_activity: SellerDashboardRecentActivityRow[];
 }
 
@@ -101,6 +156,7 @@ export interface SellerDashboardResponse {
   role: SellerDashboardRole;
   period: SellerLandingPeriodMeta;
   tenant: SellerDashboardTenantSummary;
+  portfolio?: MetricsV2DashboardPortfolio | null;
   admin?: SellerAdminDashboardSection;
   assistant?: SellerAssistantDashboardSection;
 }

@@ -52,6 +52,7 @@ vi.mock('@/lib/supabase', () => {
     buyers: [
       { id: 'buyer-1', business_name: 'A One Retail', credit_limit: 1000, geography: { city: 'Mumbai' } },
       { id: 'buyer-2', business_name: 'B Two Retail', credit_limit: 800, geography: { city: 'Pune' } },
+      { id: 'buyer-3', business_name: 'Legacy Retail', credit_limit: 1200, geography: { city: 'Nagpur' }, deleted_at: '2026-07-01T00:00:00.000Z' },
     ],
     catalogs: [
       { id: 'cat-1', name: 'Monsoon Push', status: 'published', valid_to: '2026-07-15T00:00:00.000Z', updated_at: '2026-07-05T00:00:00.000Z' },
@@ -64,6 +65,7 @@ vi.mock('@/lib/supabase', () => {
       { id: 'order-1', location_id: 'loc-1', buyer_id: 'buyer-1', order_number: 'SO-1', status: 'received', total_amount: 1000, order_date: '2026-07-05T00:00:00.000Z', placed_at: null, created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-07-05T01:00:00.000Z' },
       { id: 'order-2', location_id: 'loc-2', buyer_id: 'buyer-2', order_number: 'SO-2', status: 'received', total_amount: 500, order_date: '2026-07-06T00:00:00.000Z', placed_at: null, created_at: '2026-06-02T00:00:00.000Z', updated_at: '2026-07-06T01:00:00.000Z' },
       { id: 'order-3', location_id: 'loc-1', buyer_id: 'buyer-1', order_number: 'SO-3', status: 'delivered', total_amount: 900, order_date: '2026-05-01T00:00:00.000Z', placed_at: null, created_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T01:00:00.000Z' },
+      { id: 'order-4', location_id: 'loc-2', buyer_id: 'buyer-3', order_number: 'SO-4', status: 'confirmed', total_amount: 2500, order_date: '2026-07-07T00:00:00.000Z', placed_at: null, created_at: '2026-06-03T00:00:00.000Z', updated_at: '2026-07-07T01:00:00.000Z' },
     ],
     estimates: [
       { id: 'estimate-1', location_id: 'loc-1', buyer_id: 'buyer-1', estimate_number: 'EST-1', status: 'sent', total_amount: 700, estimate_date: '2026-07-04T00:00:00.000Z', created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-07-04T01:00:00.000Z' },
@@ -102,7 +104,8 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
 
-    is() {
+    is(column: string, value: unknown) {
+      this.filters.push({ kind: 'is', column, value });
       return this;
     }
 
@@ -121,6 +124,10 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
 
+    limit() {
+      return this;
+    }
+
     single() {
       return Promise.resolve({ data: state.tenant, error: null });
     }
@@ -133,13 +140,17 @@ vi.mock('@/lib/supabase', () => {
             result = result.filter((row) => !(filter.column in row) || row[filter.column] === filter.value);
             continue;
           }
+          if (filter.kind === 'is') {
+            result = result.filter((row) => !(filter.column in row) || row[filter.column] === filter.value);
+            continue;
+          }
           const values = Array.isArray(filter.value) ? filter.value : [];
           result = result.filter((row) => values.includes(row[filter.column]));
         }
         return result;
       };
 
-      if (this.table === 'buyers') return resolve({ data: state.buyers, error: null });
+      if (this.table === 'buyers') return resolve({ data: applyFilters(state.buyers as Array<Record<string, unknown>>), error: null });
       if (this.table === 'campaigns') return resolve({ data: state.catalogs, error: null });
       if (this.table === 'tenant_inventory') return resolve({ data: applyFilters(state.inventory as Array<Record<string, unknown>>), error: null });
       if (this.table === 'orders') return resolve({ data: applyFilters(state.orders as Array<Record<string, unknown>>), error: null });
@@ -156,6 +167,34 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: {
       schema: vi.fn(() => ({
         from: vi.fn((table: string) => new QueryBuilder(table)),
+        rpc: vi.fn((fnName: string) => {
+          if (fnName === 'get_metrics_v2_seller_dashboard') {
+            return Promise.resolve({
+              data: {
+                as_of: '2026-07-10T00:00:00.000Z',
+                commercial_horizon_days: 90,
+                table_period: null,
+                primary_demand_kind: 'orders',
+                calculation_version: 1,
+                source_watermark: '2026-07-10T00:00:00.000Z',
+                freshness: {},
+                availability: { primary_demand: { available: true, kind: 'orders' } },
+                metrics: [
+                  { id: 'invoiced_sales', label: 'Invoiced sales', time_basis: 'THIS MONTH', feasibility: 'REWORK', available: true, value: 1500, count: 2, unit: 'currency' },
+                  { id: 'open_primary_demand_value', label: 'Open primary demand value', time_basis: 'NOW', feasibility: 'REWORK', available: true, value: 800, count: 2, unit: 'currency' },
+                  { id: 'overdue_receivables', label: 'Overdue receivables', time_basis: 'NOW', feasibility: 'READY', available: true, value: 200, count: 1, unit: 'currency' },
+                  { id: 'recently_sold_products_now_out_of_stock', label: 'Recently sold products now out of stock', time_basis: 'NOW + 90D', feasibility: 'REWORK', available: true, count: 1, unit: 'count' },
+                ],
+                actions: [],
+                explore: [
+                  { id: 'location_comparison', label: 'Location comparison', time_basis: '90D', feasibility: 'REWORK', available: true, meta: { locations: [] } },
+                ],
+              },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
       })),
       auth: {
         admin: {
@@ -189,13 +228,17 @@ describe('seller dashboard aggregation', () => {
     });
   });
 
-  it('uses aggregate tenant KPIs for admin summary cards and hints', async () => {
+  it('uses the Metrics V2 portfolio for admin summary cards and keeps portfolio metadata', async () => {
     const period = getSellerLandingPeriodMeta('month', new Date('2026-07-10T00:00:00.000Z'));
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_admin', sub: 'admin-1', location_ids: null }, period);
 
-    expect(dashboard.admin?.metrics[0]?.value).toBe(9);
-    expect(dashboard.admin?.metrics[1]?.value).toBe(50000);
-    expect(dashboard.admin?.callouts[0]?.hint).toBe('9 in scope');
+    expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · This month');
+    expect(dashboard.admin?.metrics[0]?.value).toBe(1500);
+    expect(dashboard.admin?.metrics[1]?.value).toBe(800);
+    expect(dashboard.admin?.callouts[0]?.rows?.[0]?.name).toBe('Legacy Retail');
+    expect(dashboard.portfolio?.metrics.map((metric) => metric.id)).toContain('recently_sold_products_now_out_of_stock');
+    expect(dashboard.portfolio?.explore.map((metric) => metric.id)).toContain('location_comparison');
+    expect(dashboard.admin?.callouts[0]?.hint).toBe('3');
   });
 
   it('keeps assistant metrics scoped to assigned locations', async () => {

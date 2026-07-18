@@ -19,7 +19,7 @@ This is an expand–validate–cut over–retire program, not a big-bang rewrite
 - New read models are additive first. Old triggers/tables are retired only after all consumers are proven absent.
 - The routine refresh path is a **budgeted dirty-work micro-batch**, not a continuously computing worker.
 - Database work is serialized under one coordinator. Independent API/UI/test packages may run in parallel only after their data contract freezes.
-- WineYard data is the primary reconciliation fixture. Synthetic fixtures cover Estimates-only, Orders-only, both-enabled, sparse, large, and multi-location tenants.
+- Test data is the primary reconciliation fixture. Synthetic fixtures cover Estimates-only, Orders-only, both-enabled, sparse, large, and multi-location tenants.
 - If the application becomes live before Phase 8 completes, stop implementation and add an explicit live-migration/cutover amendment before proceeding; do not quietly introduce a feature flag mid-phase.
 - Every phase has a stop/go gate. A failed gate blocks the next phase; it is not converted into a backlog item while rollout continues.
 
@@ -207,7 +207,7 @@ The main coordinator owns sequencing and acceptance. Subagents receive narrow, n
 
 - Investigator A: compare live `pg_get_functiondef`, triggers, RLS, indexes, Cron jobs, extensions, and migration history with the repository.
 - Investigator B: build the complete consumer graph for snapshots/KPI tables across routes, loaders, cohorts, recommendations, and sync functions.
-- Investigator C: produce canonical raw expected values for WineYard and synthetic Estimates-only, Orders-only, both-enabled, multi-location, sparse, and large tenants.
+- Investigator C: produce canonical raw expected values for the test tenant and synthetic Estimates-only, Orders-only, both-enabled, multi-location, sparse, and large tenants.
 - Coordinator: freeze `metrics-definitions-2026-07.md`, primary-demand resolver, period metadata, target response types, and rollout ledger.
 - Coordinator: add a clearly delimited Metrics V2 phase section to `metrics-v2-execution-log-2026-07.md`; every later phase appends evidence there.
 - Coordinator: obtain and record the narrow operational-table retention/convention decision; no migration may infer an exception to `AGENTS.md`.
@@ -346,7 +346,7 @@ Seed dirty work manually and through completed sync jobs. Do not attach interact
 - Performance builder: 1,000-session mixed workload, simultaneous dashboard reads, one sync, paused dispatcher, worker crash, and backlog recovery.
 - Reviewer: inspect trigger plans, lock statistics, rows touched, write amplification, and kill-switch behavior.
 
-Enable capture and the budgeted dispatcher against the WineYard staging dataset. Application consumers remain unchanged; comparisons run only through reconciliation tooling.
+Enable capture and the budgeted dispatcher against the staging dataset. Application consumers remain unchanged; comparisons run only through reconciliation tooling.
 
 **Exit gate**
 
@@ -432,7 +432,7 @@ Each package owns one bounded on-open RPC, response type, lazy UI composition us
 **Sequence**
 
 1. Reconfirm that no customer is live. If that assumption changed, stop and write a live-migration amendment before continuing.
-2. Apply the additive migrations to staging, rebuild target snapshots from canonical raw data, run one full WineYard sync, and reconcile every selected metric.
+2. Apply the additive migrations to staging, rebuild target snapshots from canonical raw data, run one full sync, and reconcile every selected metric.
 3. With explicit human approval and while customer writes are still blocked, apply the additive migrations to the launch environment, enable transactional capture and the bounded dispatcher, perform the bounded initial backfill, reconcile every selected metric to raw data, and verify domain freshness before application deployment.
 4. Merge/deploy the direct consumer replacements together with the target read model. There is no Metrics V2 feature flag or runtime version selector.
 5. Before opening customer access, test both rollback paths: (a) a presentation-only artifact that retains the target API/read layer, and (b) a server/data recovery runbook that blocks writes, pauses dispatch, rebuilds every retained legacy read family from canonical raw data in bounded batches, reconciles it, re-enables legacy writers, and only then permits deployment of old server routes.

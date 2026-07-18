@@ -251,7 +251,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload] = await Promise.all([
+  const [detailV2Res, catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload] = await Promise.all([
+    db.schema('app').rpc('get_seller_campaign_detail_v2', {
+      p_tenant_id: claims.tenant_id,
+      p_campaign_id: id,
+    }),
     db
       .schema('app')
       .from('campaigns')
@@ -292,9 +296,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   ]);
 
   if (catalogRes.error) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
-  if (itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
+  if (detailV2Res.error || itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
     return NextResponse.json({ error: 'Failed to load catalog detail' }, { status: 500 });
   }
+  const detailV2 = detailV2Res.data as any;
 
   const catalog = catalogRes.data as {
     id: string;
@@ -824,6 +829,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         last_order_at: buyer.last_order_at,
       })),
     },
+    performance_cards: detailV2?.performance_cards ?? [],
+    detail_v2: detailV2,
     buyers: buyers.slice(0, 50),
     permissions: {
       can_extend_validity: claims.role === 'seller_admin',

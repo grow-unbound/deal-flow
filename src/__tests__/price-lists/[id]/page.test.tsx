@@ -91,7 +91,7 @@ describe('price-lists/[id] detail page', () => {
     expect(screen.getByText('Cohorts assigned')).toBeInTheDocument();
     expect(screen.getByText('Avg discount')).toBeInTheDocument();
     expect(screen.getByText('Days left')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Products and pricing/i })).toHaveTextContent('1');
+    expect(screen.getByRole('tab', { name: /Products and pricing/i })).toHaveTextContent('1');
   });
 
   it('renders edit and archive actions for seller admin', () => {

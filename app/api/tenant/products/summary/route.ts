@@ -5,10 +5,6 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * O(1) KPI snapshot for the products landing page header cards.
- * Reads from app.products_snapshot which is kept current by DB triggers.
- */
 export async function GET(request: NextRequest) {
   try {
     const claims = await getVerifiedClaims(request);
@@ -23,23 +19,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .schema('app')
-      .from('products_snapshot')
-      .select('total_count, active_count, low_stock_count, refreshed_at')
-      .eq('tenant_id', claims.tenant_id)
-      .maybeSingle();
+    const [setupRes, lowStockRes] = await Promise.all([
+      supabaseAdmin
+        .schema('app')
+        .from('metrics_tenant_setup_snapshot')
+        .select('active_product_count, computed_at, updated_at')
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle(),
+      supabaseAdmin
+        .schema('app')
+        .from('metrics_product_snapshot')
+        .select('tenant_product_id', { count: 'exact', head: true })
+        .eq('tenant_id', claims.tenant_id)
+        .eq('low_stock', true)
+        .is('deleted_at', null),
+    ]);
 
-    if (error) {
-      console.error('[GET /api/tenant/products/summary]', error);
+    if (setupRes.error || lowStockRes.error) {
+      console.error('[GET /api/tenant/products/summary]', setupRes.error ?? lowStockRes.error);
       return NextResponse.json({ error: 'Failed to fetch summary' }, { status: 500 });
     }
 
-    if (!data) {
+    if (!setupRes.data) {
       return NextResponse.json({ total: null }, { status: 404 });
     }
 
-    return NextResponse.json(data, { headers: SELLER_CACHE_PERSONAL });
+    const activeCount = Number(setupRes.data.active_product_count ?? 0);
+    const asOf = setupRes.data.computed_at ?? setupRes.data.updated_at ?? null;
+    return NextResponse.json(
+      {
+        total_count: activeCount,
+        active_count: activeCount,
+        low_stock_count: lowStockRes.count ?? 0,
+        refreshed_at: asOf,
+        as_of: asOf,
+        commercial_horizon_days: 90,
+        table_period: null,
+      },
+      { headers: SELLER_CACHE_PERSONAL },
+    );
   } catch (e) {
     console.error('[GET /api/tenant/products/summary]', e);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

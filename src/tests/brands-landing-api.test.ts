@@ -36,6 +36,7 @@ function createQuery(key: string) {
     order: vi.fn(),
     limit: vi.fn(),
     neq: vi.fn(),
+    not: vi.fn(),
     gte: vi.fn(),
     lt: vi.fn(),
     maybeSingle: vi.fn(),
@@ -52,6 +53,7 @@ function createQuery(key: string) {
   query.order.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.neq.mockReturnValue(query);
+  query.not.mockReturnValue(query);
   query.gte.mockReturnValue(query);
   query.lt.mockReturnValue(query);
   query.maybeSingle.mockReturnValue(query);

@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FeatureGate } from '@/components/FeatureGate';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, DistributionList, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import { CustomerActivityTab } from '@/components/seller/customers/detail/CustomerActivityTab';
 import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
@@ -158,12 +158,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     if (isSellerAssistant) {
       return [
         {
-          label: 'Orders · MTD',
+          label: 'Invoices · 90D',
           value: data.meta_strip_4.orders_mtd,
-          sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+          sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
         },
         {
-          label: 'Last order',
+          label: 'Last sale',
           value: data.meta_strip_4.last_order_label,
           sub: data.meta_strip_4.last_order_primary_product_qty,
         },
@@ -181,7 +181,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
     return [
       {
-        label: 'Spend · MTD',
+        label: 'Invoiced sales · 90D',
         value: formatCompactInr(data.meta_strip_4.spend_mtd),
         sub: (
           <span>
@@ -194,12 +194,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         ),
       },
       {
-        label: 'Orders · MTD',
+        label: 'Invoices · 90D',
         value: data.meta_strip_4.orders_mtd,
-        sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+        sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
       },
       {
-        label: 'Last order',
+        label: 'Last sale',
         value: data.meta_strip_4.last_order_label,
         sub: data.meta_strip_4.last_order_primary_product_qty,
       },
@@ -293,7 +293,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           }
         />
 
-        <MetaStrip4 tiles={tiles} />
+        <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
         <DetailTabs
           tabs={tabs}
@@ -302,7 +302,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         />
 
         {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
-        {activeTab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
+        {activeTab === 'performance' ? (
+          <CustomerPerformanceTab
+            performance={data.performance}
+            performanceV2={data.performance_v2}
+            performanceCards={data.performance_cards}
+          />
+        ) : null}
         {activeTab === 'estimates' ? (
           <CustomerOrdersTab
             buyerId={id}
@@ -325,48 +331,65 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           />
         ) : null}
         {activeTab === 'cohorts' ? (
-          <section className="mt-5 rounded-[14px] border border-cream-300 bg-white p-5">
-            <h3 className="font-display text-lg text-cream-950">Customer Groups</h3>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {data.cohorts_summary.rows.length === 0 ? (
-                <p className="text-base text-cream-700">No customer group memberships found for this buyer.</p>
-              ) : data.cohorts_summary.rows.map((cohort) => (
-                <article key={cohort.id} className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
-                  <p className="font-medium text-cream-950">{cohort.name}</p>
-                  <p className="mt-1 text-sm text-cream-700">Buyer is assigned to this customer group.</p>
-                </article>
-              ))}
-            </div>
+          <section className="mt-5">
+            <PerformanceCard title="Customer groups" subtitle="Current memberships" bodyClassName="p-0">
+              <RankedList
+                items={data.cohorts_summary.rows.map((cohort) => ({
+                  id: cohort.id,
+                  label: cohort.name,
+                  value: 'Active',
+                  supporting: 'Buyer is assigned to this customer group.',
+                  initials: cohort.name.slice(0, 2).toUpperCase(),
+                  hue: 'cream',
+                }))}
+                emptyTitle="No customer group memberships yet"
+                emptyDescription="This buyer is not assigned to any customer groups."
+              />
+            </PerformanceCard>
           </section>
         ) : null}
         {activeTab === 'price-lists' ? (
           <section className="mt-5 space-y-4">
-            <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-              <h3 className="font-display text-lg text-cream-950">Assigned price lists</h3>
-              {data.price_lists.assigned.length === 0 ? (
-                <p className="mt-3 text-base text-cream-700">No buyer-specific, cohort, or all-buyers price lists currently apply to this customer.</p>
-              ) : (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {data.price_lists.assigned.map((priceList) => (
-                    <article key={`${priceList.id}-${priceList.target_type}`} className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-cream-950">{priceList.name}</p>
-                          <p className="mt-1 text-sm text-cream-700">{priceList.target_label}</p>
-                        </div>
-                        <PriceListStatusPill status={priceList.status} />
-                      </div>
-                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">
-                        Validity
-                      </p>
-                      <p className="mt-1 text-sm text-cream-800">
-                        {formatValidityWindow(priceList.valid_from, priceList.valid_to)}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </article>
+            <PerformanceCard title="Assigned price lists" subtitle="Buyer-specific, cohort, and all-buyer pricing" bodyClassName="p-0">
+              <RankedList
+                items={data.price_lists.assigned.map((priceList) => ({
+                  id: `${priceList.id}-${priceList.target_type}`,
+                  label: priceList.name,
+                  meta: priceList.target_label,
+                  value: <PriceListStatusPill status={priceList.status} />,
+                  supporting: `Validity · ${formatValidityWindow(priceList.valid_from, priceList.valid_to)}`,
+                }))}
+                emptyTitle="No applied price lists"
+                emptyDescription="No buyer-specific, cohort, or all-buyer price lists currently apply to this customer."
+              />
+            </PerformanceCard>
+            <PerformanceCard title="Pricing coverage" subtitle="How this buyer receives pricing today" bodyClassName="p-0">
+              <DistributionList
+                mode="mix"
+                items={[
+                  {
+                    id: 'buyer',
+                    label: 'Buyer specific',
+                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'buyer').length,
+                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'buyer').length / data.price_lists.assigned.length) * 100) : 0,
+                  },
+                  {
+                    id: 'cohort',
+                    label: 'Customer group',
+                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'cohort').length,
+                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'cohort').length / data.price_lists.assigned.length) * 100) : 0,
+                  },
+                  {
+                    id: 'all-buyers',
+                    label: 'All buyers',
+                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'all_buyers').length,
+                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'all_buyers').length / data.price_lists.assigned.length) * 100) : 0,
+                  },
+                ].filter((item) => item.value > 0)}
+                emptyTitle="No pricing coverage yet"
+                emptyDescription="This buyer does not currently inherit an active price list."
+              />
+            </PerformanceCard>
             <ResolvedPriceLookupCard
               buyerId={id}
               productOptions={data.price_lists.lookup_products.map((product) => ({

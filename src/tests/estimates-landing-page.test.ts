@@ -81,7 +81,7 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'lte' | 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'lte' | 'in' | 'not_is_null'; column: string; value: unknown }> = [];
     private orderBy: { column: string; ascending: boolean } | null = null;
     private take: number | null = null;
     private head = false;
@@ -129,6 +129,12 @@ vi.mock('@/lib/supabase', () => {
       this.conditions.push({ kind: 'lte', column, value });
       return this;
     }
+    not(column: string, operator: string, value: unknown) {
+      if (operator === 'is' && value === null) {
+        this.conditions.push({ kind: 'not_is_null', column, value: null });
+      }
+      return this;
+    }
     or(filter: string) {
       const match = filter.match(
         /and\(estimate_date\.gte\.([^,]+),estimate_date\.lt\.([^)]+)\),and\(estimate_date\.is\.null,created_at\.gte\.([^,]+),created_at\.lt\.([^)]+)\)/,
@@ -165,6 +171,10 @@ vi.mock('@/lib/supabase', () => {
           if (condition.kind === 'in') {
             const values = Array.isArray(condition.value) ? condition.value : [];
             result = result.filter((row) => values.includes(row[condition.column]));
+            continue;
+          }
+          if (condition.kind === 'not_is_null') {
+            result = result.filter((row) => row[condition.column] != null);
             continue;
           }
           if (condition.kind === 'gte' || condition.kind === 'lt' || condition.kind === 'lte') {
@@ -226,6 +236,46 @@ vi.mock('@/lib/supabase', () => {
     }
     return new QueryMock(table);
   });
+  const sum = (rows: Array<Record<string, unknown>>, key: string) =>
+    rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+  const scopedRows = (rows: Array<Record<string, unknown>>, args?: { p_location_ids?: string[] | null }) => {
+    const locationIds = args?.p_location_ids ?? null;
+    return locationIds?.length
+      ? rows.filter((row) => row.scope === 'location' && locationIds.includes(String(row.location_id)))
+      : rows.filter((row) => row.scope === 'tenant');
+  };
+  const rpc = vi.fn(async (name: string, args?: { p_location_ids?: string[] | null }) => {
+    if (name !== 'metrics_v2_transaction_landing') return { data: null, error: null };
+    const current = scopedRows(queryState.currentKpis, args);
+    const previous = scopedRows(queryState.previousKpis, args);
+    const aggregate = scopedRows(queryState.aggregateKpis, args);
+    const total = sum(current, 'estimates_count');
+    const previousTotal = sum(previous, 'estimates_count');
+    const gmv = sum(current, 'gmv');
+    return {
+      data: {
+        kpis: {
+          total_estimates_this_period: total,
+          total_estimates_prev_period: previousTotal,
+          total_estimates_growth_pct: previousTotal > 0 ? Math.round(((total - previousTotal) / previousTotal) * 100) : 0,
+          total_gmv_this_period: gmv,
+          total_gmv_prev_period: sum(previous, 'gmv'),
+          aov: total > 0 ? gmv / total : 0,
+          open_estimates_this_period: sum(current, 'open_count'),
+          converted_this_period: sum(current, 'converted_count'),
+          open_total: sum(aggregate, 'open_count'),
+          open_drafts: sum(aggregate, 'draft_count'),
+          open_sent: sum(aggregate, 'sent_count'),
+          open_accepted: sum(aggregate, 'accepted_count'),
+          ready_to_convert: sum(aggregate, 'accepted_count'),
+          expiring_soon: sum(aggregate, 'expiring_soon_count'),
+          open_created_this_period: sum(current, 'open_count'),
+          buyer_app_created_this_period: sum(current, 'open_buyer_app_count'),
+        },
+      },
+      error: null,
+    };
+  });
 
   return {
     supabaseAdmin: {
@@ -243,7 +293,7 @@ vi.mock('@/lib/supabase', () => {
           })),
         },
       },
-      schema: vi.fn(() => ({ from })),
+      schema: vi.fn(() => ({ from, rpc })),
     },
   };
 });

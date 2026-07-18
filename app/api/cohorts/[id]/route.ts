@@ -136,6 +136,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
+  const { data: detailV2, error: detailV2Error } = await db.schema('app').rpc('get_seller_cohort_detail_v2', {
+    p_tenant_id: claims.tenant_id,
+    p_cohort_id: id,
+  });
+
+  if (detailV2Error) {
+    console.error('[GET /api/cohorts/[id]] get_seller_cohort_detail_v2 failed', detailV2Error);
+    return NextResponse.json({ error: 'Failed to fetch cohort detail' }, { status: 500 });
+  }
+
   const [{ data: buyers }, { data: members }] = await Promise.all([
     db
       .schema('app')
@@ -513,6 +523,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       catalogs,
       gmv_trend_12m: gmvTrend12m,
     },
+    performance_cards: (detailV2 as any)?.performance_cards ?? [],
+    detail_v2: detailV2,
     buyers: buyersPayload,
     rules_summary,
   }, { headers: SELLER_CACHE_PERSONAL });

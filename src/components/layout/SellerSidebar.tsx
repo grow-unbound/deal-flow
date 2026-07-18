@@ -83,7 +83,7 @@ export const navGroups: NavGroup[] = [
       { label: 'Buyer App', href: '/buyer-app', icon: BuyerAppIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_buyer_app' },
       { label: 'Campaigns', href: '/campaigns', icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
       { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
-      { label: 'Pricelists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
+      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
       { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
       { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Warehouses', href: '/warehouses', icon: WarehousesIcon, roles: [ROLES.SELLER_ADMIN] },

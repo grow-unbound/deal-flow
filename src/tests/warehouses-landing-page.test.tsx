@@ -7,15 +7,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock('@/hooks/useSellerLandingPeriod', () => ({
-  useSellerLandingPeriod: () => ({
-    period: 'month',
-    setPeriod: vi.fn(),
-    horizonLabel: 'This month',
-    options: [],
-  }),
-}));
-
 vi.mock('@/hooks/useRouteSnapshot', () => ({
   useRouteSnapshot: () => ({
     state: {
@@ -26,6 +17,7 @@ vi.mock('@/hooks/useRouteSnapshot', () => ({
     setState: vi.fn(),
   }),
   useRouteScrollRestoration: () => undefined,
+  useSeedRouteSearch: () => undefined,
 }));
 
 vi.mock('@/hooks/useWarehouses', () => ({
@@ -76,12 +68,12 @@ describe('warehouses landing page', () => {
             associated_users_count: 2,
           },
         ],
-        period: 'month',
+        period: 'today',
         refreshed_at: '2026-07-05T10:00:00.000Z',
       },
     });
 
-    render(<WarehousesLandingClient initialData={null} initialPeriod="month" />);
+    render(<WarehousesLandingClient initialData={null} initialPeriod="today" />);
 
     expect(screen.getByText('Warehouses')).toBeInTheDocument();
     expect(screen.getByText('Active warehouses')).toBeInTheDocument();

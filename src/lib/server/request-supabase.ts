@@ -11,6 +11,8 @@ import type { Database } from '@/types/database';
 export async function getRequestSupabaseClient() {
   const cookieStore = await cookies();
   return createRouteHandlerClient<Database>({
-    cookies: async () => cookieStore,
+    // auth-helpers-nextjs reads the cookie store synchronously at runtime even
+    // though Next's current type surface still models cookies() as async here.
+    cookies: (() => cookieStore) as unknown as () => ReturnType<typeof cookies>,
   });
 }

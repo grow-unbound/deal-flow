@@ -108,7 +108,11 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [itemsRes, assignmentsRes, activityRes] = await Promise.all([
+  const [detailV2Res, itemsRes, assignmentsRes, activityRes] = await Promise.all([
+    db.schema('app').rpc('get_seller_pricelist_detail_v2', {
+      p_tenant_id: claims.tenant_id,
+      p_price_list_id: id,
+    }),
     db
       .schema('app')
       .from('price_list_items')
@@ -140,10 +144,10 @@ export async function GET(
       .limit(100),
   ]);
 
-  if (itemsRes.error || assignmentsRes.error || activityRes.error) {
+  if (detailV2Res.error || itemsRes.error || assignmentsRes.error || activityRes.error) {
     console.error(
       '[GET /api/price-lists/[id]] related fetch error:',
-      itemsRes.error || assignmentsRes.error || activityRes.error,
+      detailV2Res.error || itemsRes.error || assignmentsRes.error || activityRes.error,
     );
     return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
   }
@@ -322,8 +326,11 @@ export async function GET(
 
   const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : 0;
   const daysLeft = priceList.valid_to ? Math.max(0, Math.ceil((new Date(priceList.valid_to).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
+  const detailV2 = detailV2Res.data as any;
 
   return NextResponse.json({
+    performance_cards: detailV2?.performance_cards ?? [],
+    detail_v2: detailV2,
     price_list: {
       ...priceList,
       status,
@@ -353,6 +360,8 @@ export async function GET(
         };
       }),
       activity: events,
+      performance_cards: detailV2?.performance_cards ?? [],
+      detail_v2: detailV2,
       stats: {
         products_covered: enrichedItems.length,
         brands_covered: brandSet.size,

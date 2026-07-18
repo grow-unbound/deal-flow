@@ -17,7 +17,7 @@ interface InsightStrip4Props {
   showSupportingText?: boolean;
 }
 
-export function InsightStrip4({ tiles, className, showSupportingText = false }: InsightStrip4Props) {
+export function InsightStrip4({ tiles, className, showSupportingText = true }: InsightStrip4Props) {
   return (
     <MetricGrid
       className={cn('mt-5 mb-0', className)}

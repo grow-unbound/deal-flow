@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,8 +20,8 @@ import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryActivityTab } from './CategoryActivityTab';
 
-const CategoryOverviewTab = dynamic(
-  () => import('./CategoryOverviewTab').then((m) => m.CategoryOverviewTab),
+const CategoryPerformanceTab = dynamic(
+  () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
@@ -78,30 +78,25 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
-        label: 'GMV · this month',
+        // get_seller_category_detail_v2 has no prior-period comparison, so this used
+        // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
+        // supporting value (product count) instead — see doc line 962.
+        label: 'Invoiced sales 90D',
         value: formatCompactInr(m.gmv_mtd),
-        sub: (
-          <span>
-            <span className={m.growth_pct >= 0 ? 'up' : 'down'}>
-              {m.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(m.growth_pct)}%
-            </span>{' '}
-            vs last month
-          </span>
-        ),
+        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
-        label: 'Active buyers',
-        value: `${m.active_buyer_count}`,
-        sub: 'this month',
+        label: 'Units sold',
+        value: `${m.units_90d}`,
+        sub: `${m.sold_sku_count} products that sold`,
       },
       {
-        label: 'OOS SKUs',
+        label: 'Recent sellers low/out of stock',
         value: `${m.oos_sku_count}`,
         sub: `${m.low_stock_sku_count} more low-stock`,
       },
       {
-        label: 'Active SKUs',
+        label: 'Products in category',
         value: `${m.active_sku_count}`,
         sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
       },
@@ -165,7 +160,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -178,7 +173,9 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'performance' ? <CategoryOverviewTab overview={data.overview} /> : null}
+      {tab === 'performance' ? (
+        <CategoryPerformanceTab performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
       {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
       {tab === 'activity' ? <CategoryActivityTab activity={data.activity} /> : null}

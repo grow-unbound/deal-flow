@@ -59,6 +59,7 @@ function isOperationalInvoiceStatus(status: string | null | undefined) {
   return !['draft', 'void', 'cancelled', 'rejected', 'archived'].includes(value);
 }
 
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -80,28 +81,9 @@ export async function GET(
     }
 
     const db = supabaseAdmin as any;
+    const tenantId = claims.tenant_id;
 
-    const { data: globalProduct, error: globalProductError } = await db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, tenant_id')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (globalProductError) {
-      return NextResponse.json({ error: 'Failed to fetch product' }, { status: 500 });
-    }
-
-    if (!globalProduct) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
-    }
-
-    if (globalProduct.tenant_id !== claims.tenant_id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { data: product, error } = await db
+    const { data: product, error: productError } = await db
       .schema('app')
       .from('tenant_products')
       .select(`
@@ -128,11 +110,11 @@ export async function GET(
         updated_at
       `)
       .eq('id', id)
-      .eq('tenant_id', claims.tenant_id)
+      .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .maybeSingle();
 
-    if (error) {
+    if (productError) {
       return NextResponse.json({ error: 'Failed to fetch product' }, { status: 500 });
     }
 
@@ -140,425 +122,61 @@ export async function GET(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    const [{ data: masterProduct }, { data: tenantBrand }, { data: tenantCategory }, { data: inventoryRows }] = await Promise.all([
+    const [detailV2Res, masterProductRes, tenantBrandRes, tenantCategoryRes] = await Promise.all([
+      db.schema('app').rpc('get_seller_product_detail_v2', {
+        p_tenant_id: tenantId,
+        p_tenant_product_id: id,
+      }),
       product.master_product_id
-        ? db
-            .schema('catalog')
-            .from('products')
-            .select('id, name, master_sku, hsn_code, gst_rate, pack_size, categories(name), brands(name)')
-            .eq('id', product.master_product_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+        ? db.schema('catalog').from('products').select('id, name, master_sku, hsn_code, gst_rate, pack_size, categories(name), brands(name)').eq('id', product.master_product_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       product.tenant_brand_id
-        ? db
-            .schema('app')
-            .from('tenant_brands')
-            .select('id, display_name_override, master_brand_id')
-            .eq('id', product.tenant_brand_id)
-            .eq('tenant_id', claims.tenant_id)
-            .is('deleted_at', null)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+        ? db.schema('app').from('tenant_brands').select('id, display_name_override, master_brand_id').eq('id', product.tenant_brand_id).eq('tenant_id', tenantId).is('deleted_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       product.tenant_category_id
-        ? db
-            .schema('app')
-            .from('tenant_categories')
-            .select('id, name')
-            .eq('id', product.tenant_category_id)
-            .is('deleted_at', null)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-      db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('id, qty_available, updated_at')
-        .eq('tenant_product_id', id)
-        .is('deleted_at', null),
+        ? db.schema('app').from('tenant_categories').select('id, name').eq('id', product.tenant_category_id).eq('tenant_id', tenantId).is('deleted_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
-    let brandName: string | null = null;
-    if (tenantBrand?.display_name_override) {
-      brandName = tenantBrand.display_name_override;
-    } else if (tenantBrand?.master_brand_id) {
-      const { data: masterBrand } = await db
-        .schema('catalog')
-        .from('brands')
-        .select('name')
-        .eq('id', tenantBrand.master_brand_id)
-        .maybeSingle();
-      brandName = masterBrand?.name ?? null;
-    } else {
-      brandName = masterProduct?.brands?.name ?? null;
-    }
-
-    const now = new Date();
-    const { startIso, nextIso, prevStartIso, prevEndIso } = monthBounds(now);
-    const currentStartDay = startIso.slice(0, 10);
-    const currentEndDay = nextIso.slice(0, 10);
-    const previousStartDay = prevStartIso.slice(0, 10);
-    const previousEndDay = prevEndIso.slice(0, 10);
-    const trendStartDay = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString().slice(0, 10);
-    const trailing30Day = new Date(now.getTime() - (29 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
-
-    const [
-      currentKpiRes,
-      previousKpiRes,
-      trailingKpiRes,
-      trendKpiRes,
-      auditRowsRes,
-      priceListsRes,
-      priceListItemsRes,
-      assignmentsRes,
-      cohortsRes,
-      buyersRes,
-      orderItemsRes,
-      recentInvoicesRes,
-    ] = await Promise.all([
-      db
-        .schema('app')
-        .from('kpi_product_daily')
-        .select('units_sold, revenue')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('tenant_product_id', id)
-        .gte('day', currentStartDay)
-        .lt('day', currentEndDay),
-      db
-        .schema('app')
-        .from('kpi_product_daily')
-        .select('units_sold')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('tenant_product_id', id)
-        .gte('day', previousStartDay)
-        .lt('day', previousEndDay),
-      db
-        .schema('app')
-        .from('kpi_product_daily')
-        .select('units_sold, revenue')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('tenant_product_id', id)
-        .gte('day', trailing30Day),
-      db
-        .schema('app')
-        .from('kpi_product_daily')
-        .select('day, units_sold, revenue')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('tenant_product_id', id)
-        .gte('day', trendStartDay)
-        .order('day', { ascending: true }),
-      db
-        .schema('app')
-        .from('audit_log')
-        .select('id, ts, action, entity_type, entity_id, diff')
-        .eq('tenant_id', claims.tenant_id)
-        .order('ts', { ascending: false })
-        .limit(100),
-      db
-        .schema('app')
-        .from('price_lists')
-        .select('id, name, valid_from, valid_to, is_active')
-        .eq('tenant_id', claims.tenant_id)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('price_list_items')
-        .select('id, price_list_id, tenant_product_id, price')
-        .eq('tenant_product_id', id)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('price_list_assignments')
-        .select('id, price_list_id, target_type, target_id')
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('cohorts')
-        .select('id, name')
-        .eq('tenant_id', claims.tenant_id)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography')
-        .eq('tenant_id', claims.tenant_id)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id, qty, line_total, unit_price')
-        .eq('tenant_product_id', id)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('invoices')
-        .select('id, status')
-        .eq('tenant_id', claims.tenant_id)
-        .gte('invoice_date', trailing30Day)
-        .lt('invoice_date', new Date(now.getTime() + (24 * 60 * 60 * 1000)).toISOString().slice(0, 10))
-        .is('deleted_at', null),
-    ]);
-
-    if (
-      currentKpiRes.error ||
-      previousKpiRes.error ||
-      trailingKpiRes.error ||
-      trendKpiRes.error ||
-      auditRowsRes.error ||
-      priceListsRes.error ||
-      priceListItemsRes.error ||
-      assignmentsRes.error ||
-      cohortsRes.error ||
-      buyersRes.error ||
-      orderItemsRes.error ||
-      recentInvoicesRes.error
-    ) {
+    if (detailV2Res.error) {
+      console.error('[GET /api/tenant/products/[id]] get_seller_product_detail_v2 failed', detailV2Res.error);
       return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
     }
 
-    const orderIds = Array.from(new Set(((orderItemsRes.data ?? []) as Array<{ order_id: string }>).map((row) => row.order_id)));
-    const recentInvoiceIds = ((recentInvoicesRes.data ?? []) as Array<{ id: string; status: string | null }>)
-      .filter((row) => isOperationalInvoiceStatus(row.status))
-      .map((row) => row.id);
-
-    const [orderChunkResults, invoiceItemChunkResults] = await Promise.all([
-      Promise.all(
-        chunkArray(orderIds, POSTGREST_IN_CHUNK_SIZE).map((chunk) =>
-          db
-            .schema('app')
-            .from('orders')
-            .select('id, status, placed_at, buyer_id')
-            .eq('tenant_id', claims.tenant_id)
-            .in('id', chunk)
-            .neq('status', 'cancelled')
-            .is('deleted_at', null),
-        ),
-      ),
-      Promise.all(
-        chunkArray(recentInvoiceIds, POSTGREST_IN_CHUNK_SIZE).map((chunk) =>
-          db
-            .schema('app')
-            .from('invoice_items')
-            .select('invoice_id, tenant_product_id, qty')
-            .eq('tenant_product_id', id)
-            .in('invoice_id', chunk)
-            .is('deleted_at', null),
-        ),
-      ),
-    ]);
-
-    const ordersRes = { data: orderChunkResults.flatMap((res) => res.data ?? []) };
-    const invoiceItemsRes = { data: invoiceItemChunkResults.flatMap((res) => res.data ?? []) };
-
-    if (orderChunkResults.some((res) => res.error) || invoiceItemChunkResults.some((res) => res.error)) {
-      return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
-    }
-
-    const orderById = new Map<string, { id: string; placed_at: string | null; buyer_id: string | null }>(
-      ((ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null; buyer_id: string | null }>).map((row) => [row.id, row]),
-    );
-    const buyerById = new Map<string, { business_name: string; geography: { city?: string; state?: string } | null }>(
-      ((buyersRes.data ?? []) as Array<{ id: string; business_name: string; geography: { city?: string; state?: string } | null }>).map((row) => [
-        row.id,
-        { business_name: row.business_name, geography: row.geography },
-      ]),
-    );
-
-    const unitsMtd = ((currentKpiRes.data ?? []) as Array<{ units_sold: number | null; revenue: number | null }>)
-      .reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
-    const unitsPrev = ((previousKpiRes.data ?? []) as Array<{ units_sold: number | null }>)
-      .reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
-    const trailingKpis = (trailingKpiRes.data ?? []) as Array<{ units_sold: number | null; revenue: number | null }>;
-    const unitsLast30 = trailingKpis.reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
-    const revenueLast30 = trailingKpis.reduce((sum, row) => sum + Number(row.revenue ?? 0), 0);
-    let lastOrderAt: string | null = null;
-    let lastOrderBuyer: string | null = null;
-    const monthlyUnitsMap = new Map<string, { units: number; revenue: number }>();
-    const buyerUnitsMap = new Map<string, number>();
-
-    for (const row of (trendKpiRes.data ?? []) as Array<{ day: string; units_sold: number | null; revenue: number | null }>) {
-      const key = row.day.slice(0, 7);
-      const currentMonth = monthlyUnitsMap.get(key) ?? { units: 0, revenue: 0 };
-      currentMonth.units += Number(row.units_sold ?? 0);
-      currentMonth.revenue += Number(row.revenue ?? 0);
-      monthlyUnitsMap.set(key, currentMonth);
-    }
-
-    for (const item of (orderItemsRes.data ?? []) as Array<{
-      order_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>) {
-      const order = orderById.get(item.order_id);
-      if (!order?.placed_at) continue;
-      const placedAt = order.placed_at;
-      const qty = Number(item.qty ?? 0);
-
-      const placedTs = new Date(placedAt).getTime();
-      if (!lastOrderAt || placedTs > new Date(lastOrderAt).getTime()) {
-        lastOrderAt = placedAt;
-        lastOrderBuyer = order.buyer_id ? (buyerById.get(order.buyer_id)?.business_name ?? null) : null;
-      }
-      if (order.buyer_id) {
-        buyerUnitsMap.set(order.buyer_id, (buyerUnitsMap.get(order.buyer_id) ?? 0) + qty);
-      }
-    }
-
-    const growthPct = unitsPrev > 0 ? ((unitsMtd - unitsPrev) / unitsPrev) * 100 : unitsMtd > 0 ? 100 : 0;
-    const onHand = (inventoryRows ?? []).reduce((sum: number, row: any) => sum + Number(row.qty_available ?? 0), 0);
-    const invoiceUnits30d = ((invoiceItemsRes.data ?? []) as Array<{ qty: number | null }>).reduce(
-      (sum, row) => sum + Number(row.qty ?? 0),
-      0,
-    );
-    const trailingInvoiceVelocity = invoiceUnits30d / 30;
-    const daysCover = onHand === 0 ? 0 : trailingInvoiceVelocity > 0 ? Math.max(0, Math.round(onHand / trailingInvoiceVelocity)) : null;
-    const sellThrough = onHand + unitsLast30 > 0 ? Math.round((unitsLast30 / (onHand + unitsLast30)) * 100) : 0;
-
-    const monthSeries = Array.from({ length: 12 }).map((_, i) => {
-      const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (11 - i), 1));
-      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-      const month = monthlyUnitsMap.get(key) ?? { units: 0, revenue: 0 };
-      return {
-        month: key,
-        units: month.units,
-        revenue: month.revenue,
-      };
-    });
-
-    const topBuyers = Array.from(buyerUnitsMap.entries())
-      .map(([buyerId, units]) => {
-        const buyer = buyerById.get(buyerId);
-        return {
-          buyer_id: buyerId,
-          buyer_name: buyer?.business_name ?? 'Unknown buyer',
-          city: buyer?.geography?.city ?? buyer?.geography?.state ?? null,
-          units,
-        };
-      })
-      .sort((a, b) => b.units - a.units)
-      .slice(0, 4);
-
-    const cohortById = new Map((cohortsRes.data ?? []).map((row: any) => [row.id, row.name]));
-    const assignmentsByList = new Map<string, Array<{ id: string; target_type: string; target_id: string | null }>>();
-    for (const assignment of assignmentsRes.data ?? []) {
-      const bucket = assignmentsByList.get(assignment.price_list_id) ?? [];
-      bucket.push(assignment);
-      assignmentsByList.set(assignment.price_list_id, bucket);
-    }
-
-    const pricingRows = (priceListItemsRes.data ?? [])
-      .map((item: any) => {
-        const pl = (priceListsRes.data ?? []).find((row: any) => row.id === item.price_list_id);
-        if (!pl) return null;
-        const listAssignments = assignmentsByList.get(pl.id) ?? [];
-        const targets =
-          listAssignments.length === 0
-            ? ['All buyers']
-            : listAssignments.map((a) => {
-                if (a.target_type === 'cohort') return cohortById.get(a.target_id ?? '') ?? 'Cohort';
-                if (a.target_type === 'buyer') return 'Buyer-specific';
-                return 'All buyers';
-              });
-        return {
-          item_id: item.id,
-          price_list_id: pl.id,
-          price_list_name: pl.name,
-          effective_price: Number(item.price ?? 0),
-          cohorts: Array.from(new Set(targets)),
-          valid_from: pl.valid_from,
-          valid_to: pl.valid_to,
-          is_active: Boolean(pl.is_active),
-          has_override: Number(item.price ?? 0) !== Number(product.base_selling_price ?? 0),
-          base_price: Number(product.base_selling_price ?? 0),
-        };
-      })
-      .filter(Boolean);
-
-    const cohortPriceMap = new Map<string, { price: number; has_override: boolean }>();
-    for (const priceRow of pricingRows as Array<{ cohorts: string[]; effective_price: number; has_override: boolean }>) {
-      for (const cohortName of priceRow.cohorts) {
-        if (!cohortPriceMap.has(cohortName)) {
-          cohortPriceMap.set(cohortName, {
-            price: priceRow.effective_price,
-            has_override: priceRow.has_override,
-          });
-        }
-      }
-    }
-    if (!cohortPriceMap.has('All buyers (base)')) {
-      cohortPriceMap.set('All buyers (base)', {
-        price: Number(product.base_selling_price ?? 0),
-        has_override: false,
-      });
-    }
-
-    const priceListItemIds = new Set((priceListItemsRes.data ?? []).map((row: any) => row.id));
-    const priceListIds = new Set((priceListItemsRes.data ?? []).map((row: any) => row.price_list_id));
-    const inventoryEntityIds = new Set([id, ...(inventoryRows ?? []).map((row: any) => row.id).filter(Boolean)]);
-    const orderIdSet = new Set(orderIds);
-    const activity = (auditRowsRes.data ?? [])
-      .filter((row: any) => {
-        if (row.entity_type === 'tenant_product') return row.entity_id === id;
-        if (row.entity_type === 'tenant_inventory') return inventoryEntityIds.has(row.entity_id);
-        if (row.entity_type === 'order') return orderIdSet.has(row.entity_id);
-        if (row.entity_type === 'price_list_item') return priceListItemIds.has(row.entity_id);
-        if (row.entity_type === 'price_list') return priceListIds.has(row.entity_id);
-        return false;
-      })
-      .slice(0, 60)
-      .map((row: any) => ({
-        id: row.id,
-        at: row.ts,
-        action: row.action,
-        entity_type: row.entity_type,
-        entity_id: row.entity_id,
-        summary: `${row.action} ${row.entity_type}`,
-        diff: row.diff,
-      }));
-
-    const displayName = product.name_override ?? masterProduct?.name ?? product.internal_sku;
-    const statusTone = !product.is_active
-      ? 'neutral'
-      : onHand === 0
-        ? 'danger'
-        : daysCover != null && daysCover < 14
-          ? 'warning'
-          : daysCover == null
-            ? 'neutral'
-            : 'success';
-    const statusLabel = !product.is_active
-      ? 'Inactive'
-      : onHand === 0
-        ? 'Out of stock'
-        : daysCover != null && daysCover < 14
-          ? 'Low stock'
-          : daysCover == null
-            ? 'Insufficient velocity'
-            : 'On pace';
+    const detailV2 = (detailV2Res.data ?? {}) as any;
+    const v2Header = detailV2.header ?? {};
+    const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
+    const displayName = product.name_override ?? masterProductRes.data?.name ?? product.internal_sku;
+    const brandName = tenantBrandRes.data?.display_name_override ?? masterProductRes.data?.brands?.name ?? 'Unbranded';
+    const available = Number(kpiByLabel.get('Available') ?? 0);
+    const invoiceUnits90d = Number(kpiByLabel.get('Units sold 90D') ?? 0);
+    const invoiceValue90d = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
+    const daysCover = kpiByLabel.get('Days cover') == null ? null : Number(kpiByLabel.get('Days cover'));
 
     const detailResponse = {
       header: {
         id: product.id,
-        name: displayName,
-        brand: brandName ?? 'Unbranded',
+        name: v2Header.title ?? displayName,
+        brand: brandName,
         sku: product.internal_sku,
         pack: product.pack_size ? `${product.pack_size} ${product.default_uom ?? ''}`.trim() : product.default_uom ?? '—',
         mrp: Number(product.mrp ?? 0),
-        status_label: statusLabel,
-        status_tone: statusTone,
+        status_label: !product.is_active ? 'Inactive' : available <= 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace',
+        status_tone: !product.is_active ? 'neutral' : available <= 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success',
       },
       meta_strip_4: {
-        units_mtd: unitsMtd,
-        growth_pct: Number(growthPct.toFixed(1)),
-        days_cover: daysCover,
-        on_hand: onHand,
-        sell_through_pct: sellThrough,
+        units_mtd: invoiceUnits90d,
+        growth_pct: 0,
+        days_cover: daysCover ?? 0,
+        on_hand: available,
+        sell_through_pct: available + invoiceUnits90d > 0 ? Math.round((invoiceUnits90d / (available + invoiceUnits90d)) * 100) : 0,
       },
       details: {
         id: product.id,
         name: displayName,
         sku: product.internal_sku,
-        category: tenantCategory?.name ?? masterProduct?.categories?.name ?? 'Uncategorized',
-        pack_size: product.pack_size ?? masterProduct?.pack_size ?? null,
+        category: tenantCategoryRes.data?.name ?? masterProductRes.data?.categories?.name ?? 'Uncategorized',
+        pack_size: product.pack_size ?? masterProductRes.data?.pack_size ?? null,
         default_uom: product.default_uom,
         mrp: product.mrp,
         name_override: product.name_override,
@@ -566,43 +184,34 @@ export async function GET(
         cost_price: claims.role === 'seller_admin' ? product.cost_price : null,
         external_ref: product.external_ref,
         is_active: product.is_active,
-        hsn_code: product.hsn_code ?? masterProduct?.hsn_code ?? null,
-        gst_rate: product.gst_rate ?? masterProduct?.gst_rate ?? null,
+        hsn_code: product.hsn_code ?? masterProductRes.data?.hsn_code ?? null,
+        gst_rate: product.gst_rate ?? masterProductRes.data?.gst_rate ?? null,
         description: product.description ?? null,
         updated_at: product.updated_at,
       },
+      performance_cards: detailV2.performance_cards ?? [],
+      detail_v2: detailV2,
       performance: {
-        monthly_units_trend: monthSeries,
+        monthly_units_trend: [],
         inventory_ops: {
-          on_hand: onHand,
+          on_hand: available,
           days_cover: daysCover,
-          sell_through_pct: sellThrough,
-          last_ordered_at: lastOrderAt,
-          last_ordered_buyer: lastOrderBuyer,
+          sell_through_pct: available + invoiceUnits90d > 0 ? Math.round((invoiceUnits90d / (available + invoiceUnits90d)) * 100) : 0,
+          last_ordered_at: null,
+          last_ordered_buyer: null,
         },
-        top_buyers: topBuyers,
-        price_by_cohort: Array.from(cohortPriceMap.entries()).map(([cohort, data]) => ({
-          cohort,
-          price: data.price,
-          has_override: data.has_override,
-        })),
-        units_snapshot: {
-          units_mtd: unitsMtd,
-          growth_pct: Number(growthPct.toFixed(1)),
-          revenue_last_30d: Math.round(revenueLast30),
-        },
+        top_buyers: [],
+        price_by_cohort: [{ cohort: 'All buyers (base)', price: Number(product.base_selling_price ?? 0), has_override: false }],
+        units_snapshot: { units_mtd: invoiceUnits90d, growth_pct: 0, revenue_last_30d: Math.round(invoiceValue90d) },
       },
       pricing_summary: {
         mrp: product.mrp,
         base_selling_price: product.base_selling_price,
         cost_price: claims.role === 'seller_admin' ? product.cost_price : null,
-        margin_pct:
-          product.base_selling_price && product.cost_price
-            ? Number((((product.base_selling_price - product.cost_price) / product.base_selling_price) * 100).toFixed(1))
-            : null,
+        margin_pct: product.base_selling_price && product.cost_price ? Number((((product.base_selling_price - product.cost_price) / product.base_selling_price) * 100).toFixed(1)) : null,
       },
-      pricing: pricingRows,
-      activity,
+      pricing: [],
+      activity: [],
       role: claims.role,
     };
 

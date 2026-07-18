@@ -21,7 +21,6 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useLocationsLanding,
   type LocationsLandingResponse,
@@ -105,11 +104,12 @@ function LocationsLandingContent({
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -133,7 +133,7 @@ function LocationsLandingContent({
   );
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -240,11 +240,8 @@ function LocationsLandingContent({
       <PageHeader
         eyebrow="Operations"
         title="Locations"
-        subtitle="Your branches and godowns. Track stock health, outstanding dues, and GMV contribution per location."
+        subtitle={`${kpis.active_locations} active locations · ${kpis.linked_warehouse_count} linked warehouses.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
       />
@@ -262,26 +259,33 @@ function LocationsLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: 'Unpaid invoices',
-                value: `${kpis.unpaid_invoice_count}`,
-                sub: `of ${kpis.total_invoice_count} total`,
-                tone: kpis.unpaid_invoice_count > 0 ? 'warn' : undefined,
+                label: 'Invoiced sales 90D',
+                value: formatCompactInr(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0)),
+                sub: `${filtered.length} active locations in view`,
               },
               {
-                label: 'Outstanding dues',
+                label: 'Overdue amount',
                 value: formatCompactInr(kpis.outstanding_dues_total),
                 sub: `across ${kpis.dues_location_count} locations`,
                 tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Open estimates',
-                value: `${kpis.open_estimate_count}`,
-                sub: `of ${kpis.total_estimate_count} this period`,
+                label: 'Customers who purchased',
+                value: `${filtered.reduce((sum, row) => sum + row.active_buyers, 0)}`,
+                sub: 'location-linked sales activity',
               },
               {
-                label: 'Top location share',
-                value: `${kpis.top_location_gmv_share_pct}%`,
-                sub: kpis.top_location_name ? `${kpis.top_location_name} leads` : '—',
+                label:
+                  kpis.open_primary_demand_kind === 'orders'
+                    ? 'Open order value'
+                    : kpis.open_primary_demand_kind === 'estimates'
+                      ? 'Open estimate value'
+                      : 'Open primary demand value',
+                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(kpis.open_primary_demand_value),
+                sub:
+                  kpis.open_primary_demand_kind === 'none'
+                    ? 'Enable Estimates or Sales Orders'
+                    : 'current location-level workload',
               },
             ]}
           />
@@ -289,8 +293,9 @@ function LocationsLandingContent({
           <V3CalloutPanel
             items={[
               {
+                id: 'conversions',
                 kind: 'info',
-                eyebrow: 'Conversions',
+                eyebrow: 'Locations with expiring estimates',
                 hint: `${callouts.conversions.length} estimates expiring`,
                 rows: callouts.conversions.map((row) => ({
                   initials: row.initials,
@@ -301,9 +306,10 @@ function LocationsLandingContent({
                 })),
               },
               {
+                id: 'top_locations',
                 kind: 'info',
-                eyebrow: 'Top locations',
-                hint: 'by GMV',
+                eyebrow: 'Locations driving sales',
+                hint: 'by invoiced sales',
                 rows: callouts.top_locations.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
@@ -313,8 +319,9 @@ function LocationsLandingContent({
                 })),
               },
               {
+                id: 'collections_overdue',
                 kind: 'risk',
-                eyebrow: 'Collections overdue',
+                eyebrow: 'Locations with overdue balances',
                 hint: `${callouts.collections_overdue.length} locations`,
                 rows: callouts.collections_overdue.map((row) => ({
                   initials: row.initials,
@@ -358,10 +365,10 @@ function LocationsLandingContent({
             columns={[
                 { label: 'Location', width: 280, minWidth: 280, maxWidth: 360, className: 'px-5' },
                 { label: 'Location type', width: 160, minWidth: 160, maxWidth: 200, className: 'px-5' },
-                { label: 'GMV · MTD', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
-                { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
-                { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
-                { label: 'Outstanding dues', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+                { label: 'Sales · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: 'Trend', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: 'Customers who purchased', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+                { label: 'Overdue amount', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
                 { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}

@@ -857,3 +857,608 @@ rg -n "metrics_.*(buyer|buyers|product|brand|category|warehouse|campaign|group|p
 - Immediate operational rollback is `app.metrics_set_dispatch_enabled(false, NULL, NULL, <reason>)`; dispatch remains off by default and application reads are unchanged.
 - Because the migrations are now recorded on hosted development, do not use migration repair or reset. Any schema removal must be a reviewed forward migration that first disables dispatch, revokes Phase 3 execution grants, removes the sync marker call, and only then drops Phase 3 functions/columns or the additive Phase 2 tables after confirming no consumers.
 - Phase 4 remains blocked on the deferred Phase 0A/1A load/resource acceptance, interactive-capture design/review, Cron activation review, feature-flag/read-selector work, and consumer reconciliation. No production authorization exists.
+
+## Phase 4 — Capture-only staging validation implementation (2026-07-16)
+
+### Result
+
+- **Implementation complete; persistent remote activation not performed.**
+- Added capture-only trigger wrappers, rollback SQL behavior tests, Phase 4 harness commands, and staging-only Cron SQL tooling.
+- No app API/UI consumer was changed. No `df_metrics_v2`, `read_model_version`, tenant metrics-routing branch, Edge deploy, Cron schedule, persistent remote push, production access, or read cutover was added.
+- Validation target remains `yukti-dev` (`euhzgherjvjopjrpoqjr`). The workspace link was verified by the harness doctor as `euhzgherjvjopjrpoqjr`.
+
+### Implemented objects and behavior
+
+- Added CLI-created migration:
+  - `20260716071422_metrics_v2_phase_4_capture_only_validation.sql`
+- Added internal `SECURITY DEFINER` trigger wrappers with strict `search_path = pg_catalog, app, pg_temp`:
+  - document headers: estimates, orders, invoices;
+  - line items: estimate items, order items, invoice items;
+  - inventory/setup: tenant inventory, tenant products, tenant brands, buyers, buyer users, locations, warehouses.
+- Capture wrappers call the existing Phase 3 `app.metrics_mark_dirty(...)` service marker and do not broaden its grants.
+- Every capture wrapper exits immediately when `app.sync_trigger_bypass_active()` is true. Bulk sync remains represented by `app.metrics_mark_sync_completion(...)`, which the Phase 4 rollback fixture verified as bounded range/domain marking.
+- Line-item capture marks the commercial line source and coalesces the parent document source in the Buyer App domain so Buyer App contribution can refresh when lines change without a header update.
+- Added `scripts/sql/metrics-v2-phase4/staging-cron-template.sql`; it is inert unless generated/applied through the Phase 4 harness with the verified validation ref and `PHASE4_ALLOW_CRON=1`.
+- Extended `scripts/metrics-v2-phase1a-acceptance.mjs` and `package.json` with Phase 4 prepare, reconcile, stress, normal-load, I/C/B report, Cron SQL generation, and Cron scheduling commands.
+
+### Verification evidence
+
+- Focused unit tests passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase4-capture-only-migration.test.ts src/tests/settings/metrics-phase3-manual-refresh-kernel-migration.test.ts src/tests/settings/metrics-phase1b-harness.test.ts`
+  - Result: 3 files, 20 tests passed.
+- Broader Metrics V2 settings slice passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase0a-legacy-containment-migration.test.ts src/tests/settings/metrics-phase1b-harness.test.ts src/tests/settings/metrics-phase2-additive-schema-migration.test.ts src/tests/settings/metrics-phase3-manual-refresh-kernel-migration.test.ts src/tests/settings/metrics-phase4-capture-only-migration.test.ts`
+  - Result: 5 files, 29 tests passed.
+- `npm run type-check` passed.
+- `git diff --check` passed.
+- `npm run metrics:v2:phase1a:doctor` passed and printed Phase 4 profile metadata plus validation ref `euhzgherjvjopjrpoqjr`.
+- `npm run metrics:v2:phase3:doctor` passed and confirmed linked ref `euhzgherjvjopjrpoqjr`, database password availability, and pooler configuration.
+- Rollback-only linked SQL validation passed against `yukti-dev`:
+  - wrapper applied the Phase 4 migration and `tests/metrics_v2_phase_4_capture_only_validation.sql` inside one transaction ending in `ROLLBACK`;
+  - verified header old/new buyer/location/day capture, line-item old/new product capture, Buyer App parent-source coalescing, inventory old/new product/location capture, row-level sync bypass, and bounded sync-completion marking;
+  - returned `metrics_mark_sync_completion = 2` for transaction line-item sync, matching commercial + inventory range markers.
+- Linked dry-run passed:
+  - `npx supabase db push --linked --dry-run`
+  - showed exactly one pending migration: `20260716071422_metrics_v2_phase_4_capture_only_validation.sql`.
+- Guardrail scans passed:
+  - no runtime `df_metrics_v2` or `read_model_version` in app/source/migration paths beyond intentional guard strings in tests/fixtures;
+  - no Phase 4 high-cardinality daily facts, arrays, JSON/JSONB membership storage, or Realtime publication addition.
+- `npx supabase db lint --linked --schema app` completed. Reported findings are pre-existing or Phase 3 lint limitations already known: legacy estimate/catalog-column errors, recommendation tenant status errors, `tick_repair_jobs` transaction warning, temp-table false positives in Phase 3 refresh helpers, and unrelated warnings. Phase 4 was rollback-applied only, so lint did not persistently include the new trigger functions.
+
+### Remaining approval-gated Phase 4 acceptance
+
+- Persistent push of the Phase 4 migration to `yukti-dev` was not performed.
+- Edge deployment of `metrics-refresh-tick` was not performed.
+- Cron scheduling was not performed.
+- The 1,000-session mixed workload, normal-load `I/C/B`, one full sync, paused dispatcher, worker crash, backlog recovery, lock/row-write amplification, CPU/connection utilization, and freshness gates remain pending and require explicit approval plus accepted staging credentials/session state.
+- Production remains unauthorized and untouched.
+
+## Phase 5 — Dashboard metrics foundation implementation (2026-07-16)
+
+### Result
+
+- **Implementation complete; persistent remote push not performed.**
+- Added read-side dashboard portfolio foundations for all achievable non-`LATER` Seller Dashboard and seller-facing Buyer App dashboard metrics from the product strategy.
+- Starred metrics are not hardcoded as the only database/API capability. API responses now carry the broader portfolio so later UI waves can surface selected cards without another read-contract migration.
+- No buyer PWA home route was changed. No runtime `df_metrics_v2`, `read_model_version`, V1/V2 selector, Cron, Realtime publication, high-cardinality daily fact, array membership, stored ranked JSON metric table, production access, or persistent remote push was added.
+
+### Changed files and objects
+
+- Added CLI-created migration:
+  - `20260716090456_metrics_v2_phase_5_dashboard_metrics_foundation.sql`
+- Added read helper functions:
+  - `app.metrics_v2_primary_demand_kind(uuid)`
+  - `app.metrics_v2_foundation_item(...)`
+- Added portfolio RPCs:
+  - `app.get_metrics_v2_seller_dashboard(uuid, text, uuid[], timestamptz)`
+  - `app.get_metrics_v2_buyer_app_dashboard(uuid, text, uuid[], timestamptz)`
+- Added rollback SQL fixture:
+  - `tests/metrics_v2_phase_5_dashboard_foundation.sql`
+- Added focused Vitest contract coverage:
+  - `src/tests/settings/metrics-phase5-dashboard-foundation-migration.test.ts`
+- Updated dashboard API/type/UI contracts:
+  - Seller Dashboard and Buyer App dashboard responses carry optional `portfolio` data.
+  - Seller Dashboard and Buyer App dashboard routes/pages ignore query-string period controls and use fixed product-strategy periods.
+  - Seller Dashboard headline cards use V2 portfolio values when available.
+  - Buyer App dashboard route returns from the V2 portfolio RPC and no longer uses the legacy `buyer_app_snapshot`/`kpi_buyer_app_daily` path on the live response path.
+
+### Portfolio coverage
+
+- Seller Dashboard foundation covers all non-`LATER` Pulse, Action, and Explore candidates listed in the product strategy, including the newly added starred `Location comparison`.
+- Buyer App dashboard foundation covers all non-`LATER` Pulse, Action, and Explore candidates, including conditional metrics with explicit availability metadata.
+- Conditional metrics are contract-present and unavailable with a reason when prerequisites are not satisfied.
+- `LATER` metrics such as gross margin and margin leakage remain excluded.
+
+### Verification evidence
+
+- Focused unit/API slice passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase5-dashboard-foundation-migration.test.ts src/tests/lib/seller-dashboard.test.ts src/tests/dashboard-api.test.ts`
+  - Result: 3 files, 9 tests passed.
+- Broader Metrics V2 settings slice passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase0a-legacy-containment-migration.test.ts src/tests/settings/metrics-phase1b-harness.test.ts src/tests/settings/metrics-phase2-additive-schema-migration.test.ts src/tests/settings/metrics-phase3-manual-refresh-kernel-migration.test.ts src/tests/settings/metrics-phase4-capture-only-migration.test.ts src/tests/settings/metrics-phase5-dashboard-foundation-migration.test.ts`
+  - Result: 6 files, 34 tests passed.
+- `npm run type-check` passed.
+- `git diff --check` passed.
+- Guardrail scan passed for runtime/new migration intent; matches were limited to intentional negative assertions in tests.
+- Verified temp Supabase validation project ref before linked commands:
+  - `/tmp/deal-flow-metrics-v2-phase1a-candidate/supabase/.temp/project-ref` = `euhzgherjvjopjrpoqjr`.
+- Rollback-only linked SQL validation passed against `yukti-dev` using a wrapper that applied pending Phase 5 SQL plus `tests/metrics_v2_phase_5_dashboard_foundation.sql` inside a transaction ending in `ROLLBACK`.
+- Linked dry-run from the verified temp project passed:
+  - `npx supabase db push --linked --dry-run`
+  - Pending migration set reported exactly `20260716090456_metrics_v2_phase_5_dashboard_metrics_foundation.sql`.
+- Rollback-only `EXPLAIN (ANALYZE, BUFFERS)` evidence on the seeded fixture after the bounded-action-list fix:
+  - `app.get_metrics_v2_seller_dashboard(...)`: execution time 3.565 ms, shared buffers hit 57.
+  - `app.get_metrics_v2_buyer_app_dashboard(...)`: execution time 4.914 ms, shared buffers hit 81.
+  - These are database-level fixture checks; full p95 API/load gates remain part of the approval-gated Phase 4/Phase 5 staging acceptance path.
+
+### Remaining acceptance gaps
+
+- Phase 5 migration was not persistently pushed to `yukti-dev`.
+- Production remains unauthorized and untouched.
+- Full API p95/p99, CPU, connection utilization, lock waits, WAL/row-write deltas, one-full-sync drift, and normal-load `I/C/B` evidence remain pending because Phase 4 persistent activation and staging workload acceptance are still approval-gated.
+- The visible dashboard UI still surfaces the current/default card sets; later UI waves should choose starred metrics from the now-broader portfolio contract.
+
+## Phase 6 — Landing pages bounded waves A/B plus C/D completion (2026-07-16)
+
+### Result
+
+- **Wave A implementation complete; Wave B implementation complete; Wave C completion implemented; Wave D contract cleanup implemented; Phase 6 is complete.**
+- Added read-side transaction landing foundation for Estimates, Sales Orders, Invoices, Customers, Products, and Buyer App.
+- No persistent remote push was performed. Production remains unauthorized and untouched.
+- No runtime `df_metrics_v2`, `read_model_version`, V1/V2 selector, capture trigger, Cron schedule, Realtime publication, high-cardinality daily fact, array membership table, or stored ranked JSON membership was added.
+
+### Changed files and objects
+
+- Added CLI-created migration:
+  - `20260716092549_metrics_v2_phase_6_landing_pages.sql`
+  - `20260716110313_metrics_v2_phase_6_wave_c_completion.sql`
+- Added read-only RPC:
+  - `app.metrics_v2_transaction_landing(uuid, text, uuid[], timestamptz)`
+  - `app.metrics_v2_products_landing(uuid, uuid[], text, text[], text[], text[], text[], integer, timestamptz, uuid, timestamptz)`
+  - `app.metrics_v2_customers_landing(uuid, uuid[], text, text[], text[], integer, text, uuid, timestamptz)`
+- Added supporting indexes for bounded transaction landing status/date paths:
+  - `estimates_metrics_tenant_status_day_idx`
+  - `orders_metrics_tenant_status_day_idx`
+  - `invoices_metrics_tenant_status_day_idx`
+  - `invoices_metrics_tenant_due_idx`
+  - `buyers_metrics_tenant_name_idx`
+  - `metrics_buyer_location_snapshot_tenant_buyer_idx`
+- Updated transaction landing routes:
+  - `app/api/tenant/estimates/route.ts`
+  - `app/api/tenant/orders/route.ts`
+  - `app/api/tenant/invoices/route.ts`
+  - `app/api/tenant/products/route.ts`
+  - `app/api/tenant/customers/route.ts`
+  - `app/api/tenant/buyer-app/route.ts`
+- Updated entity landing hooks/UI to remove entity page-global period controls:
+  - `src/hooks/useCustomersLanding.ts`
+  - `src/components/seller/customers/CustomersLandingClient.tsx`
+  - `src/hooks/useBuyerApp.ts`
+- Updated Wave C/D seller landing pages and clients to fixed-horizon contracts:
+  - `app/(seller)/brands/page.tsx`
+  - `app/(seller)/categories/page.tsx`
+  - `app/(seller)/locations/page.tsx`
+  - `app/(seller)/warehouses/page.tsx`
+  - `app/(seller)/campaigns/page.tsx`
+  - `app/(seller)/customer-groups/page.tsx`
+  - `src/components/seller/brands/BrandsLandingClient.tsx`
+  - `src/components/seller/categories/CategoriesLandingClient.tsx`
+  - `src/components/seller/locations/LocationsLandingClient.tsx`
+  - `src/components/seller/warehouses/WarehousesLandingClient.tsx`
+  - `src/components/seller/catalogs/CatalogsLandingClient.tsx`
+  - `src/components/seller/cohorts/CohortsLandingClient.tsx`
+  - `src/components/seller/price-lists/PriceListsLandingClient.tsx`
+- Updated shared seller landing period parsing to recognize fixed trailing-90-day contracts:
+  - `src/lib/seller-period.ts`
+  - `src/lib/server/seller-period.ts`
+- Updated Wave C/D route period handling:
+  - `app/api/tenant/brands/route.ts`
+  - `src/lib/server/categories-landing.ts`
+  - `app/api/tenant/locations/landing/route.ts`
+  - `app/api/tenant/warehouses/landing/route.ts`
+- Updated focused route tests and added migration contract coverage:
+  - `src/tests/estimates-landing-page.test.ts`
+  - `src/tests/sales-orders-landing-page.test.ts`
+  - `src/tests/invoices-landing-page.test.ts`
+  - `src/tests/products-landing-api.test.ts`
+  - `src/tests/products-landing-page.test.tsx`
+  - `src/__tests__/customers/landing.test.tsx`
+  - `src/tests/customers/landing-client.test.tsx`
+  - `src/tests/customers-landing-page.test.tsx`
+  - `src/tests/settings/metrics-phase6-landing-pages-migration.test.ts`
+  - `src/tests/brands-landing-api.test.ts`
+  - `src/tests/categories-landing-route.test.ts`
+  - `src/tests/locations-landing-route.test.ts`
+  - `src/tests/warehouses-landing-route.test.ts`
+  - `src/tests/seller-entity-landing-rpcs-sql-contract.test.ts`
+
+### Behavior
+
+- Wave A Pulse KPIs now come from one Metrics V2 RPC per request instead of route-local V1 daily-table aggregation.
+- The RPC returns explicit landing metadata: `as_of`, `commercial_horizon_days`, `table_period_owner = toolbar`, `headline_period = this_month`, and `action_period = now`.
+- Seller-admin tenant totals read tenant daily/snapshot contracts; seller-assistant scope passes the authorized location IDs and reads location-scoped V2 facts.
+- Transaction paginated lists remain raw document queries with bounded limits and toolbar period filtering.
+- Estimate/order/invoice Actions no longer inherit the transaction table toolbar period. Invoice attention now includes outstanding prior-period invoices because Actions are NOW-scoped.
+- Products landing now reads `metrics_product_snapshot`/`metrics_product_location_snapshot` through one bounded RPC. The route no longer reads `products_snapshot`, `tenant_inventory`, or `kpi_product_daily` for the landing page.
+- Customers landing now reads `metrics_buyer_snapshot`/`metrics_buyer_location_snapshot` through one bounded RPC. The route no longer reads `buyers_snapshot` or `kpi_buyers_daily` for the landing page.
+- Customers and Products are fixed trailing-90-day/NOW entity landings with no page-global period selector. Customer lifecycle/due filters are server-applied with stable cursors instead of being reinterpreted from visible-row display chips.
+- Buyer App landing now uses the Phase 5 `get_metrics_v2_buyer_app_dashboard` portfolio RPC as the only live data path. The legacy fallback that read `buyer_app_snapshot`, `kpi_buyer_app_daily`, `buyers_snapshot`, raw document pages, and `refresh_buyer_app_snapshot` on read was removed.
+- Shared seller landing period parsing now understands `last90`, so Wave B/D pages that pass `period=last90` no longer silently degrade to `month` on the server.
+- Brands, Categories, and Locations are now fixed trailing-90-day landings with no page-global period selector.
+- Warehouses is now a fixed `Now` landing with no page-global period selector.
+- Campaigns and Customer Groups now bootstrap with fixed trailing-90-day inputs, and Price Lists now declares a fixed `Now` horizon in the page header.
+- The implementation does not add or rely on buyer-by-day or product-by-day V2 storage.
+
+### Verification evidence
+
+- Focused route and migration tests passed:
+  - `npm run test:unit -- src/tests/estimates-landing-page.test.ts src/tests/sales-orders-landing-page.test.ts src/tests/invoices-landing-page.test.ts src/tests/settings/metrics-phase6-landing-pages-migration.test.ts`
+  - Result: 4 files, 12 tests passed.
+- Expanded Wave A + Customers/Products focused slice passed:
+  - `npm run test:unit -- src/tests/estimates-landing-page.test.ts src/tests/sales-orders-landing-page.test.ts src/tests/invoices-landing-page.test.ts src/tests/products-landing-api.test.ts src/tests/products-landing-page.test.tsx src/__tests__/customers/landing.test.tsx src/tests/customers/landing-client.test.tsx src/tests/customers-landing-page.test.tsx src/tests/settings/metrics-phase6-landing-pages-migration.test.ts`
+  - Result: 9 files, 24 tests passed.
+- TypeScript was not rerun in the final Wave C completion pass because the user explicitly asked to ignore type-check for now.
+- Whitespace/diff check passed:
+  - `git diff --check`
+- Wave C/D client and page verification passed:
+  - `npm run test:unit -- src/tests/seller-search-param-pages.test.tsx src/__tests__/catalogs/landing.test.tsx src/__tests__/price-lists/landing.test.tsx src/__tests__/brands/landing.test.tsx src/tests/warehouses-landing-page.test.tsx`
+  - Result: 5 files, 19 tests passed.
+- Wave C route/read-model verification passed:
+  - `npm run test:unit -- src/tests/brands-landing-api.test.ts src/tests/categories-landing-route.test.ts src/tests/locations-landing-route.test.ts src/tests/warehouses-landing-route.test.ts src/tests/seller-entity-landing-rpcs-sql-contract.test.ts`
+  - Result: 5 files, 22 tests passed.
+- Guardrail scans passed for the Phase 6 migration family:
+  - no runtime metrics flag/version selector;
+  - no trigger, Cron, Realtime publication, table creation, high-cardinality daily facts, array storage, or stored JSON membership.
+- Guardrail scan passed for Customers/Products live routes:
+  - no `kpi_buyers_daily`, `buyers_snapshot`, `kpi_product_daily`, `products_snapshot`, or `tenant_inventory` landing reads remain in the migrated landing routes.
+- Guardrail scan passed for Buyer App live route/hook/client:
+  - no `buyer_app_snapshot`, `kpi_buyer_app_daily`, `buyers_snapshot`, `refresh_buyer_app_snapshot`, or period query-string read remains in the migrated path.
+- Wave C live-route legacy-read retirement scan passed:
+  - `rg -n "kpi_brand_daily|brands_snapshot|kpi_category_daily|categories_snapshot|kpi_location_daily|locations_snapshot|warehouses_snapshot" app/api/tenant/brands/route.ts src/lib/server/categories-landing.ts app/api/tenant/locations/landing/route.ts app/api/tenant/warehouses/landing/route.ts`
+  - Result: no matches.
+- Verified temp Supabase validation project ref before linked commands:
+  - `/tmp/deal-flow-metrics-v2-phase1a-candidate/supabase/.temp/project-ref` = `euhzgherjvjopjrpoqjr`.
+- Linked dry-run from the verified temp project passed and was non-persistent:
+  - `npx supabase db push --linked --dry-run`
+  - pending migration set reported `20260716090456_metrics_v2_phase_5_dashboard_metrics_foundation.sql`, `20260716092549_metrics_v2_phase_6_landing_pages.sql`, and `20260716110313_metrics_v2_phase_6_wave_c_completion.sql`.
+- Rollback-only linked SQL compile check passed against `yukti-dev`:
+  - wrapper applied Phase 6 SQL inside `BEGIN ... ROLLBACK`;
+  - executed transaction, product, and customer landing RPC calls;
+  - Supabase returned the final customer RPC type row (`customers_type = object`), and no SQL errors were raised.
+
+### Remaining gaps
+
+- Phase 6 implementation scope is complete. Waves A-D are now migrated or contract-cleaned enough to mark the phase done.
+- Full API p95/p99, CPU, connection utilization, lock waits, WAL/row-write deltas, full-sync drift, and normal-load `I/C/B` evidence remain pending behind the approval-gated Phase 4/5 staging activation path.
+
+## Metrics V2 Phase 7: Detail Pulse and Explore
+
+Date: 2026-07-16
+Status: Implementation/cutover sweep complete; full Phase 7 exit gate remains blocked by validation evidence and future populated V2 read models for still-unavailable cards
+Coordinator: primary Codex session
+Builders:
+
+- Builder A: shared detail body components and focused component tests.
+- Builder B/C/D: detail-page and dashboard representation cutover across Customers, Products, Brands, Categories, Locations, Warehouses, Customer Groups, Pricelists, and Campaigns/Catalogs.
+- Reviewer: representation audit of detail and dashboard `PerformanceCard` bodies.
+
+### Scope executed
+
+- Executed the UI/detail-surface half of Phase 7 plus a repository representation audit.
+- Standardized analytic detail card bodies onto the shared Phase 1/1B component family instead of page-local markup.
+- Completed an additional dashboard standardization pass requested during implementation so performance-style dashboard widgets now follow the same shared representation language where the semantic role matches.
+- The initial UI pass did not create a database migration; the follow-up server pass added the V2-only detail bootstrap RPC migration and this sweep completed route/page consumption.
+- Did not claim staging/load/`EXPLAIN` evidence that was not actually collected.
+
+### Changed files
+
+- Added shared detail body primitives:
+  - [src/components/seller/detail/CardEmptyState.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/CardEmptyState.tsx)
+  - [src/components/seller/detail/RankedList.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/RankedList.tsx)
+  - [src/components/seller/detail/DistributionList.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/DistributionList.tsx)
+  - [src/components/seller/detail/TrendFrame.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/TrendFrame.tsx)
+  - [src/components/seller/detail/detail-card-types.ts](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/detail-card-types.ts)
+  - [src/components/seller/detail/index.ts](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/index.ts)
+- Added/updated shared component tests:
+  - [src/__tests__/seller/detail/components.test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/__tests__/seller/detail/components.test.tsx)
+- Migrated analytic detail tabs/pages to shared representations:
+  - [src/components/seller/customers/detail/CustomerPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/customers/detail/CustomerPerformanceTab.tsx)
+  - [src/components/seller/products/detail/ProductPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/products/detail/ProductPerformanceTab.tsx)
+  - [src/components/seller/brands/detail/BrandPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/brands/detail/BrandPerformanceTab.tsx)
+  - [src/components/seller/categories/detail/CategoryOverviewTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/categories/detail/CategoryOverviewTab.tsx)
+  - [src/components/seller/locations/detail/LocationOverviewTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/locations/detail/LocationOverviewTab.tsx)
+  - [src/components/seller/warehouses/detail/WarehousePerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/warehouses/detail/WarehousePerformanceTab.tsx)
+  - [src/components/seller/cohorts/detail/CohortPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/cohorts/detail/CohortPerformanceTab.tsx)
+  - [src/components/seller/catalogs/detail/CatalogPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/catalogs/detail/CatalogPerformanceTab.tsx)
+  - [app/(seller)/customers/[id]/page.tsx](/Users/phanikrovvidi/projects/deal-flow/app/(seller)/customers/[id]/page.tsx)
+  - [app/(seller)/price-lists/[id]/page.tsx](/Users/phanikrovvidi/projects/deal-flow/app/(seller)/price-lists/[id]/page.tsx)
+- Replaced remaining detail KPI strip usage touched in this phase with adaptive `MetricGrid`:
+  - [src/components/seller/products/detail/ProductDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/products/detail/ProductDetailPage.tsx)
+  - [src/components/seller/cohorts/detail/CohortDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/cohorts/detail/CohortDetailPage.tsx)
+  - [src/components/seller/catalogs/detail/CatalogDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/catalogs/detail/CatalogDetailPage.tsx)
+  - [src/components/seller/brands/detail/BrandDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/brands/detail/BrandDetailPage.tsx)
+  - [src/components/seller/categories/detail/CategoryDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/categories/detail/CategoryDetailPage.tsx)
+  - [src/components/seller/locations/detail/LocationDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/locations/detail/LocationDetailPage.tsx)
+  - [src/components/seller/warehouses/detail/WarehouseDetailPage.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/warehouses/detail/WarehouseDetailPage.tsx)
+- Standardized dashboard widgets onto the same shared analytic body components:
+  - [src/components/seller/dashboard/SellerDashboardClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/dashboard/SellerDashboardClient.tsx)
+  - [src/components/seller/buyer-app/BuyerAppLandingClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/buyer-app/BuyerAppLandingClient.tsx)
+- Follow-up representation-renderer cutover pass:
+  - [src/components/seller/detail/DetailCardRenderer.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/DetailCardRenderer.tsx)
+  - [src/components/seller/detail/detail-card-types.ts](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/detail-card-types.ts)
+  - [src/components/seller/detail/index.ts](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/detail/index.ts)
+  - [src/__tests__/seller/detail/components.test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/__tests__/seller/detail/components.test.tsx)
+  - [src/components/seller/customers/detail/CustomerPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/customers/detail/CustomerPerformanceTab.tsx)
+  - [app/(seller)/price-lists/[id]/page.tsx](/Users/phanikrovvidi/projects/deal-flow/app/(seller)/price-lists/[id]/page.tsx)
+  - [src/components/seller/warehouses/detail/WarehousePerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/warehouses/detail/WarehousePerformanceTab.tsx)
+  - [src/components/seller/cohorts/detail/CohortPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/cohorts/detail/CohortPerformanceTab.tsx)
+  - [src/components/seller/catalogs/detail/CatalogPerformanceTab.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/catalogs/detail/CatalogPerformanceTab.tsx)
+  - [src/components/seller/dashboard/SellerDashboardClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/dashboard/SellerDashboardClient.tsx)
+  - [src/components/seller/buyer-app/BuyerAppLandingClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/buyer-app/BuyerAppLandingClient.tsx)
+- Follow-up V2-only detail bootstrap RPC foundation:
+  - [supabase/migrations/20260716135550_metrics_v2_phase_7_detail_bootstrap_rpcs.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260716135550_metrics_v2_phase_7_detail_bootstrap_rpcs.sql)
+  - [src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts)
+- Detail route and page consumption cutover sweep:
+  - [app/api/tenant/customers/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/customers/[id]/route.ts)
+  - [app/api/tenant/products/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/products/[id]/route.ts)
+  - [app/api/tenant/brands/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/brands/[id]/route.ts)
+  - [app/api/tenant/categories/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/categories/[id]/route.ts)
+  - [app/api/tenant/locations/[id]/detail/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/locations/[id]/detail/route.ts)
+  - [app/api/cohorts/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/cohorts/[id]/route.ts)
+  - [app/api/price-lists/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/price-lists/[id]/route.ts)
+  - [app/api/tenant/catalogs/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/catalogs/[id]/route.ts)
+  - [src/lib/server/warehouse-data.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/warehouse-data.ts)
+  - [src/tests/settings/metrics-phase7-detail-route-cutover.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/metrics-phase7-detail-route-cutover.test.ts)
+
+### Representation choices made beyond the implementation plan
+
+- Enforced a stricter “no fake representation” rule when the available data did not support the product-approved card.
+  - Earlier UI bridge passes used explicit unavailable states instead of proxy visuals.
+  - The follow-up V2 bootstrap and route sweep now returns truthful V2 distribution payloads for Brand `Current inventory by warehouse` and Pricelist `Product coverage gaps`.
+- Kept operational list/audit content operational where the product contract allowed it:
+  - Pricelist `Activity log` remains an operational list, but it now uses the shared outer `PerformanceCard` shell for visual consistency.
+- Extended the shared-card cutover to dashboard widgets, even though the Phase 7 plan was detail-page centric, because the implementation request explicitly asked for performance-tab/dashboard visual standardization by widget type.
+- Added a `Performance` tab to Pricelist detail and later switched it to prefer `app.get_seller_pricelist_detail_v2` `performance_cards`, with the original shared-card composition retained only as fallback.
+- Added a shared `DetailCardRenderer` instead of allowing each detail page or dashboard to compose its own outer-shell/body wiring for distribution, mix, posture, ranked-list, and unavailable cards.
+- Kept trend cards page-local where they still need page-specific dynamic controls or chart wiring, but routed the non-trend representations through one shared renderer so the representation chrome stays identical across detail and dashboard surfaces.
+- Chose a page-bootstrap RPC architecture for the server follow-up: one page-specific analytic bootstrap RPC per seller detail surface, with large operational tables and see-all drilldowns kept outside the analytic bootstrap payload.
+- Interpreted the V2-only rule strictly for analytic card sources: the new detail bootstrap RPCs do not reference V1 `*_snapshot` or `kpi_*_daily` sources. They may use base entity tables for tenant/entity ownership and header labels.
+
+### Complete
+
+- Shared representation components exist, are exported from the detail barrel, and have focused tests for loading/empty/error/data behavior.
+- The touched analytic detail pages now use `PerformanceCard` plus shared body primitives (`TrendFrame`, `RankedList`, `DistributionList`, `MetricGrid`, `CardEmptyState`) instead of module-local analytic body clones.
+- Customers, Products, Brands, Categories, Locations, Warehouses, Customer Groups/Cohorts, Catalogs/Campaigns, and Pricelists now render their touched performance/detail analytic widgets through the shared representation taxonomy.
+- Remaining mixed-mode customer detail tabs (`Customer Groups`, `Price Lists`) were converted off bespoke local shells.
+- Seller dashboard and Buyer App dashboard performance-style widgets now use the same shared representation bodies instead of local dashboard-only card implementations.
+- Customers, Pricelists, Warehouses, Customer Groups/Cohorts, Catalogs/Campaigns, Seller Dashboard, and Buyer App dashboard received an additional shared-renderer pass so their non-trend cards now share one `PerformanceCard` wiring path instead of repeating page-local body composition.
+- Added the Phase 7 V2-only detail bootstrap RPC foundation:
+  - `app.get_seller_customer_detail_v2`
+  - `app.get_seller_product_detail_v2`
+  - `app.get_seller_brand_detail_v2`
+  - `app.get_seller_category_detail_v2`
+  - `app.get_seller_location_detail_v2`
+  - `app.get_seller_warehouse_detail_v2`
+  - `app.get_seller_cohort_detail_v2`
+  - `app.get_seller_pricelist_detail_v2`
+  - `app.get_seller_campaign_detail_v2`
+- Added shared SQL helpers for the normalized detail-card payload contract and period validation.
+- Product-approved page defaults are encoded in the new bootstrap RPCs: `90D`, `NOW`, `NOW + 90D`, `LIFETIME`, and bounded `12M/YTD/3M` history labels where applicable.
+- The previously deferred Brand `Current inventory by warehouse` and Pricelist `Product coverage gaps` cards now have V2-only distribution payloads in the bootstrap RPC layer and are exposed through the corresponding detail routes.
+- Completed route/page consumption for all selected analytic seller detail families:
+  - Customer -> `app.get_seller_customer_detail_v2`
+  - Product -> `app.get_seller_product_detail_v2`
+  - Brand -> `app.get_seller_brand_detail_v2`
+  - Category -> `app.get_seller_category_detail_v2`
+  - Location -> `app.get_seller_location_detail_v2`
+  - Warehouse -> `app.get_seller_warehouse_detail_v2` through the warehouse server loader
+  - Customer Group/Cohort -> `app.get_seller_cohort_detail_v2`
+  - Pricelist -> `app.get_seller_pricelist_detail_v2`
+  - Campaign/Catalog -> `app.get_seller_campaign_detail_v2`
+- Each selected performance page now passes the normalized `performance_cards` payload into the shared detail performance surface and keeps the previous page-specific shape only as fallback compatibility.
+- Source-isolation scan for selected analytic detail paths now finds no V1 `*_snapshot` or `kpi_*_daily` reads.
+- No buyer-by-day or product-by-day storage was introduced.
+- No page-global period selector was reintroduced on these detail/dashboard surfaces.
+
+### Incomplete
+
+- Some high-cardinality cards still return explicit `unavailable` from the V2-only bootstrap RPCs because no populated V2 read model exists yet:
+  - Customer history/product-repeat/mix cards
+  - Product buyer ranking
+  - Brand buyer ranking
+  - Warehouse-specific product-risk/mix cards
+  - Cohort member activity/mix/opportunity cards
+  - Campaign timeline/funnel/recipient outcome cards
+- Phase 7 exit-gate evidence for query plans/timeouts is incomplete.
+  - No new `EXPLAIN (ANALYZE, BUFFERS)` evidence was recorded here for detail RPCs.
+  - No new detail API p95/p99 or timeout evidence was recorded here.
+- The exit gate item “tenant/entity ID and maximum horizon are mandatory” is partially evidenced by the new bootstrap RPC contract tests, but not proven against live SQL execution.
+- The exit gate item “history ≤12 months and top lists ≤20” is implementation-evidenced by the new bootstrap RPC contract and route cutover tests, but still lacks live SQL/`EXPLAIN` validation evidence.
+- The exit gate item “detail and dashboard visual matrices pass at 1280px/1440px/1920px” is incomplete.
+  - No full visual acceptance matrix run was recorded in the ledger.
+- Full repo type-check was not completed during the final cutover pass.
+
+### Deferred
+
+- Populated V2 read models for the high-cardinality unavailable cards are deferred to a later data-model pass. The selected detail routes no longer depend on V1 while those cards remain explicit unavailable states.
+- Query-plan/timeout evidence for all detail RPCs is deferred until the RPC layer is complete enough to measure meaningfully.
+- Full visual matrix evidence at 1280px/1440px/1920px is deferred.
+- Any cards that currently render shared unavailable state because the truthful representation data is missing are deferred until bounded source contracts exist:
+  - Customer product-repeat and mix cards
+  - Product buyer ranking
+  - Brand buyer ranking
+  - Warehouse-specific product-risk and availability mix cards
+  - Cohort member activity/mix/opportunity cards
+  - Campaign timeline/funnel/recipient outcomes
+
+### Phase 7 exit-gate assessment against the implementation plan
+
+- `tenant/entity ID and maximum horizon are mandatory`
+  - Implementation complete for selected detail RPCs/routes. Live SQL evidence is not recorded in this sweep.
+- `history ≤12 months and top lists ≤20`
+  - Implementation complete for selected detail RPCs/routes through period validation and top-list clamping. Live SQL evidence is not recorded in this sweep.
+- `query plan and timeout evidence recorded`
+  - Incomplete. No new recorded `EXPLAIN`/timeout evidence for Phase 7 detail RPCs.
+- `charts remain dynamically imported`
+  - Complete for the touched dynamic performance-tab usage; no new eagerly loaded chart bundle was introduced in this pass.
+- `card-local 3M/12M/YTD controls only slice the bounded payload`
+  - Implementation complete for this sweep: selected detail pages prefer bootstrap `performance_cards`; legacy page-local controls remain fallback-only. Full browser validation remains deferred.
+- `no buyer/product daily storage is introduced`
+  - Complete.
+- `every migrated analytic entity family uses the common detail shell, adaptive KPI grid, R12 tabs, and PerformanceCard; no page-local duplicate outer card shell remains`
+  - Complete for the selected analytic detail/dashboard surfaces touched in this phase. Operational tables/lists retained by product contract remain operational but use the shared shell where appropriate.
+- `detail and dashboard visual matrices pass at 1280px/1440px/1920px for variable counts, loading, empty, error, long-title, and large-value states`
+  - Deferred validation work. Not recorded.
+
+### Verification evidence
+
+- Shared detail component tests passed:
+  - `npm run test:unit -- src/__tests__/seller/detail/components.test.tsx`
+  - Result: 1 file, 12 tests passed.
+- Detail bootstrap RPC migration contract tests passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts`
+  - Result: included in the combined Phase 7 focused run below.
+- Detail route/page cutover guard tests passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase7-detail-route-cutover.test.ts src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts src/__tests__/seller/detail/components.test.tsx`
+  - Result: 3 files, 22 tests passed.
+- Diff/whitespace sanity check passed:
+  - `git diff --check`
+- Representation audit search of the touched dashboard/detail surfaces was used to find and remove remaining local analytic card shells.
+- V2-only migration source isolation passed for the new Phase 7 RPC migration.
+- Route source scan for selected analytic detail paths found no V1 `*_snapshot` or `kpi_*_daily` reads after the cutover.
+- Full `npx tsc --noEmit --pretty false` was re-run after the shared-renderer cutover and still failed on pre-existing landing-page prop mismatches outside this Phase 7 surface set:
+  - `src/components/seller/catalogs/CatalogsLandingClient.tsx`
+  - `src/components/seller/cohorts/CohortsLandingClient.tsx`
+  - No Phase 7 touched-file type error was surfaced; the run exited only on the known landing-page prop mismatches.
+
+### Exit decision
+
+- Phase 7 implementation/cutover sweep is complete for the selected analytic detail pages.
+- Phase 7 is still not full exit-gate complete because validation/stress evidence is intentionally deferred, and high-cardinality cards without a truthful bounded V2 source remain explicit unavailable states.
+- The phase remains open for recorded query-plan/timeout evidence, visual acceptance matrix, staging/load evidence, and later populated V2 read models for the still-unavailable cards.
+
+## Metrics V2 Phase 8: Pre-launch Cutover Readiness and Retirement Sweep
+
+Date: 2026-07-16
+Status: `yukti-dev` deployment and bounded cutover rehearsal complete; production/launch cutover remains blocked by remaining validation gates
+Coordinator: primary Codex session
+
+### Scope executed
+
+- Reviewed prior phase ledger entries and treated the missing Phase 7 UI-resolution and p95/p99 evidence as hard launch blockers, not waived gates.
+- Verified the linked remote target was hosted development project `euhzgherjvjopjrpoqjr` (`yukti-dev`) before every linked inspection/push command.
+- Performed the approved persistent remote push to `yukti-dev`, then executed a bounded Phase 8 cutover rehearsal there: deployed the dispatcher tick Edge function, seeded reconciliation work, drained the queue, and verified domain freshness.
+- Recorded the previously missing Phase 7 detail `EXPLAIN` and route-level API p95/p99 evidence on populated `yukti-dev` data.
+- Fixed cutover-time auth/runtime issues discovered during validation so cookie-backed seller sessions could exercise the real protected routes locally.
+- Did not claim that production/launch-environment migrations, customer-open launch cutover, full sync/load-stress certification, or first-customer observation were performed.
+- Removed the remaining runtime app reads from the retired high-cardinality V1 buyer/product read families found in:
+  - `app/api/tenant/customers/summary/route.ts`
+  - `src/lib/server/cohort-composer.ts`
+  - `src/lib/server/seller-dashboard.ts`
+- Kept legacy V1 tables/functions physically present. No obsolete high-cardinality table was dropped in this phase.
+- Added a pre-launch rollback/observation runbook so the Phase 8 rollback paths are explicit before any legacy writer is stopped in a launch environment.
+
+### Changed files
+
+- [supabase/migrations/20260716152124_metrics_v2_phase_8_prelaunch_retirement_readiness.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260716152124_metrics_v2_phase_8_prelaunch_retirement_readiness.sql)
+  - Added `app.get_metrics_v2_customer_summary`.
+  - Replaced `app.search_cohort_composer_buyers` internals so it reads `app.metrics_buyer_snapshot` and performs only bounded page-level current-month order aggregation.
+  - Set hot RPC `statement_timeout = '3s'` and `lock_timeout = '100ms'`.
+- [app/api/tenant/customers/summary/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/customers/summary/route.ts)
+  - Switched from `buyers_snapshot` row hydration to `app.get_metrics_v2_customer_summary`.
+  - Preserved seller-assistant location scoping and returns empty for assistants with no assigned locations.
+- [src/lib/server/cohort-composer.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/cohort-composer.ts)
+  - Switched bootstrap and dynamic-filter logic from `buyers_snapshot` / `kpi_buyers_daily` to `metrics_buyer_snapshot`.
+  - Kept current-month order metrics bounded to displayed/paged buyer IDs.
+- [src/lib/server/seller-dashboard.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/seller-dashboard.ts)
+  - Switched dashboard brand-share fallback from product daily facts to bounded `metrics_product_snapshot.invoice_value_90d`.
+- [src/tests/settings/metrics-phase8-prelaunch-retirement.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/metrics-phase8-prelaunch-retirement.test.ts)
+  - Added migration/runtime guard coverage for Phase 8 retirement readiness.
+- [src/tests/customers-summary-api.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/customers-summary-api.test.ts)
+  - Updated customer-summary route tests for the V2 RPC path and assistant location scope.
+- [src/tests/lib/seller-dashboard.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/lib/seller-dashboard.test.ts)
+  - Added query mock support for the new bounded product-snapshot query.
+- [specs/metrics-v2-phase8-prelaunch-runbook-2026-07.md](/Users/phanikrovvidi/projects/deal-flow/specs/metrics-v2-phase8-prelaunch-runbook-2026-07.md)
+  - Added staging rehearsal, presentation-only rollback, server/data recovery rollback, and observation-window checklist.
+- [src/lib/server/buyer-access.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/buyer-access.ts)
+  - Made seller session refresh best-effort so OTP verification can still establish a usable session when refresh is rate-limited.
+- [src/lib/server/request-supabase.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/request-supabase.ts)
+  - Preserved the working synchronous cookie adapter required by `createRouteHandlerClient(...)` at runtime while keeping TypeScript satisfied with a narrow cast.
+- [app/api/tenant/categories/[id]/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/categories/[id]/route.ts)
+  - Removed the invalid `audit_log -> tenant_users(display_name)` select shape discovered during live category-detail validation.
+- [src/components/seller/catalogs/CatalogsLandingClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/catalogs/CatalogsLandingClient.tsx)
+- [src/components/seller/cohorts/CohortsLandingClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/cohorts/CohortsLandingClient.tsx)
+  - Removed stale unused `initialPeriod` inner-content prop declarations so the full repository type-check can complete.
+- [supabase/migrations/20260716110313_metrics_v2_phase_6_wave_c_completion.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260716110313_metrics_v2_phase_6_wave_c_completion.sql)
+  - Corrected deployment-time SQL issues (`DROP FUNCTION IF EXISTS` for brand helpers and interval/date arithmetic casts) so the linked remote migration push could succeed unchanged thereafter.
+
+### Complete
+
+- Runtime source scan for direct app reads from `buyers_snapshot`, `buyer_current_snapshot`, `buyer_app_snapshot`, `kpi_buyers_daily`, `kpi_product_daily`, and `kpi_buyer_app_daily` passed for the remaining known consumers.
+- Customer summary now uses one bounded V2 RPC response instead of hydrating/deduplicating snapshot rows in Node.
+- Cohort composer search RPC no longer references V1 buyer snapshots or buyer daily facts; GMV filters use `metrics_buyer_snapshot.order_value_90d`.
+- Dashboard brand-share fallback no longer depends on product daily facts or copied current stock daily rows.
+- No buyer-by-day or product-by-day Metrics V2 storage was introduced.
+- No Metrics V2 feature flag, runtime V1/V2 selector, or page-global period selector was added.
+- The rollback runbook explicitly preserves capture during dispatch pause and blocks writes before any server/data recovery route.
+- Linked remote deployment to `yukti-dev` succeeded after verified dry-run:
+  - applied `20260716090456_metrics_v2_phase_5_dashboard_metrics_foundation.sql`
+  - applied `20260716092549_metrics_v2_phase_6_landing_pages.sql`
+  - applied `20260716110313_metrics_v2_phase_6_wave_c_completion.sql`
+  - applied `20260716135550_metrics_v2_phase_7_detail_bootstrap_rpcs.sql`
+  - applied `20260716152124_metrics_v2_phase_8_prelaunch_retirement_readiness.sql`
+- `metrics-refresh-tick` was deployed to `yukti-dev` and `METRICS_REFRESH_TOKEN` was set for the rehearsal run.
+- A stale `app.integration_sync_jobs` `sync_run` row (`841acd30-e24a-4398-99ce-ff480dca4c97`) was safely cancelled through `app.cancel_tenant_integration_sync_job(...)`, unblocking dirty-work claims for the rehearsal tenant.
+- Bounded reconciliation work for Phase 1A tenant `4ff3293f-65ee-4fa1-b301-280d20e4ddc9` was seeded for domains `commercial`, `inventory`, `buyer_app`, and `setup`, then fully drained through repeated live dispatcher ticks.
+- Final rehearsal freshness check showed all four domains fresh with no pending/retry/dead-letter rows in `app.metrics_inspect(...)`.
+- Selected Phase 7 detail RPC live `EXPLAIN (ANALYZE, BUFFERS)` evidence is now recorded on populated `yukti-dev` data:
+  - `app.get_seller_customer_detail_v2(...)`: `35.081 ms`
+  - `app.get_seller_product_detail_v2(...)`: `65.583 ms`
+  - `app.get_seller_brand_detail_v2(...)`: `72.268 ms`
+  - `app.get_seller_category_detail_v2(...)`: `135.268 ms`
+  - `app.get_seller_location_detail_v2(...)`: `30.347 ms`
+  - `app.get_seller_warehouse_detail_v2(...)`: `17.355 ms`
+  - `app.get_metrics_v2_customer_summary(...)`: `328.865 ms`
+- Selected protected-route API timing evidence is now recorded with a real cookie-backed seller session against `http://127.0.0.1:3001`:
+  - `/api/tenant/customers/summary`: `p50 466 ms`, `p95 664 ms`, `p99 664 ms`
+  - `/api/tenant/customers/:id`: `p50 904 ms`, `p95 2228 ms`, `p99 2228 ms`
+  - `/api/tenant/products/:id`: `p50 913 ms`, `p95 1409 ms`, `p99 1409 ms`
+  - `/api/tenant/brands/:id`: `p50 868 ms`, `p95 1163 ms`, `p99 1163 ms`
+  - `/api/tenant/categories/:id`: `p50 833 ms`, `p95 1731 ms`, `p99 1731 ms`
+  - `/api/tenant/locations/:id/detail`: `p50 806 ms`, `p95 848 ms`, `p99 848 ms`
+  - `/api/tenant/warehouses/:id`: `p50 1652 ms`, `p95 2065 ms`, `p99 2065 ms`
+- Full TypeScript now passes after the landing-client prop cleanup and request-cookie adapter fix.
+
+### Incomplete / blocked
+
+- Production/launch cutover was not executed. No commands were run against production project `hcpzbnmumbykdqveyjhr`, and no customer-open launch environment was switched.
+- Cross-phase validation gates from earlier phases still remain open:
+  - full Phase 4/5 normal-load/overload/resource evidence (`I/C/B`, CPU, pool, lock waits, WAL/row-write deltas, crash recovery, paused-dispatch, full-sync drift)
+  - full Phase 7 desktop visual matrix at `1280px` / `1440px` / `1920px`
+- The visual matrix blocker was re-checked during this pass and remains unresolved in this environment:
+  - local browser automation still needs authenticated seller session bootstrapping inside the browser
+  - Playwright Chromium is not installed here, so no credible screenshot matrix was captured
+- Full raw-data reconciliation for every selected launch metric and a post-cutover observation window were not recorded in this pass.
+- Some Phase 7 data-model deferrals still stand even though the selected routes are cut over:
+  - high-cardinality unavailable cards still need truthful bounded V2 sources before they can leave explicit unavailable state
+  - cohort/pricelist/campaign detail `EXPLAIN` evidence could not be sampled on the rehearsal tenant because no such populated entities existed there
+
+### Verification evidence
+
+- Phase 8 focused unit/API guard tests passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase8-prelaunch-retirement.test.ts src/tests/customers-summary-api.test.ts src/tests/lib/seller-dashboard.test.ts`
+  - Result: 3 files, 7 tests passed.
+- Phase 8 plus Phase 7 source-isolation guards passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase8-prelaunch-retirement.test.ts src/tests/settings/metrics-phase7-detail-route-cutover.test.ts src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts`
+  - Result: 3 files, 13 tests passed.
+- Runtime source scan passed for direct app reads from retired V1 high-cardinality sources:
+  - `rg -n "from\\('(?:buyers_snapshot|buyer_current_snapshot|buyer_app_snapshot|kpi_buyers_daily|kpi_product_daily|kpi_buyer_app_daily)'\\)|\\.from\\(\\\"(?:buyers_snapshot|buyer_current_snapshot|buyer_app_snapshot|kpi_buyers_daily|kpi_product_daily|kpi_buyer_app_daily)\\\"\\)" app src -g '!src/**/*.test.ts' -g '!src/**/*.test.tsx' -g '!src/**/__tests__/**'`
+  - Result: no matches.
+- Migration source scan passed for direct Phase 8 SQL references to retired V1 app tables:
+  - `rg -n "app\\.buyers_snapshot|app\\.kpi_buyers_daily|app\\.kpi_product_daily|app\\.buyer_current_snapshot|app\\.buyer_app_snapshot|app\\.kpi_buyer_app_daily" supabase/migrations/20260716152124_metrics_v2_phase_8_prelaunch_retirement_readiness.sql`
+  - Result: no matches.
+- Linked project verification, migration history check, and dry-run passed before the persistent push:
+  - `npx supabase migration list --linked`
+  - `npx supabase db push --linked --dry-run`
+- Persistent remote migration push to `yukti-dev` passed:
+  - `npx supabase db push --linked`
+- Edge deploy and secret set passed:
+  - `npx supabase functions deploy metrics-refresh-tick --project-ref euhzgherjvjopjrpoqjr`
+  - `npx supabase secrets set --project-ref euhzgherjvjopjrpoqjr METRICS_REFRESH_TOKEN=...`
+- Live dispatcher rehearsal passed after cancelling the stale sync job:
+  - repeated authenticated `POST` calls to deployed `metrics-refresh-tick`
+  - resulting `app.metrics_inspect(...)` state: all four rehearsal domains fresh; no pending/retry/dead-letter rows
+- Selected live `EXPLAIN (ANALYZE, BUFFERS)` checks passed for customer summary and six seller detail RPCs on populated `yukti-dev` data.
+- Focused regression/unit/type guard run passed:
+  - `npm run test:unit -- src/tests/settings/metrics-phase8-prelaunch-retirement.test.ts src/tests/customers-summary-api.test.ts src/tests/lib/seller-dashboard.test.ts src/tests/settings/metrics-phase7-detail-route-cutover.test.ts src/tests/settings/metrics-phase7-detail-bootstrap-rpcs-migration.test.ts src/__tests__/seller/detail/components.test.tsx src/tests/seller-search-param-pages.test.tsx`
+  - Result: 7 files, 33 tests passed.
+- Whitespace sanity check passed:
+  - `git diff --check`
+- Full TypeScript check passed after the final validation fixes:
+  - `npx tsc --noEmit --pretty false`
+  - Result: passed.
+
+### Exit decision
+
+- Phase 8 readiness implementation plus the approved `yukti-dev` deployment/rehearsal sweep are complete.
+- The remaining open cutover blockers are now narrower and explicit: finish the earlier-phase load/resource evidence, capture the desktop visual matrix, run full launch-grade raw reconciliation/observation, and obtain separate production authorization before any real launch cutover.

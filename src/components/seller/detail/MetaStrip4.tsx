@@ -15,7 +15,7 @@ interface MetaStrip4Props {
   showSupportingText?: boolean;
 }
 
-export function MetaStrip4({ tiles, showSupportingText = false }: MetaStrip4Props) {
+export function MetaStrip4({ tiles, showSupportingText = true }: MetaStrip4Props) {
   return <MetricGrid className="mt-6 mb-0" tiles={tiles} showSupportingText={showSupportingText} />;
 }
 

@@ -30,7 +30,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = 'SheetOverlay';
 
 const sheetVariants = cva(
-  'fixed z-50 bg-white shadow-xl transition ease-emphasis',
+  'fixed z-50 flex flex-col bg-white shadow-xl transition ease-emphasis',
   {
     variants: {
       side: {
@@ -110,9 +110,10 @@ const SheetTitle = React.forwardRef<
 ));
 SheetTitle.displayName = 'SheetTitle';
 
-const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex-1 overflow-y-auto px-[22px] py-[20px]', className)} {...props} />
-);
+const SheetBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn('min-h-0 flex-1 overflow-y-auto px-[22px] py-[20px]', className)} {...props} />
+));
+SheetBody.displayName = 'SheetBody';
 
 const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex-shrink-0 flex flex-row items-center gap-2 border-t border-cream-300 bg-cream-50 px-[22px] py-[14px]', className)} {...props} />

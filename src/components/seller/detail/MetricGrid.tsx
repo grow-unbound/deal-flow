@@ -8,6 +8,7 @@ export interface MetricGridProps {
   cardClassName?: string;
   showSupportingText?: boolean;
   renderTile?: (tile: MetricTile, index: number) => ReactNode;
+  columns?: 'auto' | 'two-by-two';
 }
 
 function columnsFor(count: number) {
@@ -17,11 +18,19 @@ function columnsFor(count: number) {
   return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
 }
 
-export function MetricGrid({ tiles, className, cardClassName, showSupportingText = false, renderTile }: MetricGridProps) {
+export function MetricGrid({
+  tiles,
+  className,
+  cardClassName,
+  showSupportingText = true,
+  renderTile,
+  columns = 'auto',
+}: MetricGridProps) {
   const visibleTiles = tiles.slice(0, 4);
+  const columnsClassName = columns === 'two-by-two' ? 'grid-cols-1 sm:grid-cols-2' : columnsFor(visibleTiles.length);
 
   return (
-    <section className={cn('mt-5 mb-0 grid gap-3', columnsFor(visibleTiles.length), className)}>
+    <section className={cn('mt-5 mb-0 grid gap-3', columnsClassName, className)}>
       {visibleTiles.map((tile, index) =>
         renderTile ? (
           <div key={`${tile.label}-${index}`}>{renderTile(tile, index)}</div>

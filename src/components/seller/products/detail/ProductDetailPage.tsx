@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -187,7 +187,9 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         )}
       />
 
-      <MetaStrip4
+      <MetricGrid
+        className="mt-6"
+        showSupportingText
         tiles={isSellerAssistant
           ? tiles.filter((tile) => tile.label !== 'Units · MTD')
           : tiles}
@@ -207,7 +209,9 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           onSave={(payload) => updateProduct.mutate({ id, data: payload })}
         />
       ) : null}
-      {activeTab === 'performance' ? <ProductPerformanceTab performance={data.detail.performance} /> : null}
+      {activeTab === 'performance' ? (
+        <ProductPerformanceTab performance={data.detail.performance} performanceCards={data.detail.performance_cards} />
+      ) : null}
       {activeTab === 'pricing' ? (
         <ProductPricingTab
           productId={id}

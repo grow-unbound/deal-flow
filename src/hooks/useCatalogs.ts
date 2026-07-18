@@ -56,11 +56,13 @@ export interface CatalogsLandingResponse {
     orders_enabled: boolean;
     estimates_enabled: boolean;
   };
+  primary_demand_kind?: 'orders' | 'estimates' | 'none';
   kpis: {
     live_catalogs: number;
     draft_catalogs: number;
     ended_catalogs: number;
     expiring7d: number;
+    scheduled_catalogs?: number;
     gmv_mtd: number;
     gmv_prev_mtd: number;
     gmv_growth_pct: number;
@@ -203,6 +205,8 @@ export interface CatalogDetailResponse {
       last_order_at: string | null;
     }>;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
   buyers: Array<{
     buyer_id: string;
     buyer_name: string;

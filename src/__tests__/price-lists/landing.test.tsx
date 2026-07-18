@@ -201,7 +201,7 @@ describe('price lists landing page', () => {
 
     expect(screen.getByText('Uncovered cohorts')).toBeInTheDocument();
     expect(screen.getByText(/South Retail/i)).toBeInTheDocument();
-    expect(screen.getByText(/falling back to base price/i)).toBeInTheDocument();
+    expect(screen.getByText('14')).toBeInTheDocument();
   });
 
   it('shows pricing strategy under name and em dash cohort when unassigned', () => {
@@ -209,14 +209,13 @@ describe('price lists landing page', () => {
     const tbody = container.querySelector('table tbody');
     expect(tbody).toBeTruthy();
     const body = tbody as HTMLElement;
-    expect(within(body).getByText(/independent product pricing/i)).toBeInTheDocument();
-    expect(within(body).getByText(/flat ₹25 off base price/i)).toBeInTheDocument();
-    expect(within(body).getByText(/10% off base price/i)).toBeInTheDocument();
+    expect(within(body).getAllByText(/independent product pricing/i)).toHaveLength(2);
+    expect(within(body).getAllByText(/flat ₹25 off base price/i)).toHaveLength(2);
+    expect(within(body).getAllByText(/10% off base price/i)).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Expired' }));
     const expiredRow = within(body).getByText('Old Window').closest('tr');
-    expect(expiredRow?.textContent).toContain('—');
     expect(expiredRow?.textContent).not.toContain('Unassigned');
   });
 

@@ -48,7 +48,7 @@ export async function getCategoriesLandingPayload(
   periodInput: string | null | undefined,
   filters: CategoriesLandingFilters,
 ): Promise<CategoriesLandingResponse> {
-  const period = getSellerLandingPeriodMeta(periodInput);
+  const period = getSellerLandingPeriodMeta('last90');
   const { search, status: statusFilter, products: productFilter, limit, offset, includeSummary } = filters;
 
   const thirtyDaysAgo = new Date();
@@ -81,10 +81,10 @@ export async function getCategoriesLandingPayload(
     .order('name', { ascending: true });
 
   const emptyResult = Promise.resolve({ data: [], error: null });
-  const [categoriesRes, metricsRes, summaryRes] = await Promise.all([
+  const [categoriesRes, metricsRes, summaryRes, productBrandingRes] = await Promise.all([
     pageCategoryIds.length > 0 ? categoriesQuery.in('id', pageCategoryIds) : emptyResult,
     pageCategoryIds.length > 0
-      ? db.schema('app').rpc('get_seller_category_landing_page_metrics_v1', {
+      ? db.schema('app').rpc('get_seller_category_landing_page_metrics_v2', {
           p_tenant_id: tenantId,
           p_category_ids: pageCategoryIds,
           p_current_start: period.current_start.split('T')[0],
@@ -95,7 +95,7 @@ export async function getCategoriesLandingPayload(
         })
       : emptyResult,
     includeSummary
-      ? db.schema('app').rpc('get_seller_category_landing_summary_v1', {
+      ? db.schema('app').rpc('get_seller_category_landing_summary_v2', {
           p_tenant_id: tenantId,
           p_current_start: period.current_start.split('T')[0],
           p_current_end_exclusive: period.current_end_exclusive.split('T')[0],
@@ -103,6 +103,19 @@ export async function getCategoriesLandingPayload(
           p_previous_end_exclusive: period.previous_end_exclusive.split('T')[0],
         })
       : Promise.resolve({ data: null, error: null }),
+    // "Uncategorised active products" (doc-starred Landing Pulse metric) is not
+    // exposed by get_seller_category_landing_summary_v2 as of the phase-9 rework
+    // (its uncategorized_count field now means something else — see the kpis type
+    // doc comment). Pull the real counts directly off tenant_products instead of
+    // adding a new RPC, same plain-select pattern already used above for categories.
+    includeSummary
+      ? Promise.all([
+          db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId).is('deleted_at', null).eq('is_active', true),
+          db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId).is('deleted_at', null).eq('is_active', true).is('tenant_category_id', null),
+        ])
+      : Promise.resolve(null),
   ]);
 
   if (categoriesRes.error || metricsRes.error || summaryRes.error) {
@@ -150,6 +163,8 @@ export async function getCategoriesLandingPayload(
     .filter((row): row is CategoryTableRow => Boolean(row));
 
   const rawSummary = summaryRes.data as CategorySummary | null;
+  const activeProductCount = productBrandingRes ? Number(productBrandingRes[0]?.count ?? 0) : 0;
+  const uncategorisedActiveProductCount = productBrandingRes ? Number(productBrandingRes[1]?.count ?? 0) : 0;
   const summary = rawSummary ? {
     kpis: {
       active_count: Number(rawSummary.kpis.active_count ?? 0),
@@ -157,6 +172,9 @@ export async function getCategoriesLandingPayload(
       top_category_name: rawSummary.kpis.top_category_name ?? null,
       top_category_share_pct: Number(rawSummary.kpis.top_category_share_pct ?? 0),
       uncategorized_count: Number(rawSummary.kpis.uncategorized_count ?? 0),
+      active_product_count: activeProductCount,
+      uncategorised_active_product_count: uncategorisedActiveProductCount,
+      categorised_active_product_count: Math.max(0, activeProductCount - uncategorisedActiveProductCount),
     },
     callouts: {
       stockout_risk: (rawSummary.callouts.stockout_risk ?? []).map(withInitials),
