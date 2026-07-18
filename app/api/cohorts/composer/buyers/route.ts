@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   if (!flagEnabled) return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
 
   try {
-    const db = supabaseAdmin ?? getRequestSupabaseClient();
+    const db = supabaseAdmin ?? (await getRequestSupabaseClient());
     const params = request.nextUrl.searchParams;
     const payload = await getCohortComposerBuyerResultset(db as any, claims.tenant_id, {
       q: params.get('q')?.trim() ?? '',

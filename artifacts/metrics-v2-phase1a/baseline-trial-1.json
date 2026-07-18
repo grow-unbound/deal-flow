@@ -1,0 +1,382 @@
+{
+  "phase": "baseline",
+  "trial": 1,
+  "runId": "baseline-1-1784123369345",
+  "workload": {
+    "rampUpMs": 120000,
+    "sustainMs": 480000,
+    "rampDownMs": 120000,
+    "rate": 50,
+    "vus": 1000,
+    "maxInFlight": 8
+  },
+  "api": {
+    "count": 36000,
+    "failures": 36001,
+    "p50": 5.91425000000163,
+    "p95": 8.488791000010679,
+    "p99": 19.823749999981374,
+    "min": 1.575790999981109,
+    "max": 140.78733300010208
+  },
+  "sync": {
+    "tenantIntegrationId": "e3be8d78-22e3-46bd-b5ea-304dc25d54e1",
+    "pageLimit": 25000,
+    "status": "307",
+    "ok": false,
+    "latencyMs": 55.95970799999486
+  },
+  "failedSamples": [
+    {
+      "index": 0,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 1,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 2,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 3,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 4,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 5,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 6,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 7,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 8,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 9,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 10,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 11,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 12,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 13,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 14,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 15,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 16,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 17,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 18,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 19,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 20,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 21,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 22,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 23,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 24,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 25,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 26,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 27,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 28,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 29,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 30,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 31,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 32,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 33,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 34,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 35,
+      "method": "GET",
+      "path": "/api/tenant/orders?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 36,
+      "method": "GET",
+      "path": "/api/tenant/invoices?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 37,
+      "method": "GET",
+      "path": "/api/tenant/estimates?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 38,
+      "method": "GET",
+      "path": "/api/tenant/customers?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 39,
+      "method": "GET",
+      "path": "/api/tenant/products?limit=50",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 40,
+      "method": "PATCH",
+      "path": "/api/tenant/estimates/0b297f88-e98a-4724-a06e-73896371ab0c",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 41,
+      "method": "PATCH",
+      "path": "/api/tenant/invoices/c5733b88-eed0-4cfa-a896-61d8da8ddd51",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 42,
+      "method": "PATCH",
+      "path": "/api/tenant/orders/2c778e8f-702a-4392-8610-63aa7cf3bba8",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 43,
+      "method": "PATCH",
+      "path": "/api/tenant/estimates/955790c0-4bd4-4453-a9a5-556348f536a5",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 44,
+      "method": "PATCH",
+      "path": "/api/tenant/invoices/9f64e1a6-b84a-4010-bf72-dc419f7dfa71",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 45,
+      "method": "PATCH",
+      "path": "/api/tenant/orders/2ce19aa2-d7e7-43fe-b533-8fe2f6151faa",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 46,
+      "method": "PATCH",
+      "path": "/api/tenant/estimates/d7a59d91-ea43-49b4-b669-0906ec83fcfe",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 47,
+      "method": "PATCH",
+      "path": "/api/tenant/invoices/31a912f1-93bd-4d88-ba4b-7b24cedb867e",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 48,
+      "method": "PATCH",
+      "path": "/api/tenant/orders/d020cd40-9bc3-4844-b32c-43ccacffe24d",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    },
+    {
+      "index": 49,
+      "method": "PATCH",
+      "path": "/api/tenant/estimates/09204406-1bf8-41e0-b28e-89a1158a210b",
+      "status": "307",
+      "detail": "Temporary Redirect"
+    }
+  ],
+  "createdAt": "2026-07-15T14:01:29.444Z"
+}

@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { createProductQueryEmbedding } from '@/lib/server/product-search';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 import { supabaseAdmin } from '@/lib/supabase';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { parseOptionsLimit, SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
+
+const RequestedIdsSchema = z.array(z.string().uuid()).max(PAGE_SIZE.MAX);
 
 function getInitials(name: string) {
   return name
@@ -58,43 +61,23 @@ export async function GET(request: NextRequest) {
       PAGE_SIZE.SEARCH,
     );
     const idsParam = request.nextUrl.searchParams.get('ids');
-    const requestedIds = idsParam
+    const requestedIdsResult = RequestedIdsSchema.safeParse(idsParam
       ? Array.from(new Set(idsParam.split(',').map((value) => value.trim()).filter(Boolean)))
-      : [];
-
-    const db = supabaseAdmin as any;
-    const queryEmbedding = q ? await createProductQueryEmbedding(q) : null;
-
-    const { data, error } = await db.schema('app').rpc('search_products', {
-      p_tenant_id: tenantId,
-      p_query: q,
-      p_buyer_id: buyerId,
-      p_price_list_id: priceListId,
-      p_limit: requestedIds.length > 0 ? requestedIds.length : requestedLimit + 1,
-      p_query_embedding: queryEmbedding,
-      p_ids: requestedIds.length > 0 ? requestedIds : null,
-    });
-
-    if (error) {
-      console.error('[GET /api/tenant/products/search] search_products RPC error', error);
-      return NextResponse.json({ error: 'Failed to search products' }, { status: 500 });
+      : []);
+    if (!requestedIdsResult.success) {
+      return NextResponse.json({ error: 'Invalid product ids' }, { status: 400 });
     }
+    const requestedIds = requestedIdsResult.data;
 
-    const rows = (data ?? []) as Array<{
-      tenant_product_id: string;
-      product_name: string;
-      sku: string | null;
-      brand_name: string;
-      category_name: string;
-      hsn_code: string | null;
-      tax_pct: number | null;
-      on_hand: number | null;
-      unit_price: number | null;
-      mrp: number | null;
-      base_selling_price: number | null;
-      default_uom: string | null;
-      pack_size: number | null;
-    }>;
+    const { rows } = await searchScopedProducts({
+      db: supabaseAdmin as any,
+      tenantId,
+      query: q,
+      buyerId,
+      priceListId,
+      limit: requestedIds.length > 0 ? requestedIds.length : requestedLimit + 1,
+      ids: requestedIds.length > 0 ? requestedIds : null,
+    });
 
     const orderedRows = requestedIds.length > 0
       ? requestedIds

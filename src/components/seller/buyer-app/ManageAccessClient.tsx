@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useDeferredValue } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { cn, formatCompactInr } from '@/lib/utils';
 import { FeatureGate } from '@/components/FeatureGate';
@@ -224,13 +224,18 @@ function formatDate(iso: string | null): string {
 function filterAndSortBuyers(
   buyers: AccessBuyer[],
   filter: AccessFilter,
-  deferredSearch: string,
+  applyInterimFilters: boolean,
 ): AccessBuyer[] {
+  if (!applyInterimFilters) return buyers;
+
   let result = buyers;
 
-  if (filter.status.includes('enabled')) result = result.filter((b) => b.buyer_app_enabled);
-  else if (filter.status.includes('disabled')) result = result.filter((b) => !b.buyer_app_enabled);
-  else if (filter.status.includes('inactive')) result = result.filter((b) => b.is_inactive);
+  if (filter.status.includes('inactive')) result = result.filter((b) => b.is_inactive);
+  else if (filter.status.includes('enabled')) {
+    result = result.filter((b) => b.buyer_app_enabled);
+  } else if (filter.status.includes('disabled')) {
+    result = result.filter((b) => !b.buyer_app_enabled);
+  }
 
   if (filter.suggested.includes('suggested')) result = result.filter((b) => b.is_suggested);
 
@@ -246,8 +251,9 @@ function filterAndSortBuyers(
     result = result.filter((b) => !b.last_app_order_at || b.last_app_order_at < cutoff);
   }
 
-  if (deferredSearch) {
-    const q = deferredSearch.toLowerCase();
+  const interimSearch = filter.search.trim();
+  if (interimSearch) {
+    const q = interimSearch.toLowerCase();
     result = result.filter(
       (b) =>
         b.business_name.toLowerCase().includes(q) ||
@@ -508,18 +514,69 @@ function ManageAccessSkeleton() {
 function ManageAccessContent({ initialData }: { initialData: AccessPageResponse | null }) {
   const [filter, setFilter] = useState<AccessFilter>(DEFAULT_FILTER);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const deferredSearch = useDeferredValue(filter.search);
+  const pageSize = initialData?.limit ?? 50;
+  const [querySearch, setQuerySearch] = useState('');
 
-  const { data, isLoading, isError } = useAccessList(initialData);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setQuerySearch(filter.search.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [filter.search, pageSize]);
+
+  const serverStatus = useMemo<'all' | 'enabled' | 'disabled' | 'suggested' | 'inactive'>(() => {
+    if (filter.suggested.includes('suggested')) return 'suggested';
+    if (filter.status.includes('inactive')) return 'inactive';
+    if (filter.status.includes('enabled')) return 'enabled';
+    if (filter.status.includes('disabled')) return 'disabled';
+    return 'all';
+  }, [filter.status, filter.suggested]);
+
+  const serverLastOrdered = useMemo<'all' | '30d' | '90d' | 'dormant'>(() => {
+    if (filter.last_ordered.includes('30d')) return '30d';
+    if (filter.last_ordered.includes('90d')) return '90d';
+    if (filter.last_ordered.includes('dormant')) return 'dormant';
+    return 'all';
+  }, [filter.last_ordered]);
+
+  const serverSort = useMemo<'business_name' | 'app_gmv' | 'offline_spend' | 'last_ordered'>(() => {
+    if (filter.sortBy === 'App GMV (high→low)') return 'app_gmv';
+    if (filter.sortBy === 'Offline spend (high→low)') return 'offline_spend';
+    if (filter.sortBy === 'Last ordered') return 'last_ordered';
+    return 'business_name';
+  }, [filter.sortBy]);
+
+  const {
+    data,
+    isLoading,
+    isError,
+    isPlaceholderData,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    authoritativeKpis,
+  } = useAccessList(
+    {
+      q: querySearch,
+      status: serverStatus,
+      lastOrdered: serverLastOrdered,
+      sort: serverSort,
+      limit: pageSize,
+    },
+    initialData,
+  );
   const { toggle } = useSingleBuyerToggle();
   const { bulkToggle, isPending: bulkPending } = useBulkToggleAccess();
 
-  const buyers = data?.buyers ?? [];
-  const kpis = data?.kpis;
+  const pages = data?.pages ?? [];
+  const buyers = useMemo(() => pages.flatMap((page) => page.buyers), [pages]);
+  const latestPage = pages.at(-1);
+  const isInterim = filter.search.trim() !== querySearch || isPlaceholderData;
 
   const filteredBuyers = useMemo(
-    () => filterAndSortBuyers(buyers, filter, deferredSearch),
-    [buyers, filter, deferredSearch],
+    () => filterAndSortBuyers(buyers, filter, isInterim),
+    [buyers, filter, isInterim],
   );
 
   function handleFilterChange(updates: Partial<AccessFilter>) {
@@ -590,9 +647,9 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
       </header>
 
       {/* KPI strip */}
-      {kpis ? (
+      {authoritativeKpis ? (
         <AccessKpiStrip
-          kpis={kpis}
+          kpis={authoritativeKpis}
           filter={filter}
           onFilterChange={(next) => {
             setFilter(next);
@@ -614,7 +671,7 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
 
       {/* FilterBar + Table — visually connected as one block */}
       <FilterBar
-        count={`Showing ${filteredBuyers.length} of ${buyers.length}`}
+        count={`Showing ${filteredBuyers.length} of ${latestPage?.filtered_count ?? filteredBuyers.length}`}
         searchPlaceholder="Search buyer, city…"
         chips={[]}
         activeChip=""
@@ -633,6 +690,19 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
         onSelectionChange={setSelectedIds}
         onToggle={(buyerId, enabled) => toggle(buyerId, enabled)}
       />
+
+      {hasNextPage ? (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPlaceholderData || isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+          >
+            {isPlaceholderData || isFetchingNextPage ? 'Loading buyers…' : 'Load more buyers'}
+          </Button>
+        </div>
+      ) : null}
     </PageWrap>
   );
 }

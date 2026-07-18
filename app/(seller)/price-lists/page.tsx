@@ -13,7 +13,7 @@ export default async function PriceListsPage({
   await requireSellerServerTenantId();
 
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<PriceListsLandingResponse>('/api/price-lists');
+  const { data: initialData, status } = await fetchSellerPageBootstrap<PriceListsLandingResponse>('/api/price-lists?limit=50');
   if (status === 403) return <FeatureForbiddenPage />;
   return <PriceListsLandingClient initialData={initialData} initialSearch={initialSearch} />;
 }

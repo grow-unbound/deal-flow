@@ -65,6 +65,7 @@ export interface EstimatesKpis {
   total_gmv_prev_period: number;
   aov: number;
   open_estimates_this_period: number;
+  open_estimate_value: number;
   open_total: number;
   open_drafts: number;
   open_sent: number;
@@ -84,6 +85,7 @@ export interface EstimateCalloutRow {
   buyer_hue: EstimateAvatarHue;
   items_count: number;
   total_amount: number;
+  estimate_date: string | null;
   sent_at: string | null;
   expires_at: string | null;
   status: { label: string; tone: EstimateStatusTone };
@@ -91,13 +93,21 @@ export interface EstimateCalloutRow {
 
 export interface EstimatesTodaysRead {
   needs_follow_up: EstimateCalloutRow[];
-  ready_to_convert: EstimateCalloutRow[];
+  drafts_not_sent: EstimateCalloutRow[];
   expiring_soon: EstimateCalloutRow[];
+}
+
+export interface EstimatesPulseAggregates {
+  sent_awaiting_count: number;
+  sent_awaiting_value: number;
+  expiring_soon_count: number;
+  expiring_soon_value: number;
 }
 
 export interface TenantEstimatesResponse {
   period: SellerLandingPeriodMeta;
   kpis: EstimatesKpis;
+  pulse_aggregates: EstimatesPulseAggregates;
   todays_read: EstimatesTodaysRead;
   estimates: EstimateLandingRow[];
   filters?: LandingFilterMeta;

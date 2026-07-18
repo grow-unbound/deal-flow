@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { loadWarehouseSummary } from '@/lib/server/warehouse-data';
 import { hydrateWarehouse } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const detail = await loadWarehouseSummary(db, claims.tenant_id, id);
     if (!detail) return jsonError(404, 'Warehouse not found', 'NOT_FOUND');
 
-    return NextResponse.json(detail, { status: 200 });
+    return NextResponse.json(detail, { status: 200, headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/warehouses/[id]]', error);
     return jsonError(500, 'Failed to load warehouse detail', 'LOAD_FAILED');

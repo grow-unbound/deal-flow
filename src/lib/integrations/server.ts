@@ -5,7 +5,7 @@ import {
   IntegrationAuthSchemaSchema,
   IntegrationCapabilitiesSchema,
   IntegrationConnectRequestSchema,
-  IntegrationJobRecordSchema,
+  IntegrationJobRecordProjectionSchema,
   IntegrationJobSummarySchema,
   IntegrationProgressSchema,
   IntegrationSettingsPayloadSchema,
@@ -231,47 +231,10 @@ function parseProgressMeta(job: Record<string, unknown> | null | undefined) {
   return meta;
 }
 
-function parseRebuildDaysFromMeta(job: Record<string, unknown> | null | undefined) {
-  const meta = parseProgressMeta(job);
-  const value = meta?.post_sync_rebuild_days;
-  return typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.trunc(value) : null;
-}
-
-function isPostSyncRebuildFailed(job: Record<string, unknown> | null | undefined) {
-  const meta = parseProgressMeta(job);
-  return meta?.post_sync_rebuild_failed === true;
-}
-
-function computeRebuildDaysFromJob(job: Record<string, unknown> | null | undefined) {
-  const explicit = parseRebuildDaysFromMeta(job);
-  if (explicit) return explicit;
-
-  const jobType = typeof job?.job_type === 'string' ? job.job_type : null;
-  if (jobType === 'initial_reference' || jobType === 'initial_transactional') {
-    return 90;
-  }
-
-  const sinceDate = typeof job?.since_date === 'string' ? job.since_date : null;
-  if (!sinceDate) return 2;
-
-  const since = new Date(sinceDate);
-  if (Number.isNaN(since.getTime())) return 2;
-
-  const now = new Date();
-  const diffMs = now.getTime() - since.getTime();
-  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
-  return Math.max(2, diffDays);
-}
-
-type AggregateFreshnessRow = {
-  aggregate_name: string;
-  aggregate_kind: string;
-  row_count: number;
-  latest_data_day: string | null;
-  refreshed_at: string | null;
+type MetricsRefreshStateRow = {
+  domain: string;
+  freshness_state: string | null;
   updated_at: string | null;
-  age: unknown;
-  is_stale: boolean;
 };
 
 async function loadAggregateFreshness(
@@ -279,19 +242,85 @@ async function loadAggregateFreshness(
   tenantId: string,
   recentJobs: Record<string, unknown>[],
 ): Promise<import('@/types/integrations').IntegrationAggregateFreshness> {
-  const { data, error } = await db.schema('app').rpc('get_tenant_aggregate_freshness', {
-    p_tenant_id: tenantId,
-  });
-  if (error) throw new Error(error.message ?? 'Failed to load aggregate freshness');
+  const [
+    refreshStateRes,
+    commercialRes,
+    inventoryRes,
+    buyerAppRes,
+    setupRes,
+    tenantDailyRes,
+  ] = await Promise.all([
+    db
+      .schema('app')
+      .from('metrics_refresh_state')
+      .select('domain, freshness_state, updated_at')
+      .eq('tenant_id', tenantId),
+    db
+      .schema('app')
+      .from('metrics_tenant_commercial_snapshot')
+      .select('computed_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_tenant_inventory_snapshot')
+      .select('computed_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_tenant_buyer_app_snapshot')
+      .select('computed_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_tenant_setup_snapshot')
+      .select('computed_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_tenant_daily')
+      .select('computed_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('day', { ascending: false })
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const refreshError =
+    refreshStateRes.error
+    ?? commercialRes.error
+    ?? inventoryRes.error
+    ?? buyerAppRes.error
+    ?? setupRes.error
+    ?? tenantDailyRes.error;
+  if (refreshError) throw new Error(refreshError.message ?? 'Failed to load aggregate freshness');
 
-  const freshnessRows = Array.isArray(data) ? (data as AggregateFreshnessRow[]) : [];
-  const snapshotRows = freshnessRows.filter((row) => row.aggregate_kind === 'snapshot');
-  const kpiRows = freshnessRows.filter((row) => row.aggregate_kind === 'daily_kpi');
-  const snapshotTimestamps = snapshotRows.map((row) => row.refreshed_at);
-  const kpiTimestamps = kpiRows.map((row) => row.updated_at ?? row.refreshed_at);
-  const latestSnapshotRefreshedAt = maxIsoTimestamp(snapshotTimestamps);
-  const latestKpiUpdatedAt = maxIsoTimestamp(kpiTimestamps);
-  const latestAggregateAt = maxIsoTimestamp([latestSnapshotRefreshedAt, latestKpiUpdatedAt]);
+  const refreshStates = (refreshStateRes.data ?? []) as MetricsRefreshStateRow[];
+  const latestSnapshotRefreshedAt = maxIsoTimestamp([
+    commercialRes.data?.computed_at ?? null,
+    inventoryRes.data?.computed_at ?? null,
+    buyerAppRes.data?.computed_at ?? null,
+    setupRes.data?.computed_at ?? null,
+  ]);
+  const latestKpiUpdatedAt = tenantDailyRes.data?.computed_at ?? null;
+  const latestRefreshStateAt = maxIsoTimestamp(refreshStates.map((row) => row.updated_at));
+  const latestAggregateAt = maxIsoTimestamp([latestSnapshotRefreshedAt, latestKpiUpdatedAt, latestRefreshStateAt]);
 
   const analysisJob =
     recentJobs.find((job) => job.phase === 'analysis' && job.status === 'completed' && typeof job.completed_at === 'string') ?? null;
@@ -301,34 +330,11 @@ async function loadAggregateFreshness(
     recentJobs.find((job) => job.phase !== 'sync_run' && job.phase !== 'analysis' && job.status === 'completed' && typeof job.completed_at === 'string')?.completed_at,
   );
 
-  const failedRebuildJob = recentJobs.find((job) => isPostSyncRebuildFailed(job)) ?? null;
-  const repairJobId = typeof failedRebuildJob?.id === 'string' ? failedRebuildJob.id : null;
-  const repairRebuildDays = failedRebuildJob ? computeRebuildDaysFromJob(failedRebuildJob) : null;
-  const failedRetryAt = asIsoTimestamp(parseProgressMeta(failedRebuildJob)?.post_sync_rebuild_last_retried_at);
-
-  // Active async repair job (phase='repair_aggregates', status pending/running)
   const activeRepairJob =
     recentJobs.find(
-      (job) => job.phase === 'repair_aggregates' && (job.status === 'pending' || job.status === 'running'),
+      (job) => job.phase === 'analysis' && (job.status === 'pending' || job.status === 'running'),
     ) ?? null;
   const activeRepairJobId = typeof activeRepairJob?.id === 'string' ? activeRepairJob.id : null;
-
-  if (failedRebuildJob) {
-    const failedPhase = typeof failedRebuildJob.phase === 'string' ? failedRebuildJob.phase : 'sync';
-    return {
-      status: 'failed',
-      latest_snapshot_refreshed_at: latestSnapshotRefreshedAt,
-      latest_kpi_updated_at: latestKpiUpdatedAt,
-      latest_analysis_at: latestAnalysisAt,
-      latest_sync_completed_at: latestSyncCompletedAt,
-      latest_aggregate_at: latestAggregateAt,
-      repair_job_id: activeRepairJobId ?? repairJobId,
-      repair_rebuild_days: repairRebuildDays,
-      repair_in_progress: activeRepairJob ? true : undefined,
-      last_retried_at: failedRetryAt,
-      warning_message: `Post-sync rebuild failed after ${failedPhase}. Seller metrics may stay stale until aggregates are repaired.`,
-    };
-  }
 
   if (!latestSnapshotRefreshedAt && !latestKpiUpdatedAt) {
     return {
@@ -342,13 +348,29 @@ async function loadAggregateFreshness(
       repair_rebuild_days: null,
       repair_in_progress: activeRepairJob ? true : undefined,
       last_retried_at: null,
-      warning_message: 'No aggregate timestamps available yet. Run Repair Aggregates after the first sync finishes.',
+      warning_message: 'No Metrics V2 timestamps available yet. Finish a sync and allow the refresh worker to catch up.',
     };
   }
 
-  const staleAggregates = freshnessRows.filter((row) => row.is_stale);
-  if (staleAggregates.length > 0) {
-    const staleList = staleAggregates.slice(0, 3).map((row) => row.aggregate_name).join(', ');
+  if (refreshStates.some((row) => row.freshness_state === 'error')) {
+    return {
+      status: 'failed',
+      latest_snapshot_refreshed_at: latestSnapshotRefreshedAt,
+      latest_kpi_updated_at: latestKpiUpdatedAt,
+      latest_analysis_at: latestAnalysisAt,
+      latest_sync_completed_at: latestSyncCompletedAt,
+      latest_aggregate_at: latestAggregateAt,
+      repair_job_id: activeRepairJobId,
+      repair_rebuild_days: null,
+      repair_in_progress: activeRepairJob ? true : undefined,
+      last_retried_at: null,
+      warning_message: 'One or more Metrics V2 domains are in error. Check the refresh worker and execution history.',
+    };
+  }
+
+  const staleDomains = refreshStates.filter((row) => row.freshness_state === 'stale' || row.freshness_state === 'unavailable');
+  if (staleDomains.length > 0) {
+    const staleList = staleDomains.slice(0, 3).map((row) => row.domain).join(', ');
     return {
       status: 'stale',
       latest_snapshot_refreshed_at: latestSnapshotRefreshedAt,
@@ -360,7 +382,23 @@ async function loadAggregateFreshness(
       repair_rebuild_days: null,
       repair_in_progress: activeRepairJob ? true : undefined,
       last_retried_at: null,
-      warning_message: `Some aggregates are stale or missing (${staleList}). Use Repair Aggregates to rebuild snapshots and KPI tables.`,
+      warning_message: `Some Metrics V2 domains are stale (${staleList}). Let the refresh worker drain the dirty queue.`,
+    };
+  }
+
+  if (refreshStates.some((row) => row.freshness_state === 'paused')) {
+    return {
+      status: 'warning',
+      latest_snapshot_refreshed_at: latestSnapshotRefreshedAt,
+      latest_kpi_updated_at: latestKpiUpdatedAt,
+      latest_analysis_at: latestAnalysisAt,
+      latest_sync_completed_at: latestSyncCompletedAt,
+      latest_aggregate_at: latestAggregateAt,
+      repair_job_id: activeRepairJobId,
+      repair_rebuild_days: null,
+      repair_in_progress: activeRepairJob ? true : undefined,
+      last_retried_at: null,
+      warning_message: 'Metrics V2 refresh is paused for at least one domain.',
     };
   }
 
@@ -550,12 +588,6 @@ function mergePostSyncWarnings(row: Record<string, unknown>) {
     ? summary.warnings.filter((warning): warning is string => typeof warning === 'string' && warning.length > 0)
     : [];
 
-  if (isPostSyncRebuildFailed(row)) {
-    const phase = typeof row.phase === 'string' && row.phase.length > 0 ? row.phase : 'sync';
-    const message = `Post-sync aggregate rebuild failed after ${phase}. Repair aggregates or run analysis to refresh metrics.`;
-    if (!warnings.includes(message)) warnings.push(message);
-  }
-
   // Never let a run with a skipped phase read as plain success — this is the
   // direct fix for failure propagation that used to be silent (master
   // reported 'completed' even when a phase failed under skip_failed_phases).
@@ -565,6 +597,16 @@ function mergePostSyncWarnings(row: Record<string, unknown>) {
   }
 
   return warnings.length > 0 ? { ...summary, warnings } : summary;
+}
+
+function projectIntegrationJobRecord(row: Record<string, unknown>) {
+  return IntegrationJobRecordProjectionSchema.parse({
+    ...row,
+    ...extractJobMetadata(row),
+    progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
+    summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(row)),
+    error_log: normalizeIntegrationJobErrorLog(row.error_log),
+  });
 }
 
 function getIntegrationsFunctionsBaseUrl() {
@@ -780,10 +822,12 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   ] = await Promise.all([
     db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
     db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
-    // No cursor pagination on this list — safety limit only (CLAUDE.md: cap
-    // unbounded queries instead of leaving them open-ended), not a UX cut.
-    // Ordered newest-first, so this is always the most recent history.
-    db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, phase, status, progress, error_log, summary, since_date, started_at, completed_at, created_at, master_job_id, heartbeat_at, records_synced').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }).limit(1000),
+    // The UI consumes at most 60 jobs per integration. Partitioning in SQL
+    // avoids a large tenant-wide history fetch without starving older integrations.
+    db.schema('app').rpc('list_recent_integration_sync_jobs', {
+      p_tenant_id: tenantId,
+      p_per_integration_limit: 60,
+    }),
     db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhooks').select('tenant_integration_id, entity_type, event_types, status, is_active, last_received_at, last_verified_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhook_events').select('tenant_integration_id, entity_type, processing_status, received_at').eq('tenant_id', tenantId).gte('received_at', sinceIso).is('deleted_at', null),
@@ -886,7 +930,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     entityErrorMap.set(key, bucket);
   }
 
-  const tenantRecentJobs = (jobs ?? []).map((row) => row as Record<string, unknown>);
+  const tenantRecentJobs = (jobs ?? []).map((row: unknown) => row as Record<string, unknown>);
   const aggregateFreshness = await loadAggregateFreshness(db, tenantId, tenantRecentJobs);
 
   const payload = IntegrationSettingsPayloadSchema.parse({
@@ -914,22 +958,10 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
             }
           : null,
         latest_job: latestJob
-          ? {
-              ...latestJob,
-              ...extractJobMetadata(latestJob),
-              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(latestJob.progress))),
-              summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(latestJob)),
-              error_log: normalizeIntegrationJobErrorLog(latestJob.error_log),
-            }
+          ? projectIntegrationJobRecord(latestJob)
           : null,
         recent_jobs: integrationId
-          ? (recentJobsMap.get(integrationId) ?? []).map((row) => ({
-              ...row,
-              ...extractJobMetadata(row),
-              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
-              summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(row)),
-              error_log: normalizeIntegrationJobErrorLog(row.error_log),
-            }))
+          ? (recentJobsMap.get(integrationId) ?? []).map(projectIntegrationJobRecord)
           : [],
         active_flows: activeFlows,
         recent_entity_errors: tenantEntityErrors
@@ -1072,17 +1104,6 @@ export async function createRepairAggregateJob(tenantId: string, actorUserId: st
   const record = coerceRecord(body);
   const tenantIntegrationId = typeof record.tenant_integration_id === 'string' ? record.tenant_integration_id : null;
   if (!tenantIntegrationId) throw new Error('tenant_integration_id is required');
-
-  const startDate = typeof record.start_date === 'string' ? record.start_date : null;
-  const endDate = typeof record.end_date === 'string' ? record.end_date : null;
-  const includeSnapshots = typeof record.include_snapshots === 'boolean' ? record.include_snapshots : true;
-  const includeKpis = typeof record.include_kpis === 'boolean' ? record.include_kpis : true;
-
-  const today = new Date();
-  const defaultEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const defaultStart = new Date(defaultEnd);
-  defaultStart.setUTCDate(defaultStart.getUTCDate() - 89);
-
   const db = requireAdminDb();
   await ensureNoActiveIntegrationJobs(db, tenantIntegrationId, tenantId);
 
@@ -1093,16 +1114,16 @@ export async function createRepairAggregateJob(tenantId: string, actorUserId: st
       tenant_id: tenantId,
       tenant_integration_id: tenantIntegrationId,
       job_type: 'manual',
-      status: 'pending',
-      phase: 'repair_aggregates',
+      status: 'completed',
+      phase: 'analysis',
       triggered_by: actorUserId,
       progress: {
-        params: {
-          start_day: startDate ?? defaultStart.toISOString().slice(0, 10),
-          end_day: endDate ?? defaultEnd.toISOString().slice(0, 10),
-          include_snapshots: includeSnapshots,
-          include_kpis: includeKpis,
-        },
+        phase_label: 'Metrics V2 refresh is automatic.',
+      },
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      summary: {
+        note: 'Manual aggregate repair is retired. Metrics V2 refresh runs from the dirty-work queue.',
       },
     })
     .select('id')
@@ -1116,8 +1137,6 @@ export async function runIntegrationAnalysis(tenantId: string, actorUserId: stri
   void actorUserId;
   const record = coerceRecord(body);
   const tenantIntegrationId = typeof record.tenant_integration_id === 'string' ? record.tenant_integration_id : null;
-  const days = typeof record.days === 'number' && Number.isFinite(record.days) ? Math.max(1, Math.trunc(record.days)) : 90;
-
   const db = requireAdminDb();
   if (tenantIntegrationId) {
     const { data: integration, error: integrationError } = await db
@@ -1133,15 +1152,6 @@ export async function runIntegrationAnalysis(tenantId: string, actorUserId: stri
       throw new Error(integrationError?.message ?? 'Integration not found');
     }
     await ensureNoActiveIntegrationJobs(db, tenantIntegrationId, tenantId);
-  }
-
-  const { error } = await db.schema('app').rpc('run_metrics_analysis_for_tenant', {
-    p_tenant_id: tenantId,
-    p_days: days,
-  });
-
-  if (error) {
-    throw new Error(error.message ?? 'Failed to run analysis');
   }
 
   return loadIntegrationsSettingsPayload(tenantId);

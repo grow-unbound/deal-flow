@@ -233,12 +233,9 @@ export async function updatePhaseJob(
   if (update.progress !== undefined && !(update.progress as Record<string, unknown>).meta) {
     // buildProgress() (sync-utils.ts) builds a fresh object with no `meta`
     // key — writing it as-is wipes progress.meta.sync_run_id/master_job_id
-    // that createSlaveJob set at row creation. That defeats
-    // trg_post_sync_rebuild's skip-guard (it checks NEW.progress->'meta'
-    // for those fields to recognize an orchestrated slave and skip the
-    // redundant per-phase rebuild), so post_sync_rebuild ends up running
-    // synchronously on every ordinary phase completion instead of only via
-    // the dedicated analysis phase — and can blow past statement_timeout.
+    // that createSlaveJob set at row creation. The trigger on completed sync
+    // phase rows relies on that metadata to recognize orchestrated slave rows
+    // correctly while marking Metrics V2 dirty domains.
     const { data: existing } = await admin
       .schema('app')
       .from('integration_sync_jobs')
@@ -437,6 +434,12 @@ export async function runPhaseSync(
   // Accumulated across pages — rebuilt once at invocation end instead of after every page
   const allBuyerIds: string[] = [];
   const allBuyerUserIds: string[] = [];
+  const allProductIds: string[] = [];
+  const allBrandIds: string[] = [];
+  const allCategoryIds: string[] = [];
+  const allLocationIds: string[] = [];
+  const allWarehouseIds: string[] = [];
+  const allPriceListIds: string[] = [];
 
   // Build the progress object written after every page
   function buildProgress(extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -499,6 +502,24 @@ export async function runPhaseSync(
       if (result.pendingSearchVectorBuyerUserIds.length > 0) {
         allBuyerUserIds.push(...result.pendingSearchVectorBuyerUserIds);
       }
+      if (result.pendingSearchVectorProductIds.length > 0) {
+        allProductIds.push(...result.pendingSearchVectorProductIds);
+      }
+      if (result.pendingSearchVectorBrandIds.length > 0) {
+        allBrandIds.push(...result.pendingSearchVectorBrandIds);
+      }
+      if (result.pendingSearchVectorCategoryIds.length > 0) {
+        allCategoryIds.push(...result.pendingSearchVectorCategoryIds);
+      }
+      if (result.pendingSearchVectorLocationIds.length > 0) {
+        allLocationIds.push(...result.pendingSearchVectorLocationIds);
+      }
+      if (result.pendingSearchVectorWarehouseIds.length > 0) {
+        allWarehouseIds.push(...result.pendingSearchVectorWarehouseIds);
+      }
+      if (result.pendingSearchVectorPriceListIds.length > 0) {
+        allPriceListIds.push(...result.pendingSearchVectorPriceListIds);
+      }
     }
 
     pagesFetched++;
@@ -545,7 +566,16 @@ export async function runPhaseSync(
           },
         });
       }
-      flushBuyerSearchVectorsInBackground(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
+      flushSearchVectorsInBackground(admin, integration.tenant_id, {
+        buyerIds: allBuyerIds,
+        buyerUserIds: allBuyerUserIds,
+        productIds: allProductIds,
+        brandIds: allBrandIds,
+        categoryIds: allCategoryIds,
+        locationIds: allLocationIds,
+        warehouseIds: allWarehouseIds,
+        priceListIds: allPriceListIds,
+      });
       return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: false, next_cursor: null };
     }
 
@@ -579,24 +609,92 @@ export async function runPhaseSync(
       },
     });
   }
-  flushBuyerSearchVectorsInBackground(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
+  flushSearchVectorsInBackground(admin, integration.tenant_id, {
+    buyerIds: allBuyerIds,
+    buyerUserIds: allBuyerUserIds,
+    productIds: allProductIds,
+    brandIds: allBrandIds,
+    categoryIds: allCategoryIds,
+    locationIds: allLocationIds,
+    warehouseIds: allWarehouseIds,
+    priceListIds: allPriceListIds,
+  });
   return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: true, next_cursor: nextCursorRecord };
 }
 
 // ── Search vector flush ───────────────────────────────────────────────────────
 
-// No-op for non-customer phases (arrays will be empty)
-async function flushBuyerSearchVectors(
+function uniqueIds(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+async function rebuildScopedSearchVectors(
+  admin: ReturnType<typeof createAdminClient>,
+  rpcName: string,
+  tenantId: string,
+  ids: string[],
+): Promise<void> {
+  const scopedIds = uniqueIds(ids);
+  if (scopedIds.length === 0) return;
+  const chunkSize = 100;
+  for (let index = 0; index < scopedIds.length; index += chunkSize) {
+    const chunk = scopedIds.slice(index, index + chunkSize);
+    const { error } = await admin.schema('app').rpc(rpcName, {
+      p_tenant_id: tenantId,
+      p_ids: chunk,
+    });
+    if (error) throw new Error(`${rpcName} failed: ${error.message}`);
+  }
+}
+
+async function flushSearchVectors(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
-  buyerIds: string[],
-  buyerUserIds: string[],
+  pending: {
+    buyerIds: string[];
+    buyerUserIds: string[];
+    productIds: string[];
+    brandIds: string[];
+    categoryIds: string[];
+    locationIds: string[];
+    warehouseIds: string[];
+    priceListIds: string[];
+  },
 ): Promise<void> {
-  if (buyerIds.length > 0) {
-    await rebuildBuyerSearchVectors(admin, tenantId, buyerIds);
+  const buyerIds = uniqueIds(pending.buyerIds);
+  const buyerUserIds = uniqueIds(pending.buyerUserIds);
+
+  const run = async (label: string, task: () => Promise<void>) => {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`[sync] ${label} search-vector rebuild failed; continuing with other entities:`, error);
+    }
+  };
+
+  if (pending.productIds.length > 0) {
+    await run('products', () => rebuildScopedSearchVectors(admin, 'rebuild_tenant_products_search_vectors', tenantId, pending.productIds));
   }
-  if (buyerUserIds.length > 0) {
-    await rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds);
+  if (buyerIds.length > 0) {
+    await run('buyers', () => rebuildBuyerSearchVectors(admin, tenantId, buyerIds));
+  }
+  if (buyerIds.length > 0 || buyerUserIds.length > 0) {
+    await run('buyer users', () => rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds));
+  }
+  if (pending.brandIds.length > 0) {
+    await run('brands', () => rebuildScopedSearchVectors(admin, 'rebuild_tenant_brands_search_vectors', tenantId, pending.brandIds));
+  }
+  if (pending.categoryIds.length > 0) {
+    await run('categories', () => rebuildScopedSearchVectors(admin, 'rebuild_tenant_categories_search_vectors', tenantId, pending.categoryIds));
+  }
+  if (pending.locationIds.length > 0) {
+    await run('locations', () => rebuildScopedSearchVectors(admin, 'rebuild_locations_search_vectors', tenantId, pending.locationIds));
+  }
+  if (pending.warehouseIds.length > 0) {
+    await run('warehouses', () => rebuildScopedSearchVectors(admin, 'rebuild_warehouses_search_vectors', tenantId, pending.warehouseIds));
+  }
+  if (pending.priceListIds.length > 0) {
+    await run('price lists', () => rebuildScopedSearchVectors(admin, 'rebuild_price_lists_search_vectors', tenantId, pending.priceListIds));
   }
 }
 
@@ -605,15 +703,32 @@ async function flushBuyerSearchVectors(
 // throw and abandon the job at status='running' (see reap_stale_sync_jobs).
 // Runs after the job status is already persisted, via EdgeRuntime.waitUntil so
 // it still completes after the response returns instead of being cut off.
-function flushBuyerSearchVectorsInBackground(
+function flushSearchVectorsInBackground(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
-  buyerIds: string[],
-  buyerUserIds: string[],
+  pending: {
+    buyerIds: string[];
+    buyerUserIds: string[];
+    productIds: string[];
+    brandIds: string[];
+    categoryIds: string[];
+    locationIds: string[];
+    warehouseIds: string[];
+    priceListIds: string[];
+  },
 ): void {
-  if (buyerIds.length === 0 && buyerUserIds.length === 0) return;
-  const task = flushBuyerSearchVectors(admin, tenantId, buyerIds, buyerUserIds).catch((err) => {
-    console.error('[sync] buyer search vector rebuild failed (non-fatal, phase already completed):', err);
+  if (
+    pending.buyerIds.length === 0
+    && pending.buyerUserIds.length === 0
+    && pending.productIds.length === 0
+    && pending.brandIds.length === 0
+    && pending.categoryIds.length === 0
+    && pending.locationIds.length === 0
+    && pending.warehouseIds.length === 0
+    && pending.priceListIds.length === 0
+  ) return;
+  const task = flushSearchVectors(admin, tenantId, pending).catch((err) => {
+    console.error('[sync] scoped search vector rebuild failed (non-fatal, phase already completed):', err);
   });
   const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
   edgeRuntime?.waitUntil(task);

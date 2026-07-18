@@ -82,7 +82,7 @@ describe('seller landing pages forward URL search to landing clients', () => {
     render(element);
 
     expect(screen.getByText('brands-client')).toBeInTheDocument();
-    expect(brandsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'alpha', initialPeriod: 'month' }));
+    expect(brandsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'alpha', initialPeriod: 'last90' }));
   });
 
   it('passes search to the customer groups landing alias', async () => {
@@ -90,7 +90,7 @@ describe('seller landing pages forward URL search to landing clients', () => {
     render(element);
 
     expect(screen.getByText('cohorts-client')).toBeInTheDocument();
-    expect(cohortsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'north', initialPeriod: 'month' }));
+    expect(cohortsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'north', initialPeriod: 'last90' }));
   });
 
   it('passes search to the campaigns landing alias', async () => {
@@ -98,7 +98,7 @@ describe('seller landing pages forward URL search to landing clients', () => {
     render(element);
 
     expect(screen.getByText('catalogs-client')).toBeInTheDocument();
-    expect(catalogsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'monsoon', initialPeriod: 'month' }));
+    expect(catalogsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'monsoon', initialPeriod: 'last90' }));
   });
 
   it('passes search to the price lists landing page', async () => {

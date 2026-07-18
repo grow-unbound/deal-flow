@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const db = supabaseAdmin ?? getRequestSupabaseClient();
+    const db = supabaseAdmin ?? (await getRequestSupabaseClient());
     const payload = await getCatalogComposerPayload(db as any, claims.tenant_id, claims.role);
     return timedJson(payload);
   } catch (error: any) {

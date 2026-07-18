@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -8,6 +8,7 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export interface MasterBrand {
   id: string;
@@ -66,10 +67,14 @@ export interface BrandsKpis {
 }
 
 export interface TodaysReadItem {
+  // get_seller_brand_landing_summary's needs_attention rows only carry {id, name} —
+  // growth_pct/alerts are not part of that payload, so they must stay optional here
+  // (they previously were typed as required, which hid an undefined.includes() crash
+  // in BrandsLandingClient's attentionReason()).
   id: string;
   name: string;
-  growth_pct: number;
-  alerts: string[];
+  growth_pct?: number;
+  alerts?: string[];
 }
 
 export interface TopPerformerItem {
@@ -83,11 +88,17 @@ export interface TopRiserItem {
   name: string;
   growth_pct: number;
   gmv_mtd: number;
-  gmv_prev_mtd: number;
+  // Not returned by get_seller_brand_landing_summary's top_risers rows — do not
+  // reference this without deriving it from growth_pct/gmv_mtd first.
+  gmv_prev_mtd?: number;
 }
 
 export interface TenantBrandsResponse {
   brands: TenantBrand[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   categories?: string[];
   cohorts?: Array<{
     id: string;
@@ -99,6 +110,10 @@ export interface TenantBrandsResponse {
     top_performers: TopPerformerItem[];
     top_risers: TopRiserItem[];
   };
+  /** Active product count, for the "{branded} of {active} active products branded" subtitle. */
+  active_product_count?: number;
+  /** Active products with a tenant_brand_id assigned. */
+  branded_product_count?: number;
   period?: SellerLandingPeriodMeta;
 }
 
@@ -140,10 +155,18 @@ export interface BrandDetailHeader {
 
 export interface BrandDetailMetaStrip {
   gmv_mtd: number;
-  growth_pct: number;
-  active_buyers: number;
-  total_buyers: number;
-  low_stock_skus: number;
+  /** Product count supporting invoiced sales (doc: "Invoiced sales - amount + product count"). */
+  product_count: number;
+  /** Units sold in the last 90 days, from get_seller_brand_detail_v2's kpi_grid. */
+  units_90d: number;
+  /**
+   * Not returned by get_seller_brand_detail_v2 — brand_detail has no buyer-count or
+   * stock-risk read model (doc lines 759-760 flagged NEEDS BACKEND). Always null;
+   * render as an unavailable state, not a fake 0.
+   */
+  active_buyers: number | null;
+  total_buyers: number | null;
+  low_stock_skus: number | null;
   days_since_catalog: number | null;
   last_sent_date: string | null;
   latest_catalog_name: string | null;
@@ -183,6 +206,13 @@ export interface BrandDetailBuyer {
   last_order: string | null;
   status: string;
   city: string;
+}
+
+export interface BrandBuyerPage {
+  rows: BrandDetailBuyer[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface BrandDetailCatalog {
@@ -231,9 +261,12 @@ export interface BrandDetailResponse {
       buyer_reach: string;
     };
   };
+  buyers_total: number;
   buyers: BrandDetailBuyer[];
   catalogs: BrandDetailCatalog[];
   activity: BrandDetailActivity[];
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }
 
 function optimisticBrandFromPayload(payload: CreateTenantBrandPayload): TenantBrand {
@@ -299,24 +332,32 @@ export function useTenantBrands(
   filters: TenantBrandsLandingFilters = {},
   initialData?: TenantBrandsResponse,
 ) {
-  return useQuery({
+  const hasFilters = Boolean(filters.search?.trim() || filters.categories?.length || filters.cohorts?.length);
+  const baseSummary = getSellerLandingInitialData(period, initialData);
+  const query = useInfiniteQuery({
     queryKey: ['tenant-brands', period, filters],
-    queryFn: async (): Promise<TenantBrandsResponse> => {
-      const params = new URLSearchParams({ period });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<TenantBrandsResponse> => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'categories', filters.categories);
       appendArrayParam(params, 'cohorts', filters.cohorts);
-      const res = await apiFetch(`/api/tenant/brands?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch brands');
-      }
+      const res = await apiFetch(`/api/tenant/brands?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch brands');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: baseSummary
+      ? { pages: [baseSummary], pageParams: [0] }
+      : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'brands');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useTenantBrandDetail(id: string) {
@@ -333,6 +374,25 @@ export function useTenantBrandDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useBrandBuyers(id: string, filters: { query?: string; segment?: string; sort?: string; page?: number }, enabled = true) {
+  return useQuery<BrandBuyerPage>({
+    queryKey: ['tenant-brand-buyers', id, filters],
+    enabled: Boolean(id) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ limit: '50' });
+      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.segment) params.set('segment', filters.segment);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await apiFetch(`/api/tenant/brands/${id}/buyers?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch brand buyers');
+      return res.json();
+    },
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   });
 }
 

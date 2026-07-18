@@ -8,6 +8,8 @@ import {
 import {
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
+  fetchZohoSettings,
+  pauseForZohoSettingsRateLimit,
 } from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -270,7 +272,8 @@ async function registerZohoWebhook(
 
       let webhookResponse: Response;
       try {
-        webhookResponse = await fetch(url.toString(), {
+        await pauseForZohoSettingsRateLimit();
+        webhookResponse = await fetchZohoSettings(url.toString(), {
           method: 'POST',
           headers: {
             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -301,7 +304,8 @@ async function registerZohoWebhook(
       createdWebhookIds.push(webhookId);
       let workflowResponse: Response;
       try {
-        workflowResponse = await fetch(
+        await pauseForZohoSettingsRateLimit();
+        workflowResponse = await fetchZohoSettings(
           new URL(`/${module}/settings/workflows?organization_id=${encodeURIComponent(orgId)}`, `https://www.zohoapis.${dc}`).toString(),
           {
             method: 'POST',
@@ -331,19 +335,40 @@ async function registerZohoWebhook(
     }
     return { webhookIds, workflowIds };
   } catch (error) {
-    await Promise.all(createdWorkflowIds.map((workflowId) => {
+    // This entity's webhook (action) succeeded but its paired workflow (rule)
+    // didn't — roll back the orphan. Pace + retry these deletes too, since
+    // they hit the same Zoho rate limit that likely caused the failure above;
+    // firing them in a burst just 429s again and leaves the orphan behind.
+    for (const workflowId of createdWorkflowIds) {
+      await pauseForZohoSettingsRateLimit();
       const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc}`);
       workflowUrl.searchParams.set('organization_id', orgId);
-      return fetch(workflowUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
-    }));
-    await Promise.all(createdWebhookIds.map((webhookId) => {
-      const webhookUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc}`);
-      webhookUrl.searchParams.set('organization_id', orgId);
-      return fetch(webhookUrl.toString(), {
+      const res = await fetchZohoSettings(workflowUrl.toString(), {
         method: 'DELETE',
         headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
-      }).catch(() => undefined);
-    }));
+      }).catch((cleanupError) => {
+        console.error(`[registerZohoWebhook] cleanup: failed to delete orphan workflow ${workflowId}:`, cleanupError);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[registerZohoWebhook] cleanup: delete workflow ${workflowId} returned ${res.status}`);
+      }
+    }
+    for (const webhookId of createdWebhookIds) {
+      await pauseForZohoSettingsRateLimit();
+      const webhookUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc}`);
+      webhookUrl.searchParams.set('organization_id', orgId);
+      const res = await fetchZohoSettings(webhookUrl.toString(), {
+        method: 'DELETE',
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+      }).catch((cleanupError) => {
+        console.error(`[registerZohoWebhook] cleanup: failed to delete orphan webhook ${webhookId}:`, cleanupError);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[registerZohoWebhook] cleanup: delete webhook ${webhookId} returned ${res.status}`);
+      }
+    }
     throw error;
   }
 }
@@ -359,24 +384,38 @@ async function deleteZohoWebhookRegistration(input: {
 }) {
   const module = input.integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
 
-  await Promise.all((input.workflowIds ?? []).map((workflowId) => {
+  for (const workflowId of input.workflowIds ?? []) {
+    await pauseForZohoSettingsRateLimit();
     const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${input.dc}`);
     workflowUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(workflowUrl.toString(), {
+    const res = await fetchZohoSettings(workflowUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistration] failed to delete prior workflow ${workflowId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[deleteZohoWebhookRegistration] delete prior workflow ${workflowId} returned ${res.status}`);
+    }
+  }
 
   const webhookIds = [...new Set([input.remoteWebhookId, ...(input.remoteWebhookIds ?? [])].filter((id): id is string => Boolean(id)))];
-  await Promise.all(webhookIds.map((webhookId) => {
+  for (const webhookId of webhookIds) {
+    await pauseForZohoSettingsRateLimit();
     const webhookUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${input.dc}`);
     webhookUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(webhookUrl.toString(), {
+    const res = await fetchZohoSettings(webhookUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistration] failed to delete prior webhook ${webhookId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[deleteZohoWebhookRegistration] delete prior webhook ${webhookId} returned ${res.status}`);
+    }
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -703,65 +742,91 @@ export async function GET(request: NextRequest) {
           webhookIdsByEntity[definition.entity_type] = webhook.id;
         }
 
-        // Clean up previously-registered IDs from DB — no extra LIST call to Zoho
-        const existingConfig = toRecord(webhook.webhook_config);
-        const priorWorkflowIds = extractWorkflowIds(existingConfig.workflow_ids);
-        const priorRemoteWebhookIds = extractWorkflowIds(existingConfig.remote_webhook_ids);
-        if (webhook.remote_webhook_id || priorWorkflowIds.length > 0 || priorRemoteWebhookIds.length > 0) {
-          await deleteZohoWebhookRegistration({
-            accessToken: tokens.access_token,
-            orgId: org_id,
+        // One entity/ruleType's Zoho failure must not abort the rest of the
+        // loop — isolate it here (mirrors the retry route's per-ruleType
+        // try/catch) so e.g. contacts/delete failing still lets items,
+        // estimates, invoices, salesorders get attempted.
+        try {
+          // Clean up previously-registered IDs from DB — no extra LIST call to Zoho
+          const existingConfig = toRecord(webhook.webhook_config);
+          const priorWorkflowIds = extractWorkflowIds(existingConfig.workflow_ids);
+          const priorRemoteWebhookIds = extractWorkflowIds(existingConfig.remote_webhook_ids);
+          if (webhook.remote_webhook_id || priorWorkflowIds.length > 0 || priorRemoteWebhookIds.length > 0) {
+            await deleteZohoWebhookRegistration({
+              accessToken: tokens.access_token,
+              orgId: org_id,
+              dc,
+              integrationTypeId: integration_type_id,
+              remoteWebhookId: webhook.remote_webhook_id,
+              remoteWebhookIds: priorRemoteWebhookIds,
+              workflowIds: priorWorkflowIds,
+            });
+          }
+
+          const callbackUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`;
+          const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
+          const registration = await registerZohoWebhook(
+            tokens.access_token,
+            org_id,
             dc,
-            integrationTypeId: integration_type_id,
-            remoteWebhookId: webhook.remote_webhook_id,
-            remoteWebhookIds: priorRemoteWebhookIds,
-            workflowIds: priorWorkflowIds,
+            callbackUrl,
+            integration_type_id,
+            definition.entity_type,
+            definition.provider_entity,
+            webhookSecret,
+            [ruleType],
+          );
+          const remoteWebhookId = registration.webhookIds[ruleType] ?? Object.values(registration.webhookIds)[0] ?? null;
+          console.info('[zoho/oauth/callback] webhook registered', {
+            entity_type: definition.entity_type,
+            rule_type: ruleType,
+            event_types: rowEventTypes,
+            webhook_id: remoteWebhookId,
+            workflow_ids: registration.workflowIds,
           });
+
+          if (!remoteWebhookId) entityHasAnyFailure = true;
+
+          await db
+            .schema('app')
+            .from('integration_webhooks')
+            .update({
+              remote_webhook_id: remoteWebhookId,
+              external_ref: remoteWebhookId,
+              status: remoteWebhookId ? 'active' : 'failed',
+              webhook_config: {
+                sync_phase: definition.sync_phase,
+                integration_type_id,
+                workflow_ids: registration.workflowIds,
+                remote_webhook_ids: registration.webhookIds,
+              },
+              secret: webhookSecret,
+              is_active: Boolean(remoteWebhookId),
+              last_verified_at: remoteWebhookId ? now : null,
+              updated_by: actorUserId,
+            })
+            .eq('id', webhook.id);
+        } catch (ruleTypeError) {
+          entityHasAnyFailure = true;
+          const message = ruleTypeError instanceof Error ? ruleTypeError.message : String(ruleTypeError);
+          console.error('[zoho/oauth/callback] webhook registration failed', {
+            entity_type: definition.entity_type,
+            rule_type: ruleType,
+            error: message,
+          });
+          await db
+            .schema('app')
+            .from('integration_webhooks')
+            .update({
+              remote_webhook_id: null,
+              external_ref: null,
+              status: 'failed',
+              is_active: false,
+              last_verified_at: null,
+              updated_by: actorUserId,
+            })
+            .eq('id', webhook.id);
         }
-
-        const callbackUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`;
-        const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
-        const registration = await registerZohoWebhook(
-          tokens.access_token,
-          org_id,
-          dc,
-          callbackUrl,
-          integration_type_id,
-          definition.entity_type,
-          definition.provider_entity,
-          webhookSecret,
-          [ruleType],
-        );
-        const remoteWebhookId = registration.webhookIds[ruleType] ?? Object.values(registration.webhookIds)[0] ?? null;
-        console.info('[zoho/oauth/callback] webhook registered', {
-          entity_type: definition.entity_type,
-          rule_type: ruleType,
-          event_types: rowEventTypes,
-          webhook_id: remoteWebhookId,
-          workflow_ids: registration.workflowIds,
-        });
-
-        if (!remoteWebhookId) entityHasAnyFailure = true;
-
-        await db
-          .schema('app')
-          .from('integration_webhooks')
-          .update({
-            remote_webhook_id: remoteWebhookId,
-            external_ref: remoteWebhookId,
-            status: remoteWebhookId ? 'active' : 'failed',
-            webhook_config: {
-              sync_phase: definition.sync_phase,
-              integration_type_id,
-              workflow_ids: registration.workflowIds,
-              remote_webhook_ids: registration.webhookIds,
-            },
-            secret: webhookSecret,
-            is_active: Boolean(remoteWebhookId),
-            last_verified_at: remoteWebhookId ? now : null,
-            updated_by: actorUserId,
-          })
-          .eq('id', webhook.id);
       }
 
       const entityStatus = entityHasAnyFailure ? 'failed' : 'active';

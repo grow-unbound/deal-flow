@@ -186,12 +186,13 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
       .or(`is_active.eq.false,valid_to.is.null,valid_to.gt.${nowIso}`)
       .order('updated_at', { ascending: false })
       .limit(PRICE_LISTS_LIMIT),
-    // products_snapshot: accurate total product count (O(1))
+    // Metrics V2 setup snapshot: accurate active product count (O(1))
     db
       .schema('app')
-      .from('products_snapshot')
-      .select('active_count')
+      .from('metrics_tenant_setup_snapshot')
+      .select('active_product_count')
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .maybeSingle(),
     // Brand facet counts — indexed GROUP BY on tenant_products (fast at any scale)
     db
@@ -371,8 +372,8 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
   }
 
   // Build server-side product facets from full dataset (not capped display list)
-  const productSnapshotRow = productSnapshotRes.data as { active_count: number } | null;
-  const productCount = productSnapshotRow?.active_count ?? products.length;
+  const productSnapshotRow = productSnapshotRes.data as { active_product_count: number | null } | null;
+  const productCount = Number(productSnapshotRow?.active_product_count ?? products.length);
 
   const brandFacetRows = (brandFacetRes.data ?? []) as Array<{ tenant_brand_id: string | null }>;
   const categoryFacetRows = (categoryFacetRes.data ?? []) as Array<{ tenant_category_id: string | null }>;

@@ -166,10 +166,43 @@ vi.mock('@/lib/supabase', () => {
     }
     return new QueryMock('unknown');
   });
+  const sum = (rows: Array<Record<string, unknown>>, key: string) =>
+    rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+  const scopedRows = (rows: Array<Record<string, unknown>>, args?: { p_location_ids?: string[] | null }) => {
+    const locationIds = args?.p_location_ids ?? null;
+    return locationIds?.length
+      ? rows.filter((row) => row.scope === 'location' && locationIds.includes(String(row.location_id)))
+      : rows.filter((row) => row.scope === 'tenant');
+  };
+  const rpc = vi.fn(async (name: string, args?: { p_location_ids?: string[] | null }) => {
+    if (name !== 'metrics_v2_transaction_landing') return { data: null, error: null };
+    const current = scopedRows(queryState.currentKpis, args);
+    const previous = scopedRows(queryState.previousKpis, args);
+    const orders = sum(current, 'orders_count');
+    const previousOrders = sum(previous, 'orders_count');
+    const gmv = sum(current, 'gmv');
+    return {
+      data: {
+        kpis: {
+          orders_mtd: orders,
+          orders_prev_mtd: previousOrders,
+          orders_growth_pct: previousOrders > 0 ? Math.round(((orders - previousOrders) / previousOrders) * 100) : 0,
+          gmv_mtd: gmv,
+          gmv_prev_mtd: sum(previous, 'gmv'),
+          aov: orders > 0 ? gmv / orders : 0,
+          pending_dispatch_count: sum(current, 'confirmed_count'),
+          received_count: sum(current, 'received_count'),
+          delivered_count: sum(current, 'delivered_count'),
+          buyers_mtd: sum(current, 'buyers_count'),
+        },
+      },
+      error: null,
+    };
+  });
 
   return {
     supabaseAdmin: {
-      schema: vi.fn(() => ({ from })),
+      schema: vi.fn(() => ({ from, rpc })),
     },
   };
 });

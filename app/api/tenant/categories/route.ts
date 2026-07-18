@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
 
-    const db = getRequestSupabaseClient() as any;
+    const db = (await getRequestSupabaseClient()) as any;
     const includeDeleted =
       req.nextUrl.searchParams.get('include_deleted') === '1' && claims.role === 'seller_admin';
 
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     const { name, slug, description, display_order, external_ref, r2_image_original_key, r2_image_medium_key, r2_image_thumb_key } =
       parsed.data;
 
-    const db = getRequestSupabaseClient() as any;
+    const db = (await getRequestSupabaseClient()) as any;
 
     // Check slug uniqueness within tenant
     const { data: existing } = await db

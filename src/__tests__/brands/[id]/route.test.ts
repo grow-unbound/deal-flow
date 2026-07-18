@@ -21,6 +21,8 @@ vi.mock('@/lib/supabase', () => {
       return chain;
     }),
     is: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(async () => ({ data: [], error: null })),
     maybeSingle: vi.fn(async () => {
       if (!queryState.exists) return { data: null, error: null };
       return { data: { id: (chain as any)._id ?? 'b1', tenant_id: queryState.tenantId }, error: null };
@@ -31,6 +33,7 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: {
       schema: vi.fn(() => ({
         from: vi.fn(() => chain),
+        rpc: vi.fn(async () => ({ data: {}, error: null })),
       })),
     },
   };

@@ -15,6 +15,7 @@ vi.mock('@/hooks/useCatalogs', () => ({
   useEnsureCatalogShareLink: (...args: unknown[]) => useEnsureCatalogShareLinkMock(...args),
   useAddCatalogProduct: (...args: unknown[]) => useAddCatalogProductMock(...args),
   useRemoveCatalogProduct: (...args: unknown[]) => useRemoveCatalogProductMock(...args),
+  useCatalogPublishPreview: () => ({ data: undefined, isLoading: false, error: null }),
 }));
 
 vi.mock('@/hooks/useRole', () => ({
@@ -213,8 +214,8 @@ describe('catalog detail page', () => {
   it('has no activity tab and shows buyers badge as cohort member count', () => {
     render(<CatalogDetailPage id="cat-1" />);
 
-    expect(screen.queryByRole('button', { name: /Activity/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Buyers\s*45/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Buyers\s*45/i })).toBeInTheDocument();
   });
 
   it('renders exactly four meta tiles and omits products count tile', () => {

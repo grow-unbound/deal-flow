@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layout';
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
+import { useDebounce } from '@/hooks/useDebounce';
+import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail, type CatalogProductDetailRow } from '@/hooks/useDetailTabSearch';
 import { cn, formatInr, formatSalesInr } from '@/lib/utils';
 
 type SortOption = 'Catalog order' | 'Brand (A → Z)' | 'Units sold MTD (high → low)' | 'Days cover (low → high)';
@@ -14,18 +16,18 @@ const AVAILABILITY_LABELS: Record<CatalogDetailResponse['products_summary']['fil
 };
 
 interface CatalogCompositionTabProps {
+  catalogId: string;
   summary: CatalogDetailResponse['products_summary'];
-  rows: CatalogDetailResponse['products'];
 }
 
-function tagLabel(tag: CatalogDetailResponse['products'][number]['tag']) {
+function tagLabel(tag: CatalogProductDetailRow['item_tag']) {
   if (tag === 'new') return 'NEW';
   if (tag === 'new_stock') return 'NEW STOCK';
   if (tag === 'old_stock') return 'OLD STOCK';
   return null;
 }
 
-function tagPillClasses(tag: CatalogDetailResponse['products'][number]['tag']) {
+function tagPillClasses(tag: CatalogProductDetailRow['item_tag']) {
   if (tag === 'new' || tag === 'new_stock') return 'border-amber-200 bg-amber-50 text-amber-700';
   return 'border-cream-300 bg-cream-100 text-cream-700';
 }
@@ -44,35 +46,42 @@ function getInitials(value: string) {
     .toUpperCase() || 'PR';
 }
 
-export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabProps) {
+export function CatalogCompositionTab({ catalogId, summary }: CatalogCompositionTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState('All products');
   const [sortBy, setSortBy] = useState<SortOption>('Catalog order');
 
+  const debouncedSearch = useDebounce(search, 300);
+  const stock = activeChip === 'In stock' ? 'in_stock' : activeChip === 'Low stock' ? 'low_stock' : activeChip === 'Out of stock' ? 'out_of_stock' : null;
+  const sort = sortBy === 'Brand (A → Z)' ? 'brand_asc' : sortBy === 'Units sold MTD (high → low)' ? 'units_desc' : sortBy === 'Days cover (low → high)' ? 'days_cover_asc' : 'catalog_order';
+  const result = useCatalogProductsDetail(catalogId, { query: debouncedSearch, filter: stock, sort });
+  const rows = useMemo(() => flattenDetailRows(result.data), [result.data]);
+  const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
   const filtered = useMemo(() => {
+    if (!isInterim) return rows;
     const query = search.trim().toLowerCase();
     return rows
       .filter((row) => {
-        if (activeChip === 'In stock') return row.stock_tone === 'success';
-        if (activeChip === 'Low stock') return row.stock_tone === 'warning';
-        if (activeChip === 'Out of stock') return row.stock_tone === 'neutral';
+        if (activeChip === 'In stock') return row.on_hand > 0;
+        if (activeChip === 'Low stock') return row.item_tag === 'old_stock';
+        if (activeChip === 'Out of stock') return row.on_hand <= 0;
         return true;
       })
       .filter((row) => {
         if (!query) return true;
         return (
           row.product_name.toLowerCase().includes(query) ||
-          row.internal_sku.toLowerCase().includes(query) ||
+          row.sku.toLowerCase().includes(query) ||
           row.brand_name.toLowerCase().includes(query)
         );
       })
       .sort((a, b) => {
         if (sortBy === 'Brand (A → Z)') return a.brand_name.localeCompare(b.brand_name) || a.product_name.localeCompare(b.product_name);
-        if (sortBy === 'Units sold MTD (high → low)') return b.units_mtd - a.units_mtd;
+        if (sortBy === 'Units sold MTD (high → low)') return b.catalog_units_sold - a.catalog_units_sold;
         if (sortBy === 'Days cover (low → high)') return (a.days_cover ?? Number.POSITIVE_INFINITY) - (b.days_cover ?? Number.POSITIVE_INFINITY);
         return a.catalog_order - b.catalog_order;
       });
-  }, [activeChip, rows, search, sortBy]);
+  }, [activeChip, isInterim, rows, search, sortBy]);
 
   const hasNoSavedFilters =
     summary.filters.brand_names.length === 0 &&
@@ -126,7 +135,7 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
 
       <div>
         <FilterBar
-          count={`${filtered.length} products`}
+          count={`${isInterim ? filtered.length : detailRowsTotal(result.data)} products${result.isFetching ? ' · Updating' : ''}`}
           searchPlaceholder="Search product, SKU, brand…"
           chips={['All products', 'In stock', 'Low stock', 'Out of stock']}
           activeChip={activeChip}
@@ -151,7 +160,7 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
           ]}
         >
           {filtered.map((row) => {
-            const label = tagLabel(row.tag);
+            const label = tagLabel(row.item_tag);
             const catalogPrice = row.override_price ?? row.base_selling_price;
 
             return (
@@ -165,7 +174,7 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
                     />
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium">{row.product_name}</p>
-                      <p className="mt-0.5 font-mono text-xs text-cream-700">{row.internal_sku}</p>
+                      <p className="mt-0.5 font-mono text-xs text-cream-700">{row.sku}</p>
                     </div>
                   </div>
                 </td>
@@ -178,7 +187,7 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   {label ? (
-                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]', tagPillClasses(row.tag))}>
+                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]', tagPillClasses(row.item_tag))}>
                       {label}
                     </span>
                   ) : (
@@ -189,6 +198,7 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
             );
           })}
         </LandingTable>
+        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
     </section>
   );

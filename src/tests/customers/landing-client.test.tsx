@@ -4,7 +4,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 const useCustomersLandingMock = vi.fn();
 const useCustomersLandingInfiniteMock = vi.fn();
-const useSellerLandingPeriodMock = vi.fn();
 const useRouteSnapshotMock = vi.fn();
 const useRetainedValueMock = vi.fn();
 const useDebounceMock = vi.fn();
@@ -28,12 +27,9 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
   useCustomersLandingInfinite: (...args: unknown[]) => useCustomersLandingInfiniteMock(...args),
 }));
 
-vi.mock('@/hooks/useSellerLandingPeriod', () => ({
-  useSellerLandingPeriod: (...args: unknown[]) => useSellerLandingPeriodMock(...args),
-}));
-
 vi.mock('@/hooks/useRouteSnapshot', () => ({
   useRouteSnapshot: (...args: unknown[]) => useRouteSnapshotMock(...args),
+  useSeedRouteSearch: () => undefined,
   useRouteScrollRestoration: (...args: unknown[]) => useRouteScrollRestorationMock(...args),
 }));
 
@@ -72,7 +68,6 @@ describe('customers landing client', () => {
   beforeEach(() => {
     useCustomersLandingMock.mockReset();
     useCustomersLandingInfiniteMock.mockReset();
-    useSellerLandingPeriodMock.mockReset();
     useRouteSnapshotMock.mockReset();
     useRetainedValueMock.mockReset();
     useDebounceMock.mockReset();
@@ -110,14 +105,6 @@ describe('customers landing client', () => {
       hasNextPage: false,
       isFetchingNextPage: false,
     });
-    useSellerLandingPeriodMock.mockReturnValue({
-      period: 'month',
-      setPeriod: vi.fn(),
-      horizonLabel: 'This month',
-      lowerLabel: 'this month',
-      metricSuffix: 'MTD',
-      options: [],
-    });
     useRouteSnapshotMock.mockReturnValue({
       state: {
         filters: { status: [], due: [] },
@@ -133,7 +120,7 @@ describe('customers landing client', () => {
   });
 
   it('shows the add buyer button and opens the form', () => {
-    render(<CustomersLandingClient initialData={null} initialPeriod="month" />);
+    render(<CustomersLandingClient initialData={null} />);
 
     fireEvent.click(screen.getByRole('button', { name: /add a buyer/i }));
 

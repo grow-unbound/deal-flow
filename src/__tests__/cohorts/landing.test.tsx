@@ -50,7 +50,7 @@ describe('cohorts landing page', () => {
 
     render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
 
-    expect(screen.getByText('Uncategorised')).toBeInTheDocument();
+    expect(screen.getByText('Valuable customers in no Group')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 

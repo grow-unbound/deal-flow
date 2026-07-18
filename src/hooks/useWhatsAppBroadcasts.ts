@@ -1,6 +1,13 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -18,7 +25,7 @@ export interface WhatsAppTemplateOption {
   is_broadcast_template: boolean;
 }
 
-export interface WhatsAppBroadcastHistoryRow {
+export interface ManageBroadcastRow {
   id: string;
   name: string;
   use_case: string;
@@ -28,7 +35,34 @@ export interface WhatsAppBroadcastHistoryRow {
   estimated_recipient_count: number | null;
   actual_recipient_count: number | null;
   created_at: string;
+  display_at: string;
+  template_name: string | null;
+  target_label: string;
+  delivered_count: number;
+  total_count: number;
 }
+
+export interface BroadcastsPageResponse {
+  broadcasts: ManageBroadcastRow[];
+  total: number;
+  next_offset: number | null;
+  limit: number;
+  offset: number;
+}
+
+export type BroadcastSortOption = 'date_desc' | 'date_asc' | 'name_asc' | 'name_desc';
+
+export interface BroadcastsListParams {
+  q?: string;
+  status?: string;
+  sort?: BroadcastSortOption;
+  limit: number;
+}
+
+type BroadcastsInfiniteData = InfiniteData<BroadcastsPageResponse, number>;
+
+const BROADCASTS_QUERY_KEY = ['whatsapp-broadcasts'] as const;
+const BROADCASTS_LIST_QUERY_KEY = [...BROADCASTS_QUERY_KEY, 'list'] as const;
 
 export interface AudiencePreviewInput {
   target_type: WhatsAppBroadcastTargetType;
@@ -108,19 +142,59 @@ export function useBroadcastCampaignOptions(enabled = true) {
   });
 }
 
-export function useWhatsAppBroadcastHistory(enabled = true) {
-  return useQuery({
-    queryKey: ['whatsapp-broadcast-history'],
-    queryFn: async (): Promise<WhatsAppBroadcastHistoryRow[]> => {
-      const res = await apiFetch('/api/whatsapp/broadcasts');
-      if (res.status === 403) return [];
-      if (!res.ok) throw new Error('Failed to fetch broadcast history');
-      const data = (await res.json()) as { broadcasts: WhatsAppBroadcastHistoryRow[] };
-      return data.broadcasts;
+export function useWhatsAppBroadcastsInfinite(
+  params: BroadcastsListParams,
+  initialData?: BroadcastsPageResponse | null,
+) {
+  const q = params.q?.trim() ?? '';
+  const status = params.status ?? 'all';
+  const sort = params.sort ?? 'date_desc';
+  const queryParams = { q, status, sort, limit: params.limit };
+  const canUseInitialData =
+    q === ''
+    && status === 'all'
+    && sort === 'date_desc'
+    && (initialData?.limit == null || initialData.limit === params.limit)
+    && (initialData?.offset == null || initialData.offset === 0);
+
+  return useInfiniteQuery<
+    BroadcastsPageResponse,
+    Error,
+    BroadcastsInfiniteData,
+    readonly unknown[],
+    number
+  >({
+    queryKey: [...BROADCASTS_LIST_QUERY_KEY, queryParams],
+    queryFn: async ({ pageParam }) => {
+      const searchParams = new URLSearchParams({
+        limit: String(params.limit),
+        offset: String(pageParam),
+        status,
+        sort,
+      });
+      if (q) searchParams.set('q', q);
+
+      const res = await apiFetch(`/api/whatsapp/broadcasts?${searchParams.toString()}`);
+      if (res.status === 403) {
+        return {
+          broadcasts: [],
+          total: 0,
+          next_offset: null,
+          limit: params.limit,
+          offset: pageParam,
+        };
+      }
+      if (!res.ok) throw new Error('Failed to fetch broadcasts');
+      return res.json() as Promise<BroadcastsPageResponse>;
     },
-    enabled,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.next_offset,
+    initialData: canUseInitialData && initialData
+      ? { pages: [initialData], pageParams: [0] }
+      : undefined,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -154,7 +228,7 @@ export function useCreateWhatsAppBroadcast() {
       }>;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['whatsapp-broadcast-history'] });
+      queryClient.invalidateQueries({ queryKey: BROADCASTS_QUERY_KEY });
       toast.success('Broadcast queued');
     },
     onError: (error) => {

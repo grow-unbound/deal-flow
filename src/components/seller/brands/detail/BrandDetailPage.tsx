@@ -3,9 +3,8 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -92,7 +91,6 @@ function subtitle(header: BrandDetailResponse['header']) {
 }
 
 export function BrandDetailPage({ id }: BrandDetailPageProps) {
-  const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-brand-detail-tab',
@@ -105,35 +103,35 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    const m = data.meta_strip_4;
     return [
       {
-        label: 'GMV · this month',
-        value: formatCompactInr(data.meta_strip_4.gmv_mtd),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct).toFixed(1)}%
-            </span>{' '}
-            vs last month
-          </span>
-        ),
+        // get_seller_brand_detail_v2 has no prior-period comparison, so this used to
+        // show a fabricated growth badge. Show the doc-recommended supporting value
+        // (product count) instead — see doc line 758.
+        label: 'Invoiced sales 90D',
+        value: formatCompactInr(m.gmv_mtd),
+        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
-        label: 'Active buyers',
-        value: `${data.meta_strip_4.active_buyers}/${data.meta_strip_4.total_buyers}`,
-        sub: 'bought this month',
+        // "Customers who purchased" (doc line 759, starred) has no backing data in
+        // get_seller_brand_detail_v2 — no brand-buyer read model exists yet (same gap
+        // as the "customers-buying-the-brand" performance card). Units sold is a
+        // real, doc-listed alternative (line 761) rather than a fake 0/0.
+        label: 'Units sold 90D',
+        value: `${m.units_90d}`,
+        sub: 'in the last 90 days',
       },
       {
-        label: 'Low-stock SKUs',
-        value: data.meta_strip_4.low_stock_skus,
-        sub: 'reorder this week',
+        label: 'Recent sellers low/out of stock',
+        value: m.low_stock_skus != null ? `${m.low_stock_skus}` : '—',
+        sub: m.low_stock_skus != null ? 'reorder this week' : 'Not available yet',
       },
       {
-        label: 'Campaign freshness',
-        value: data.meta_strip_4.days_since_catalog != null ? `${data.meta_strip_4.days_since_catalog}d ago` : '—',
-        sub: data.meta_strip_4.last_sent_date
-          ? `last sent ${new Date(data.meta_strip_4.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+        label: 'Recent campaign activity',
+        value: m.days_since_catalog != null ? `${m.days_since_catalog}d ago` : '—',
+        sub: m.last_sent_date
+          ? `last sent ${new Date(m.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
           : 'No catalog sent',
       },
     ];
@@ -186,14 +184,14 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
           { id: 'details', label: 'Details' },
           { id: 'performance', label: 'Performance' },
           { id: 'products', label: 'Products', badge: data.header.skus },
-          { id: 'buyers', label: 'Buyers', badge: data.buyers.length },
+          { id: 'buyers', label: 'Buyers', badge: data.buyers_total },
           { id: 'catalogs', label: 'Catalogs', badge: data.catalogs.length },
           { id: 'activity', label: 'Activity' },
         ]}
@@ -208,10 +206,12 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
           onSave={(payload) => updateMutation.mutate(payload)}
         />
       ) : null}
-      {tab === 'performance' ? <BrandPerformanceTab performance={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <BrandPerformanceTab performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
-      {tab === 'buyers' ? <BrandBuyersTab buyers={data.buyers} /> : null}
-      {tab === 'catalogs' ? <BrandCatalogsTab catalogs={data.catalogs} /> : null}
+      {tab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
+      {tab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
       {tab === 'activity' ? <BrandActivityTimeline activity={data.activity} /> : null}
 
       <AddBrandCommand

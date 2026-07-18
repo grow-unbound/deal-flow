@@ -72,7 +72,19 @@ class ProductComposerQueryBuilder {
     return this;
   }
 
+  neq() {
+    return this;
+  }
+
+  gte() {
+    return this;
+  }
+
   order() {
+    return this;
+  }
+
+  limit() {
     return this;
   }
 
@@ -141,12 +153,47 @@ class ProductComposerQueryBuilder {
     return { data: rows.filter((row) => !ids || ids.includes(row.id)), count: null };
   }
 
+  private inventoryPayload() {
+    const productIds = this.inFilters.get('tenant_product_id');
+    return {
+      data: productRows
+        .filter((row) => !productIds || productIds.includes(row.id))
+        .map((row) => ({
+          tenant_product_id: row.id,
+          qty_available: 12,
+          reorder_point: 4,
+          updated_at: '2026-07-14T08:00:00.000Z',
+        })),
+      count: null,
+    };
+  }
+
+  private ordersPayload() {
+    return { data: [{ id: '88888888-8888-4888-8888-888888888888', placed_at: '2026-07-10T00:00:00.000Z' }], count: null };
+  }
+
+  private orderItemsPayload() {
+    const productIds = this.inFilters.get('tenant_product_id');
+    return {
+      data: productRows
+        .filter((row) => !productIds || productIds.includes(row.id))
+        .map((row) => ({ order_id: '88888888-8888-4888-8888-888888888888', tenant_product_id: row.id, qty: 2 })),
+      count: null,
+    };
+  }
+
   then(resolve: (value: { data: unknown[]; error: null; count: number | null }) => unknown) {
     const payload = this.table === 'tenant_products'
       ? this.productPayload()
       : this.table === 'tenant_brands'
         ? this.brandPayload()
-        : this.categoryPayload();
+        : this.table === 'tenant_categories'
+          ? this.categoryPayload()
+          : this.table === 'tenant_inventory'
+            ? this.inventoryPayload()
+            : this.table === 'orders'
+              ? this.ordersPayload()
+              : this.orderItemsPayload();
     return Promise.resolve(resolve({ ...payload, error: null }));
   }
 }
@@ -158,12 +205,92 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn(() => ({
+      rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
+        if (fn === 'get_product_composer_facets') {
+          return Promise.resolve({
+            data: [
+              { facet_type: 'brand', facet_id: PRODUCT_BRAND_ID, facet_label: 'Solar Estates', product_count: 3 },
+              { facet_type: 'category', facet_id: PRODUCT_CATEGORY_ID, facet_label: 'Red wine', product_count: 3 },
+            ],
+            error: null,
+          });
+        }
+        if (fn === 'get_catalog_composer_product_metrics') {
+          const ids = Array.isArray(args.p_product_ids) ? args.p_product_ids as string[] : [];
+          return Promise.resolve({
+            data: ids.map((id) => ({
+              tenant_product_id: id,
+              qty_available: 12,
+              reorder_point: 4,
+              inventory_updated_at: '2026-07-14T08:00:00.000Z',
+              units_mtd: 2,
+              has_recent_order: true,
+            })),
+            error: null,
+          });
+        }
+        if (fn !== 'search_products_scoped') {
+          return Promise.resolve({ data: null, error: null });
+        }
+
+        let rows = [...productRows];
+        const ids = Array.isArray(args.p_ids) ? args.p_ids as string[] : [];
+        const brandIds = Array.isArray(args.p_brand_ids) ? args.p_brand_ids as string[] : [];
+        const categoryIds = Array.isArray(args.p_category_ids) ? args.p_category_ids as string[] : [];
+        const availability = String(args.p_availability ?? 'show_all');
+        const query = typeof args.p_query === 'string' ? args.p_query.trim().toLowerCase() : '';
+        const limit = Math.max(1, Number(args.p_limit ?? 20));
+        const offset = Math.max(0, Number(args.p_offset ?? 0));
+
+        if (ids.length > 0) rows = rows.filter((row) => ids.includes(row.id));
+        if (brandIds.length > 0) rows = rows.filter((row) => brandIds.includes(row.tenant_brand_id));
+        if (categoryIds.length > 0) rows = rows.filter((row) => categoryIds.includes(row.tenant_category_id));
+        if (query) {
+          rows = rows.filter((row) =>
+            row.internal_sku.toLowerCase().includes(query)
+            || row.name_override.toLowerCase().includes(query),
+          );
+        }
+        if (availability !== 'show_all' && availability !== 'show_everything') {
+          rows = [];
+        }
+
+        const totalCount = rows.length;
+        rows = rows.slice(offset, offset + limit);
+
+        return Promise.resolve({
+          data: rows.map((row) => ({
+            tenant_product_id: row.id,
+            product_name: row.name_override,
+            sku: row.internal_sku,
+            brand_id: row.tenant_brand_id,
+            brand_name: 'Solar Estates',
+            category_id: row.tenant_category_id,
+            category_name: 'Red wine',
+            hsn_code: null,
+            tax_pct: null,
+            on_hand: 0,
+            reorder_point: 0,
+            unit_price: row.base_selling_price,
+            mrp: row.mrp,
+            base_selling_price: row.base_selling_price,
+            cost_price: row.cost_price,
+            default_uom: null,
+            pack_size: null,
+            created_at: '2026-07-01T00:00:00.000Z',
+            search_rank: query ? 1 : 0,
+            total_count: totalCount,
+          })),
+          error: null,
+        });
+      }),
       from: vi.fn((table: string) => new ProductComposerQueryBuilder(table)),
     })),
   },
 }));
 
 import { GET as getProductComposer } from '../../app/api/tenant/products/composer/route';
+import { GET as getCatalogProductComposer } from '../../app/api/tenant/catalogs/composer/products/route';
 
 class BuyerResultsetQueryBuilder {
   private selected = '';
@@ -280,6 +407,14 @@ describe('composer resultset APIs', () => {
     getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_admin' });
   });
 
+  it('rejects buyer roles from the seller product composer', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'buyer_admin' });
+
+    const response = await getProductComposer(new NextRequest('http://localhost/api/tenant/products/composer'));
+
+    expect(response.status).toBe(403);
+  });
+
   it('searches products tenant-wide before applying the composer page limit', async () => {
     const response = await getProductComposer(new NextRequest('http://localhost/api/tenant/products/composer?q=Hidden&limit=1&selected_id=33333333-3333-4333-8333-333333333333'));
     const body = await response.json() as {
@@ -305,15 +440,61 @@ describe('composer resultset APIs', () => {
     ]);
   });
 
+  it('searches catalog products tenant-wide before hydrating the composer page', async () => {
+    const response = await getCatalogProductComposer(new NextRequest('http://localhost/api/tenant/catalogs/composer/products?q=Hidden&limit=1'));
+    const body = await response.json() as {
+      products: Array<{ id: string; display_name: string; qty_available: number; cost_price: number | null }>;
+      total: number;
+      nextCursor: string | null;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.products).toEqual([
+      expect.objectContaining({
+        id: '55555555-5555-4555-8555-555555555555',
+        display_name: 'Hidden Merlot',
+        qty_available: 12,
+        cost_price: 640,
+      }),
+    ]);
+    expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
+  });
+
   it('searches cohort composer buyers tenant-wide before applying the page limit', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{
+        buyer_id: '77777777-7777-4777-8777-777777777777',
+        business_name: 'Hidden Retail',
+        contact_name: 'Ravi',
+        external_ref: 'B-HIDDEN',
+        geography: { city: 'Mumbai', state: 'MH' },
+        tier: 'B',
+        payment_terms_days: 14,
+        last_order_at: '2026-07-03T00:00:00.000Z',
+        outstanding_dues: 2000,
+        gmv_90d: 2000,
+        mtd_spend: 2000,
+        orders_mtd: 2,
+        total_count: 1,
+      }],
+      error: null,
+    });
     const db = {
       schema: () => ({
         from: (table: string) => new BuyerResultsetQueryBuilder(table),
+        rpc,
       }),
     };
 
     const result = await getCohortComposerBuyerResultset(db, 'tenant-1', { q: 'Hidden', limit: 1 });
 
+    expect(rpc).toHaveBeenCalledWith('search_cohort_composer_buyers', expect.objectContaining({
+      p_tenant_id: 'tenant-1',
+      p_query: 'Hidden',
+      p_limit: 1,
+      p_offset: 0,
+    }));
     expect(result.buyers.map((buyer) => buyer.business_name)).toEqual(['Hidden Retail']);
     expect(result.total).toBe(1);
     expect(result.nextCursor).toBeNull();

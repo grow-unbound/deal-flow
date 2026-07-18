@@ -1,6 +1,6 @@
 'use client';
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
@@ -148,6 +148,7 @@ export function useBuyerCatalogSearchInfinite(
       const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
       return loaded;
     },
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -174,6 +175,7 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
       const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
       return loaded;
     },
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -5,10 +5,10 @@ import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { readArrayParam } from '@/lib/landing-filter-params';
-import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListComposerPayloadSchema, type PriceListFilterState } from '@/lib/zod';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
+import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -31,34 +31,43 @@ type PriceListRow = {
   created_by: string | null;
 };
 
-type PriceListItemRow = {
+type PriceListLandingMetric = {
   id: string;
-  price_list_id: string;
-  tenant_product_id: string;
-  price: number;
+  product_count: number | string;
+  avg_discount_pct: number | string | null;
+  avg_margin_pct: number | string | null;
+  cohorts_count: number | string;
+  cohort_names: string[] | null;
 };
 
-type PriceListAssignmentRow = {
-  id: string;
-  price_list_id: string;
-  target_type: 'buyer' | 'cohort' | 'all_buyers';
-  target_id: string | null;
+type PriceListLandingSummary = {
+  kpis?: Record<string, number | string>;
+  counts?: Record<string, number | string>;
+  todays_read?: {
+    expiring_soon?: Array<{
+      id: string;
+      name: string;
+      valid_until: string | null;
+      cohorts_count: number | string;
+      status: LandingStatus;
+    }>;
+    most_coverage?: Array<{
+      id: string;
+      name: string;
+      product_count: number | string;
+      valid_until: string | null;
+    }>;
+    uncovered_cohorts?: Array<{
+      id: string;
+      name: string;
+      member_count: number | string;
+    }>;
+  };
 };
 
-type CohortRow = {
-  id: string;
-  name: string;
-};
-
-type CohortMemberRow = {
-  cohort_id: string;
-  buyer_id: string;
-};
-
-type TenantProductRow = {
-  id: string;
-  base_selling_price: number | null;
-  cost_price: number | null;
+type PriceListLandingAggregate = {
+  row_metrics?: PriceListLandingMetric[];
+  summary?: PriceListLandingSummary | null;
 };
 
 function toInitials(name: string): string {
@@ -154,99 +163,60 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const nowTs = now.getTime();
   const withinSevenDaysTs = nowTs + 7 * 24 * 60 * 60 * 1000;
-  const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+  const search = request.nextUrl.searchParams.get('search')?.trim() ?? '';
   const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
   const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+  const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
+  const includeSummary = request.nextUrl.searchParams.get('include_summary') !== 'false';
+
+  const landingSearch = await searchSellerLandingEntityIds({
+    tenantId: claims.tenant_id,
+    entity: 'price_lists',
+    query: search,
+    statuses: statusFilter.map((value) => value.toLowerCase()).filter((value) => value !== 'all'),
+    limit,
+    offset,
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
+  const pageIds = landingSearch.ids;
+  const priceListsQuery = pageIds.length > 0
+    ? db
+        .schema('app')
+        .from('price_lists')
+        .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
+        .eq('tenant_id', claims.tenant_id)
+        .in('id', pageIds)
+        .is('deleted_at', null)
+        .limit(limit)
+    : { data: [] as PriceListRow[], error: null };
 
-  const [priceListsRes, tenantProductsRes, cohortsRes] = await Promise.all([
-    db
-      .schema('app')
-      .from('price_lists')
-      .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
-      .order('updated_at', { ascending: false }),
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, base_selling_price, cost_price')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('cohorts')
-      .select('id, name')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false }),
+  const [priceListsRes, aggregateRes] = await Promise.all([
+    priceListsQuery,
+    db.schema('app').rpc(
+      'get_seller_price_list_landing_aggregates',
+      {
+        p_tenant_id: claims.tenant_id,
+        p_page_ids: pageIds,
+        p_include_summary: includeSummary,
+        p_now: now.toISOString(),
+      },
+    ),
   ]);
+  const { data: aggregateData, error: aggregateError } = aggregateRes;
 
-  if (
-    priceListsRes.error ||
-    tenantProductsRes.error ||
-    cohortsRes.error
-  ) {
-    console.error(
-      '[GET /api/price-lists] query error:',
-      priceListsRes.error || tenantProductsRes.error || cohortsRes.error,
-    );
+  if (priceListsRes.error || aggregateError) {
+    console.error('[GET /api/price-lists] query error:', priceListsRes.error || aggregateError);
     return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
   }
 
   const priceLists = (priceListsRes.data ?? []) as PriceListRow[];
-  const priceListIds = priceLists.map((pl) => pl.id);
-  const priceListIdSet = new Set(priceListIds);
-
-  let allItems: PriceListItemRow[] = [];
-  let allAssignments: PriceListAssignmentRow[] = [];
-
-  if (priceListIds.length > 0) {
-    const [priceListItemsRes, assignmentsRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('price_list_items')
-        .select('id, price_list_id, tenant_product_id, price')
-        .in('price_list_id', priceListIds)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('price_list_assignments')
-        .select('id, price_list_id, target_type, target_id')
-        .in('price_list_id', priceListIds)
-        .is('deleted_at', null),
-    ]);
-
-    if (priceListItemsRes.error || assignmentsRes.error) {
-      console.error('[GET /api/price-lists] item/assignment query error:', priceListItemsRes.error || assignmentsRes.error);
-      return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
-    }
-
-    allItems = (priceListItemsRes.data ?? []) as PriceListItemRow[];
-    allAssignments = (assignmentsRes.data ?? []) as PriceListAssignmentRow[];
-  }
-
-  const tenantProducts = (tenantProductsRes.data ?? []) as TenantProductRow[];
-  const cohorts = (cohortsRes.data ?? []) as CohortRow[];
-  const cohortIds = cohorts.map((c) => c.id);
-
-  let cohortMembers: CohortMemberRow[] = [];
-  if (cohortIds.length > 0) {
-    const cohortMembersRes = await db
-      .schema('app')
-      .from('cohort_members')
-      .select('cohort_id, buyer_id')
-      .in('cohort_id', cohortIds);
-
-    if (cohortMembersRes.error) {
-      console.error('[GET /api/price-lists] cohort_members query error:', cohortMembersRes.error);
-      return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
-    }
-
-    cohortMembers = (cohortMembersRes.data ?? []) as CohortMemberRow[];
-  }
+  const aggregate = (aggregateData ?? {}) as PriceListLandingAggregate;
+  const summary = includeSummary ? aggregate.summary ?? null : null;
+  const metricsById = new Map(
+    (aggregate.row_metrics ?? []).map((metric) => [metric.id, metric]),
+  );
 
   const createdByIds = Array.from(
     new Set(priceLists.map((pl) => pl.created_by).filter((id): id is string => Boolean(id))),
@@ -254,93 +224,9 @@ export async function GET(request: NextRequest) {
 
   const createdByMap = await getAuthUserEmailMap(createdByIds);
 
-  const productBaseMap = new Map(tenantProducts.map((row) => [row.id, Number(row.base_selling_price ?? 0)]));
-  const productCostMap = new Map(
-    tenantProducts.map((row) => [row.id, row.cost_price != null ? Number(row.cost_price) : null]),
-  );
-  const canViewCost = claims.role === 'seller_admin';
-  const cohortNameById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
-
-  const memberSetByCohort = new Map<string, Set<string>>();
-  for (const row of cohortMembers) {
-    if (!memberSetByCohort.has(row.cohort_id)) memberSetByCohort.set(row.cohort_id, new Set());
-    memberSetByCohort.get(row.cohort_id)?.add(row.buyer_id);
-  }
-
-  const itemsByList = new Map<string, PriceListItemRow[]>();
-  for (const item of allItems) {
-    if (!itemsByList.has(item.price_list_id)) itemsByList.set(item.price_list_id, []);
-    itemsByList.get(item.price_list_id)?.push(item);
-  }
-
-  const assignmentsByList = new Map<string, PriceListAssignmentRow[]>();
-  for (const assignment of allAssignments) {
-    if (!assignmentsByList.has(assignment.price_list_id)) assignmentsByList.set(assignment.price_list_id, []);
-    assignmentsByList.get(assignment.price_list_id)?.push(assignment);
-  }
-
-  const activeLists = priceLists.filter((pl) => deriveStatus(pl, nowTs) === 'active');
-  const draftLists = priceLists.filter((pl) => deriveStatus(pl, nowTs) === 'draft');
-  const expiredLists = priceLists.filter((pl) => deriveStatus(pl, nowTs) === 'expired');
-
-  const expiringSoonLists = activeLists
-    .filter((pl) => isExpiringSoon(pl, nowTs, withinSevenDaysTs))
-    .sort((a, b) => new Date(a.valid_to ?? '').getTime() - new Date(b.valid_to ?? '').getTime());
-
-  const activeCohortCoverage = new Set<string>();
-  for (const pl of activeLists) {
-    const assignments = assignmentsByList.get(pl.id) ?? [];
-    for (const assignment of assignments) {
-      if (assignment.target_type === 'cohort' && assignment.target_id) {
-        activeCohortCoverage.add(assignment.target_id);
-      }
-    }
-  }
-
-  let productsWithOverrides = 0;
-  for (const item of allItems) {
-    const base = productBaseMap.get(item.tenant_product_id);
-    if (base == null) continue;
-    if (Number(item.price) !== Number(base)) {
-      productsWithOverrides += 1;
-    }
-  }
-
   const rowModels = priceLists.map((pl) => {
     const status = deriveStatus(pl, nowTs);
-    const items = itemsByList.get(pl.id) ?? [];
-    const assignments = assignmentsByList.get(pl.id) ?? [];
-
-    const cohortIds = assignments
-      .filter((assignment) => assignment.target_type === 'cohort' && assignment.target_id)
-      .map((assignment) => assignment.target_id as string);
-    const distinctCohortIds = Array.from(new Set(cohortIds));
-    const cohortNames = distinctCohortIds.map((id) => cohortNameById.get(id)).filter((name): name is string => Boolean(name));
-
-    let discountAccumulator = 0;
-    let discountCount = 0;
-    let marginAccumulator = 0;
-    let marginCount = 0;
-    for (const item of items) {
-      const base = productBaseMap.get(item.tenant_product_id);
-      if (!base || base <= 0) continue;
-      const pct = ((base - Number(item.price)) / base) * 100;
-      discountAccumulator += pct;
-      discountCount += 1;
-
-      if (canViewCost) {
-        const list = Number(item.price);
-        const cost = productCostMap.get(item.tenant_product_id);
-        if (list > 0 && cost != null && cost > 0) {
-          marginAccumulator += ((list - cost) / list) * 100;
-          marginCount += 1;
-        }
-      }
-    }
-
-    const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : null;
-    const avgMarginPct =
-      canViewCost && marginCount > 0 ? Math.round((marginAccumulator / marginCount) * 10) / 10 : null;
+    const metric = metricsById.get(pl.id);
 
     return {
       id: pl.id,
@@ -354,11 +240,11 @@ export async function GET(request: NextRequest) {
       created_at: pl.created_at,
       status,
       status_tone: statusTone(status),
-      cohorts_count: distinctCohortIds.length,
-      cohort_names: cohortNames,
-      product_count: items.length,
-      avg_discount_pct: avgDiscountPct,
-      avg_margin_pct: avgMarginPct,
+      cohorts_count: Number(metric?.cohorts_count ?? 0),
+      cohort_names: metric?.cohort_names ?? [],
+      product_count: Number(metric?.product_count ?? 0),
+      avg_discount_pct: metric?.avg_discount_pct == null ? null : Number(metric.avg_discount_pct),
+      avg_margin_pct: metric?.avg_margin_pct == null ? null : Number(metric.avg_margin_pct),
       created_by_label: pl.created_by ? createdByMap.get(pl.created_by) ?? 'Team member' : 'Team member',
       is_expiring_soon: isExpiringSoon(pl, nowTs, withinSevenDaysTs),
       pricing_strategy: pl.pricing_strategy,
@@ -366,84 +252,65 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const filteredRows = rowModels.filter((row) => {
-    const statusOk =
-      statusFilter.length === 0 ||
-      statusFilter.some((value) => {
-        if (value === 'Active') return row.status === 'active';
-        if (value === 'Draft') return row.status === 'draft';
-        if (value === 'Expired') return row.status === 'expired';
-        return false;
-      });
-    const searchOk =
-      !search ||
-      [row.name, row.description ?? '', row.cohort_names.join(' '), row.created_by_label, formatStrategySummary(row.pricing_strategy, row.strategy_value)]
-        .some((value) => value.toLowerCase().includes(search));
-    return statusOk && searchOk;
-  });
+  const rowModelById = new Map(rowModels.map((row) => [row.id, row]));
+  const filteredRows = landingSearch.ids
+    .map((id) => rowModelById.get(id))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-  const mostCoverage = [...rowModels]
-    .sort((a, b) => b.product_count - a.product_count)
-    .slice(0, 2);
-
-  const uncoveredCohorts = cohorts
-    .filter((cohort) => !activeCohortCoverage.has(cohort.id))
-    .map((cohort) => ({
-      id: cohort.id,
-      name: cohort.name,
-      member_count: memberSetByCohort.get(cohort.id)?.size ?? 0,
-    }))
-    .sort((a, b) => b.member_count - a.member_count)
-    .slice(0, 3);
+  const summaryKpis = summary?.kpis ?? {};
+  const summaryCounts = summary?.counts ?? {};
+  const summaryRead = summary?.todays_read ?? {};
 
   return timedJson({
-    kpis: {
-      active_lists: activeLists.length,
-      draft_lists: draftLists.length,
-      expiring_soon: expiringSoonLists.length,
-      cohorts_covered: activeCohortCoverage.size,
-      cohorts_total: cohorts.length,
-      products_with_overrides: productsWithOverrides,
-    },
-    todays_read: {
-      expiring_soon: expiringSoonLists.slice(0, 3).map((pl) => {
-        const assignments = assignmentsByList.get(pl.id) ?? [];
-        const cohortCount = assignments.filter((row) => row.target_type === 'cohort' && row.target_id).length;
-        return {
-          id: pl.id,
-          name: pl.name,
-          initials: toInitials(pl.name),
-          valid_until: pl.valid_to,
-          valid_until_label: fmtDate(pl.valid_to),
-          cohorts_count: cohortCount,
-          status: deriveStatus(pl, nowTs),
-          status_tone: statusTone(deriveStatus(pl, nowTs)),
-        };
-      }),
-      most_coverage: mostCoverage.map((row) => ({
-        id: row.id,
-        name: row.name,
-        initials: toInitials(row.name),
-        product_count: row.product_count,
-        valid_until: row.valid_to,
-        valid_until_label: fmtDate(row.valid_to),
-      })),
-      uncovered_cohorts: uncoveredCohorts.map((cohort) => ({
-        id: cohort.id,
-        name: cohort.name,
-        initials: toInitials(cohort.name),
-        member_count: cohort.member_count,
-      })),
-    },
-    price_lists: filteredRows.slice(0, limit),
-    total: filteredRows.length,
-    nextCursor: null,
-    cohorts_total: cohorts.length,
-    counts: {
-      active: activeLists.length,
-      draft: draftLists.length,
-      expired: expiredLists.length,
-    },
+    ...(includeSummary ? {
+      kpis: {
+        active_lists: Number(summaryKpis.active_lists ?? 0),
+        draft_lists: Number(summaryKpis.draft_lists ?? 0),
+        expiring_soon: Number(summaryKpis.expiring_soon ?? 0),
+        cohorts_covered: Number(summaryKpis.cohorts_covered ?? 0),
+        cohorts_total: Number(summaryKpis.cohorts_total ?? 0),
+        products_with_overrides: Number(summaryKpis.products_with_overrides ?? 0),
+      },
+      todays_read: {
+        expiring_soon: (summaryRead.expiring_soon ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          initials: toInitials(row.name),
+          valid_until: row.valid_until,
+          valid_until_label: fmtDate(row.valid_until),
+          cohorts_count: Number(row.cohorts_count ?? 0),
+          status: row.status,
+          status_tone: statusTone(row.status),
+        })),
+        most_coverage: (summaryRead.most_coverage ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          initials: toInitials(row.name),
+          product_count: Number(row.product_count ?? 0),
+          valid_until: row.valid_until,
+          valid_until_label: fmtDate(row.valid_until),
+        })),
+        uncovered_cohorts: (summaryRead.uncovered_cohorts ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          initials: toInitials(row.name),
+          member_count: Number(row.member_count ?? 0),
+        })),
+      },
+      cohorts_total: Number(summaryKpis.cohorts_total ?? 0),
+      counts: {
+        active: Number(summaryCounts.active ?? 0),
+        draft: Number(summaryCounts.draft ?? 0),
+        expired: Number(summaryCounts.expired ?? 0),
+      },
+    } : {}),
+    price_lists: filteredRows,
+    total: landingSearch.total,
+    limit,
+    offset,
+    nextOffset: landingSearch.ids.length > 0 && offset + landingSearch.ids.length < landingSearch.total
+      ? offset + landingSearch.ids.length
+      : null,
   });
 }
 

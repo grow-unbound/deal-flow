@@ -16,22 +16,21 @@ import {
   V3CalloutPanel,
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
-import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
+import { useTenantCatalogs, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 
-type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
+type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open to demand (high → low)';
 
-const SORT_OPTIONS: SortOption[] = ['Recently published', 'GMV (high → low)', 'Conversion (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['Recently published', 'Demand value (high → low)', 'Open to demand (high → low)'];
 const STATUS_OPTIONS = ['Draft', 'Live', 'Expiring soon', 'Ended'] as const;
 
 function CatalogsLoadingSkeleton() {
@@ -81,34 +80,21 @@ function CatalogsDataSkeleton() {
   );
 }
 
-function CatalogRowReason(catalog: CatalogLandingRow) {
-  const conversionLabel = catalog.conversions > 0 ? `${catalog.conversions} conversions` : 'no conversions';
-  if (catalog.status.label === 'Draft') return 'Draft · not yet sent to customer group';
-  if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${conversionLabel}`;
-  if (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0) {
-    return `Expires in ${catalog.days_left}d · ${conversionLabel}`;
-  }
-  return `${catalog.cohort_name} · ${conversionLabel}`;
-}
-
 function CatalogsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantCatalogs(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -118,15 +104,22 @@ function CatalogsLandingContent({
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
-  useRouteScrollRestoration({
-    storageKey: 'seller-catalogs-landing',
-    scopeKey: period,
-    ready: !isLoading,
-  });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [] };
   const statusFilter = filters.status ?? [];
+  const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantCatalogs(
+    period,
+    { search, status: statusFilter },
+    initialData,
+  );
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
+  useRouteScrollRestoration({
+    storageKey: 'seller-catalogs-landing',
+    scopeKey: 'fixed-90d',
+    ready: !isLoading,
+  });
   const groups: FilterBarGroup[] = [
     {
       key: 'status',
@@ -142,11 +135,42 @@ function CatalogsLandingContent({
   ];
 
   const catalogs = landingData?.catalogs ?? [];
+  const primaryDemandKind = landingData?.primary_demand_kind ?? 'orders';
+  const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
+
+  // Action lists derived client-side from the already-fetched campaign rows (no new SQL).
+  // Mirrors the 3 doc-starred Action options — each needs per-campaign views/view_pct/
+  // conversion_pct/days_left, which the landing "today's read" callouts don't carry.
+  const weakOpenCampaigns = useMemo(() => {
+    const MIN_AGE_DAYS = 3;
+    const now = Date.now();
+    return [...catalogs]
+      .filter((c) => c.status.label === 'Live' && (c.audience_count ?? 0) > 0
+        && (now - new Date(c.created_at).getTime()) / 86_400_000 >= MIN_AGE_DAYS)
+      .sort((a, b) => a.view_pct - b.view_pct)
+      .slice(0, 3);
+  }, [catalogs]);
+
+  const openedNoDemandCampaigns = useMemo(
+    () => [...catalogs]
+      .filter((c) => c.views > 0 && c.conversions === 0)
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 3),
+    [catalogs],
+  );
+
+  const expiringEngagedCampaigns = useMemo(() => {
+    const MAX_DAYS_LEFT = 14;
+    return [...catalogs]
+      .filter((c) => c.status.label === 'Live' && c.days_left != null && c.days_left <= MAX_DAYS_LEFT
+        && c.views > 0 && c.conversions === 0)
+      .sort((a, b) => (a.days_left ?? 0) - (b.days_left ?? 0))
+      .slice(0, 3);
+  }, [catalogs]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return catalogs
-      .filter((catalog) => {
+    const interimRows = isFetching !== false ? catalogs.filter((catalog) => {
         if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
         return statusFilter.some((value) => {
           if (value === 'Draft') return catalog.status.label === 'Draft';
@@ -155,14 +179,14 @@ function CatalogsLandingContent({
           if (value === 'Ended') return catalog.status.label === 'Ended';
           return false;
         });
-      })
-      .filter((catalog) => !query || catalog.name.toLowerCase().includes(query) || catalog.cohort_name.toLowerCase().includes(query))
+      }).filter((catalog) => !query || catalog.name.toLowerCase().includes(query)) : catalogs;
+    return interimRows
       .sort((a, b) => {
         if (sortBy === 'Recently published') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
+        if (sortBy === 'Demand value (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [catalogs, search, sortBy, statusFilter]);
+  }, [catalogs, isFetching, search, sortBy, statusFilter]);
 
   if (isLoading && !landingData) return <CatalogsLandingSkeleton />;
 
@@ -180,14 +204,14 @@ function CatalogsLandingContent({
 
   const tableColumns = [
     { label: 'Campaign', width: 280, minWidth: 260, className: 'px-5' },
-    { label: 'Target Buyers', width: 140, minWidth: 140, className: 'px-5' },
+    { label: 'Target Customers', width: 140, minWidth: 140, className: 'px-5' },
     { label: `Orders · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
     ...(estimatesEnabled
-      ? [{ label: `Estimates · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
+      ? [{ label: `Enquiries · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
       : []),
-    { label: `GMV · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
-    { label: 'Buyers · Viewed', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
-    { label: 'Buyers · Ordered', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
+    { label: `Demand value · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
+    { label: 'Customers opened', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
+    { label: 'Customers with demand', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
     { label: 'Status', minWidth: 180, className: 'px-5' },
     { width: 20, className: 'px-4' },
   ];
@@ -197,11 +221,8 @@ function CatalogsLandingContent({
       <PageHeader
         eyebrow="Growth"
         title="Campaigns"
-        subtitle="Targeted offers for your customer groups. Each campaign picks a product set, a price, and a group — then shares via WhatsApp."
+        subtitle={`${landingData.total ?? catalogs.length} campaigns · ${landingData.kpis.live_catalogs} live · ${landingData.kpis.scheduled_catalogs ?? 0} scheduled.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a campaign"
         onPrimaryClick={() => router.push('/campaigns/new')}
       />
@@ -218,25 +239,25 @@ function CatalogsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Live campaigns',
-            value: `${landingData.kpis.live_catalogs}`,
-            sub: `${landingData.kpis.draft_catalogs} in draft · ${landingData.kpis.expiring7d} ending in 7 days`,
+            label: 'Customers who opened campaigns',
+            value: '—',
+            sub: 'Needs backend — unique openers are not aggregated tenant-wide yet',
           },
           {
-            label: `GMV · ${metricSuffix}`,
+            label: 'Customers with campaign-linked demand',
+            value: '—',
+            sub: 'Needs backend — unique demand customers are not aggregated tenant-wide yet',
+          },
+          {
+            label: `Campaign-linked demand value · ${metricSuffix}`,
             value: formatCompactInr(landingData.kpis.gmv_mtd),
-            sub: `${landingData.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.gmv_growth_pct)}% vs last month`,
+            sub: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd} linked ${primaryDemandNoun}`,
             tone: 'accent',
           },
           {
-            label: 'Avg conversion',
+            label: primaryDemandKind === 'estimates' ? 'Open-to-enquiry rate' : 'Open-to-order rate',
             value: `${landingData.kpis.avg_conversion_pct}%`,
-            sub: 'opens → conversions',
-          },
-          {
-            label: 'Conversions attributed',
-            value: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd}`,
-            sub: lowerLabel,
+            sub: 'average across live campaigns',
           },
         ]}
       />
@@ -244,47 +265,56 @@ function CatalogsLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'weak_opens',
             kind: 'risk',
-            eyebrow: 'Needs attention',
-            hint: `${landingData.todays_read.needs_attention.length}`,
-            rows: landingData.todays_read.needs_attention.map((catalog) => ({
+            eyebrow: 'Live campaigns with weak opens',
+            hint: `${weakOpenCampaigns.length}`,
+            rows: weakOpenCampaigns.map((catalog) => ({
+              id: catalog.id,
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
-              reason: CatalogRowReason(catalog),
-              trailing: <StatusTag label={catalog.status.label} tone={catalog.status.tone} />,
+              reason: `${catalog.views} of ${catalog.audience_count ?? 0} customers opened`,
+              trailing: <StatusTag label={`${catalog.view_pct}% opened`} tone="warning" />,
             })),
+            getHref: (row) => `/campaigns/${row.id}`,
           },
           {
+            id: 'many_openers_no_demand',
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
-            rows: landingData.todays_read.top_performers.map((catalog) => ({
+            eyebrow: 'Many openers, no primary demand',
+            hint: `${openedNoDemandCampaigns.length}`,
+            rows: openedNoDemandCampaigns.map((catalog) => ({
+              id: catalog.id,
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
-              reason: `${catalog.cohort_name} · ${catalog.conversions} conversions · ${catalog.conversion_pct}% conv.`,
+              reason: `${catalog.views} opened · ${catalog.view_pct}% open rate · 0 ${primaryDemandNoun}`,
               trailing: formatCompactInr(catalog.gmv),
             })),
+            getHref: (row) => `/campaigns/${row.id}`,
           },
           {
+            id: 'expiring_engaged_non_buyers',
             kind: 'opportunity',
-            eyebrow: 'Top risers',
-            hint: 'fastest growth',
-            rows: landingData.todays_read.top_risers.map((catalog) => ({
+            eyebrow: 'Expiring with engaged non-buyers',
+            hint: `${expiringEngagedCampaigns.length}`,
+            rows: expiringEngagedCampaigns.map((catalog) => ({
+              id: catalog.id,
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
-              reason: `${catalog.cohort_name} · ${catalog.days_left != null ? `expires in ${catalog.days_left}d` : 'rolling validity'}`,
-              trailing: <GrowthPill value={catalog.growth_pct} />,
+              reason: `${catalog.view_pct}% open rate · expires ${catalog.valid_until_label}`,
+              trailing: <StatusTag label={`${catalog.days_left}d left`} tone="warning" />,
             })),
+            getHref: (row) => `/campaigns/${row.id}`,
           },
         ]}
       />
 
       <FilterBar
         count={`${filtered.length} campaigns`}
-        searchPlaceholder="Search campaign or customer group…"
+        searchPlaceholder="Search campaign…"
         chips={[]}
         activeChip=""
         sortBy={sortBy}
@@ -392,6 +422,7 @@ function CatalogsLandingContent({
           ))}
         </LandingTable>
       )}
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
         </>
       )}
     </PageWrap>
@@ -400,7 +431,7 @@ function CatalogsLandingContent({
 
 export function CatalogsLandingClient({
   initialData,
-  initialPeriod,
+  initialPeriod: _initialPeriod,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
@@ -409,7 +440,7 @@ export function CatalogsLandingClient({
 }) {
   return (
     <FeatureGate flag="CATALOG_PUBLISHING">
-      <CatalogsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CatalogsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

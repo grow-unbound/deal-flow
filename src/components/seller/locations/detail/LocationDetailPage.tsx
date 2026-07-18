@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -20,8 +19,8 @@ import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
 import { LocationActivityTab } from './LocationActivityTab';
 
-const LocationOverviewTab = dynamic(
-  () => import('./LocationOverviewTab').then((m) => m.LocationOverviewTab),
+const LocationPerformanceTab = dynamic(
+  () => import('./LocationPerformanceTab').then((m) => m.LocationPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
@@ -120,8 +119,6 @@ function LocationProfileStrip({
 }
 
 export function LocationDetailPage({ id }: LocationDetailPageProps) {
-  const router = useRouter();
-  void router;
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: locationsData } = useTenantLocations();
   const editingLocation = locationsData?.locations.find((l) => l.id === id) ?? null;
@@ -152,9 +149,16 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     { id: 'activity', label: 'Activity' },
   ];
 
+  const demandKindLabel =
+    meta.open_primary_demand_kind === 'orders'
+      ? 'Open order value'
+      : meta.open_primary_demand_kind === 'estimates'
+        ? 'Open estimate value'
+        : 'Open primary demand value';
+
   const tiles = [
     {
-      label: 'GMV · MTD',
+      label: 'Invoiced sales 90D',
       value: formatCompactInr(meta.gmv_mtd),
       sub: (
         <span className={meta.growth_pct >= 0 ? 'up' : 'down'}>
@@ -164,22 +168,25 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       ),
     },
     {
-      label: 'Unpaid invoices',
-      value: `${meta.unpaid_invoice_count}`,
-      sub: `of ${meta.total_invoice_count} total`,
-    },
-    {
-      label: 'Outstanding dues',
-      value: formatCompactInr(meta.outstanding_dues),
+      label: 'Overdue amount',
+      value: formatCompactInr(meta.overdue_amount),
       sub:
-        meta.outstanding_dues > 0 ? (
-          <span className="text-danger-600">across {meta.invoice_count} invoices</span>
+        meta.overdue_amount > 0 ? (
+          <span className="text-danger-600">across {meta.unpaid_invoice_count} invoices</span>
         ) : undefined,
     },
     {
-      label: 'Open estimates',
-      value: `${meta.open_estimate_count}`,
-      sub: `of ${meta.total_estimate_count} this period`,
+      label: 'Customers who purchased here',
+      value: `${meta.purchasing_customers_90d}`,
+      sub: 'local market activity, last 90 days',
+    },
+    {
+      label: demandKindLabel,
+      value: meta.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(meta.open_primary_demand_value),
+      sub:
+        meta.open_primary_demand_kind === 'none'
+          ? 'Enable Estimates or Sales Orders'
+          : `${meta.open_primary_demand_count} open · current`,
     },
   ];
 
@@ -213,7 +220,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
       <LocationProfileStrip phoneNumber={data.phone_number} status={data.status} users={data.associated_users} />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={tabs}
@@ -221,7 +228,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'performance' ? <LocationOverviewTab data={data.overview} /> : null}
+      {tab === 'performance' ? (
+        <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
       {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}
       {tab === 'invoices' ? <LocationInvoicesTab rows={data.invoices} /> : null}

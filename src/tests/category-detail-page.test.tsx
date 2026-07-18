@@ -84,8 +84,8 @@ describe('category detail page', () => {
 
     render(<CategoryDetailPage id="cat-1" />);
 
-    expect(screen.getByRole('button', { name: 'Performance' })).toHaveClass('border-teal-500');
-    expect(screen.queryByRole('button', { name: 'Overview' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Performance' })).toHaveClass('border-ember-500');
+    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
     expect(screen.getByText('Revenue trend')).toBeInTheDocument();
   });
 });

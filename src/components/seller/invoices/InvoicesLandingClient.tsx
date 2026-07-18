@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Receipt } from 'lucide-react';
@@ -12,7 +12,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
@@ -27,23 +26,43 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
-import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
+import { formatCompactInr, formatDate } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first';
 const SORT_OPTIONS: SortOption[] = ['Recent first'];
 
+function matchesInvoiceSearch(invoice: TenantInvoicesResponse['invoices'][number], query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    invoice.invoice_number,
+    invoice.buyer_name,
+    invoice.location_name,
+    invoice.source_label,
+    invoice.campaign_name ?? null,
+    invoice.place_of_supply ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
 function buyerGeographyLabel(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_city' | 'buyer_state'>) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
 }
 
-function mapRowToCallout(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
+function mapRowToCallout(row: { id: string; buyer_initials: string; buyer_hue: TenantInvoicesResponse['invoices'][number]['buyer_hue']; buyer_name: string }) {
   return {
+    id: row.id,
     initials: row.buyer_initials,
     hue: row.buyer_hue,
     name: row.buyer_name,
   };
+}
+
+function invoiceSupportText(row: Pick<TenantInvoicesResponse['invoices'][number], 'invoice_number' | 'due_date'>) {
+  return `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`;
 }
 
 function InvoicesLoadingSkeleton() {
@@ -100,7 +119,6 @@ function InvoicesLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const metricSuffix = sellerLandingMetricSuffix(period);
   const summaryQuery = useTenantInvoices(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
@@ -126,9 +144,13 @@ function InvoicesLandingContent({
   const sortBy = routeState.sortBy;
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -149,19 +171,51 @@ function InvoicesLandingContent({
   // Client-side sort only (server returns DESC by invoice_date)
   const filteredRows = useMemo(() => {
     void sortBy; // acknowledged — only one sort option currently
-    return allInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [allInvoices, sortBy]);
+    return [...allInvoices]
+      .filter((invoice) => {
+        if (!matchesInvoiceSearch(invoice, search)) {
+          return false;
+        }
 
-  const retainedRows = useRetainedValue(filteredRows.length > 0 ? filteredRows : null);
-  const displayRows = filteredRows.length > 0 ? filteredRows : (retainedRows ?? []);
+        if (filters.source.length > 0 && !filters.source.includes(invoice.source_label)) {
+          return false;
+        }
+
+        if (filters.status.length > 0 && !filters.status.includes(invoice.status.filter_chip)) {
+          return false;
+        }
+
+        if (filters.location_id.length > 0 && (!invoice.location_id || !filters.location_id.includes(invoice.location_id))) {
+          return false;
+        }
+
+        if (
+          filters.due.length > 0 &&
+          !filters.due.some((value) => {
+            if (value === 'Overdue') return invoice.status.filter_chip === 'Overdue';
+            if (value === 'Due') return invoice.outstanding_amount > 0 && invoice.status.filter_chip !== 'Overdue';
+            return false;
+          })
+        ) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [allInvoices, filters.due, filters.location_id, filters.source, filters.status, search, sortBy]);
+
+  const displayRows = filteredRows;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
     if (!kpis) {
       return `Track receivables and collections ${lowerLabel}.`;
     }
-    return `${kpis.invoices_this_period} invoices ${lowerLabel} with ${formatCompactInr(kpis.gmv_this_period)} GMV. ${kpis.outstanding_count} still due and ${kpis.overdue_count} overdue.`;
-  }, [lowerLabel, summaryData?.kpis]);
+    return `${kpis.invoices_this_period} invoices in ${horizonLabel.toLowerCase()}.`;
+  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
+  const pulseAggregates = summaryData?.pulse_aggregates;
 
   if (isLoading && !data) return <InvoicesLandingSkeleton />;
 
@@ -176,16 +230,25 @@ function InvoicesLandingContent({
   if (!data) return <InvoicesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
-    key: group.key,
-    label: group.label,
-    options: group.options,
-    values: filters[group.key as keyof typeof filters] ?? [],
-    onChange: (values) => setRouteState((current) => ({
-      ...current,
-      filters: { ...(current.filters ?? filters), [group.key]: values },
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'period',
+      label: 'Period',
+      options,
+      values: [period],
+      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+    },
+    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+      key: group.key,
+      label: group.label,
+      options: group.options,
+      values: filters[group.key as keyof typeof filters] ?? [],
+      onChange: (values: string[]) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), [group.key]: values },
+      })),
     })),
-  }));
+  ];
 
   return (
     <PageWrap className="max-w-[1920px]">
@@ -194,9 +257,7 @@ function InvoicesLandingContent({
         title="Invoices"
         subtitle={subtitle}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
+        showHorizonControl={false}
         primary={createInvoices ? 'Add an invoice' : undefined}
         onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
       />
@@ -208,26 +269,26 @@ function InvoicesLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: `Invoices · ${metricSuffix}`,
-                value: `${kpis?.invoices_this_period ?? '—'}`,
-                sub: kpis ? `${kpis.invoices_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis.invoices_growth_pct)}% vs last period` : '',
+                label: 'Invoiced sales',
+                value: formatCompactInr(kpis?.gmv_this_period ?? 0),
+                sub: `${kpis?.invoices_this_period ?? 0} invoices this period`,
               },
               {
-                label: 'GMV',
-                value: formatCompactInr(kpis?.gmv_this_period ?? 0),
-                sub: `AOV ${formatCompactInr(kpis?.aov ?? 0)}`,
+                label: 'Outstanding amount',
+                value: formatCompactInr(kpis?.outstanding_sum ?? 0),
+                sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
                 tone: 'accent',
               },
               {
-                label: 'Outstanding',
-                value: formatCompactInr(kpis?.outstanding_sum ?? 0),
-                sub: `${kpis?.outstanding_count ?? 0} invoice${(kpis?.outstanding_count ?? 0) === 1 ? '' : 's'} due`,
+                label: 'Overdue amount',
+                value: formatCompactInr(kpis?.overdue_sum ?? 0),
+                sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
+                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Overdue',
-                value: formatCompactInr(kpis?.overdue_sum ?? 0),
-                sub: `${kpis?.overdue_count ?? 0} invoice${(kpis?.overdue_count ?? 0) === 1 ? '' : 's'} overdue`,
-                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
+                label: 'Due in 7 days',
+                value: formatCompactInr(pulseAggregates?.due_soon_sum ?? 0),
+                sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
               },
             ]}
           />
@@ -235,47 +296,47 @@ function InvoicesLandingContent({
           <V3CalloutPanel
             items={[
               {
+                id: 'largest_overdue',
                 kind: 'risk',
-                eyebrow: 'Needs Attention',
-                hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
+                eyebrow: 'Largest overdue balances',
+                hint: `${kpis?.overdue_count ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.largest_overdue ?? []).map((row) => ({
                   ...mapRowToCallout(row),
-                  reason: `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`,
-                  trailing: (
-                    <span className="inline-flex font-sans">
-                      <StatusTag label={row.effective === 'overdue' ? 'Overdue' : 'Sent'} tone={row.effective === 'overdue' ? 'danger' : 'warning'} />
-                    </span>
-                  ),
+                  reason: invoiceSupportText(row),
+                  trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
               {
+                id: 'due_soon',
                 kind: 'info',
-                eyebrow: 'Top Spenders',
-                hint: `${summaryData?.todays_read?.top_spenders?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.top_spenders ?? []).map((row) => ({
+                eyebrow: 'High-value invoices due soon',
+                hint: `${pulseAggregates?.due_soon_count ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.due_soon ?? []).map((row) => ({
                   ...mapRowToCallout(row),
-                  reason: `${row.invoice_number} · ${row.items_count} items`,
-                  trailing: formatCompactInr(row.total_amount),
+                  reason: invoiceSupportText(row),
+                  trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
               {
+                id: 'newly_overdue',
                 kind: 'opportunity',
-                eyebrow: 'Top Risers',
-                hint: `${summaryData?.todays_read?.top_risers?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
-                  initials: row.buyer_initials,
-                  hue: row.buyer_hue,
-                  name: row.buyer_name,
-                  reason: `${buyerGeographyLabel(row)} · +${formatCompactInr(row.delta_gmv)} vs last period`,
-                  trailing: formatCompactInr(row.current_gmv),
+                eyebrow: 'Newly overdue invoices',
+                hint: `${summaryData?.todays_read?.newly_overdue?.length ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.newly_overdue ?? []).map((row) => ({
+                  ...mapRowToCallout(row),
+                  reason: invoiceSupportText(row),
+                  trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
             ]}
           />
 
             <FilterBar
-              count={`${displayRows.length} of ${total} invoices`}
-              searchPlaceholder="Search invoice number, buyer, geography…"
+              count={`${displayRows.length} of ${total} invoices${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search invoice number…"
               chips={[]}
               activeChip=""
               sortBy={sortBy}
@@ -288,7 +349,9 @@ function InvoicesLandingContent({
             />
 
           <div className="overflow-x-auto">
-            {displayRows.length === 0 && !isLoading ? (
+            {showTableSkeleton ? (
+              <InvoicesDataSkeleton />
+            ) : displayRows.length === 0 ? (
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
                 heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
@@ -327,7 +390,8 @@ function InvoicesLandingContent({
                   campaign_name: row.campaign_name,
                   items_count: row.items_count,
                   total_amount: row.total_amount,
-                  amount_subtext: row.outstanding_amount > 0 ? `${formatInr(row.outstanding_amount)} due` : null,
+                  outstanding_amount: row.outstanding_amount,
+                  amount_subtext: null,
                   status_label: row.status.label,
                   status_tone: row.status.tone,
                   created_at: row.created_at,
