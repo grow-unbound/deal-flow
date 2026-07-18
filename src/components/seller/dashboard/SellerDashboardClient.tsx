@@ -1,27 +1,39 @@
 'use client';
 
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useSellerDashboard } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import {
-  EntityAvatar,
   InsightStrip4,
   PageHeader,
   PageWrap,
+  SeeAllSheet,
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { PerformanceCard } from '@/components/seller/detail';
+import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
-import { formatCompactInr, formatInr } from '@/lib/utils';
+import { formatCurrency, formatMetricValue } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import type { SellerDashboardFeed, SellerDashboardResponse } from '@/types/seller-dashboard';
+import type {
+  SellerDashboardBusinessFlowMeta,
+  SellerDashboardCustomerActivityMeta,
+  SellerDashboardFeed,
+  SellerDashboardLocationComparisonEntry,
+  SellerDashboardMixEntry,
+  SellerDashboardResponse,
+  SellerDashboardSalesMixMeta,
+} from '@/types/seller-dashboard';
+
+type SalesMixDimension = 'brand' | 'category' | 'location';
+const DASHBOARD_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
 function DashboardDataSkeleton() {
   return (
@@ -44,61 +56,37 @@ function DashboardDataSkeleton() {
   );
 }
 
-function formatMetricValue(label: string, value: number) {
-  if (label.includes('GMV') || label.includes('invoice') || label.includes('Spend')) {
-    return formatCompactInr(value);
-  }
-  return String(value);
-}
-
-function formatMetricDelta(delta?: number, deltaLabel?: string) {
-  if (typeof delta !== 'number') return deltaLabel ?? '';
-  const prefix = delta > 0 ? '+' : '';
-  return `${prefix}${delta}${deltaLabel ? ` ${deltaLabel}` : ''}`.trim();
-}
-
 function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   return (
-    <section className="rounded-[14px] border border-cream-300 bg-white">
-      <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
-        <div>
-          <h2 className="text-md font-semibold text-cream-900">{feed.title}</h2>
-          <p className="text-sm text-cream-600">Latest 5 by recent activity</p>
-        </div>
+    <PerformanceCard
+      title={feed.title}
+      subtitle="Latest 5 by recent activity"
+      actions={(
         <Link href={feed.href} className="text-sm font-semibold text-teal-700 no-underline">
           View all
         </Link>
-      </div>
-      <div className="p-5">
-        {feed.rows.length === 0 ? (
-          <p className="text-sm text-cream-600">{feed.empty_label}</p>
-        ) : (
-          <div className="space-y-3">
-            {feed.rows.map((row) => (
-              <Link
-                key={row.id}
-                href={row.href}
-                onClick={() => markSeen(row.id)}
-                className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 text-left no-underline transition hover:border-cream-300 hover:bg-cream-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
-                    <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
-                    {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
-                  </div>
-                  <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
-                  <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-sm font-semibold text-cream-900">{formatInr(row.amount)}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+      bodyClassName="p-0"
+    >
+      <RankedList
+        items={feed.rows.map((row) => ({
+          id: row.id,
+          label: row.customer_name,
+          meta: row.document_number,
+          value: formatCurrency(row.amount, { compactFractionDigits: 2 }),
+          supporting: (
+            <span className="inline-flex items-center gap-2">
+              <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
+              <span>{formatTimeAgoLabel(row.updated_at)}</span>
+              {newEntityIds.has(row.id) ? <RealtimeBadge type="new" /> : null}
+            </span>
+          ),
+          initials: row.customer_name.slice(0, 2).toUpperCase(),
+        }))}
+        emptyTitle={feed.empty_label}
+        emptyDescription="New documents will appear here as your team works."
+      />
+    </PerformanceCard>
   );
 }
 
@@ -112,9 +100,164 @@ function formatTimeAgoLabel(iso: string) {
   return `Updated ${new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
 }
 
+function exploreMeta(data: SellerDashboardResponse, id: string): Record<string, unknown> {
+  const item = data.portfolio?.explore?.find((entry) => entry.id === id);
+  return (item?.meta as Record<string, unknown> | undefined) ?? {};
+}
+
+function businessFlowMeta(data: SellerDashboardResponse): SellerDashboardBusinessFlowMeta {
+  return exploreMeta(data, 'business_flow') as SellerDashboardBusinessFlowMeta;
+}
+
+function salesMixMeta(data: SellerDashboardResponse): SellerDashboardSalesMixMeta {
+  return exploreMeta(data, 'sales_mix') as SellerDashboardSalesMixMeta;
+}
+
+function customerActivityMeta(data: SellerDashboardResponse): SellerDashboardCustomerActivityMeta {
+  return exploreMeta(data, 'customer_activity') as SellerDashboardCustomerActivityMeta;
+}
+
+function locationComparisonMeta(data: SellerDashboardResponse): SellerDashboardLocationComparisonEntry[] {
+  const meta = exploreMeta(data, 'location_comparison');
+  return (Array.isArray(meta.locations) ? meta.locations : []) as SellerDashboardLocationComparisonEntry[];
+}
+
+function normalizeMixEntries(entries: SellerDashboardMixEntry[]) {
+  const visibleEntries = entries
+    .map((entry) => ({
+      ...entry,
+      value: Number(entry.value ?? 0),
+    }))
+    .filter((entry) => Number.isFinite(entry.value) && entry.value >= 0)
+  const total = visibleEntries.reduce((sum, entry) => sum + entry.value, 0);
+
+  return {
+    items: visibleEntries.map((entry) => ({
+      id: entry.id,
+      label: entry.name,
+      pct: total > 0 ? Number(((entry.value / total) * 100).toFixed(1)) : 0,
+      value: formatCurrency(entry.value, { compactFractionDigits: 2 }),
+    })),
+    total,
+  };
+}
+
+function salesMixItems(meta: SellerDashboardSalesMixMeta, locationEntries: SellerDashboardLocationComparisonEntry[], dimension: SalesMixDimension) {
+  if (dimension === 'brand') {
+    return normalizeMixEntries(Array.isArray(meta.brands) ? meta.brands : []);
+  }
+  if (dimension === 'category') {
+    return normalizeMixEntries(Array.isArray(meta.categories) ? meta.categories : []);
+  }
+  return normalizeMixEntries(
+    locationEntries.map((entry) => ({
+      id: entry.location_id,
+      name: entry.name,
+      value: Number(entry.invoiced_sales_90d ?? 0),
+    })),
+  );
+}
+
+function ScrollCardBody({ children }: { children: ReactNode }) {
+  const [scrollActive, setScrollActive] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current != null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        DASHBOARD_SCROLL_CARD_HEIGHT,
+        'dashboard-vscroll overflow-y-auto',
+        scrollActive && 'dashboard-vscroll--active',
+      )}
+      onScroll={() => {
+        setScrollActive(true);
+        if (resetTimerRef.current != null) {
+          window.clearTimeout(resetTimerRef.current);
+        }
+        resetTimerRef.current = window.setTimeout(() => {
+          setScrollActive(false);
+          resetTimerRef.current = null;
+        }, 900);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   const admin = data.admin;
+  const [salesMixDimension, setSalesMixDimension] = useState<SalesMixDimension>('brand');
+  const [salesMixSheetOpen, setSalesMixSheetOpen] = useState(false);
+  const [locationComparisonSheetOpen, setLocationComparisonSheetOpen] = useState(false);
+  const [recentActivitySheetOpen, setRecentActivitySheetOpen] = useState(false);
   if (!admin) return null;
+
+  const businessFlow = businessFlowMeta(data);
+  const salesMix = salesMixMeta(data);
+  const customerActivity = customerActivityMeta(data);
+  const locationComparison = locationComparisonMeta(data);
+
+  const businessFlowTiles = [
+    {
+      label: 'Invoiced sales',
+      value: formatCurrency(Number(businessFlow.invoice_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      sub: `${Number(businessFlow.invoice_count_this_month ?? 0)} invoice${Number(businessFlow.invoice_count_this_month ?? 0) === 1 ? '' : 's'}`,
+    },
+    businessFlow.orders_enabled ? {
+      label: 'Order value',
+      value: formatCurrency(Number(businessFlow.order_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      sub: `${Number(businessFlow.order_count_this_month ?? 0)} orders`,
+    } : null,
+    businessFlow.estimates_enabled ? {
+      label: 'Estimate value',
+      value: formatCurrency(Number(businessFlow.estimate_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      sub: `${Number(businessFlow.estimate_count_this_month ?? 0)} estimates`,
+    } : null,
+  ].filter((tile): tile is NonNullable<typeof tile> => tile !== null);
+
+  const mixResult = salesMixItems(salesMix, locationComparison, salesMixDimension);
+  const locationComparisonItems = locationComparison.map((location) => ({
+    id: location.location_id,
+    label: location.name,
+    meta: (
+      <span>
+        Open primary demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })} · Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}
+      </span>
+    ),
+    metaClassName: 'text-sm text-cream-600',
+    value: formatCurrency(Number(location.invoiced_sales_90d ?? 0), { compactFractionDigits: 2 }),
+    valueSupporting: 'Invoiced sales',
+    initials: location.name.slice(0, 2).toUpperCase(),
+    hue: 'teal' as const,
+  }));
+  const recentActivityItems = admin.recent_activity.map((row) => ({
+    id: row.id,
+    label: (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate">{row.customer_name}</span>
+        <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
+      </div>
+    ),
+    meta: (
+      <span>
+        {row.document_number} · {formatTimeAgoLabel(row.updated_at)}
+      </span>
+    ),
+    metaClassName: 'text-xs text-cream-700',
+    value: formatCurrency(row.amount, { compactFractionDigits: 2 }),
+    valueSupporting: newEntityIds.has(row.id) ? <RealtimeBadge type="new" /> : null,
+    initials: row.customer_name.slice(0, 2).toUpperCase(),
+  }));
+  const salesMixSubtitle = `Invoiced sales by ${salesMixDimension}, last 90 days`;
 
   return (
     <>
@@ -123,15 +266,40 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
           label: metric.label,
           value: formatMetricValue(metric.label, metric.value),
           sub: metric.sub,
-          delta: formatMetricDelta(metric.delta, metric.delta_label),
-          deltaTone: typeof metric.delta === 'number' ? (metric.delta >= 0 ? 'up' : 'down') : undefined,
           tone: metric.tone,
         }))}
       />
       <V3CalloutPanel
         items={admin.callouts.map((item) => ({
           ...item,
+          loadRows: () => loadCalloutRows<SellerDashboardResponse, {
+            id: string;
+            href?: string;
+            initials: string;
+            hue: typeof item.rows[number]['hue'];
+            name: string;
+            reason: string;
+            trailing: string;
+          }>(
+            `/api/tenant/dashboard?callout=${encodeURIComponent(item.id)}`,
+            async (payload) => {
+              const section = payload.admin?.callouts ?? [];
+              const matched = section.find((entry) => entry.id === item.id);
+              return (matched?.rows ?? []).map((row) => ({
+                id: row.id,
+                href: row.href,
+                initials: row.initials,
+                hue: row.hue,
+                name: row.name,
+                reason: row.reason,
+                trailing: row.trailing,
+              }));
+            },
+          ),
+          getHref: (row) => item.rows.find((source) => source.id === row.id)?.href ?? '',
           rows: item.rows.map((row) => ({
+            id: row.id,
+            href: row.href,
             initials: row.initials,
             hue: row.hue,
             name: row.name,
@@ -141,71 +309,189 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         }))}
       />
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <PerformanceCard
-          title="Brand performance"
-          subtitle="Revenue share for the selected period"
+        <DetailCardRenderer
+          card={{
+            id: 'dashboard-business-flow',
+            representation: 'posture',
+            title: 'Business flow',
+            subtitle: 'This month',
+            body: {
+              tiles: businessFlowTiles,
+              showSupportingText: true,
+            },
+          }}
+        />
+        <DetailCardRenderer
+          card={{
+            id: 'dashboard-customer-activity',
+            representation: 'posture',
+            title: 'Customer activity',
+            subtitle: 'Last 90 days',
+            body: {
+              tiles: [
+                { label: 'Purchasing', value: formatMetricValue('customers', Number(customerActivity.purchasing_customers_90d ?? 0)) },
+                { label: 'Repeat', value: formatMetricValue('customers', Number(customerActivity.repeat_customers_90d ?? 0)) },
+                { label: 'Inactive', value: formatMetricValue('customers', Number(customerActivity.inactive_customers_90d ?? 0)), tone: Number(customerActivity.inactive_customers_90d ?? 0) > 0 ? 'warn' : undefined },
+                { label: 'Overdue', value: formatMetricValue('customers', Number(customerActivity.overdue_customers_now ?? 0)), tone: Number(customerActivity.overdue_customers_now ?? 0) > 0 ? 'warn' : undefined },
+              ],
+              columns: 'two-by-two',
+            },
+          }}
+        />
+        <DetailCardRenderer
+          bodyClassName={cn(DASHBOARD_SCROLL_CARD_HEIGHT, 'dashboard-vscroll overflow-y-auto p-0')}
           actions={(
-            <Link href="/brands" className="text-sm font-semibold text-teal-700 no-underline">
-              All brands
-            </Link>
-          )}
-          bodyClassName="p-5"
-        >
-          <div className="space-y-3">
-            {admin.top_brands.length === 0 ? (
-              <p className="text-sm text-cream-600">No brand data yet.</p>
-            ) : (
-              admin.top_brands.map((brand) => (
-                <div key={brand.id} className="flex items-center gap-3">
-                  <EntityAvatar initials={brand.initials} hue={brand.hue} size={38} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
-                      <p className="text-sm font-medium text-cream-700">{brand.trend_label}</p>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
-                      <div className="h-full rounded-full bg-teal-500" style={{ width: `${brand.pct}%` }} />
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </PerformanceCard>
-        <section className="rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
-            <div>
-              <h2 className="text-md font-semibold text-cream-900">Recent activity</h2>
-              <p className="text-sm text-cream-600">Latest estimates, orders, and invoices</p>
+            <div className="flex items-center gap-3">
+              <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
+                {[
+                  { id: 'brand' as const, label: 'Brand' },
+                  { id: 'category' as const, label: 'Category' },
+                  { id: 'location' as const, label: 'Location' },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSalesMixDimension(option.id)}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-sm font-semibold transition',
+                      salesMixDimension === option.id
+                        ? 'bg-white text-teal-700 shadow-sm'
+                        : 'text-cream-700 hover:text-cream-900',
+                    )}
+                    aria-pressed={salesMixDimension === option.id}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="text-sm font-semibold text-teal-700 no-underline"
+                onClick={() => setSalesMixSheetOpen(true)}
+              >
+                See all
+              </button>
             </div>
-          </div>
-          <div className="space-y-3 p-5">
-            {admin.recent_activity.length === 0 ? (
-              <p className="text-sm text-cream-600">No recent activity yet.</p>
-            ) : (
-              admin.recent_activity.map((row) => (
-                <Link
-                  key={row.id}
-                  href={row.href}
-                  onClick={() => markSeen(row.id)}
-                  className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 no-underline transition hover:border-cream-300 hover:bg-cream-50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
-                      <StatusTag label={row.status.label} tone={row.status.tone} />
-                      {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
-                    </div>
-                    <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
-                    <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
-                  </div>
-                  <p className="shrink-0 text-sm font-semibold text-cream-900">{formatInr(row.amount)}</p>
-                </Link>
-              ))
-            )}
-          </div>
-        </section>
+          )}
+          card={{
+            id: 'dashboard-sales-mix',
+            representation: 'mix',
+            title: 'Sales mix',
+            subtitle: salesMixSubtitle,
+            body: {
+              items: mixResult.items,
+              emptyTitle: `No ${salesMixDimension} data yet`,
+              emptyDescription: 'Revenue share will appear here once invoiced sales are available for this view.',
+              mode: 'mix',
+            },
+          }}
+        />
+        <PerformanceCard
+          title="Location comparison"
+          subtitle="Invoiced sales, open primary demand, and overdue by location"
+          bodyClassName="p-0"
+          actions={(
+            <button
+              type="button"
+              className="text-sm font-semibold text-teal-700 no-underline"
+              onClick={() => setLocationComparisonSheetOpen(true)}
+            >
+              See all
+            </button>
+          )}
+        >
+          <ScrollCardBody>
+            <RankedList
+              items={locationComparisonItems}
+              emptyTitle="No location metrics yet"
+              emptyDescription="Location comparisons will appear once location-level invoiced sales are available."
+            />
+          </ScrollCardBody>
+        </PerformanceCard>
+        <PerformanceCard
+          title="Recent activity"
+          subtitle="Latest estimates, orders, and invoices"
+          bodyClassName="p-0"
+          actions={(
+            <button
+              type="button"
+              className="text-sm font-semibold text-teal-700 no-underline"
+              onClick={() => setRecentActivitySheetOpen(true)}
+            >
+              See all
+            </button>
+          )}
+        >
+          <ScrollCardBody>
+            <RankedList
+              items={recentActivityItems}
+              emptyTitle="No recent activity yet"
+              emptyDescription="The latest commercial documents will show up here."
+            />
+          </ScrollCardBody>
+        </PerformanceCard>
       </div>
+      <SeeAllSheet
+        open={salesMixSheetOpen}
+        onOpenChange={setSalesMixSheetOpen}
+        title="Sales mix"
+        subtitle={salesMixSubtitle}
+        columns={[
+          { label: salesMixDimension === 'brand' ? 'Brand' : salesMixDimension === 'category' ? 'Category' : 'Location' },
+          { label: 'Share', align: 'right', width: 90 },
+          { label: 'Sales', align: 'right', width: 120 },
+        ]}
+        items={mixResult.items}
+        renderRow={(item) => (
+          <tr key={item.id} className="border-b border-cream-200 last:border-b-0">
+            <td className="px-5 py-4 text-sm font-medium text-cream-900">{item.label}</td>
+            <td className="px-5 py-4 text-right text-sm text-cream-700">{item.pct}%</td>
+            <td className="px-5 py-4 text-right text-sm text-cream-900">{item.value}</td>
+          </tr>
+        )}
+      />
+      <SeeAllSheet
+        open={locationComparisonSheetOpen}
+        onOpenChange={setLocationComparisonSheetOpen}
+        title="Location comparison"
+        subtitle="Invoiced sales, open primary demand, and overdue by location"
+        columns={[
+          { label: 'Location' },
+          { label: 'Summary', width: '55%' },
+        ]}
+        items={locationComparison}
+        renderRow={(location) => (
+          <tr key={location.location_id} className="border-b border-cream-200 last:border-b-0">
+            <td className="px-5 py-4 text-sm font-medium text-cream-900">{location.name}</td>
+            <td className="px-5 py-4 text-sm text-cream-700">
+              <div>Invoiced {formatCurrency(Number(location.invoiced_sales_90d ?? 0), { compactFractionDigits: 2 })}</div>
+              <div>Open primary demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })}</div>
+              <div>Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}</div>
+            </td>
+          </tr>
+        )}
+      />
+      <SeeAllSheet
+        open={recentActivitySheetOpen}
+        onOpenChange={setRecentActivitySheetOpen}
+        title="Recent activity"
+        subtitle="Latest estimates, orders, and invoices"
+        columns={[
+          { label: 'Customer' },
+          { label: 'Document', width: 100 },
+          { label: 'Status', width: 100 },
+          { label: 'Amount', align: 'right', width: 100 },
+        ]}
+        items={admin.recent_activity}
+        renderRow={(row) => (
+          <tr key={row.id} className="border-b border-cream-200 last:border-b-0">
+            <td className="px-5 py-4 text-sm font-medium text-cream-900">{row.customer_name}</td>
+            <td className="px-5 py-4 text-sm text-cream-700">{row.document_number}</td>
+            <td className="px-5 py-4 text-sm text-cream-700">{row.status.label}</td>
+            <td className="px-5 py-4 text-right text-sm text-cream-900">{formatCurrency(row.amount, { compactFractionDigits: 2 })}</td>
+          </tr>
+        )}
+      />
     </>
   );
 }
@@ -227,7 +513,33 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
       <V3CalloutPanel
         items={assistant.callouts.map((item) => ({
           ...item,
+          loadRows: () => loadCalloutRows<SellerDashboardResponse, {
+            id: string;
+            href?: string;
+            initials: string;
+            hue: typeof item.rows[number]['hue'];
+            name: string;
+            reason: string;
+            trailing: string;
+          }>(
+            `/api/tenant/dashboard?callout=${encodeURIComponent(item.id)}`,
+            async (payload) => {
+              const section = payload.assistant?.callouts ?? [];
+              const matched = section.find((entry) => entry.id === item.id);
+              return (matched?.rows ?? []).map((row) => ({
+                id: row.id,
+                href: row.href,
+                initials: row.initials,
+                hue: row.hue,
+                name: row.name,
+                reason: row.reason,
+                trailing: row.trailing,
+              }));
+            },
+          ),
           rows: item.rows.map((row) => ({
+            id: row.id,
+            href: row.href,
             initials: row.initials,
             hue: row.hue,
             name: row.name,
@@ -252,7 +564,8 @@ export function SellerDashboardClient({
   initialData: SellerDashboardResponse | null;
   initialPeriod: SellerLandingPeriod;
 }) {
-  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const period = initialPeriod;
+  const horizonLabel = 'This Month';
   const { data, isLoading, isError } = useSellerDashboard(period, initialData);
   const retainedData = useRetainedValue(data);
   const dashboard = data ?? retainedData;
@@ -275,8 +588,8 @@ export function SellerDashboardClient({
   }
 
   const subtitle = dashboard.role === 'seller_admin'
-    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'}. Orders, catalogs, inventory, and transaction flow for ${horizonLabel.toLowerCase()}.`
-    : `Action centre for ${dashboard.tenant.location_names.length > 0 ? dashboard.tenant.location_names.join(', ') : 'your assigned locations'}. Focus on confirmations, collections, and follow-ups for ${horizonLabel.toLowerCase()}.`;
+    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'} · this month’s sales and current operations.`
+    : `Action centre for ${dashboard.tenant.location_names.length > 0 ? dashboard.tenant.location_names.join(', ') : 'your assigned locations'} · confirmations, collections, and follow-ups right now.`;
 
   return (
     <PageWrap>
@@ -285,9 +598,6 @@ export function SellerDashboardClient({
         title="Dashboard"
         subtitle={subtitle}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
       />
 
       {isLoading && !data ? <DashboardSkeleton /> : (

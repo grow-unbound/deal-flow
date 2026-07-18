@@ -13,6 +13,68 @@ type QueryResult = {
 };
 
 const dbResponses: Record<string, QueryResult[]> = {};
+const productRpcRows = [
+  {
+    id: 'product-active',
+    tenant_id: 'tenant-1',
+    tenant_brand_id: 'brand-active',
+    tenant_category_id: 'category-active',
+    master_product_id: null,
+    internal_sku: 'SKU-A',
+    name_override: 'Active Product',
+    mrp: 100,
+    base_selling_price: 80,
+    cost_price: 60,
+    default_uom: 'pcs',
+    pack_size: 1,
+    image_urls: [],
+    is_active: true,
+    external_ref: null,
+    created_at: '2026-06-20T00:00:00Z',
+    updated_at: '2026-06-20T00:00:00Z',
+    master_product: null,
+    display_name: 'Active Product',
+    brand_name: 'Brand Active',
+    category_name: 'Category Active',
+    on_hand: 5,
+    days_cover: null,
+    units_mtd: 4,
+    gmv_mtd: 320,
+    growth_pct: 100,
+    status_label: 'Insufficient velocity',
+    status_tone: 'neutral',
+  },
+  {
+    id: 'product-inactive',
+    tenant_id: 'tenant-1',
+    tenant_brand_id: 'brand-inactive',
+    tenant_category_id: 'category-inactive',
+    master_product_id: null,
+    internal_sku: 'SKU-I',
+    name_override: 'Inactive Product',
+    mrp: 120,
+    base_selling_price: 90,
+    cost_price: 70,
+    default_uom: 'pcs',
+    pack_size: 1,
+    image_urls: [],
+    is_active: false,
+    external_ref: null,
+    created_at: '2026-06-19T00:00:00Z',
+    updated_at: '2026-06-19T00:00:00Z',
+    master_product: null,
+    display_name: 'Inactive Product',
+    brand_name: 'Brand Inactive',
+    category_name: 'Category Inactive',
+    on_hand: 0,
+    days_cover: 0,
+    units_mtd: 0,
+    gmv_mtd: 0,
+    growth_pct: 0,
+    status_label: 'Out of stock',
+    status_tone: 'danger',
+  },
+];
 
 function nextResult(key: string): QueryResult {
   const queue = dbResponses[key] ?? [];
@@ -54,10 +116,57 @@ function createQuery(key: string) {
   return query;
 }
 
+const fromMock = vi.fn((schemaName: string, tableName: string) => ({
+  select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
+}));
+const rpcMock = vi.fn(async (name: string, args?: { p_statuses?: string[] | null }) => {
+  if (name !== 'metrics_v2_products_landing') return { data: null, error: null };
+  const statuses = args?.p_statuses ?? [];
+  const products = productRpcRows.filter((row) => {
+    if (statuses.length === 0) return true;
+    return statuses.some((status) => (status === 'Active' ? row.is_active : !row.is_active));
+  });
+  return {
+    data: {
+      as_of: '2026-07-16T00:00:00.000Z',
+      table_period_owner: 'none',
+      headline_period: 'trailing_90_days',
+      action_period: 'now',
+      commercial_horizon_days: 90,
+      products,
+      total: products.length,
+      nextCursor: null,
+      filters: {
+        groups: [
+          { key: 'brand', label: 'Brand', options: [{ value: 'Brand Active', label: 'Brand Active' }] },
+          { key: 'category', label: 'Category', options: [{ value: 'Category Active', label: 'Category Active' }] },
+          { key: 'status', label: 'Status', options: [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }] },
+          { key: 'stock', label: 'Stock', options: [{ value: 'In stock', label: 'In stock' }, { value: 'Low stock', label: 'Low stock' }, { value: 'Out of stock', label: 'Out of stock' }] },
+        ],
+      },
+      kpis: {
+        total_skus: 2,
+        active_skus: 1,
+        archived_skus: 1,
+        out_of_stock: 1,
+        low_stock: 0,
+        units_mtd: 4,
+        revenue_mtd: 320,
+        revenue_prev_mtd: 0,
+        revenue_growth_pct: 100,
+      },
+      todays_read: {
+        needs_attention: [],
+        top_performers: [],
+        top_risers: [],
+      },
+    },
+    error: null,
+  };
+});
 const schemaMock = vi.fn((schemaName: string) => ({
-  from: vi.fn((tableName: string) => ({
-    select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
-  })),
+  from: vi.fn((tableName: string) => fromMock(schemaName, tableName)),
+  rpc: rpcMock,
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -242,7 +351,7 @@ describe('products landing api', () => {
     expect(body.kpis.units_mtd).toBe(4);
   });
 
-  it('returns null days_cover when invoice velocity is unavailable', async () => {
+  it('returns null days_cover when velocity is unavailable in the V2 snapshot', async () => {
     dbResponses['app.invoices'] = [{ data: [] }];
     dbResponses['app.invoice_items'] = [{ data: [] }];
 
@@ -258,21 +367,17 @@ describe('products landing api', () => {
     expect(activeProduct.status_label).toBe('Insufficient velocity');
   });
 
-  it('loads tenant inventory via tenant-scoped join instead of giant product id lists', async () => {
-    const inventorySelect = vi.fn(() => createQuery('app.tenant_inventory'));
-    schemaMock.mockImplementation((schemaName: string) => ({
-      from: vi.fn((tableName: string) => ({
-        select: tableName === 'tenant_inventory' ? inventorySelect : vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
-      })),
-    }));
-
+  it('uses the bounded V2 products landing RPC instead of V1 product daily and inventory hydration', async () => {
     const response = await GET(
       new NextRequest('http://localhost:3000/api/tenant/products?period=month'),
     );
 
     expect(response.status).toBe(200);
-    expect(inventorySelect).toHaveBeenCalledWith(
-      'tenant_product_id, qty_available, tenant_products!inner(tenant_id)',
-    );
+    expect(rpcMock).toHaveBeenCalledWith('metrics_v2_products_landing', expect.objectContaining({
+      p_tenant_id: 'tenant-1',
+      p_limit: expect.any(Number),
+    }));
+    expect(fromMock).not.toHaveBeenCalledWith('app', 'kpi_product_daily');
+    expect(fromMock).not.toHaveBeenCalledWith('app', 'tenant_inventory');
   });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useCustomersLandingMock = vi.fn();
@@ -125,17 +125,17 @@ describe('customers landing page', () => {
     useCustomersLandingMock.mockReturnValue({
       isLoading: false,
       data: {
-        kpis: { cohort_count: 1, total: 10, active: 6, active_pct: 60, spend_mtd: 100000, spend_growth_pct: 10, dormant_over_30d: 2, outstanding_dues: 50000, buyers_with_dues: 2 },
-        callouts: { needs_call: [], top_spenders: [], top_risers: [] },
+        kpis: { cohort_count: 1, total: 10, active: 6, active_pct: 60, spend_mtd: 100000, spend_growth_pct: 10, dormant_over_30d: 2, outstanding_dues: 50000, buyers_with_dues: 2, invoiced_customer_count: 6, overdue_sum: 0, overdue_customer_count: 0, dormant_prior_year_value: 0 },
+        callouts: { needs_call: [], win_back: [] },
         filters: { groups: customerFilterGroups },
         buyers: [],
       },
     });
 
-    render(<CustomersLandingClient initialData={null} initialPeriod="month" />);
+    render(<CustomersLandingClient initialData={null} />);
 
-    expect(screen.getByText('Active buyers')).toBeInTheDocument();
-    expect(screen.getByText('6/10')).toBeInTheDocument();
+    expect(screen.getByText('Customers who purchased')).toBeInTheDocument();
+    expect(screen.getByText('6')).toBeInTheDocument();
   });
 
   it('has due filter hides zero-dues buyers and no longer exposes city/state filters', () => {
@@ -146,17 +146,17 @@ describe('customers landing page', () => {
         callouts: { needs_call: [], top_spenders: [], top_risers: [] },
         filters: { groups: customerFilterGroups },
         buyers: [
-          { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' } },
-          { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' } },
+          { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' } },
+          { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' } },
         ],
       },
     });
     landingBuyers = [
-      { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' }, is_active: true },
-      { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' }, is_active: true },
+      { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' }, is_active: true },
+      { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' }, is_active: true },
     ];
 
-    render(<CustomersLandingClient initialData={null} initialPeriod="month" />);
+    render(<CustomersLandingClient initialData={null} />);
     fireEvent.click(screen.getByRole('button', { name: 'Due: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Due' }));
 
@@ -174,23 +174,23 @@ describe('customers landing page', () => {
         callouts: { needs_call: [], top_spenders: [], top_risers: [] },
         filters: { groups: customerFilterGroups },
         buyers: [
-          { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
-          { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
-          { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
+          { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
+          { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
+          { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
         ],
       },
     });
     landingBuyers = [
-      { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
-      { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
-      { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
+      { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
+      { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
+      { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
     ];
 
-    render(<CustomersLandingClient initialData={null} initialPeriod="month" />);
+    render(<CustomersLandingClient initialData={null} />);
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Dormant' }));
 
-    expect(useCustomersLandingInfiniteMock).toHaveBeenLastCalledWith('month', expect.objectContaining({ status: ['Dormant'] }));
+    expect(useCustomersLandingInfiniteMock).toHaveBeenLastCalledWith('last90', expect.objectContaining({ status: ['Dormant'] }));
     expect(screen.getByRole('button', { name: 'Status: Dormant' })).toBeInTheDocument();
   });
 
@@ -202,15 +202,43 @@ describe('customers landing page', () => {
         callouts: { needs_call: [], top_spenders: [], top_risers: [] },
         filters: { groups: customerFilterGroups },
         buyers: [
-          { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' } },
+          { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' } },
         ],
       },
     });
     landingBuyers = [
-      { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' }, is_active: true },
+      { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' }, is_active: true },
     ];
 
-    const { container } = render(<CustomersLandingClient initialData={null} initialPeriod="month" />);
+    const { container } = render(<CustomersLandingClient initialData={null} />);
     expect(container.querySelector('.bg-warning-500')).toBeTruthy();
+  });
+
+  it('shows overdue days separately from outstanding due in the table', () => {
+    useCustomersLandingMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        kpis: { cohort_count: 1, total: 1, active: 1, active_pct: 100, spend_mtd: 20000, spend_growth_pct: 5, dormant_over_30d: 0, outstanding_dues: 9000, buyers_with_dues: 1, invoiced_customer_count: 1, overdue_sum: 9000, overdue_customer_count: 1, dormant_prior_year_value: 0 },
+        callouts: { needs_call: [], win_back: [] },
+        filters: { groups: customerFilterGroups },
+        buyers: [
+          { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 4500, dues: 9000, overdue_days: 12, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' } },
+        ],
+      },
+    });
+    landingBuyers = [
+      { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 4500, dues: 9000, overdue_days: 12, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' }, is_active: true },
+    ];
+
+    render(<CustomersLandingClient initialData={null} />);
+
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding Due')).toBeInTheDocument();
+    expect(screen.getByText('12d overdue')).toBeInTheDocument();
+    const row = screen.getByText('Credit Buyer').closest('tr');
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByText('₹4,500')).toBeInTheDocument();
+    expect(within(row as HTMLElement).getAllByText('₹9,000')).toHaveLength(2);
+    expect(within(row as HTMLElement).getByText('12d overdue')).toBeInTheDocument();
   });
 });

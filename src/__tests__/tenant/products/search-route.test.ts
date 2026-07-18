@@ -67,13 +67,13 @@ describe('tenant product search route', () => {
 
     expect(response.status).toBe(200);
     expect(createProductQueryEmbeddingMock).toHaveBeenCalledWith('alpha');
-    expect(rpcMock).toHaveBeenCalledWith('search_products', expect.objectContaining({
+    expect(rpcMock).toHaveBeenCalledWith('search_products_scoped', expect.objectContaining({
       p_tenant_id: 'tenant-a',
       p_query: 'alpha',
       p_query_embedding: '[0.1,0.2,0.3]',
       p_buyer_id: null,
       p_price_list_id: null,
-      p_limit: 12,
+      p_limit: 16,
       p_ids: null,
     }));
     expect(body.products).toEqual([
@@ -87,5 +87,20 @@ describe('tenant product search route', () => {
         unit_price: 1250,
       }),
     ]);
+  });
+
+  it.each([
+    'not-a-uuid',
+    Array.from({ length: 101 }, (_, index) =>
+      `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`).join(','),
+  ])('rejects malformed or oversized ids input before searching', async (ids) => {
+    const response = await GET(new NextRequest(
+      `http://localhost/api/tenant/products/search?ids=${encodeURIComponent(ids)}`,
+      { method: 'GET' },
+    ) as any);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid product ids' });
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

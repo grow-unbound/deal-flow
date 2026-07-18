@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Archive, PencilIcon } from 'lucide-react';
@@ -9,9 +10,10 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ROLES } from '@/constants';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, MetaStrip4, DetailTabs } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { PriceListDetailSkeleton as SharedPriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,9 +25,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PriceListProductsTab } from '@/components/seller/price-lists/detail/PriceListProductsTab';
+import { getDiscountBandCounts } from '@/lib/price-list-pricing-checks';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
+
+const PriceListPerformanceTab = dynamic(
+  () => import('@/components/seller/price-lists/detail/PriceListPerformanceTab').then((m) => m.PriceListPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '—';
@@ -40,7 +48,7 @@ export default function PriceListDetailPage() {
   const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
     storageKey: 'seller-price-list-detail-tab',
     scopeKey: id,
-    initialState: 'products',
+    initialState: 'performance',
   });
   const [archiveOpen, setArchiveOpen] = useState(false);
 
@@ -51,16 +59,26 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
-    return [{ id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount }];
-  }, [isSellerAdmin, priceList?.items?.length]);
+    const activityCount = priceList?.activity?.length ?? 0;
+    return [
+      { id: 'performance', label: 'Performance' },
+      { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
+      { id: 'activity', label: 'Activity', badge: activityCount },
+    ];
+  }, [isSellerAdmin, priceList?.activity?.length, priceList?.items?.length]);
 
   useEffect(() => {
     if (!priceList) return;
     const validIds = new Set(tabs.map((t) => t.id));
-    if (!validIds.has(activeTab)) setActiveTab('products');
+    if (!validIds.has(activeTab)) setActiveTab('performance');
   }, [activeTab, priceList, setActiveTab, tabs]);
 
-  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'products';
+  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'performance';
+
+  const discountBands = useMemo(
+    () => (priceList ? getDiscountBandCounts(priceList) : { discounted: 0, atBase: 0, aboveBase: 0, total: 0 }),
+    [priceList],
+  );
 
   const subtitle = priceList
     ? [
@@ -110,40 +128,64 @@ export default function PriceListDetailPage() {
                 }
               />
 
-              <MetaStrip4
+              <MetricGrid
+                className="mt-6"
+                showSupportingText
                 tiles={[
                   {
-                    label: 'Products covered',
+                    label: 'Products priced',
                     value: priceList.stats?.products_covered ?? priceList.items.length,
                     sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                   },
                   {
-                    label: 'Customer groups assigned',
+                    label: 'Customers reached',
                     value: priceList.stats?.assignments_count ?? priceList.assignments.length,
-                    sub: 'receiving this price list',
+                    sub: 'direct, group, and all-buyer assignments',
                   },
                   {
-                    label: isSellerAdmin ? 'Avg discount' : 'Pricing posture',
-                    value: isSellerAdmin ? `${(priceList.stats?.avg_discount_pct ?? 0).toFixed(1)}%` : `${priceList.stats?.products_covered ?? priceList.items.length} SKUs`,
-                    sub: isSellerAdmin ? 'vs base price' : 'read-only pricing reference',
+                    label: 'Typical discount',
+                    value: `${discountBands.total > 0 ? Math.round((discountBands.discounted / discountBands.total) * 100) : 0}%`,
+                    sub: 'of priced items below base',
                   },
                   {
-                    label: 'Days left',
-                    value: `${priceList.stats?.days_left ?? 0} d`,
-                    sub: `valid until ${formatDate(priceList.valid_to)}`,
+                    label: 'Items below cost/floor',
+                    value: discountBands.discounted,
+                    sub: 'priced under base selling price',
                   },
                 ]}
               />
 
               <DetailTabs tabs={tabs} active={tabActive} onChange={setActiveTab} />
 
+              {tabActive === 'performance' ? (
+                <PriceListPerformanceTab priceList={priceList} performanceCards={priceList.performance_cards} />
+              ) : null}
+
               {tabActive === 'products' ? (
                 <PriceListProductsTab
+                  priceListId={id}
                   filters={priceList.filters}
                   items={priceList.items}
                   brandsCovered={priceList.stats?.brands_covered ?? 0}
                   canViewFinancials={isSellerAdmin}
                 />
+              ) : null}
+
+              {tabActive === 'activity' ? (
+                <section className="mt-5">
+                  <PerformanceCard title="Activity log" subtitle="Operational audit trail for this price list" bodyClassName="p-0">
+                    <RankedList
+                      items={(priceList.activity ?? []).map((entry) => ({
+                        id: String(entry.id),
+                        label: entry.action.replace('_', ' '),
+                        meta: new Date(entry.ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        supporting: entry.diff ? JSON.stringify(entry.diff).slice(0, 120) : 'No field diff recorded',
+                      }))}
+                      emptyTitle="No activity yet"
+                      emptyDescription="Changes to this price list will be logged here."
+                    />
+                  </PerformanceCard>
+                </section>
               ) : null}
 
               <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>

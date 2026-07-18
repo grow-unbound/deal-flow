@@ -22,6 +22,9 @@ verify_jwt = false
 [functions.generate-invoice-pdf]
 verify_jwt = false
 
+[functions.metrics-refresh-tick]
+verify_jwt = false
+
 [functions.integrations-connect]
 verify_jwt = false
 

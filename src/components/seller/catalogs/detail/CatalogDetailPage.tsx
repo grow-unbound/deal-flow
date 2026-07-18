@@ -12,7 +12,7 @@ import {
   usePublishCatalog,
   useTenantCatalogDetail,
 } from '@/hooks/useCatalogs';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { PageWrap } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -95,7 +95,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     if (!data) return [];
     return [
       {
-        label: 'GMV',
+        label: 'Campaign-linked demand value',
         value: formatCompactInr(data.meta_strip_4.gmv),
         sub: (
           <span>
@@ -108,14 +108,14 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         ),
       },
       {
-        label: 'Conversions',
+        label: 'Customers with demand',
         value: `${data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
-        sub: `${data.meta_strip_4.conversion_rate}% conversion`,
+        sub: `${data.meta_strip_4.conversion_rate}% open-to-demand`,
       },
       {
-        label: 'Unique viewers',
+        label: 'Customers who opened',
         value: `${data.meta_strip_4.unique_viewers}/${data.meta_strip_4.cohort_members}`,
-        sub: 'opened in app',
+        sub: 'opened in Buyer App',
       },
       {
         label: 'Days left',
@@ -256,7 +256,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         }
       />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -270,13 +270,15 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
       {tab === 'products' ? (
         <CatalogCompositionTab
+          catalogId={id}
           summary={data.products_summary}
-          rows={data.products}
         />
       ) : null}
 
-      {tab === 'performance' ? <CatalogPerformanceTab performance={data.performance} /> : null}
-      {tab === 'buyers' ? <CatalogBuyersTab buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
+      {tab === 'performance' ? (
+        <CatalogPerformanceTab performanceCards={data.performance_cards} />
+      ) : null}
+      {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
     </PageWrap>
   );
 }

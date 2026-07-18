@@ -23,18 +23,11 @@ export async function GET(req: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
-    let query = db
-      .schema('catalog')
-      .from('brands')
-      .select('id, name, slug, logo_url, description')
-      .eq('is_public', true)
-      .limit(20);
-
-    if (q.trim()) {
-      query = query.or(`name.ilike.%${q}%,slug.ilike.%${q}%`);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await db.schema('catalog').rpc('search_available_brands_for_tenant', {
+      p_tenant_id: claims.tenant_id,
+      p_query: q.trim() || null,
+      p_limit: 20,
+    });
 
     if (error) {
       return NextResponse.json({ error: 'Failed to search brands' }, { status: 500 });

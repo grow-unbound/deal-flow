@@ -1,18 +1,14 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BuyerAppLandingClient } from '@/components/seller/buyer-app/BuyerAppLandingClient';
 import type { BuyerAppLandingResponse } from '@/hooks/useBuyerApp';
-import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 
-export default async function BuyerAppPage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function BuyerAppPage() {
   await requireSellerServerTenantId();
 
-  const period = await resolveSellerLandingPeriod(searchParams);
+  const period = DEFAULT_SELLER_LANDING_PERIOD;
   const { data: initialData, status } = await fetchSellerPageBootstrap<BuyerAppLandingResponse>(
     `/api/tenant/buyer-app?period=${period}`,
   );

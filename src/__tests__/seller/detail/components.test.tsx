@@ -3,10 +3,16 @@ import path from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MetaStrip4 } from '@/components/seller/detail/MetaStrip4';
+import { MetricGrid } from '@/components/seller/detail/MetricGrid';
 import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import { DetailHeader } from '@/components/seller/detail/DetailHeader';
 import { DetailActions } from '@/components/seller/detail/DetailActions';
 import { PerformanceCard } from '@/components/seller/detail/PerformanceCard';
+import { TrendFrame } from '@/components/seller/detail/TrendFrame';
+import { RankedList } from '@/components/seller/detail/RankedList';
+import { DistributionList } from '@/components/seller/detail/DistributionList';
+import { CardEmptyState } from '@/components/seller/detail/CardEmptyState';
+import { DetailCardRenderer } from '@/components/seller/detail/DetailCardRenderer';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 
 describe('MetaStrip4', () => {
@@ -14,7 +20,7 @@ describe('MetaStrip4', () => {
     vi.restoreAllMocks();
   });
 
-  it('warns when tile count is not exactly 4', () => {
+  it('supports fewer than four quiet metric cards without warning', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     render(
@@ -27,13 +33,38 @@ describe('MetaStrip4', () => {
       />
     );
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('MetaStrip4 expects exactly 4 tiles; received 3.');
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('hides supporting copy by default', () => {
+    render(<MetaStrip4 tiles={[{ label: 'Revenue', value: '₹1.2L', sub: 'up 12% vs last month' }]} />);
+
+    expect(screen.getByText('Revenue')).toBeInTheDocument();
+    expect(screen.getByText('₹1.2L')).toBeInTheDocument();
+    expect(screen.queryByText('up 12% vs last month')).not.toBeInTheDocument();
+  });
+});
+
+describe('MetricGrid', () => {
+  it('supports 1/2/3/4 card states through one adaptive primitive', () => {
+    const { rerender } = render(<MetricGrid tiles={[{ label: 'One', value: '1' }]} />);
+    expect(screen.getByText('One').closest('section')).toHaveClass('grid-cols-1');
+
+    rerender(<MetricGrid tiles={[{ label: 'One', value: '1' }, { label: 'Two', value: '2' }]} />);
+    expect(screen.getByText('One').closest('section')).toHaveClass('md:grid-cols-2');
+
+    rerender(<MetricGrid tiles={[{ label: 'One', value: '1' }, { label: 'Two', value: '2' }, { label: 'Three', value: '3' }]} />);
+    expect(screen.getByText('One').closest('section')).toHaveClass('xl:grid-cols-3');
+
+    rerender(<MetricGrid tiles={[{ label: 'One', value: '1' }, { label: 'Two', value: '2' }, { label: 'Three', value: '3' }, { label: 'Four', value: '4' }]} />);
+    expect(screen.getByText('One').closest('section')).toHaveClass('xl:grid-cols-4');
   });
 });
 
 describe('DetailTabs', () => {
-  it('applies active tab border and text classes', () => {
+  it('uses tab semantics and R12 active styling', () => {
     render(
       <DetailTabs
         tabs={[
@@ -44,8 +75,10 @@ describe('DetailTabs', () => {
       />
     );
 
-    const activeTab = screen.getByRole('button', { name: /Performance/i });
-    expect(activeTab).toHaveClass('border-b-2', 'border-teal-500', 'text-cream-950');
+    const activeTab = screen.getByRole('tab', { name: /Performance/i });
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(activeTab).toHaveAttribute('aria-selected', 'true');
+    expect(activeTab).toHaveClass('border-b-2', 'border-ember-500', 'text-cream-950');
   });
 });
 
@@ -57,7 +90,7 @@ describe('DetailHeader', () => {
           { label: 'Brands', href: '/brands' },
           { label: 'WineYard Vintners', current: true },
         ]}
-        avatar={{ kind: 'brand', initials: 'WV', hue: 'ember' }}
+        avatar={{ kind: 'customer', initials: 'WV', hue: 'ember' }}
         title="WineYard Vintners"
         status={{ label: 'Live', tone: 'success' }}
         subtitle={['Wine', 'Maharashtra']}
@@ -81,6 +114,76 @@ describe('PerformanceCard', () => {
     expect(screen.getByText('Revenue share for the selected period')).toHaveClass('text-sm');
     expect(screen.getByRole('button', { name: 'All brands' })).toBeInTheDocument();
     expect(screen.getByText('Body').closest('section')).toHaveClass('overflow-hidden', 'rounded-[14px]', 'border');
+  });
+});
+
+describe('Shared detail body components', () => {
+  it('renders TrendFrame empty state when no chart is provided', () => {
+    render(<TrendFrame emptyTitle="No history" emptyDescription="Nothing to chart yet." />);
+
+    expect(screen.getByText('No history')).toBeInTheDocument();
+    expect(screen.getByText('Nothing to chart yet.')).toBeInTheDocument();
+  });
+
+  it('renders RankedList items through one shared primitive', () => {
+    render(
+      <RankedList
+        items={[
+          { id: '1', label: 'Buyer One', meta: 'Mumbai', value: '₹12K', supporting: '3 orders', initials: 'BO' },
+        ]}
+        emptyTitle="No rows"
+      />
+    );
+
+    expect(screen.getByText('Buyer One')).toBeInTheDocument();
+    expect(screen.getByText('3 orders')).toBeInTheDocument();
+  });
+
+  it('renders DistributionList as a shared mix/distribution primitive', () => {
+    render(
+      <DistributionList
+        mode="mix"
+        items={[
+          { id: 'brand-a', label: 'Brand A', pct: 60, value: '₹24K' },
+          { id: 'brand-b', label: 'Brand B', pct: 40, value: '₹16K' },
+        ]}
+        emptyTitle="No mix"
+      />
+    );
+
+    expect(screen.getByText('Brand A')).toBeInTheDocument();
+    expect(screen.getByText('60%')).toBeInTheDocument();
+  });
+
+  it('renders CardEmptyState for unavailable cards without coercing to zero', () => {
+    render(<CardEmptyState title="Unavailable" description="Payment behavior is unavailable." tone="unavailable" />);
+
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Payment behavior is unavailable.')).toBeInTheDocument();
+  });
+
+  it('renders a normalized detail card through the shared renderer', () => {
+    render(
+      <DetailCardRenderer
+        card={{
+          id: 'price-distribution',
+          representation: 'distribution',
+          title: 'Actual selling prices',
+          subtitle: 'Current distribution',
+          body: {
+            items: [
+              { id: 'base', label: 'Base price', value: '₹100', pct: 70 },
+              { id: 'override', label: 'Override', value: '₹92', pct: 30 },
+            ],
+            emptyTitle: 'No prices',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('Actual selling prices')).toBeInTheDocument();
+    expect(screen.getByText('Override')).toBeInTheDocument();
+    expect(screen.getByText('30%')).toBeInTheDocument();
   });
 });
 

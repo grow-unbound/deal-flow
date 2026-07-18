@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * O(1) KPI snapshot for the invoices landing page header cards.
- * Reads from app.invoices_snapshot which is kept current by DB triggers.
+ * Reads from the v2 landing payload so header cards stay aligned with the
+ * same invoice semantics as the main landing page.
  * Fires in parallel with the paginated list fetch — cards render instantly.
  */
 export async function GET(request: NextRequest) {
@@ -52,7 +53,10 @@ export async function GET(request: NextRequest) {
         overdue_count: kpis.overdue_count ?? 0,
         overdue_amt: kpis.overdue_sum ?? 0,
         paid_count: null,
-        refreshed_at: null,
+        refreshed_at: landing.as_of ?? null,
+        as_of: landing.as_of ?? null,
+        commercial_horizon_days: landing.commercial_horizon_days ?? null,
+        table_period: landing.table_period ?? null,
       },
       { headers: SELLER_CACHE_PERSONAL },
     );

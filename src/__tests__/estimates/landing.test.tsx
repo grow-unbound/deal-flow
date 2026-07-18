@@ -203,15 +203,17 @@ describe('estimates landing page', () => {
     expect(screen.getByText(/This feature isn.t enabled yet/)).toBeInTheDocument();
   });
 
-  it('renders the estimates KPI strip with period GMV, AOV and trend', () => {
+  it('renders the estimates KPI strip and default month period filter', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
+    expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
+    expect(screen.queryByText('Showing')).not.toBeInTheDocument();
     const kpiArticles = screen.getAllByRole('article').slice(0, 4);
-    expect(kpiArticles[0]).toHaveTextContent('Estimates · MTD');
-    expect(kpiArticles[0]).toHaveTextContent('↑ +50% vs last period');
-    expect(kpiArticles[1]).toHaveTextContent('GMV');
-    expect(kpiArticles[1]).toHaveTextContent('AOV');
-    expect(kpiArticles[2]).toHaveTextContent('Open estimates');
-    expect(kpiArticles[3]).toHaveTextContent('Converted · MTD');
+    expect(kpiArticles[0]).toHaveTextContent('Estimate value created');
+    expect(kpiArticles[0]).toHaveTextContent('3 estimates month');
+    expect(kpiArticles[1]).toHaveTextContent('Open estimates');
+    expect(kpiArticles[1]).toHaveTextContent('1 open estimates month');
+    expect(kpiArticles[2]).toHaveTextContent('Awaiting action 3+ days');
+    expect(kpiArticles[3]).toHaveTextContent('Expiring in 7 days');
   });
 
   it('shows converted and invoiced rows in the table', () => {
@@ -222,10 +224,12 @@ describe('estimates landing page', () => {
     expect(screen.getByText('Invoiced')).toBeInTheDocument();
   });
 
-  it('shows buyer app source labels only on buyer app estimates', () => {
+  it('shows a Source column on every estimate row, not just Buyer App ones', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getAllByText('Buyer App').length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText('created by Priya Shah')).not.toBeInTheDocument();
+    // Seller-sourced rows now show their own Source column value too (a real
+    // per-doc table column, not conditionally hidden).
+    expect(screen.getByText('created by Priya Shah')).toBeInTheDocument();
   });
 
   it('renders place of supply, catalog and buyer-app source labels in the landing table', () => {

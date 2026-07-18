@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Upload, Plus, Package } from 'lucide-react';
@@ -10,7 +10,6 @@ import {
   EntityAvatar,
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -24,13 +23,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 const AddProductSheet = dynamic(
   () => import('@/components/seller/products/AddProductSheet').then((m) => m.AddProductSheet),
@@ -79,6 +77,20 @@ function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
   });
 }
 
+function matchesProductSearch(product: TenantProduct, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    product.display_name,
+    product.internal_sku,
+    product.brand_name,
+    product.category_name,
+    product.master_product?.master_sku ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
 function ProductLandingSkeleton() {
   return (
     <PageWrap>
@@ -123,16 +135,16 @@ function ProductLandingDataSkeleton() {
 
 function ProductsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
-  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const summaryQuery = useTenantProducts(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -157,9 +169,13 @@ function ProductsLandingContent({
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -183,16 +199,52 @@ function ProductsLandingContent({
   const summaryBrands = summaryData?.brands?.length ?? 0;
 
   const filtered = useMemo(() => {
-    return [...allProducts].sort((a, b) => {
+    const locallyFiltered = allProducts.filter((product) => {
+      if (!matchesProductSearch(product, search)) {
+        return false;
+      }
+
+      if (filters.brand.length > 0 && (!product.brand_name || !filters.brand.includes(product.brand_name))) {
+        return false;
+      }
+
+      if (filters.category.length > 0 && (!product.category_name || !filters.category.includes(product.category_name))) {
+        return false;
+      }
+
+      if (
+        filters.status.length > 0 &&
+        !filters.status.some((value) => (value === 'Active' ? product.is_active : !product.is_active))
+      ) {
+        return false;
+      }
+
+      if (
+        filters.stock.length > 0 &&
+        !filters.stock.some((value) => {
+          const onHand = Number(product.on_hand ?? 0);
+          const daysCover = product.days_cover ?? null;
+          if (value === 'Out of stock') return onHand === 0;
+          if (value === 'Low stock') return onHand > 0 && daysCover != null && daysCover < 14;
+          if (value === 'In stock') return onHand > 0 && (daysCover == null || daysCover >= 14);
+          return false;
+        })
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return [...locallyFiltered].sort((a, b) => {
         if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [isSellerAssistant, allProducts, sortBy]);
-
-  const retainedFiltered = useRetainedValue(filtered.length > 0 ? filtered : null);
-  const displayRows = filtered.length > 0 ? filtered : (retainedFiltered ?? []);
+  }, [allProducts, filters.brand, filters.category, filters.status, filters.stock, isSellerAssistant, search, sortBy]);
+  const displayRows = filtered;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   if (isLoading && !data) return <ProductsLandingSkeleton />;
 
@@ -210,9 +262,10 @@ function ProductsLandingContent({
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;
-  const outOfStock = kpis?.out_of_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) === 0).length;
+  const recentlySoldOutOfStock = kpis?.recently_sold_out_of_stock ?? 0;
   const lowStock = kpis?.low_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
-  const growth = kpis?.revenue_growth_pct ?? 0;
+  const productsSold = kpis?.products_sold ?? summaryProducts.filter((product) => Number(product.units_mtd ?? 0) > 0).length;
+  const categoryCount = kpis?.category_count ?? 0;
   const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
     key: group.key,
     label: group.label,
@@ -226,14 +279,12 @@ function ProductsLandingContent({
 
   return (
     <PageWrap>
-      <PageHeader
-        eyebrow="Catalog"
-        title="Products"
-        subtitle={`${summaryTotal} SKUs across ${summaryBrands} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
-        horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
+        <PageHeader
+          eyebrow="Catalog"
+          title="Products"
+          subtitle={`${summaryTotal} active products across ${summaryBrands} brands and ${categoryCount} categories.`}
+          horizon={horizonLabel}
+          showHorizonControl={false}
         secondary={{
           label: 'Bulk import',
           icon: <Upload size={13} />,
@@ -257,78 +308,82 @@ function ProductsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Active SKUs',
-            value: `${kpis?.active_skus ?? allProducts.length}`,
-            sub: `${kpis?.total_skus ?? allProducts.length} total · ${kpis?.archived_skus ?? 0} archived`,
+            label: `Invoiced sales · ${metricSuffix}`,
+            value: formatCompactInr(kpis?.revenue_mtd ?? 0),
+            sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
+            tone: 'accent',
           },
           {
-            label: 'Out of stock',
-            value: `${outOfStock}`,
-            sub: 'replenish urgently',
-            tone: 'warn',
+            label: 'Recently sold products now out of stock',
+            value: `${recentlySoldOutOfStock}`,
+            sub: 'sold in the last 90 days',
+            tone: recentlySoldOutOfStock > 0 ? 'warn' : undefined,
           },
           {
-            label: 'Low stock',
+            label: 'Products running low',
             value: `${lowStock}`,
             sub: '< 14 days of cover',
           },
-          ...(isSellerAssistant
-            ? [{
-                label: `Units moved · ${metricSuffix}`,
-                value: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
-                sub: 'Operational volume this period',
-              }]
-            : [{
-                label: `Revenue · ${metricSuffix}`,
-                value: formatCompactInr(kpis?.revenue_mtd ?? 0),
-                sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last month`,
-              }]),
+          {
+            label: 'Products that sold',
+            value: `${productsSold}`,
+            sub: 'in the last 90 days',
+          },
         ]}
       />
 
       <V3CalloutPanel
         items={[
           {
+            id: 'recently_sold_out_of_stock',
             kind: 'risk' as const,
-            eyebrow: 'Needs attention',
-            hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
+            eyebrow: 'Recently sold, now out of stock',
+            hint: `${recentlySoldOutOfStock}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.recently_sold_out_of_stock ?? []).map((row) => ({
+              id: row.id,
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.status.label} · ${row.on_hand} on hand · ${formatDaysCover(row.days_cover)} cover`,
-              trailing: <GrowthPill value={row.growth_pct} />,
-            })),
-          },
-          ...(isSellerAssistant ? [] : [{
-            kind: 'info' as const,
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
-            rows: (summaryData?.todays_read?.top_performers ?? []).map((row) => ({
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.units_mtd} units · ${row.brand}`,
-              trailing: formatCompactInr(row.gmv_mtd),
+              reason: `${row.sku} · ${row.units_mtd} units · ${formatCompactInr(row.gmv_mtd)}`,
+              trailing: `${row.on_hand} on hand`,
             })),
           },
           {
-            kind: 'opportunity' as const,
-            eyebrow: 'Top risers',
-            hint: 'fastest growth',
-            rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
+            id: 'running_low',
+            kind: 'info' as const,
+            eyebrow: 'Products running low',
+            hint: `${lowStock}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.running_low ?? []).map((row) => ({
+              id: row.id,
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.brand} · ${formatCompactInr(row.gmv_mtd)} ${metricSuffix}`,
-              trailing: <GrowthPill value={row.growth_pct} />,
+              reason: `${row.sku} · ${formatDaysCover(row.days_cover)} cover`,
+              trailing: `${row.on_hand} on hand`,
             })),
-          }]),
+          },
+          {
+            id: 'no_sale_90d',
+            kind: 'opportunity' as const,
+            eyebrow: 'Stock with no sale in 90 days',
+            hint: `${summaryData?.todays_read?.no_sale_90d?.length ?? 0}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.no_sale_90d ?? []).map((row) => ({
+              id: row.id,
+              initials: row.brand_initials,
+              hue: row.brand_hue,
+              name: row.name,
+              reason: `${row.sku} · ${row.brand}`,
+              trailing: `${row.on_hand} on hand`,
+            })),
+          },
         ]}
       />
 
       <FilterBar
-        count={`${filtered.length} of ${filteredTotal} products`}
+        count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
         chips={[]}
         activeChip=""
@@ -336,7 +391,6 @@ function ProductsLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
-        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
@@ -344,7 +398,10 @@ function ProductsLandingContent({
         </>
       )}
 
-      <LandingTable
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={9} tableMinWidth={1560} />
+      ) : (
+        <LandingTable
         showEmptyState={displayRows.length === 0 && !isLoading}
         emptyState={
           <EmptyState
@@ -369,25 +426,23 @@ function ProductsLandingContent({
           { label: 'Product', width: 320, minWidth: 320, maxWidth: 420, className: 'px-5' },
           { label: 'Brand', width: 200, minWidth: 200, maxWidth: 260, className: 'px-5' },
           { label: 'Category', width: 150, minWidth: 150, maxWidth: 220, className: 'px-5' },
-          { label: 'Stock Available', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Days Cover', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
-          { label: `Units Sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Revenue', align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Growth', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
+          { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: `Invoiced sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1640}
-      >
-        {displayRows.map((product: TenantProduct, index: number) => {
+        >
+          {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = product.days_cover ?? null;
           const unitsMtd = Number(product.units_mtd ?? 0);
           const gmvMtd = Number(product.gmv_mtd ?? 0);
-          const growthPct = Number(product.growth_pct ?? 0);
           const sku = product.master_product?.master_sku ?? product.internal_sku;
-          const category = product.category_name ?? 'Uncategorized';
+          const category = product.category_name ?? '-';
           const uom = product.default_uom ?? 'units';
           const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success');
           const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace');
@@ -436,9 +491,9 @@ function ProductsLandingContent({
                   ) : daysCover === 0 ? (
                     <span className="font-semibold text-danger-700">0d</span>
                   ) : daysCover < 7 ? (
-                    <span className="font-semibold text-warning-700">{daysCover}d</span>
+                    <span className="font-semibold text-warning-700">{Math.round(daysCover)}d</span>
                   ) : (
-                    <span>{daysCover}d</span>
+                    <span>{Math.round(daysCover)}d</span>
                   )}
                 </div>
               </td>
@@ -447,16 +502,14 @@ function ProductsLandingContent({
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
-                <GrowthPill value={growthPct} />
-              </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
               <td className="px-4 py-3.5 text-right text-md text-cream-500">›</td>
             </tr>
           );
-        })}
-      </LandingTable>
+          })}
+        </LandingTable>
+      )}
 
       {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
       <div ref={sentinelRef} className="h-px" aria-hidden />
@@ -473,16 +526,14 @@ function ProductsLandingContent({
 
 export function ProductsLandingClient({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <ProductsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

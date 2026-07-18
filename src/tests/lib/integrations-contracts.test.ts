@@ -7,6 +7,7 @@ import {
   IntegrationDataFlowRecordSchema,
   IntegrationFlowDirectionSchema,
   IntegrationFlowTriggerSchema,
+  IntegrationJobRecordProjectionSchema,
   IntegrationJobRecordSchema,
   IntegrationJobProgressSchema,
   IntegrationJobSummarySchema,
@@ -245,6 +246,39 @@ describe('integration runtime payload schemas', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('projects persistence-only columns out of integration job payloads', () => {
+    const result = IntegrationJobRecordProjectionSchema.parse({
+      id: '11111111-1111-1111-1111-111111111111',
+      tenant_integration_id: '22222222-2222-2222-2222-222222222222',
+      job_type: 'incremental',
+      phase: 'products',
+      status: 'completed',
+      progress: {},
+      error_log: [],
+      summary: {},
+      started_at: '2026-07-14T08:00:00.000Z',
+      completed_at: '2026-07-14T08:05:00.000Z',
+      created_at: '2026-07-14T08:00:00.000Z',
+      tenant_id: '33333333-3333-3333-3333-333333333333',
+      triggered_by: null,
+      updated_at: '2026-07-14T08:05:00.000Z',
+      created_by: null,
+      updated_by: null,
+      deleted_at: null,
+      external_ref: null,
+      run_kind: 'single_phase',
+      attempt_count: 0,
+      next_retry_eligible_at: null,
+      coordinator_lease_until: null,
+      coordinator_live: false,
+    });
+
+    expect(result).not.toHaveProperty('tenant_id');
+    expect(result).not.toHaveProperty('run_kind');
+    expect(result).not.toHaveProperty('coordinator_live');
+    expect(IntegrationJobRecordSchema.safeParse(result).success).toBe(true);
   });
 
   it('accepts job summaries with non-negative aggregate counts', () => {

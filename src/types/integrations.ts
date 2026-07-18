@@ -415,6 +415,11 @@ export const IntegrationJobRecordSchema = z
   .strict();
 export type IntegrationJobRecord = z.infer<typeof IntegrationJobRecordSchema>;
 
+// Database functions may return the full integration_sync_jobs composite.
+// Strip persistence-only columns at the server boundary before validating the
+// strict payload DTO exposed to seller-app clients.
+export const IntegrationJobRecordProjectionSchema = IntegrationJobRecordSchema.strip();
+
 export const IntegrationDataFlowRecordSchema = z
   .object({
     id: z.string().uuid(),

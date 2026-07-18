@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layout';
 import type { CohortDetailBuyer } from '@/hooks/useCohorts';
+import { useDebounce } from '@/hooks/useDebounce';
+import { detailRowsTotal, flattenDetailRows, useCohortBuyersDetail } from '@/hooks/useDetailTabSearch';
 import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { formatCompactInr, formatDate } from '@/lib/utils';
 
@@ -26,17 +28,24 @@ function lastOrderedBucket(lastOrderAt: string | null): 'ordered_mtd' | 'dormant
 }
 
 interface CohortBuyersTabProps {
-  buyers: CohortDetailBuyer[];
+  cohortId: string;
   rules_summary: CohortRulesSummary;
   activeMembersMtd: number;
 }
 
-export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: CohortBuyersTabProps) {
+export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: CohortBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState('All buyers');
   const [sortBy, setSortBy] = useState<SortOption>('MTD spend (high → low)');
 
+  const debouncedSearch = useDebounce(search, 300);
+  const activity = activeChip === 'Ordered this month' ? 'ordered_mtd' : activeChip === 'Dormant' ? 'dormant' : null;
+  const sort = sortBy === 'Orders (high → low)' ? 'orders_desc' : sortBy === 'AOV (high → low)' ? 'aov_desc' : sortBy === 'Buyer name (A → Z)' ? 'name_asc' : sortBy === 'Last ordered (recent first)' ? 'last_order_desc' : 'spend_desc';
+  const result = useCohortBuyersDetail(cohortId, { query: debouncedSearch, filter: activity, sort });
+  const buyers = useMemo(() => flattenDetailRows(result.data), [result.data]);
+  const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
   const filtered = useMemo(() => {
+    if (!isInterim) return buyers;
     const query = search.trim().toLowerCase();
     return buyers
       .filter((buyer) => {
@@ -61,7 +70,7 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
         }
         return b.mtd_spend - a.mtd_spend;
       });
-  }, [activeChip, buyers, search, sortBy]);
+  }, [activeChip, buyers, isInterim, search, sortBy]);
 
   const rulesTitle = rules_summary.is_static ? 'Manual member list' : 'Filters applied';
   const rulesSub = rules_summary.is_static
@@ -111,7 +120,7 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
 
       <div>
         <FilterBar
-          count={`${filtered.length} buyers`}
+          count={`${isInterim ? filtered.length : detailRowsTotal(result.data)} buyers${result.isFetching ? ' · Updating' : ''}`}
           searchPlaceholder="Search buyer, contact, or geography…"
           chips={['All buyers', 'Ordered this month', 'Dormant']}
           activeChip={activeChip}
@@ -148,7 +157,7 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
               <tr key={buyer.buyer_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
                 <td className="px-5 py-3.5 text-cream-900">
                   <div className="flex items-center gap-3">
-                    <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
+                    <EntityAvatar initials={buyer.business_name.split(' ').map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase()} hue="teal" size={32} className="rounded-[8px]" />
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium">{buyer.business_name}</p>
                       <p className="mt-0.5 truncate text-xs text-cream-700">{subline}</p>
@@ -172,6 +181,7 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
             );
           })}
         </LandingTable>
+        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -52,6 +52,8 @@ export interface OrderLandingRow {
     filter_chip: 'All' | 'Received' | 'Confirmed' | 'In transit' | 'Invoiced' | 'Delivered' | 'Cancelled';
   };
   placed_at: string;
+  confirmed_at: string | null;
+  dispatched_at: string | null;
 }
 
 export interface OrdersKpis {
@@ -65,17 +67,27 @@ export interface OrdersKpis {
   received_count: number;
   delivered_count: number;
   buyers_mtd: number;
+  open_value: number;
+  open_total: number;
+}
+
+export interface OrdersPulseAggregates {
+  waiting_confirmation_count: number;
+  waiting_confirmation_value: number;
+  waiting_dispatch_count: number;
+  waiting_dispatch_value: number;
 }
 
 export interface OrdersTodaysRead {
   needs_attention: OrderLandingRow[];
-  biggest_tickets: OrderLandingRow[];
-  in_motion: OrderLandingRow[];
+  to_dispatch: OrderLandingRow[];
+  stock_shortage: OrderLandingRow[];
 }
 
 export interface TenantOrdersResponse {
   period: SellerLandingPeriodMeta;
   kpis: OrdersKpis;
+  pulse_aggregates: OrdersPulseAggregates;
   todays_read: OrdersTodaysRead;
   orders: OrderLandingRow[];
   filters?: LandingFilterMeta;
@@ -111,6 +123,7 @@ export function useTenantOrders(
       return res.json();
     },
     initialData: hasActiveFilters ? undefined : getSellerLandingInitialData(period, initialData),
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

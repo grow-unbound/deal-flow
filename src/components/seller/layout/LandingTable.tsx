@@ -35,6 +35,8 @@ export function LandingTable({
   showEmptyState,
   emptyState,
 }: LandingTableProps) {
+  const hasHeader = columns.some((column) => Boolean(column.label?.trim()));
+
   return (
     <ScrollableTableShell
       className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
@@ -43,28 +45,30 @@ export function LandingTable({
         className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}
         style={tableMinWidth != null ? { minWidth: tableMinWidth } : undefined}
       >
-        <thead>
-          <tr className="border-y border-cream-300 bg-white">
-            {columns.map((column, index) => (
-              <th
-                key={`${column.label ?? 'col'}-${index}`}
-                className={cn(
-                  'table-label px-4 py-[11px] text-left text-cream-700',
-                  column.align === 'right' && 'text-right',
-                  column.align === 'center' && 'text-center',
-                  column.className
-                )}
-                style={{
-                  width: column.width,
-                  minWidth: column.minWidth,
-                  maxWidth: column.maxWidth,
-                }}
-              >
-                {column.label ?? ''}
-              </th>
-            ))}
-          </tr>
-        </thead>
+        {hasHeader ? (
+          <thead>
+            <tr className="border-y border-cream-300 bg-white">
+              {columns.map((column, index) => (
+                <th
+                  key={`${column.label ?? 'col'}-${index}`}
+                  className={cn(
+                    'table-label px-4 py-[11px] text-left text-cream-700',
+                    column.align === 'right' && 'text-right',
+                    column.align === 'center' && 'text-center',
+                    column.className
+                  )}
+                  style={{
+                    width: column.width,
+                    minWidth: column.minWidth,
+                    maxWidth: column.maxWidth,
+                  }}
+                >
+                  {column.label ?? ''}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        ) : null}
         <tbody>
           {showEmptyState && emptyState ? (
             <tr>

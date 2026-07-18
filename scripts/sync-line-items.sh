@@ -5,8 +5,8 @@ set -euo pipefail
 # Example, one month at a time: ./scripts/sync-line-items.sh 2026-06-01 2026-06-30
 
 # --- fill these in once ---
-SUPABASE_URL="https://ytlusgmlqxuosifeapkz.supabase.co"
-TENANT_INTEGRATION_ID="cf3fb1c0-509a-482f-9f2f-8e622e87de1b"
+SUPABASE_URL="https://hcpzbnmumbykdqveyjhr.supabase.co"
+TENANT_INTEGRATION_ID="825813c3-ed5f-44f2-8278-0f9fde5a660e"
 # INTEGRATIONS_DISPATCH_SECRET must be set in your shell env
 # ----------------------
 

@@ -1,0 +1,15 @@
+-- Adds a covering index for an unindexed foreign key flagged by the
+-- Postgres advisor performance lint (unindexed_foreign_keys) on
+-- app.whatsapp_messages. This table takes high write volume from the Zoho
+-- integration sync/webhook pipeline; an uncovered FK forces a sequential
+-- scan on the referenced side for every cascade check / join, and slows
+-- down FK-column lookups used by the sync workers.
+--
+-- CONCURRENTLY: avoids holding an AccessExclusiveLock that would block
+-- concurrent sync/webhook writes for the build duration. This file
+-- contains a single statement (no BEGIN/COMMIT) because CREATE INDEX
+-- CONCURRENTLY cannot run inside a transaction block or a pipelined
+-- batch of statements under `supabase db push` -- see
+-- 20260712123528_idx_buyers_search_vector_concurrent.sql for the same
+-- pattern applied elsewhere in this repo.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_whatsapp_messages_wallet_transaction_id ON app.whatsapp_messages (wallet_transaction_id);

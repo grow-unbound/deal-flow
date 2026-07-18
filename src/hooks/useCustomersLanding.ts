@@ -8,7 +8,7 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerCreateInput } from '@/lib/zod';
-import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -36,7 +36,9 @@ export interface CustomersLandingBuyer {
   last_order_at: string | null;
   credit_limit: number;
   credit_used: number;
+  overdue_amount?: number;
   dues: number;
+  overdue_days?: number | null;
   status: { label: string; tone: StatusTone };
   avatar: { initials: string; hue: AvatarHue };
   whatsapp_opted_out?: boolean;
@@ -54,11 +56,14 @@ export interface CustomersLandingResponse {
     dormant_over_30d: number;
     outstanding_dues: number;
     buyers_with_dues: number;
+    invoiced_customer_count: number;
+    overdue_sum: number;
+    overdue_customer_count: number;
+    dormant_prior_year_value: number;
   };
   callouts: {
-    needs_call: Array<CustomersLandingBuyer & { last_order_label: string }>;
-    top_spenders: CustomersLandingBuyer[];
-    top_risers: CustomersLandingBuyer[];
+    needs_call: Array<CustomersLandingBuyer & { last_order_label: string; invoice_count: number; days_overdue: number | null }>;
+    win_back: Array<CustomersLandingBuyer & { last_order_label: string; prior_value: number; days_inactive: number | null }>;
   };
   buyers: CustomersLandingBuyer[];
   filters?: LandingFilterMeta;
@@ -170,6 +175,8 @@ export interface TenantCustomerDetailResponse {
       payment_behavior_summary: string;
     };
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
   orders: {
     badge_count_mtd: number;
     rows: Array<{
@@ -255,15 +262,40 @@ export interface TenantCustomerDetailResponse {
   };
 }
 
+export interface CustomerDocumentRow {
+  id: string;
+  number: string | null;
+  placed_at: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+  due_date: string | null;
+  location_name: string | null;
+  place_of_supply: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct' | 'seller';
+  source_label: string | null;
+  campaign_name: string | null;
+  items_count: number;
+  total_amount: number;
+  outstanding_amount: number;
+  status: string;
+}
+
+export interface CustomerDocumentPage {
+  rows: CustomerDocumentRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
   return useQuery({
-    queryKey: ['tenant-customers', period],
+    queryKey: ['tenant-customers'],
     queryFn: async (): Promise<CustomersLandingResponse> => {
-      const res = await apiFetch(`/api/tenant/customers?period=${period}`);
+      const res = await apiFetch('/api/tenant/customers');
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    initialData: initialData ?? undefined,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
@@ -285,9 +317,9 @@ export function useCustomersLandingInfinite(
   filters: CustomersInfiniteFilters = {},
 ) {
   return useInfiniteQuery({
-    queryKey: ['tenant-customers-infinite', period, filters],
+    queryKey: ['tenant-customers-infinite', filters],
     queryFn: async ({ pageParam }): Promise<CustomersLandingPage> => {
-      const params = new URLSearchParams({ period });
+      const params = new URLSearchParams();
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
@@ -324,6 +356,29 @@ export function useTenantCustomerDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCustomerDocuments(
+  buyerId: string,
+  filters: { kind: 'order' | 'estimate' | 'invoice'; query?: string; status?: string; sort?: string; page?: number },
+  enabled = true,
+) {
+  return useQuery<CustomerDocumentPage>({
+    queryKey: ['tenant-customer-documents', buyerId, filters],
+    enabled: Boolean(buyerId) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ kind: filters.kind, limit: '50' });
+      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.status) params.set('status', filters.status);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/documents?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch customer documents');
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 

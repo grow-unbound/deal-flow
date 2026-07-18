@@ -1,6 +1,6 @@
 'use client';
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +15,7 @@ import type {
   WarehouseStockPageResponse,
   WarehousesLandingResponse,
 } from '@/types/tenant-warehouses';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export interface WarehousesLandingFilters {
   search?: string;
@@ -28,22 +29,30 @@ export function useWarehousesLanding(
   initialData: WarehousesLandingResponse | null,
 ) {
   const { currentTenantId } = useAuth();
+  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.stock?.length);
+  const baseSummary = initialData?.period === period ? initialData : null;
 
-  return useQuery<WarehousesLandingResponse>({
+  const query = useInfiniteQuery<WarehousesLandingResponse>({
     queryKey: ['warehouses-landing', currentTenantId, period, filters],
     enabled: Boolean(currentTenantId),
     staleTime: 60_000,
-    queryFn: async () => {
-      const params = new URLSearchParams({ period, limit: '50' });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'stock', filters.stock);
-      const res = await apiFetch(`/api/tenant/warehouses/landing?${params.toString()}`);
+      const res = await apiFetch(`/api/tenant/warehouses/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error(`warehouses-landing ${res.status}`);
-      return res.json() as Promise<WarehousesLandingResponse>;
+      return res.json();
     },
-    initialData: initialData ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: baseSummary ? { pages: [baseSummary], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: baseSummary ? 0 : undefined,
+    placeholderData: keepPreviousData,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'warehouses');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useWarehouseDetail(id: string) {
@@ -62,11 +71,17 @@ export function useWarehouseDetail(id: string) {
   });
 }
 
-export function useWarehouseStock(warehouseId: string, enabled = true) {
+export interface WarehouseStockFilters {
+  query?: string;
+  statuses?: string[];
+  sort?: string;
+}
+
+export function useWarehouseStock(warehouseId: string, filters: WarehouseStockFilters = {}, enabled = true) {
   const { currentTenantId } = useAuth();
 
   return useInfiniteQuery<WarehouseStockPageResponse>({
-    queryKey: ['warehouse-stock', currentTenantId, warehouseId],
+    queryKey: ['warehouse-stock', currentTenantId, warehouseId, filters],
     enabled: Boolean(currentTenantId) && Boolean(warehouseId) && enabled,
     staleTime: 30_000,
     initialPageParam: 1,
@@ -75,6 +90,9 @@ export function useWarehouseStock(warehouseId: string, enabled = true) {
         page: String(pageParam),
         page_size: '50',
       });
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.sort) params.set('sort', filters.sort);
+      for (const status of filters.statuses ?? []) params.append('status', status);
       const res = await apiFetch(`/api/tenant/warehouses/${warehouseId}/stock?${params.toString()}`);
       if (res.status === 404) throw new Error('not_found');
       if (!res.ok) throw new Error(`warehouse-stock ${res.status}`);
@@ -83,6 +101,7 @@ export function useWarehouseStock(warehouseId: string, enabled = true) {
       return json.data;
     },
     getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
+    placeholderData: keepPreviousData,
   });
 }
 

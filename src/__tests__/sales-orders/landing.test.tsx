@@ -64,11 +64,19 @@ function mockSalesOrdersData(): TenantOrdersResponse {
       received_count: 1,
       delivered_count: 1,
       buyers_mtd: 3,
+      open_value: 67000,
+      open_total: 2,
+    },
+    pulse_aggregates: {
+      waiting_confirmation_count: 1,
+      waiting_confirmation_value: 22000,
+      waiting_dispatch_count: 1,
+      waiting_dispatch_value: 45000,
     },
     todays_read: {
       needs_attention: [],
-      biggest_tickets: [],
-      in_motion: [],
+      to_dispatch: [],
+      stock_shortage: [],
     },
     orders: [
       {
@@ -98,6 +106,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         total_amount: 22000,
         status: { value: 'received' as const, label: 'Received', tone: 'neutral' as const, filter_chip: 'Received' as const },
         placed_at: '2026-05-29T11:00:00.000Z',
+        confirmed_at: null,
+        dispatched_at: null,
       },
       {
         id: 'o-old',
@@ -126,6 +136,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         total_amount: 45000,
         status: { value: 'confirmed' as const, label: 'Confirmed', tone: 'warning' as const, filter_chip: 'Confirmed' as const },
         placed_at: '2026-05-02T11:00:00.000Z',
+        confirmed_at: null,
+        dispatched_at: null,
       },
       {
         id: 'o-inv',
@@ -154,6 +166,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         total_amount: 12000,
         status: { value: 'invoiced' as const, label: 'Invoiced', tone: 'success' as const, filter_chip: 'Invoiced' as const },
         placed_at: '2026-05-15T11:00:00.000Z',
+        confirmed_at: null,
+        dispatched_at: null,
       },
     ],
   };
@@ -182,9 +196,11 @@ describe('sales orders landing page', () => {
   it('renders KPI numbers including AOV, pending dispatch, and Sales Orders MTD tile', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
-    expect(screen.getByText('Pending dispatch')).toBeInTheDocument();
-    expect(screen.getByText('Sales Orders · MTD')).toBeInTheDocument();
-    expect(screen.getByText(/AOV/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
+    expect(screen.queryByText('Showing')).not.toBeInTheDocument();
+    expect(screen.getByText('Waiting to dispatch')).toBeInTheDocument();
+    expect(screen.getByText('Order value created')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for confirmation')).toBeInTheDocument();
   });
 
   it('renders the updated transaction columns in the new order', () => {
@@ -200,7 +216,7 @@ describe('sales orders landing page', () => {
     expect(screen.getByText('Buyer One')).toBeInTheDocument();
     expect(screen.getAllByText('Bengaluru Hub').length).toBeGreaterThan(0);
     expect(screen.getByText('Monsoon Promo')).toBeInTheDocument();
-    expect(screen.getByText('₹22.00K')).toBeInTheDocument();
+    expect(screen.getAllByText('₹22K').length).toBeGreaterThan(0);
   });
 
   it('shows place_of_supply below the buyer name', () => {

@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
-import { loadWarehouseStockPage } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -44,9 +43,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return jsonError(404, 'Warehouse not found', 'NOT_FOUND');
     }
 
-    const page = Number(request.nextUrl.searchParams.get('page') ?? '1');
-    const pageSize = Number(request.nextUrl.searchParams.get('page_size') ?? '50');
-    const stockPage = await loadWarehouseStockPage(db, id, { page, pageSize });
+    const page = Math.max(1, Number(request.nextUrl.searchParams.get('page') ?? '1') || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get('page_size') ?? '50') || 50));
+    const statuses = request.nextUrl.searchParams.getAll('status').filter(Boolean);
+    const { data: rows, error: searchError } = await db.schema('app').rpc('search_warehouse_stock_v2', {
+      p_tenant_id: claims.tenant_id,
+      p_warehouse_id: id,
+      p_query: request.nextUrl.searchParams.get('q')?.trim() || null,
+      p_statuses: statuses.length > 0 ? statuses : null,
+      p_sort: request.nextUrl.searchParams.get('sort') || 'product_asc',
+      p_limit: pageSize,
+      p_offset: (page - 1) * pageSize,
+    });
+    if (searchError) throw searchError;
+    const total = Number(rows?.[0]?.total_count ?? 0);
+    const stockPage = {
+      items: (rows ?? []).map((row: any) => ({
+        tenant_product_id: String(row.tenant_product_id),
+        sku: String(row.sku ?? ''),
+        product_name: String(row.product_name ?? row.sku ?? ''),
+        brand_name: String(row.brand_name ?? '—'),
+        qty_available: Number(row.qty_available ?? 0),
+        qty_reserved: Number(row.qty_reserved ?? 0),
+        sellable_units: Number(row.sellable_units ?? 0),
+        reorder_point: row.reorder_point == null ? null : Number(row.reorder_point),
+        stock_status: row.stock_status,
+        last_updated: row.last_updated,
+        last_demand_at: null,
+        is_idle: false,
+      })),
+      total,
+      page,
+      page_size: pageSize,
+      has_more: page * pageSize < total,
+    };
 
     return NextResponse.json(
       { data: stockPage, error: null },

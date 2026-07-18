@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Package } from 'lucide-react';
@@ -13,7 +13,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
@@ -25,6 +24,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -32,8 +32,9 @@ import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLo
 type SortOption = 'Recent first' | 'GMV (high → low)' | 'Items (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'GMV (high → low)', 'Items (high → low)'];
 
-function mapRowToCallout(row: OrderLandingRow) {
+function mapRowToCallout(row: Pick<OrderLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
   return {
+    id: row.id,
     initials: row.buyer_initials,
     hue: row.buyer_hue,
     name: row.buyer_name,
@@ -44,12 +45,20 @@ function buyerGeographyLabel(row: OrderLandingRow) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
 }
 
-function countNeedsAttention(rows: OrderLandingRow[]) {
-  return rows.filter((row) => row.status.value === 'received').length;
-}
-
-function countOrdersInMotion(rows: OrderLandingRow[]) {
-  return rows.filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched').length;
+function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    row.order_id,
+    row.buyer_name,
+    row.location_name,
+    row.source_label,
+    row.campaign_name ?? null,
+    row.catalog_name ?? null,
+    row.place_of_supply ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function SalesOrdersLoadingSkeleton() {
@@ -127,7 +136,17 @@ function SalesOrdersLandingContent({
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
-  const { data, isLoading, isError } = useTenantOrders(period, { search: routeState.search, ...filters }, initialData);
+  const search = routeState.search;
+  const debouncedSearch = useDebounce(search, 300);
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
+  const { data, isLoading, isError, isFetching } = useTenantOrders(
+    period,
+    { search: debouncedSearch, ...deferredFilters },
+    initialData,
+  );
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
@@ -135,27 +154,45 @@ function SalesOrdersLandingContent({
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
   const sortBy = routeState.sortBy;
 
-  const summaryOrders = summaryData?.orders ?? [];
   const orders = landingData?.orders ?? [];
 
   const filteredRows = useMemo(() => {
-    return [...orders].sort((a, b) => {
+    return orders
+      .filter((row) => {
+        if (!matchesOrderSearch(row, search)) {
+          return false;
+        }
+
+        if (filters.source.length > 0 && !filters.source.includes(row.source_label)) {
+          return false;
+        }
+
+        if (filters.status.length > 0 && !filters.status.includes(row.status.filter_chip)) {
+          return false;
+        }
+
+        if (filters.location_id.length > 0 && (!row.location_id || !filters.location_id.includes(row.location_id))) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
       if (sortBy === 'Recent first') return new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime();
       if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
       return b.items_count - a.items_count;
     });
-  }, [orders, sortBy]);
+  }, [filters.location_id, filters.source, filters.status, orders, search, sortBy]);
+  const showTableSkeleton = (isLoading || isFetching) && filteredRows.length === 0;
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
-    if (!kpis) return `Sales orders ${lowerLabel} from your buyers. This list is your workboard.`;
-    return `${kpis.orders_mtd} sales orders ${lowerLabel} from ${kpis.buyers_mtd} buyers. ${kpis.pending_dispatch_count} pending dispatch, ${kpis.received_count} received and awaiting confirmation.`;
-  }, [lowerLabel, summaryData?.kpis]);
-  const needsAttentionCount = useMemo(() => countNeedsAttention(summaryOrders), [summaryOrders]);
-  const inMotionCount = useMemo(() => countOrdersInMotion(summaryOrders), [summaryOrders]);
+    if (!kpis) return `Sales orders ${lowerLabel} from your buyers.`;
+    return `${kpis.orders_mtd} sales orders in ${horizonLabel.toLowerCase()}.`;
+  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
+  const pulseAggregates = summaryData?.pulse_aggregates;
 
   if (isLoading && !landingData) return <SalesOrdersLandingSkeleton />;
 
@@ -169,16 +206,25 @@ function SalesOrdersLandingContent({
   }
   if (!landingData) return <SalesOrdersLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
-    key: group.key,
-    label: group.label,
-    options: group.options,
-    values: filters[group.key as keyof typeof filters] ?? [],
-    onChange: (values) => setRouteState((current) => ({
-      ...current,
-      filters: { ...(current.filters ?? filters), [group.key]: values },
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'period',
+      label: 'Period',
+      options,
+      values: [period],
+      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+    },
+    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+      key: group.key,
+      label: group.label,
+      options: group.options,
+      values: filters[group.key as keyof typeof filters] ?? [],
+      onChange: (values: string[]) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), [group.key]: values },
+      })),
     })),
-  }));
+  ];
 
   return (
     <>
@@ -188,9 +234,7 @@ function SalesOrdersLandingContent({
           title="Sales Orders"
           subtitle={subtitle}
           horizon={horizonLabel}
-          period={period}
-          periodOptions={options}
-          onPeriodChange={setPeriod}
+          showHorizonControl={false}
           primary={createSalesOrders ? 'Add a sales order' : undefined}
           onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
         />
@@ -207,26 +251,26 @@ function SalesOrdersLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Sales Orders · MTD',
-                  value: `${landingData.kpis.orders_mtd}`,
-                  sub: `${landingData.kpis.orders_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.orders_growth_pct)}% vs last month`,
+                  label: 'Order value created',
+                  value: formatCompactInr(landingData.kpis.gmv_mtd),
+                  sub: `${landingData.kpis.orders_mtd} sales orders this month`,
                 },
                 {
-                  label: 'GMV',
-                  value: formatCompactInr(landingData.kpis.gmv_mtd),
-                  sub: `AOV ${formatCompactInr(landingData.kpis.aov)}`,
+                  label: 'Open orders',
+                  value: formatCompactInr(landingData.kpis.open_value),
+                  sub: `${landingData.kpis.open_total} open orders`,
                   tone: 'accent',
                 },
                 {
-                  label: 'Pending dispatch',
-                  value: `${landingData.kpis.pending_dispatch_count}`,
-                  sub: 'confirmed, awaiting dispatch',
+                  label: 'Waiting to dispatch',
+                  value: formatCompactInr(pulseAggregates?.waiting_dispatch_value ?? 0),
+                  sub: `${pulseAggregates?.waiting_dispatch_count ?? 0} confirmed, awaiting dispatch`,
                   tone: 'warn',
                 },
                 {
-                  label: 'Received',
-                  value: `${landingData.kpis.received_count}`,
-                  sub: 'awaiting confirmation',
+                  label: 'Waiting for confirmation',
+                  value: formatCompactInr(pulseAggregates?.waiting_confirmation_value ?? 0),
+                  sub: `${pulseAggregates?.waiting_confirmation_count ?? 0} awaiting confirmation`,
                 },
               ]}
             />
@@ -234,49 +278,47 @@ function SalesOrdersLandingContent({
             <V3CalloutPanel
               items={[
                 {
+                  id: 'needs_attention',
                   kind: 'risk',
-                  eyebrow: 'Needs action',
-                  hint: `${needsAttentionCount}`,
+                  eyebrow: 'Orders to confirm',
+                  hint: `${landingData.kpis.received_count}`,
+                  getHref: (row) => `/sales-orders/${row.id}`,
                   rows: landingData.todays_read.needs_attention.map((row) => ({
                     ...mapRowToCallout(row),
-                    reason: `${row.order_id} · ${row.status.label} · ${row.delivery_city}`,
-                    trailing: (
-                      <span className="inline-flex font-sans">
-                        <StatusTag label={row.status.label} tone={row.status.tone} />
-                      </span>
-                    ),
-                  })),
-                },
-                {
-                  kind: 'info',
-                  eyebrow: 'Biggest tickets',
-                  hint: `${orders.length}`,
-                  rows: landingData.todays_read.biggest_tickets.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · ${row.items_count} items · ${row.delivery_city}`,
+                    reason: `${row.order_id} · ${formatDate(row.placed_at)}`,
                     trailing: formatCompactInr(row.total_amount),
                   })),
                 },
                 {
-                  kind: 'opportunity',
-                  eyebrow: 'In motion',
-                  hint: `${inMotionCount}`,
-                  rows: landingData.todays_read.in_motion.map((row) => ({
+                  id: 'to_dispatch',
+                  kind: 'info',
+                  eyebrow: 'Orders to dispatch',
+                  hint: `${landingData.kpis.pending_dispatch_count}`,
+                  getHref: (row) => `/sales-orders/${row.id}`,
+                  rows: landingData.todays_read.to_dispatch.map((row) => ({
                     ...mapRowToCallout(row),
-                    reason: `${row.order_id} · ${row.delivery_city} · ${formatCompactInr(row.total_amount)}`,
-                    trailing: (
-                      <span className="inline-flex font-sans">
-                        <StatusTag label={row.status.label} tone={row.status.tone} />
-                      </span>
-                    ),
+                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
+                    trailing: formatCompactInr(row.total_amount),
+                  })),
+                },
+                {
+                  id: 'stock_shortage',
+                  kind: 'opportunity',
+                  eyebrow: 'Stock shortage',
+                  hint: `${landingData.todays_read.stock_shortage.length}`,
+                  getHref: (row) => `/sales-orders/${row.id}`,
+                  rows: landingData.todays_read.stock_shortage.map((row) => ({
+                    ...mapRowToCallout(row),
+                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
+                    trailing: formatCompactInr(row.total_amount),
                   })),
                 },
               ]}
             />
 
             <FilterBar
-              count={`Showing ${filteredRows.length} of ${orders.length}`}
-              searchPlaceholder="Search order ID, buyer, city, catalog…"
+              count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search order number…"
               chips={[]}
               activeChip=""
               sortBy={sortBy}
@@ -289,7 +331,9 @@ function SalesOrdersLandingContent({
             />
 
             <div className="overflow-x-auto">
-              {filteredRows.length === 0 ? (
+              {showTableSkeleton ? (
+                <SalesOrdersDataSkeleton />
+              ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<Package size={28} strokeWidth={1.5} />}
                   heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching sales orders' : 'No sales orders yet'}

@@ -5,14 +5,14 @@ import { PencilIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { PageWrap } from '@/components/seller/layout';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { WarehouseDetailsTab } from './WarehouseDetailsTab';
 import { WarehousePerformanceTab } from './WarehousePerformanceTab';
 import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { useWarehouseDetail, useWarehouseReference, useWarehouseStock } from '@/hooks/useWarehouses';
+import { useWarehouseDetail, useWarehouseReference } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
 import { WarehouseDetailSkeleton as SharedWarehouseDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -60,9 +60,6 @@ export function WarehouseDetailPage({ id }: { id: string }) {
   });
   const { data, isLoading, isError, refetch } = useWarehouseDetail(id);
   const { data: editingWarehouse } = useWarehouseReference(id);
-  const stockQuery = useWarehouseStock(id, tab === 'stock');
-  const stock = stockQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const stockTotal = stockQuery.data?.pages[0]?.total ?? data?.tracked_skus_count ?? 0;
 
   if (isLoading) return <SharedWarehouseDetailSkeleton />;
   if (isError || !data) {
@@ -122,10 +119,12 @@ export function WarehouseDetailPage({ id }: { id: string }) {
         }
       />
 
-      <MetaStrip4
+      <MetricGrid
+        className="mt-6"
+        showSupportingText
         tiles={[
           {
-            label: 'Tracked SKUs',
+            label: 'Products in stock',
             value: `${data.meta_strip.tracked_skus}`,
             sub: `${data.details.stockout_skus} stockout SKUs`,
           },
@@ -135,7 +134,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
             sub: 'available to fulfill',
           },
           {
-            label: 'Low-stock + stockout',
+            label: 'Stock risk SKUs',
             value: `${data.meta_strip.low_stock_skus}`,
             sub: 'reorder-triggered exposure',
           },
@@ -158,16 +157,11 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       />
 
       {tab === 'details' ? <WarehouseDetailsTab data={data} /> : null}
-      {tab === 'performance' ? <WarehousePerformanceTab data={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <WarehousePerformanceTab data={data.performance} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'stock' ? (
-        <WarehouseStockTab
-          warehouseId={id}
-          stock={stock}
-          total={stockTotal}
-          hasMore={Boolean(stockQuery.hasNextPage)}
-          isLoadingMore={stockQuery.isFetchingNextPage}
-          onLoadMore={() => void stockQuery.fetchNextPage()}
-        />
+        <WarehouseStockTab warehouseId={id} />
       ) : null}
 
       <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={warehouseForEdit} />

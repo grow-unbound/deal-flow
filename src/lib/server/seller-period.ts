@@ -61,6 +61,11 @@ export function getSellerLandingPeriodMeta(
     currentEndExclusive = new Date(currentStart.getTime() + 7 * DAY_MS);
     previousStart = new Date(currentStart.getTime() - 7 * DAY_MS);
     previousPeriodEndExclusive = currentStart;
+  } else if (selected === 'last90') {
+    currentStart = new Date(Date.UTC(year, month, day - 89, 0, 0, 0));
+    currentEndExclusive = new Date(Date.UTC(year, month, day + 1, 0, 0, 0));
+    previousStart = new Date(Date.UTC(year, month, day - 179, 0, 0, 0));
+    previousPeriodEndExclusive = currentStart;
   } else if (selected === 'quarter') {
     const quarterStartMonth = Math.floor(month / 3) * 3;
     currentStart = new Date(Date.UTC(year, quarterStartMonth, 1, 0, 0, 0));

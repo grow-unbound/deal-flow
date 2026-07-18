@@ -17,6 +17,7 @@ import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -192,6 +193,7 @@ export async function GET(req: NextRequest) {
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
+    const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
 
     const buildBaseEstimateQuery = () => {
       return applySellerLocationScope(
@@ -216,9 +218,7 @@ export async function GET(req: NextRequest) {
     if (cursorParam) {
       scopedEstimatesQuery = applyEstimateCursor(scopedEstimatesQuery, cursorParam);
     }
-    if (searchParam) {
-      scopedEstimatesQuery = scopedEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
-    }
+    scopedEstimatesQuery = applyTransactionTableSearch(scopedEstimatesQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (sourceParams.length === 1) {
       scopedEstimatesQuery = scopedEstimatesQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
     }
@@ -240,9 +240,7 @@ export async function GET(req: NextRequest) {
       claims,
     );
     estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
-    if (searchParam) {
-      estimateTotalQuery = estimateTotalQuery.ilike('estimate_number', `%${searchParam}%`);
-    }
+    estimateTotalQuery = applyTransactionTableSearch(estimateTotalQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (sourceParams.length === 1) {
       estimateTotalQuery = estimateTotalQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
     }
@@ -253,49 +251,27 @@ export async function GET(req: NextRequest) {
       estimateTotalQuery = estimateTotalQuery.in('location_id', locationParams);
     }
 
-    const buildEstimateKpiQuery = (opts?: { start?: string; endExclusive?: string }) => {
-      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
-        return Promise.resolve({ data: [], error: null });
-      }
+    const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
 
-      let query = db
-        .schema('app')
-        .from('kpi_estimates_daily')
-        .select('estimates_count, gmv, open_count, accepted_count, converted_count, draft_count, sent_count, expiring_soon_count, open_buyer_app_count')
-        .eq('tenant_id', tenantId)
-        .eq('scope', aggregateScope);
-
-      if (opts?.start) {
-        query = query.gte('day', opts.start.slice(0, 10));
-      }
-      if (opts?.endExclusive) {
-        query = query.lt('day', opts.endExclusive.slice(0, 10));
-      }
-      if (aggregateScope === 'location') {
-        query = query.in('location_id', scopedLocationIds);
-      }
-
-      return query;
-    };
-
-    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'ready_to_convert' | 'expiring_soon') => {
+    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'drafts_not_sent' | 'expiring_soon') => {
       let query = buildBaseEstimateQuery() as any;
-      query = applyEstimateDocumentPeriod(query, period.current_start, period.current_end_exclusive);
 
       if (mode === 'needs_follow_up') {
         return query
           .eq('status', 'sent')
           .order('sent_at', { ascending: true, nullsFirst: false })
           .order('id', { ascending: false })
-          .limit(3);
+          .limit(SEE_ALL_LIMIT);
       }
 
-      if (mode === 'ready_to_convert') {
+      if (mode === 'drafts_not_sent') {
         return query
-          .eq('status', 'accepted')
+          .eq('status', 'draft')
+          .order('estimate_date', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: true })
           .order('total_amount', { ascending: false })
           .order('id', { ascending: false })
-          .limit(3);
+          .limit(SEE_ALL_LIMIT);
       }
 
       return query
@@ -303,24 +279,70 @@ export async function GET(req: NextRequest) {
         .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString())
         .order('expires_at', { ascending: true, nullsFirst: false })
         .order('id', { ascending: false })
-        .limit(3);
+        .limit(SEE_ALL_LIMIT);
     };
 
-    const [estimatesRes, estimateTotalRes, currentPeriodRes, previousPeriodRes, aggregateRes, needsFollowUpRes, readyToConvertRes, expiringSoonRes] = await Promise.all([
+    // Pulse-card aggregates (true count+value, not the ≤SEE_ALL_LIMIT callout
+    // sample above) for "Sent estimates awaiting action for 3+ days" and
+    // "Expiring in 7 days" -- both NOW-relative-to-clock conditions that
+    // aren't precomputed in a daily snapshot, same reasoning as the callout
+    // queries themselves.
+    const sentAwaitingAggPromise = applySellerLocationScope(
+      db.schema('app').from('estimates')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .eq('status', 'sent')
+        .lt('sent_at', new Date(Date.now() - 3 * DAY_MS).toISOString()) as any,
+      claims,
+    );
+    const expiringAggPromise = applySellerLocationScope(
+      db.schema('app').from('estimates')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .in('status', ['draft', 'sent', 'accepted'])
+        .not('expires_at', 'is', null)
+        .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString()) as any,
+      claims,
+    );
+
+    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
+      p_tenant_id: tenantId,
+      p_kind: 'estimates',
+      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
+    });
+
+    const [
+      estimatesRes,
+      estimateTotalRes,
+      landingMetricsRes,
+      needsFollowUpRes,
+      draftsNotSentRes,
+      expiringSoonRes,
+      sentAwaitingAggRes,
+      expiringAggRes,
+    ] = await Promise.all([
       scopedEstimatesQuery,
       estimateTotalQuery,
-      buildEstimateKpiQuery({ start: period.current_start, endExclusive: period.current_end_exclusive }),
-      buildEstimateKpiQuery({ start: period.previous_start, endExclusive: period.previous_end_exclusive }),
-      buildEstimateKpiQuery(),
+      landingMetricsPromise,
       buildEstimateCalloutQuery('needs_follow_up'),
-      buildEstimateCalloutQuery('ready_to_convert'),
+      buildEstimateCalloutQuery('drafts_not_sent'),
       buildEstimateCalloutQuery('expiring_soon'),
+      sentAwaitingAggPromise,
+      expiringAggPromise,
     ]);
 
-    if (estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error) {
+    if (
+      estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
+      || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
+      || sentAwaitingAggRes.error || expiringAggRes.error
+    ) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error,
+        estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
+          || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
+          || sentAwaitingAggRes.error || expiringAggRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -334,7 +356,7 @@ export async function GET(req: NextRequest) {
       : null;
     const calloutRows = [
       ...((needsFollowUpRes.data ?? []) as EstimateDbRow[]),
-      ...((readyToConvertRes.data ?? []) as EstimateDbRow[]),
+      ...((draftsNotSentRes.data ?? []) as EstimateDbRow[]),
       ...((expiringSoonRes.data ?? []) as EstimateDbRow[]),
     ];
     const lookupRows = Array.from(new Map([...rawEstimates, ...calloutRows].map((row) => [row.id, row])).values());
@@ -466,39 +488,33 @@ export async function GET(req: NextRequest) {
 
     const normalized = rawEstimates.map((row, index) => normalizeLanding(row, index));
 
-    const totalEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
-    const totalEstimatesPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
-    const totalGmvThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const totalGmvPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const totalEstimatesGrowthPct =
-      totalEstimatesPrevPeriod > 0 ? Math.round(((totalEstimatesThisPeriod - totalEstimatesPrevPeriod) / totalEstimatesPrevPeriod) * 100) : 0;
-    const aov = totalEstimatesThisPeriod > 0 ? totalGmvThisPeriod / totalEstimatesThisPeriod : 0;
-    const openEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
-    const openCreatedThisPeriod = openEstimatesThisPeriod;
-    const buyerAppCreatedThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_buyer_app_count');
-    const openDraftsAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'draft_count');
-    const openSentAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'sent_count');
-    const openAcceptedAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'accepted_count');
-    const openTotalAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
-    const expiringSoonAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'expiring_soon_count');
+    const kpis = ((landingMetricsRes.data as { kpis?: EstimatesKpis } | null)?.kpis ?? {
+      total_estimates_this_period: 0,
+      total_estimates_prev_period: 0,
+      total_estimates_growth_pct: 0,
+      total_gmv_this_period: 0,
+      total_gmv_prev_period: 0,
+      aov: 0,
+      open_estimates_this_period: 0,
+      open_estimate_value: 0,
+      converted_this_period: 0,
+      open_total: 0,
+      open_drafts: 0,
+      open_sent: 0,
+      open_accepted: 0,
+      ready_to_convert: 0,
+      expiring_soon: 0,
+      open_created_this_period: 0,
+      buyer_app_created_this_period: 0,
+    }) as EstimatesKpis;
 
-    const kpis: EstimatesKpis = {
-      total_estimates_this_period: totalEstimatesThisPeriod,
-      total_estimates_prev_period: totalEstimatesPrevPeriod,
-      total_estimates_growth_pct: totalEstimatesGrowthPct,
-      total_gmv_this_period: totalGmvThisPeriod,
-      total_gmv_prev_period: totalGmvPrevPeriod,
-      aov,
-      open_estimates_this_period: openEstimatesThisPeriod,
-      converted_this_period: sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'converted_count'),
-      open_total: openTotalAggregate,
-      open_drafts: openDraftsAggregate,
-      open_sent: openSentAggregate,
-      open_accepted: openAcceptedAggregate,
-      ready_to_convert: openAcceptedAggregate,
-      expiring_soon: expiringSoonAggregate,
-      open_created_this_period: openCreatedThisPeriod,
-      buyer_app_created_this_period: buyerAppCreatedThisPeriod,
+    const sentAwaitingRows = (sentAwaitingAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
+    const expiringAggRows = (expiringAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
+    const pulse_aggregates = {
+      sent_awaiting_count: sentAwaitingAggRes.count ?? sentAwaitingRows.length,
+      sent_awaiting_value: sumMetric(sentAwaitingRows as Array<Record<string, unknown>>, 'total_amount'),
+      expiring_soon_count: expiringAggRes.count ?? expiringAggRows.length,
+      expiring_soon_value: sumMetric(expiringAggRows as Array<Record<string, unknown>>, 'total_amount'),
     };
 
     const toCalloutRow = (landing: EstimateLandingRow): EstimateCalloutRow => ({
@@ -509,6 +525,7 @@ export async function GET(req: NextRequest) {
       buyer_hue: landing.buyer_hue,
       items_count: landing.items_count,
       total_amount: landing.total_amount,
+      estimate_date: landing.created_at,
       sent_at: landing.sent_at,
       expires_at: landing.expires_at,
       status: { label: landing.status.label, tone: landing.status.tone },
@@ -520,7 +537,7 @@ export async function GET(req: NextRequest) {
       .filter((entry) => entry.row.sent_at && new Date(entry.row.sent_at).getTime() < threeDaysAgo)
       .map((entry) => toCalloutRow(entry.landing));
 
-    const readyCallout = ((readyToConvertRes.data ?? []) as EstimateDbRow[])
+    const draftsCallout = ((draftsNotSentRes.data ?? []) as EstimateDbRow[])
       .map((row, index) => normalizeLanding(row, index))
       .map((entry) => toCalloutRow(entry.landing));
 
@@ -532,7 +549,7 @@ export async function GET(req: NextRequest) {
 
     const todays_read: EstimatesTodaysRead = {
       needs_follow_up: needsFollowUp,
-      ready_to_convert: readyCallout,
+      drafts_not_sent: draftsCallout,
       expiring_soon: expiringCallout,
     };
 
@@ -563,6 +580,7 @@ export async function GET(req: NextRequest) {
     const payload = {
       period,
       kpis,
+      pulse_aggregates,
       todays_read,
       estimates,
       filters,

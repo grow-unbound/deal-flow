@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { PerformanceCard } from '@/components/seller/detail';
+import { DetailCardRenderer, DistributionList, MetricGrid, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import { formatCompactInr, formatCurrency } from '@/lib/utils';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
 
@@ -10,6 +10,7 @@ type TrendPeriod = '12m' | 'ytd' | '3m';
 
 interface ProductPerformanceTabProps {
   performance: ProductDetailResponse['detail']['performance'];
+  performanceCards?: unknown[];
 }
 
 function periodLabel(period: TrendPeriod): string {
@@ -24,8 +25,9 @@ function monthLabel(monthKey: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-IN', { month: 'short' });
 }
 
-export function ProductPerformanceTab({ performance }: ProductPerformanceTabProps) {
+export function ProductPerformanceTab({ performance, performanceCards }: ProductPerformanceTabProps) {
   const [period, setPeriod] = useState<TrendPeriod>('12m');
+
 
   const trendData = useMemo(() => {
     const base = performance.monthly_units_trend;
@@ -41,6 +43,17 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
   const trendCurrent = trendData[trendData.length - 1]?.units ?? 0;
   const trendPrevious = trendData[trendData.length - 2]?.units ?? 0;
   const trendGrowth = trendPrevious > 0 ? ((trendCurrent - trendPrevious) / trendPrevious) * 100 : 0;
+
+  if (performanceCards?.length) {
+    return (
+      <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {(performanceCards as DetailCardPayload[]).map((card) => (
+          <DetailCardRenderer key={card.id} card={card} />
+        ))}
+      </section>
+    );
+  }
+
 
   return (
     <section className="mt-5 space-y-4">
@@ -75,124 +88,95 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
           )}
           bodyClassName="p-0"
         >
-          <div className="border-b border-cream-200 px-5 py-4">
-            <div className="flex items-end gap-3">
-              <p className="font-display text-3xl leading-none text-cream-950">{performance.units_snapshot.units_mtd}</p>
-              <p className="pb-1 text-base text-cream-700">
-                <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
-                  {trendGrowth >= 0 ? '↑ +' : '↓ '}
-                  {Math.abs(trendGrowth).toFixed(1)}%
-                </span>{' '}
-                · {formatCompactInr(performance.units_snapshot.revenue_last_30d)} in revenue
-              </p>
-            </div>
-          </div>
-
-          <div className="h-[220px] px-4 pb-4 pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
-                <XAxis
-                  dataKey="month"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
-                  tickFormatter={monthLabel}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--cream-500)', fontSize: 'var(--yk-text-xs)' }}
-                  width={28}
-                />
-                <Tooltip
-                  formatter={(value: number) => [`${Math.round(value)} units`, 'Units']}
-                  labelFormatter={(label) => monthLabel(String(label))}
-                />
-                <Line type="monotone" dataKey="units" stroke="var(--ember-700)" strokeWidth={2.2} dot={{ r: 0 }} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <TrendFrame
+            emptyTitle="No sales and units history yet"
+            emptyDescription="This product does not have enough recent invoice activity for a trend."
+            summary={(
+              <div className="flex items-end gap-3">
+                <p className="font-display text-3xl leading-none text-cream-950">{performance.units_snapshot.units_mtd}</p>
+                <p className="pb-1 text-base text-cream-700">
+                  <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
+                    {trendGrowth >= 0 ? '↑ +' : '↓ '}
+                    {Math.abs(trendGrowth).toFixed(1)}%
+                  </span>{' '}
+                  · {formatCompactInr(performance.units_snapshot.revenue_last_30d)} in revenue
+                </p>
+              </div>
+            )}
+            chart={trendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
+                  <XAxis
+                    dataKey="month"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
+                    tickFormatter={monthLabel}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--cream-500)', fontSize: 'var(--yk-text-xs)' }}
+                    width={28}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [`${Math.round(value)} units`, 'Units']}
+                    labelFormatter={(label) => monthLabel(String(label))}
+                  />
+                  <Line type="monotone" dataKey="units" stroke="var(--ember-700)" strokeWidth={2.2} dot={{ r: 0 }} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : null}
+          />
         </PerformanceCard>
 
         <PerformanceCard title="Inventory &amp; ops" bodyClassName="p-0">
-          <div className="grid grid-cols-2 gap-y-4 px-5 py-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">On hand</p>
-              <p className="mt-2 font-display text-3xl leading-none text-cream-950">{performance.inventory_ops.on_hand}</p>
-              <p className="mt-1 text-sm text-cream-700">bottles</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Days of cover</p>
-              <p className="mt-2 font-display text-3xl leading-none text-cream-950">{performance.inventory_ops.days_cover} d</p>
-              <p className="mt-1 text-sm text-cream-700">at current pace</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Sell-through</p>
-              <p className="mt-2 font-display text-3xl leading-none text-cream-950">{performance.inventory_ops.sell_through_pct}%</p>
-              <p className="mt-1 text-sm text-cream-700">last 30 days</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Last ordered</p>
-              <p className="mt-2 font-display text-2xl leading-none text-cream-950">
-                {performance.inventory_ops.last_ordered_at ? new Date(performance.inventory_ops.last_ordered_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}
-              </p>
-              <p className="mt-1 text-sm text-cream-700">{performance.inventory_ops.last_ordered_buyer ?? 'No buyer yet'}</p>
-            </div>
+          <div className="p-5">
+            <MetricGrid
+              className="mt-0"
+              tiles={[
+                { label: 'On hand', value: performance.inventory_ops.on_hand, sub: 'bottles' },
+                { label: 'Days of cover', value: `${performance.inventory_ops.days_cover} d`, sub: 'at current pace' },
+                { label: 'Sell-through', value: `${performance.inventory_ops.sell_through_pct}%`, sub: 'last 30 days' },
+                {
+                  label: 'Last ordered',
+                  value: performance.inventory_ops.last_ordered_at
+                    ? new Date(performance.inventory_ops.last_ordered_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+                    : '—',
+                  sub: performance.inventory_ops.last_ordered_buyer ?? 'No buyer yet',
+                },
+              ]}
+              showSupportingText
+            />
           </div>
         </PerformanceCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <PerformanceCard title="Top buyers" subtitle="Who&apos;s been buying this SKU" bodyClassName="p-0">
-          <div>
-            {performance.top_buyers.map((buyer, index) => (
-              <div key={buyer.buyer_id} className="grid grid-cols-[26px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
-                <p className="font-mono text-base text-cream-600">{index + 1}</p>
-                <div>
-                  <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
-                  <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city ?? '—'}</p>
-                </div>
-                <p className="font-mono text-base text-cream-900">{buyer.units} bottles</p>
-              </div>
-            ))}
-            {performance.top_buyers.length === 0 ? (
-              <p className="px-5 py-8 text-center text-base text-cream-700">No buyer activity yet.</p>
-            ) : null}
-          </div>
+        <PerformanceCard title="Customers buying this product" subtitle="Who&apos;s been buying this SKU" bodyClassName="p-0">
+          <RankedList
+            items={performance.top_buyers.map((buyer, index) => ({
+              id: `${buyer.buyer_id}-${index}`,
+              label: buyer.buyer_name,
+              meta: buyer.city ?? '—',
+              value: `${buyer.units} bottles`,
+            }))}
+            emptyTitle="No buyer activity yet"
+            emptyDescription="This product has not been purchased by any customer in the selected horizon."
+          />
         </PerformanceCard>
 
-        <PerformanceCard title="Price by customer group" subtitle="Base + overrides" bodyClassName="p-0">
-          <table className="w-full">
-            <thead className="border-b border-cream-300 bg-cream-100 text-left text-xs uppercase tracking-[0.08em] text-cream-700">
-              <tr>
-                <th className="px-5 py-2.5">Customer group</th>
-                <th className="px-5 py-2.5">Price</th>
-                <th className="px-5 py-2.5">Override</th>
-              </tr>
-            </thead>
-            <tbody>
-              {performance.price_by_cohort.map((item) => (
-                <tr key={item.cohort} className="border-b border-cream-300 last:border-b-0">
-                  <td className="px-5 py-3 text-base text-cream-900">{item.cohort}</td>
-                  <td className="px-5 py-3 font-mono text-base text-cream-900">{formatCurrency(item.price, 'INR')}</td>
-                  <td className="px-5 py-3">
-                    {item.has_override ? (
-                      <span className="inline-flex items-center rounded-full bg-ember-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-ember-700">
-                        Override
-                      </span>
-                    ) : (
-                      <span className="text-sm text-cream-600">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {performance.price_by_cohort.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-5 py-8 text-center text-base text-cream-700">No customer group pricing configured.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+        <PerformanceCard title="Actual selling prices" subtitle="Base + overrides" bodyClassName="p-0">
+          <DistributionList
+            items={performance.price_by_cohort.map((item) => ({
+              id: item.cohort,
+              label: item.cohort,
+              value: formatCurrency(item.price, 'INR'),
+              supporting: item.has_override ? 'Override' : 'Base price',
+            }))}
+            emptyTitle="No customer group pricing configured"
+            emptyDescription="This product does not have any price distribution by customer group yet."
+          />
         </PerformanceCard>
       </div>
     </section>

@@ -151,6 +151,44 @@ function createAdminStub(options?: { tableRows?: Record<string, TableRow[]> }) {
             };
           }
 
+          if (fn === 'persist_with_natural_key_lock') {
+            activityLog.push({ kind: 'rpc', table: String(args.p_table ?? '') });
+            const tableName = String(args.p_table ?? '');
+            const tenantId = String(args.p_tenant_id ?? '');
+            const naturalKeyColumn = String(args.p_natural_key_col ?? '');
+            const rows = Array.isArray(args.p_rows) ? (args.p_rows as TableRow[]) : [];
+            const persistedRows = rows.map((row) => {
+              const existingRows = tableRows[tableName] ?? [];
+              const externalRef = typeof row.external_ref === 'string' ? row.external_ref : null;
+              const naturalKey = typeof row[naturalKeyColumn] === 'string' ? row[naturalKeyColumn] : null;
+              const existing = existingRows.find((candidate) => {
+                if (candidate.tenant_id !== tenantId) return false;
+                if (candidate.deleted_at !== null && candidate.deleted_at !== undefined) return false;
+                if (externalRef && candidate.external_ref === externalRef) return true;
+                if (naturalKey && candidate[naturalKeyColumn] === naturalKey) return true;
+                return false;
+              });
+              const id = typeof existing?.id === 'string'
+                ? existing.id
+                : `${tableName}-${(nextIds.get(tableName) ?? 0) + 1}`;
+              if (typeof existing?.id !== 'string') {
+                nextIds.set(tableName, (nextIds.get(tableName) ?? 0) + 1);
+              }
+              const persisted = { ...existing, ...row, id };
+              mergeRow(tableName, persisted);
+              return persisted;
+            });
+            activityLog.push({ kind: 'db-upsert', table: tableName, rows: persistedRows });
+            args.p_rows = persistedRows;
+            return {
+              data: {
+                rows: persistedRows,
+                conflicts: [],
+              },
+              error: null,
+            };
+          }
+
           if (fn === 'rebuild_tenant_products_search_vectors') {
             return { data: null, error: null };
           }
@@ -197,7 +235,7 @@ describe('zoho products sync persistence', () => {
     );
 
     const touchedTables = admin.rpcCalls
-      .filter((call) => call.fn === 'bulk_persist_jsonb_records')
+      .filter((call) => call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock')
       .map((call) => String(call.args.p_table));
 
     expect(touchedTables).toContain('tenant_products');
@@ -331,7 +369,7 @@ describe('zoho products sync persistence', () => {
       records as Array<Record<string, unknown>>,
     );
 
-    const persistedCall = admin.rpcCalls.find((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === targetTable);
+    const persistedCall = admin.rpcCalls.find((call) => call.fn === 'persist_with_natural_key_lock' && call.args.p_table === targetTable);
     expect(persistedCall).toBeTruthy();
     const persistedRows = Array.isArray(persistedCall?.args.p_rows) ? persistedCall?.args.p_rows as Array<Record<string, unknown>> : [];
     expect(persistedRows).toHaveLength(expectedCount ?? 1);

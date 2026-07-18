@@ -5,7 +5,10 @@ import type { Database } from '@/types/database';
 
 export async function POST() {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient<Database>({
+      cookies: async () => cookieStore,
+    });
     const { error } = await supabase.auth.signOut();
 
     if (error) {

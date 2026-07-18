@@ -1,0 +1,23 @@
+-- Drops a genuinely redundant unused index flagged by the Postgres
+-- advisor performance lint (unused_index).
+--
+-- app.tenant_inventory.idx_tenant_inventory_tenant_product_id is a plain, non-unique, non-partial btree
+-- index on a column set that is already a leading-column prefix of
+-- tenant_inventory_product_warehouse_upsert (tenant_product_id, warehouse_id (UNIQUE)), which fully covers every
+-- query idx_tenant_inventory_tenant_product_id could serve (same leading column(s), no WHERE
+-- predicate narrowing which rows are indexed, so it is not a subset
+-- with different semantics).
+-- This is a conservative pick: it is dropped only because it is BOTH
+-- flagged unused by the advisor AND structurally redundant against
+-- another live index -- not merely because the advisor flagged it as
+-- unused (see migration report for the full list of unused-but-kept
+-- indexes, which are left alone pending more production traffic
+-- history on this still low-traffic project).
+--
+-- CONCURRENTLY: avoids holding an AccessExclusiveLock while dropping.
+-- This file contains a single statement (no BEGIN/COMMIT) because DROP
+-- INDEX CONCURRENTLY cannot run inside a transaction block or a
+-- pipelined batch of statements under `supabase db push` -- see
+-- 20260712123528_idx_buyers_search_vector_concurrent.sql for the same
+-- pattern applied elsewhere in this repo.
+DROP INDEX CONCURRENTLY IF EXISTS app.idx_tenant_inventory_tenant_product_id;

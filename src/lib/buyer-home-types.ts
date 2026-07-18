@@ -52,4 +52,5 @@ export interface BuyerHomeResponse {
   // W4 — Buy Again (from buyer's purchase history; empty if no history)
   buy_again: BuyerCatalogItem[];
   preview_message?: string | null;
+  as_of?: string;
 }

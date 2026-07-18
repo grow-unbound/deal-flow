@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Search, Package, Receipt, FileText, ClipboardList } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
@@ -54,9 +54,20 @@ export function BuyerSearchOverlay() {
   const [scope, setScope]     = useState<Scope>('catalog');
   const [query, setQuery]     = useState('');
   const [items, setItems]     = useState<BuyerSearchItem[]>([]);
+  const [itemsQuery, setItemsQuery] = useState('');
+  const [itemsScope, setItemsScope] = useState<Scope | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const inputRef   = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestSequenceRef = useRef(0);
+
+  const cancelPendingSearch = useCallback(() => {
+    requestSequenceRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   useEffect(() => {
     function onOpen() { setOpen(true); }
@@ -69,10 +80,21 @@ export function BuyerSearchOverlay() {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 80);
     } else {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      cancelPendingSearch();
       setQuery('');
       setItems([]);
+      setItemsQuery('');
+      setItemsScope(null);
+      setHasLoaded(false);
+      setLoading(false);
     }
-  }, [open]);
+  }, [cancelPendingSearch, open]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
+  }, [cancelPendingSearch]);
 
   // Esc to close
   useEffect(() => {
@@ -84,32 +106,58 @@ export function BuyerSearchOverlay() {
   }, [open]);
 
   const search = useCallback(async (q: string, sc: Scope) => {
-    if (!q.trim()) { setItems([]); return; }
+    const trimmedQuery = q.trim();
+    if (!trimmedQuery) return;
+
+    const controller = new AbortController();
+    const requestSequence = ++requestSequenceRef.current;
+    abortRef.current = controller;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/buyer/search?q=${encodeURIComponent(q)}&scope=${sc}`);
+      const res = await apiFetch(`/api/buyer/search?q=${encodeURIComponent(trimmedQuery)}&scope=${sc}`, {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const data = await res.json() as BuyerSearchResponse;
+        if (requestSequence !== requestSequenceRef.current) return;
         setItems(data.items ?? []);
+        setItemsQuery(trimmedQuery);
+        setItemsScope(sc);
+        setHasLoaded(true);
       }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) return;
     } finally {
-      setLoading(false);
+      if (requestSequence === requestSequenceRef.current) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
   const handleChange = useCallback((q: string) => {
     setQuery(q);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
+    if (!q.trim()) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     debounceRef.current = setTimeout(() => search(q, scope), 280);
-  }, [scope, search]);
+  }, [cancelPendingSearch, scope, search]);
 
   const handleScopeChange = useCallback((sc: Scope) => {
     setScope(sc);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
     if (query.trim()) {
+      setLoading(true);
       debounceRef.current = setTimeout(() => search(query, sc), 0);
+    } else {
+      setLoading(false);
     }
-  }, [query, search]);
+  }, [cancelPendingSearch, query, search]);
 
   const navigate = useCallback((item: BuyerSearchItem) => {
     setOpen(false);
@@ -123,6 +171,22 @@ export function BuyerSearchOverlay() {
       router.push(`/buy/orders?tab=invoices`);
     }
   }, [router]);
+
+  const displayedItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return [];
+    if (itemsScope === scope && itemsQuery.toLocaleLowerCase() === normalizedQuery) return items;
+
+    return items.filter((item) => {
+      const belongsToScope = scope === 'catalog'
+        ? item.entity_type === 'product'
+        : item.entity_type !== 'product';
+      const searchableText = `${item.label} ${item.sublabel} ${item.meta ?? ''}`.toLocaleLowerCase();
+      return belongsToScope && searchableText.includes(normalizedQuery);
+    });
+  }, [items, itemsQuery, itemsScope, query, scope]);
+  const hasAuthoritativeResult = itemsScope === scope
+    && itemsQuery.toLocaleLowerCase() === query.trim().toLocaleLowerCase();
 
   if (!open) return null;
 
@@ -195,7 +259,7 @@ export function BuyerSearchOverlay() {
 
         {/* Results */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0 12px' }}>
-          {loading && (
+          {loading && !hasLoaded && (
             <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[1, 2, 3].map((i) => (
                 <div key={i} style={{ height: 44, borderRadius: 10, background: 'var(--cream-100)', animation: 'pulse 1.5s infinite' }} />
@@ -203,7 +267,13 @@ export function BuyerSearchOverlay() {
             </div>
           )}
 
-          {!loading && query.trim() && items.length === 0 && (
+          {loading && hasLoaded && (
+            <div style={{ padding: '6px 16px 2px', color: 'var(--cream-500)', fontSize: 'var(--b-text-eyebrow)' }}>
+              Updating results…
+            </div>
+          )}
+
+          {!loading && query.trim() && hasAuthoritativeResult && items.length === 0 && (
             <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--cream-500)', fontSize: 'var(--b-text-sub)' }}>
               No results for &ldquo;{query}&rdquo;
             </div>
@@ -215,7 +285,7 @@ export function BuyerSearchOverlay() {
             </div>
           )}
 
-          {!loading && items.map((item) => {
+          {displayedItems.map((item) => {
             const Icon = ENTITY_ICON[item.entity_type] ?? Search;
             return (
               <button

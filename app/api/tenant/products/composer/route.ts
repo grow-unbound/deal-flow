@@ -2,85 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { parseRowsLimit } from '@/lib/server/bounded-get';
+import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 const DEFAULT_COMPOSER_LIMIT = PAGE_SIZE.COMPOSER;
-
-interface ProductRow {
-  id: string;
-  internal_sku: string;
-  name_override: string | null;
-  tenant_brand_id: string | null;
-  tenant_category_id: string | null;
-  mrp: number | null;
-  base_selling_price: number | null;
-  cost_price: number | null;
-  is_active: boolean;
-}
-
-interface TenantBrandRow {
-  id: string;
-  display_name_override: string | null;
-}
+const METADATA_LOOKUP_LIMIT = PAGE_SIZE.MAX;
+const SELECTED_PRODUCTS_LIMIT = 250;
 
 type PriceListProductAvailability = 'show_all' | 'in_stock' | 'low_stock' | 'out_of_stock';
 
-type InventoryRow = {
-  tenant_product_id: string;
-  qty_available: number | null;
-  reorder_point: number | null;
-};
+function readMultiParam(params: URLSearchParams, key: string, max: number) {
+  return Array.from(new Set(
+    params.getAll(key).flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean),
+  )).slice(0, max);
+}
 
-function readMultiParam(params: URLSearchParams, key: string) {
-  return params.getAll(key).flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean);
+function chunkIds(ids: string[], size: number) {
+  return Array.from({ length: Math.ceil(ids.length / size) }, (_, index) =>
+    ids.slice(index * size, (index + 1) * size));
 }
 
 function parseOffsetCursor(value: string | null) {
   if (!value) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
-}
-
-function escapeLike(value: string) {
-  return value.replace(/[%_]/g, (match) => `\\${match}`);
-}
-
-function applySearch(query: any, search: string, matchingBrandIds: string[]) {
-  if (!search) return query;
-  const escaped = escapeLike(search);
-  const orParts = [
-    `internal_sku.ilike.%${escaped}%`,
-    `name_override.ilike.%${escaped}%`,
-  ];
-  if (matchingBrandIds.length > 0) {
-    orParts.push(`tenant_brand_id.in.(${matchingBrandIds.join(',')})`);
-  }
-
-  return query.or(orParts.join(','));
-}
-
-function buildInventoryByProductId(rows: InventoryRow[]) {
-  const inventoryByProductId = new Map<string, { qty_available: number; reorder_point: number }>();
-  for (const row of rows) {
-    const existing = inventoryByProductId.get(row.tenant_product_id) ?? { qty_available: 0, reorder_point: 0 };
-    existing.qty_available += Number(row.qty_available ?? 0);
-    existing.reorder_point = Math.max(existing.reorder_point, Number(row.reorder_point ?? 0));
-    inventoryByProductId.set(row.tenant_product_id, existing);
-  }
-  return inventoryByProductId;
-}
-
-function matchesAvailability(
-  productId: string,
-  inventoryByProductId: Map<string, { qty_available: number; reorder_point: number }>,
-  availability: PriceListProductAvailability,
-) {
-  if (availability === 'show_all') return true;
-  const inventory = inventoryByProductId.get(productId) ?? { qty_available: 0, reorder_point: 0 };
-  if (availability === 'in_stock') return inventory.qty_available > 0;
-  if (availability === 'low_stock') return inventory.qty_available > 0 && inventory.reorder_point > 0 && inventory.qty_available <= inventory.reorder_point;
-  if (availability === 'out_of_stock') return inventory.qty_available <= 0;
-  return true;
 }
 
 /**
@@ -91,54 +36,52 @@ function matchesAvailability(
 export async function GET(req: NextRequest) {
   const claims = await getVerifiedClaims(req);
   if (!claims) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!claims.role?.startsWith('seller_')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
+  const tenantId = claims.tenant_id;
   const canViewCost = claims.role === 'seller_admin';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
   const params = req.nextUrl.searchParams;
   const search = params.get('q')?.trim() ?? '';
-  const brandLabels = readMultiParam(params, 'brand');
-  const categoryLabels = readMultiParam(params, 'category');
-  const brandIdsFromParams = readMultiParam(params, 'brand_id');
-  const categoryIdsFromParams = readMultiParam(params, 'category_id');
-  const selectedIds = readMultiParam(params, 'selected_id');
+  const brandLabels = readMultiParam(params, 'brand', METADATA_LOOKUP_LIMIT);
+  const categoryLabels = readMultiParam(params, 'category', METADATA_LOOKUP_LIMIT);
+  const brandIdsFromParams = readMultiParam(params, 'brand_id', METADATA_LOOKUP_LIMIT);
+  const categoryIdsFromParams = readMultiParam(params, 'category_id', METADATA_LOOKUP_LIMIT);
+  const selectedIds = readMultiParam(params, 'selected_id', SELECTED_PRODUCTS_LIMIT);
   const availability = (params.get('availability') || 'show_all') as PriceListProductAvailability;
   const needsAvailabilityFilter = availability !== 'show_all';
   const limit = parseRowsLimit(params.get('limit'), DEFAULT_COMPOSER_LIMIT);
   const offset = parseOffsetCursor(params.get('cursor'));
 
-  const [brandLookupRes, categoryLookupRes, searchBrandLookupRes] = await Promise.all([
+  const [brandLookupRes, categoryLookupRes] = await Promise.all([
     brandLabels.length > 0
       ? db
           .schema('app')
           .from('tenant_brands')
           .select('id, display_name_override')
-          .eq('tenant_id', claims.tenant_id)
+          .eq('tenant_id', tenantId)
           .is('deleted_at', null)
           .in('display_name_override', brandLabels)
+          .limit(METADATA_LOOKUP_LIMIT)
       : Promise.resolve({ data: [], error: null }),
     categoryLabels.length > 0
       ? db
           .schema('app')
           .from('tenant_categories')
           .select('id, name')
-          .eq('tenant_id', claims.tenant_id)
+          .eq('tenant_id', tenantId)
           .is('deleted_at', null)
           .in('name', categoryLabels)
-      : Promise.resolve({ data: [], error: null }),
-    search
-      ? db
-          .schema('app')
-          .from('tenant_brands')
-          .select('id, display_name_override')
-          .eq('tenant_id', claims.tenant_id)
-          .is('deleted_at', null)
-          .ilike('display_name_override', `%${escapeLike(search)}%`)
+          .limit(METADATA_LOOKUP_LIMIT)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (brandLookupRes.error || categoryLookupRes.error || searchBrandLookupRes.error) {
-    console.error('[GET /api/tenant/products/composer] lookup error:', brandLookupRes.error || categoryLookupRes.error || searchBrandLookupRes.error);
+  if (brandLookupRes.error || categoryLookupRes.error) {
+    console.error('[GET /api/tenant/products/composer] lookup error:', brandLookupRes.error || categoryLookupRes.error);
     return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
   }
 
@@ -150,178 +93,81 @@ export async function GET(req: NextRequest) {
     ...categoryIdsFromParams,
     ...((categoryLookupRes.data ?? []) as Array<{ id: string }>).map((row) => row.id),
   ]));
-  const searchBrandIds = ((searchBrandLookupRes.data ?? []) as Array<{ id: string }>).map((row) => row.id);
-
-  let productsQuery = db
-    .schema('app')
-    .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, mrp, base_selling_price, cost_price, is_active', { count: 'exact' })
-    .eq('tenant_id', claims.tenant_id)
-    .eq('is_active', true)
-    .is('deleted_at', null);
-
-  if (brandIds.length > 0) productsQuery = productsQuery.in('tenant_brand_id', brandIds);
-  if (categoryIds.length > 0) productsQuery = productsQuery.in('tenant_category_id', categoryIds);
-  productsQuery = applySearch(productsQuery, search, searchBrandIds);
-  productsQuery = productsQuery
-    .order('name_override', { ascending: true, nullsFirst: false })
-    .order('internal_sku', { ascending: true });
-  if (!needsAvailabilityFilter) {
-    productsQuery = productsQuery.range(offset, offset + limit - 1);
-  }
-
-  const [productsRes, brandFacetRes, categoryFacetRes] = await Promise.all([
-    productsQuery,
-    // Brand facet counts — all products, no pagination cap
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('tenant_brand_id')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .not('tenant_brand_id', 'is', null),
-    // Category facet counts — all products, no pagination cap
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('tenant_category_id')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .not('tenant_category_id', 'is', null),
+  const [productsResult, selectedResult, facetResult] = await Promise.all([
+    searchScopedProducts({
+      db,
+      tenantId,
+      query: search,
+      limit,
+      offset,
+      brandIds,
+      categoryIds,
+      availability,
+      sort: search ? 'relevance' : 'name_asc',
+    }),
+    selectedIds.length > 0
+      ? Promise.all(chunkIds(selectedIds, PAGE_SIZE.MAX).map((ids) => searchScopedProducts({
+          db,
+          tenantId,
+          limit: ids.length,
+          ids,
+          sort: 'name_asc',
+        }))).then((pages) => ({
+          rows: pages.flatMap((page) => page.rows),
+          total: pages.reduce((sum, page) => sum + page.total, 0),
+        }))
+      : Promise.resolve({ rows: [], total: 0 }),
+    db.schema('app').rpc('get_product_composer_facets', { p_tenant_id: tenantId }),
   ]);
-
-  if (productsRes.error) {
-    console.error('[GET /api/tenant/products/composer] products error:', productsRes.error.message);
+  if (facetResult.error) {
+    console.error('[GET /api/tenant/products/composer] facet error:', facetResult.error);
     return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
   }
 
-  const matchedProducts = (productsRes.data ?? []) as ProductRow[];
-  const availabilityInventoryRes = needsAvailabilityFilter && matchedProducts.length > 0
-    ? await db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('tenant_product_id, qty_available, reorder_point')
-        .in('tenant_product_id', matchedProducts.map((product) => product.id))
-        .is('deleted_at', null)
-    : { data: [], error: null };
-
-  if (availabilityInventoryRes.error) {
-    console.error('[GET /api/tenant/products/composer] availability inventory error:', availabilityInventoryRes.error.message);
-    return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
-  }
-
-  const inventoryByProductId = buildInventoryByProductId((availabilityInventoryRes.data ?? []) as InventoryRow[]);
-  const availabilityFilteredProducts = needsAvailabilityFilter
-    ? matchedProducts.filter((product) => matchesAvailability(product.id, inventoryByProductId, availability))
-    : matchedProducts;
-  const total = needsAvailabilityFilter
-    ? availabilityFilteredProducts.length
-    : typeof productsRes.count === 'number'
-      ? productsRes.count
-      : availabilityFilteredProducts.length;
-  const products = needsAvailabilityFilter
-    ? availabilityFilteredProducts.slice(offset, offset + limit)
-    : availabilityFilteredProducts;
-  const selectedRowsRes = selectedIds.length > 0
-    ? await db
-        .schema('app')
-        .from('tenant_products')
-        .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, mrp, base_selling_price, cost_price, is_active')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .in('id', selectedIds)
-    : { data: [], error: null };
-
-  if (selectedRowsRes.error) {
-    console.error('[GET /api/tenant/products/composer] selected products error:', selectedRowsRes.error.message);
-    return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
-  }
-
-  const selectedRows = (selectedRowsRes.data ?? []) as ProductRow[];
-  const rowsForLookup = [...products, ...selectedRows];
-
-  // Build brand + category count maps
-  const brandCountMap = new Map<string, number>();
-  for (const row of (brandFacetRes.data ?? []) as Array<{ tenant_brand_id: string | null }>) {
-    if (row.tenant_brand_id) {
-      brandCountMap.set(row.tenant_brand_id, (brandCountMap.get(row.tenant_brand_id) ?? 0) + 1);
-    }
-  }
-  const categoryCountMap = new Map<string, number>();
-  for (const row of (categoryFacetRes.data ?? []) as Array<{ tenant_category_id: string | null }>) {
-    if (row.tenant_category_id) {
-      categoryCountMap.set(row.tenant_category_id, (categoryCountMap.get(row.tenant_category_id) ?? 0) + 1);
-    }
-  }
-
-  // Resolve brand names for all facet brand IDs
-  const allBrandIds = Array.from(new Set([
-    ...rowsForLookup.map((p) => p.tenant_brand_id).filter(Boolean) as string[],
-    ...brandCountMap.keys(),
-  ]));
-  const brandsRes = allBrandIds.length > 0
-    ? await db
-        .schema('app')
-        .from('tenant_brands')
-        .select('id, display_name_override')
-        .in('id', allBrandIds)
-        .is('deleted_at', null)
-    : { data: [], error: null };
-
-  const brandById = new Map(
-    ((brandsRes.data ?? []) as TenantBrandRow[]).map((b) => [b.id, b.display_name_override?.trim() || 'Brand']),
-  );
-
-  // Resolve category names for all facet category IDs
-  const allCategoryIds = Array.from(new Set([
-    ...rowsForLookup.map((p) => p.tenant_category_id).filter(Boolean) as string[],
-    ...categoryCountMap.keys(),
-  ]));
-  const categoriesRes = allCategoryIds.length > 0
-    ? await db
-        .schema('app')
-        .from('tenant_categories')
-        .select('id, name')
-        .in('id', allCategoryIds)
-        .is('deleted_at', null)
-    : { data: [], error: null };
-
-  const categoryNameById = new Map(
-    ((categoriesRes.data ?? []) as Array<{ id: string; name: string | null }>).map((c) => [c.id, c.name ?? 'Uncategorized']),
-  );
+  const products = productsResult.rows;
+  const total = productsResult.total;
+  const selectedRows = selectedResult.rows;
+  const facetRows = (facetResult.data ?? []) as Array<{
+    facet_type: 'brand' | 'category';
+    facet_id: string;
+    facet_label: string;
+    product_count: number;
+  }>;
 
   const facets = {
-    brands: Array.from(brandCountMap.entries())
-      .map(([id, count]) => ({ id, label: brandById.get(id) ?? 'Brand', count }))
+    brands: facetRows
+      .filter((row) => row.facet_type === 'brand')
+      .map((row) => ({ id: row.facet_id, label: row.facet_label, count: Number(row.product_count) }))
       .sort((a, b) => a.label.localeCompare(b.label)),
-    categories: Array.from(categoryCountMap.entries())
-      .map(([id, count]) => ({ id, label: categoryNameById.get(id) ?? 'Uncategorized', count }))
+    categories: facetRows
+      .filter((row) => row.facet_type === 'category')
+      .map((row) => ({ id: row.facet_id, label: row.facet_label, count: Number(row.product_count) }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   };
 
-  const mapProduct = (p: ProductRow) => ({
-    id: p.id,
-    internal_sku: p.internal_sku,
-    display_name: p.name_override?.trim() || p.internal_sku,
-    brand_name: p.tenant_brand_id ? (brandById.get(p.tenant_brand_id) ?? 'Brand') : 'Brand',
-    category_name: p.tenant_category_id ? (categoryNameById.get(p.tenant_category_id) ?? null) : null,
-    tenant_brand_id: p.tenant_brand_id,
-    tenant_category_id: p.tenant_category_id,
+  const mapProduct = (p: (typeof products)[number]) => ({
+    id: p.tenant_product_id,
+    internal_sku: p.sku ?? p.product_name,
+    display_name: p.product_name,
+    brand_name: p.brand_name,
+    category_name: p.category_name || null,
+    tenant_brand_id: p.brand_id,
+    tenant_category_id: p.category_id,
     mrp: p.mrp,
     base_selling_price: p.base_selling_price,
     cost_price: canViewCost ? p.cost_price : null,
   });
 
   const productList = products.map(mapProduct);
-  const selectedById = new Map(selectedRows.map((product) => [product.id, mapProduct(product)]));
+  const selectedById = new Map(selectedRows.map((product) => [product.tenant_product_id, mapProduct(product)]));
 
   const selectedProducts = selectedIds.length > 0
     ? selectedIds.map((id) => selectedById.get(id)).filter(Boolean)
     : [];
-  const nextCursor = offset + products.length < total ? String(offset + products.length) : null;
+  const nextCursor = offset + productList.length < total ? String(offset + productList.length) : null;
 
-  return NextResponse.json({ products: productList, selected_products: selectedProducts, facets, total, nextCursor });
+  return NextResponse.json(
+    { products: productList, selected_products: selectedProducts, facets, total, nextCursor },
+    { headers: SELLER_CACHE_PERSONAL },
+  );
 }

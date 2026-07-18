@@ -24,43 +24,16 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
 
-    const { data: importedRows } = await db
-      .schema('app')
-      .from('tenant_products')
-      .select('master_product_id')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
-      .not('master_product_id', 'is', null);
-
-    const importedMasterIds = Array.from(
-      new Set((importedRows ?? []).map((row: { master_product_id: string | null }) => row.master_product_id).filter(Boolean)),
-    ) as string[];
-
-    let query = db
-      .schema('catalog')
-      .from('products')
-      .select(
-        'id, name, master_sku, brand_id, gst_rate, hsn_code, default_uom, pack_size, description, image_urls, brands!inner(id, name, slug, logo_url), categories!left(name)'
-      )
-      .eq('is_public', true)
-      .limit(20);
-
-    if (importedMasterIds.length > 0) {
-      const excludedIds = importedMasterIds.map((id: string) => `"${id}"`).join(',');
-      query = query.not('id', 'in', `(${excludedIds})`);
-    }
-
-    if (q.trim()) {
-      query = query.or(`name.ilike.%${q}%,master_sku.ilike.%${q}%`);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await db.schema('catalog').rpc('search_available_products_for_tenant', {
+      p_tenant_id: claims.tenant_id,
+      p_query: q.trim() || null,
+      p_limit: 20,
+    });
 
     if (error) {
       return NextResponse.json({ error: 'Failed to search products' }, { status: 500 });
     }
 
-    // Reshape: hoist brand fields from joined `brands` object
     const products = (data ?? []).map(
       (row: {
         id: string;
@@ -73,22 +46,24 @@ export async function GET(req: NextRequest) {
         pack_size: number | null;
         description: string | null;
         image_urls: string[] | null;
-        brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
-        categories: { name: string } | null;
+        brand_name: string | null;
+        brand_slug: string | null;
+        brand_logo_url: string | null;
+        category_name: string | null;
       }) => ({
         id: row.id,
         name: row.name,
         master_sku: row.master_sku,
         brand_id: row.brand_id,
-        brand_name: row.brands?.name ?? null,
-        brand_logo_url: row.brands?.logo_url ?? null,
+        brand_name: row.brand_name,
+        brand_logo_url: row.brand_logo_url,
         gst_rate: row.gst_rate,
         hsn_code: row.hsn_code,
         default_uom: row.default_uom,
         pack_size: row.pack_size,
         description: row.description,
         image_urls: row.image_urls,
-        category_name: row.categories?.name ?? null,
+        category_name: row.category_name,
       })
     );
 

@@ -130,6 +130,34 @@ function getZohoModulePath(integrationTypeId: string) {
   return integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
 }
 
+// Zoho's org-level settings (webhooks/workflows) endpoints rate-limit tightly.
+// Registering N entities back-to-back with no pacing throttles after the first
+// couple of calls, so later entities get a webhook (action) created but their
+// paired workflow (rule) call gets a 429 — leaving orphaned actions.
+const ZOHO_SETTINGS_MIN_INTERVAL_MS = 600;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Call before each sequential Zoho webhooks/workflows settings request to stay under the rate limit. */
+export async function pauseForZohoSettingsRateLimit(): Promise<void> {
+  await sleep(ZOHO_SETTINGS_MIN_INTERVAL_MS);
+}
+
+/** fetch() wrapper for Zoho settings endpoints that backs off and retries on 429 instead of failing the whole entity. */
+export async function fetchZohoSettings(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, init);
+    if (response.status !== 429 || attempt >= maxRetries) return response;
+    const retryAfterSeconds = Number(response.headers.get('retry-after'));
+    const backoffMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : ZOHO_SETTINGS_MIN_INTERVAL_MS * 2 ** (attempt + 1);
+    await sleep(backoffMs);
+  }
+}
+
 async function listZohoWebhooks(input: {
   accessToken: string;
   orgId: string;
@@ -139,7 +167,7 @@ async function listZohoWebhooks(input: {
   const url = new URL(`/${getZohoModulePath(input.integrationTypeId)}/settings/webhooks`, `https://www.zohoapis.${input.dc}`);
   url.searchParams.set('organization_id', input.orgId);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchZohoSettings(url.toString(), {
     headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
   });
   const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -165,23 +193,33 @@ export async function deleteZohoWebhookRegistrations(input: {
   const webhookIds = [...new Set((input.remoteWebhookIds ?? []).filter((id): id is string => Boolean(id)))];
   const workflowIds = [...new Set((input.workflowIds ?? []).filter((id): id is string => Boolean(id)))];
 
-  await Promise.all(workflowIds.map((workflowId) => {
+  for (const workflowId of workflowIds) {
+    await pauseForZohoSettingsRateLimit();
     const workflowUrl = new URL(`/${modulePath}/settings/workflows/${workflowId}`, `https://www.zohoapis.${input.dc}`);
     workflowUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(workflowUrl.toString(), {
+    const res = await fetchZohoSettings(workflowUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistrations] failed to delete workflow ${workflowId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) console.error(`[deleteZohoWebhookRegistrations] delete workflow ${workflowId} returned ${res.status}`);
+  }
 
-  await Promise.all(webhookIds.map((webhookId) => {
+  for (const webhookId of webhookIds) {
+    await pauseForZohoSettingsRateLimit();
     const webhookUrl = new URL(`/${modulePath}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${input.dc}`);
     webhookUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(webhookUrl.toString(), {
+    const res = await fetchZohoSettings(webhookUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistrations] failed to delete webhook ${webhookId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) console.error(`[deleteZohoWebhookRegistrations] delete webhook ${webhookId} returned ${res.status}`);
+  }
 }
 
 export async function deleteZohoWebhookRegistrationsByName(input: {

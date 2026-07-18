@@ -4,6 +4,7 @@ import { PAGE_SIZE } from '@/lib/pagination';
 type DbClient = {
   schema: (name: 'app' | 'catalog') => {
     from: (table: string) => any;
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string } | null }>;
   };
 };
 
@@ -199,10 +200,6 @@ function parseOffsetCursor(value: string | null | undefined) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
 }
 
-function escapeLike(value: string) {
-  return value.replace(/[%_]/g, (match) => `\\${match}`);
-}
-
 export function deriveLastOrderBucket(lastOrderAt: string | null, now = new Date()) {
   if (!lastOrderAt) return 'dormant_90_plus_days' as const;
   const diffMs = now.getTime() - new Date(lastOrderAt).getTime();
@@ -311,13 +308,12 @@ export function resolveBuyerIdsForRules(
 
 export async function getCohortComposerPayload(db: DbClient, tenantId: string): Promise<CohortComposerPayload> {
   const { currentStartIso, nextStartIso } = getIstMonthBounds();
-  const ninetyDaysAgoDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentMonthDate = currentStartIso.slice(0, 10);
   const nextMonthDate = nextStartIso.slice(0, 10);
 
   // Phase 1: all queries in parallel.
-  // buyers: display list (100 rows). snapshot/kpi tables: full-dataset facets.
-  const [buyersRes, brandsRes, buyersSnapshotRes, customersSnapshotRes, kpiDailyRes, geoRes] = await Promise.all([
+  // buyers: display list (100 rows). V2 buyer snapshots: full-dataset facets.
+  const [buyersRes, brandsRes, buyerMetricsRes, setupSnapshotRes, geoRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -336,29 +332,21 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .is('deleted_at', null)
       .eq('is_active', true)
       .order('created_at', { ascending: true }),
-    // buyers_snapshot: one row per active buyer — for last_order_at facets and display join
+    // Metrics V2 buyer snapshot: one row per buyer for last activity, receivables, and 90-day demand.
     db
       .schema('app')
-      .from('buyers_snapshot')
-      .select('buyer_id, last_order_at, outstanding_dues')
+      .from('metrics_buyer_snapshot')
+      .select('buyer_id, last_order_at, receivable_amount, order_value_90d')
       .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .eq('is_active', true),
-    // customers_snapshot: total active count + tier breakdown
+      .is('deleted_at', null),
+    // Metrics V2 setup snapshot: accurate active buyer total for facets.
     db
       .schema('app')
-      .from('customers_snapshot')
-      .select('active_count, tier_a_count, tier_b_count, tier_c_count')
+      .from('metrics_tenant_setup_snapshot')
+      .select('active_buyer_count')
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .maybeSingle(),
-    // kpi_buyers_daily: last 90 days, scope=tenant — for GMV + MTD metrics per buyer
-    db
-      .schema('app')
-      .from('kpi_buyers_daily')
-      .select('buyer_id, orders_gmv, orders_count, day')
-      .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .gte('day', ninetyDaysAgoDate),
     // All active buyer geographies for geo facet (live — no snapshot covers this)
     db
       .schema('app')
@@ -373,6 +361,19 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   if (brandsRes.error) throw brandsRes.error;
 
   const buyerRows = (buyersRes.data ?? []) as BuyerDbRow[];
+  const firstPageBuyerIds = buyerRows.map((buyer) => buyer.id);
+  const mtdOrdersRes = firstPageBuyerIds.length > 0
+    ? await db
+        .schema('app')
+        .from('orders')
+        .select('buyer_id, total_amount, order_date, created_at, status')
+        .eq('tenant_id', tenantId)
+        .in('buyer_id', firstPageBuyerIds)
+        .is('deleted_at', null)
+        .gte('order_date', currentMonthDate)
+        .lt('order_date', nextMonthDate)
+    : { data: [], error: null };
+  if (mtdOrdersRes.error) throw mtdOrdersRes.error;
 
   // Build brand options (unchanged)
   const tenantBrands = (brandsRes.data ?? []) as Array<{
@@ -397,29 +398,28 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     label: brand.display_name_override ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id) ?? 'Unnamed brand' : 'Unnamed brand'),
   }));
 
-  // Build snapshot + KPI lookup maps
-  type SnapshotRow = { buyer_id: string; last_order_at: string | null; outstanding_dues: number | null };
-  const snapshotRows = (buyersSnapshotRes.data ?? []) as SnapshotRow[];
-  const snapshotByBuyer = new Map(snapshotRows.map((row) => [row.buyer_id, row]));
+  // Build V2 metric lookup maps.
+  type BuyerMetricRow = { buyer_id: string; last_order_at: string | null; receivable_amount: number | null; order_value_90d: number | null };
+  const metricRows = (buyerMetricsRes.data ?? []) as BuyerMetricRow[];
+  const metricsByBuyer = new Map(metricRows.map((row) => [row.buyer_id, row]));
 
-  type KpiRow = { buyer_id: string; orders_gmv: number | null; orders_count: number | null; day: string };
-  const kpiRows = (kpiDailyRes.data ?? []) as KpiRow[];
   const gmv90dByBuyer = new Map<string, number>();
   const mtdSpendByBuyer = new Map<string, number>();
   const ordersMtdByBuyer = new Map<string, number>();
-  for (const row of kpiRows) {
-    gmv90dByBuyer.set(row.buyer_id, (gmv90dByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-    if (row.day >= currentMonthDate && row.day < nextMonthDate) {
-      mtdSpendByBuyer.set(row.buyer_id, (mtdSpendByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-      ordersMtdByBuyer.set(row.buyer_id, (ordersMtdByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_count ?? 0));
-    }
+  for (const row of metricRows) {
+    gmv90dByBuyer.set(row.buyer_id, Number(row.order_value_90d ?? 0));
+  }
+  for (const row of (mtdOrdersRes.data ?? []) as Array<{ buyer_id: string; total_amount: number | null; status: string | null }>) {
+    if (row.status === 'cancelled' || row.status === 'rejected' || row.status === 'archived') continue;
+    mtdSpendByBuyer.set(row.buyer_id, (mtdSpendByBuyer.get(row.buyer_id) ?? 0) + Number(row.total_amount ?? 0));
+    ordersMtdByBuyer.set(row.buyer_id, (ordersMtdByBuyer.get(row.buyer_id) ?? 0) + 1);
   }
 
   // Build display buyer rows (capped at PAGE_SIZE.MAX)
   const buyersPayload = buyerRows.map((buyer, index) => {
     const city = buyer.geography?.city?.trim() || null;
     const state = expandStateLabel(buyer.geography?.state?.trim() || null);
-    const snapshot = snapshotByBuyer.get(buyer.id);
+    const metrics = metricsByBuyer.get(buyer.id);
     return {
       id: buyer.id,
       business_name: buyer.business_name,
@@ -429,10 +429,10 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       city,
       state,
       tier: buyer.tier,
-      last_order_at: snapshot?.last_order_at ?? null,
+      last_order_at: metrics?.last_order_at ?? null,
       mtd_spend: Number((mtdSpendByBuyer.get(buyer.id) ?? 0).toFixed(2)),
       orders_mtd: ordersMtdByBuyer.get(buyer.id) ?? 0,
-      credit_used: Number((snapshot?.outstanding_dues ?? 0).toFixed(2)),
+      credit_used: Number((metrics?.receivable_amount ?? 0).toFixed(2)),
       payment_terms_days: Number(buyer.payment_terms_days ?? 0),
       gmv_90d: Number((gmv90dByBuyer.get(buyer.id) ?? 0).toFixed(2)),
       initials: getInitials(buyer.business_name),
@@ -440,21 +440,21 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     } satisfies CohortComposerBuyerRow;
   });
 
-  // Accurate facet counts from full dataset (snapshot tables, no 100-buyer cap)
-  const customersSnapshot = customersSnapshotRes.data as { active_count: number } | null;
-  const totalBuyerCount = customersSnapshot?.active_count ?? snapshotRows.length;
+  // Accurate facet counts from full dataset (V2 snapshot rows, no 100-buyer cap)
+  const setupSnapshot = setupSnapshotRes.data as { active_buyer_count: number | null } | null;
+  const totalBuyerCount = Number(setupSnapshot?.active_buyer_count ?? metricRows.length);
 
-  // last_order_bucket counts: from ALL buyers_snapshot rows (is_active=true)
+  // last_order_bucket counts: from V2 buyer snapshots.
   const lastOrderBuckets = COHORT_LAST_ORDER_BUCKETS.map((bucket) => ({
     value: bucket.id,
     label: bucket.label,
     count:
       bucket.id === 'anytime'
         ? totalBuyerCount
-        : snapshotRows.filter((row) => matchesLastOrderBucket(row.last_order_at, bucket.id)).length,
+        : metricRows.filter((row) => matchesLastOrderBucket(row.last_order_at, bucket.id)).length,
   }));
 
-  // gmv_90d_bucket counts: aggregate kpi_buyers_daily, buyers not in set = gmv_0
+  // gmv_90d_bucket counts: V2 buyer snapshot order value, buyers not in set = gmv_0
   const buyersWithAnyGmv = new Set(gmv90dByBuyer.keys());
   const gmvBuckets = COHORT_GMV_BUCKETS.map((bucket) => {
     if (bucket.id === 'gmv_0') {
@@ -506,85 +506,46 @@ export async function getCohortComposerBuyerResultset(
   const nextMonthDate = nextStartIso.slice(0, 10);
   const limit = Math.max(1, Math.min(options.limit ?? PAGE_SIZE.COMPOSER, PAGE_SIZE.MAX));
   const offset = parseOffsetCursor(options.cursor);
-  const search = options.q?.trim() ?? '';
-  const selectedCities = options.geographies ?? [];
-  const selectedGmvBuckets = new Set(options.gmvBuckets ?? []);
-  const lastOrderBucket = options.lastOrderBucket && options.lastOrderBucket !== 'anytime' ? options.lastOrderBucket : null;
-  const needsComputedFilters = selectedGmvBuckets.size > 0 || Boolean(lastOrderBucket);
-
-  let buyersQuery = db
-    .schema('app')
-    .from('buyers')
-    .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref', { count: 'exact' })
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('business_name', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (selectedCities.length > 0) {
-    buyersQuery = buyersQuery.in('geography->>city', selectedCities);
-  }
-  if (search) {
-    const escaped = escapeLike(search);
-    buyersQuery = buyersQuery.or(`business_name.ilike.%${escaped}%,contact_name.ilike.%${escaped}%,external_ref.ilike.%${escaped}%`);
-  }
-  if (!needsComputedFilters) {
-    buyersQuery = buyersQuery.range(offset, offset + limit - 1);
-  }
-
-  const [buyersRes, snapshotRes, kpiRes] = await Promise.all([
-    buyersQuery,
-    db
-      .schema('app')
-      .from('buyers_snapshot')
-      .select('buyer_id, last_order_at, outstanding_dues')
-      .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .eq('is_active', true),
-    db
-      .schema('app')
-      .from('kpi_buyers_daily')
-      .select('buyer_id, orders_gmv, orders_count, day')
-      .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .gte('day', ninetyDaysAgoDate),
-  ]);
-
-  if (buyersRes.error) throw buyersRes.error;
-  if (snapshotRes.error) throw snapshotRes.error;
-  if (kpiRes.error) throw kpiRes.error;
-
-  const snapshotByBuyer = new Map(
-    ((snapshotRes.data ?? []) as Array<{ buyer_id: string; last_order_at: string | null; outstanding_dues: number | null }>)
-      .map((row) => [row.buyer_id, row]),
-  );
-  const gmv90dByBuyer = new Map<string, number>();
-  const mtdSpendByBuyer = new Map<string, number>();
-  const ordersMtdByBuyer = new Map<string, number>();
-  for (const row of (kpiRes.data ?? []) as Array<{ buyer_id: string; orders_gmv: number | null; orders_count: number | null; day: string }>) {
-    gmv90dByBuyer.set(row.buyer_id, (gmv90dByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-    if (row.day >= currentMonthDate && row.day < nextMonthDate) {
-      mtdSpendByBuyer.set(row.buyer_id, (mtdSpendByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-      ordersMtdByBuyer.set(row.buyer_id, (ordersMtdByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_count ?? 0));
-    }
-  }
-
-  const allRows = ((buyersRes.data ?? []) as BuyerDbRow[]).filter((buyer) => {
-    const snapshot = snapshotByBuyer.get(buyer.id);
-    if (lastOrderBucket && !matchesLastOrderBucket(snapshot?.last_order_at ?? null, lastOrderBucket)) return false;
-    if (selectedGmvBuckets.size > 0 && !selectedGmvBuckets.has(deriveGmv90dBucket(gmv90dByBuyer.get(buyer.id) ?? 0))) return false;
-    return true;
+  const { data, error } = await db.schema('app').rpc('search_cohort_composer_buyers', {
+    p_tenant_id: tenantId,
+    p_query: options.q?.trim() || null,
+    p_geographies: options.geographies?.length ? options.geographies : null,
+    p_last_order_bucket: options.lastOrderBucket && options.lastOrderBucket !== 'anytime'
+      ? options.lastOrderBucket
+      : null,
+    p_gmv_buckets: options.gmvBuckets?.length ? options.gmvBuckets : null,
+    p_ninety_days_ago: ninetyDaysAgoDate,
+    p_month_start: currentMonthDate,
+    p_next_month_start: nextMonthDate,
+    p_limit: limit,
+    p_offset: offset,
   });
-  const pageRows = needsComputedFilters ? allRows.slice(offset, offset + limit) : allRows;
+
+  if (error) throw error;
+
+  const pageRows = (data ?? []) as Array<{
+    buyer_id: string;
+    business_name: string;
+    contact_name: string | null;
+    external_ref: string | null;
+    geography: { city?: string; state?: string } | null;
+    tier: 'A' | 'B' | 'C' | null;
+    payment_terms_days: number | null;
+    last_order_at: string | null;
+    outstanding_dues: number | null;
+    gmv_90d: number | null;
+    mtd_spend: number | null;
+    orders_mtd: number | null;
+    total_count: number | null;
+  }>;
+  const total = Number(pageRows[0]?.total_count ?? 0);
 
   return {
     buyers: pageRows.map((buyer, index) => {
       const city = buyer.geography?.city?.trim() || null;
       const state = expandStateLabel(buyer.geography?.state?.trim() || null);
-      const snapshot = snapshotByBuyer.get(buyer.id);
       return {
-        id: buyer.id,
+        id: buyer.buyer_id,
         business_name: buyer.business_name,
         contact_name: buyer.contact_name,
         external_ref: buyer.external_ref,
@@ -592,18 +553,18 @@ export async function getCohortComposerBuyerResultset(
         city,
         state,
         tier: buyer.tier,
-        last_order_at: snapshot?.last_order_at ?? null,
-        mtd_spend: Number((mtdSpendByBuyer.get(buyer.id) ?? 0).toFixed(2)),
-        orders_mtd: ordersMtdByBuyer.get(buyer.id) ?? 0,
-        credit_used: Number((snapshot?.outstanding_dues ?? 0).toFixed(2)),
+        last_order_at: buyer.last_order_at,
+        mtd_spend: Number(Number(buyer.mtd_spend ?? 0).toFixed(2)),
+        orders_mtd: Number(buyer.orders_mtd ?? 0),
+        credit_used: Number(Number(buyer.outstanding_dues ?? 0).toFixed(2)),
         payment_terms_days: Number(buyer.payment_terms_days ?? 0),
-        gmv_90d: Number((gmv90dByBuyer.get(buyer.id) ?? 0).toFixed(2)),
+        gmv_90d: Number(Number(buyer.gmv_90d ?? 0).toFixed(2)),
         initials: getInitials(buyer.business_name),
         hue: (offset + index) % 3 === 0 ? 'teal' : (offset + index) % 3 === 1 ? 'ember' : 'cream',
       } satisfies CohortComposerBuyerRow;
     }),
-    total: needsComputedFilters ? allRows.length : Number(buyersRes.count ?? allRows.length),
-    nextCursor: offset + pageRows.length < (needsComputedFilters ? allRows.length : Number(buyersRes.count ?? allRows.length))
+    total,
+    nextCursor: offset + pageRows.length < total
       ? String(offset + pageRows.length)
       : null,
   };
@@ -627,7 +588,6 @@ export async function resolveAllBuyerIdsForRules(
 
   if (isStatic) return normalizedRules.selected_buyer_ids;
 
-  const ninetyDaysAgoDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const excluded = new Set(normalizedRules.excluded_buyer_ids ?? []);
 
   // Parse filters to know what data we need
@@ -646,8 +606,8 @@ export async function resolveAllBuyerIdsForRules(
   const needsLastOrder = !!lastOrderBucket;
   const needsGeo = selectedCities.size > 0;
 
-  // Fetch all active buyer IDs + geography, snapshot (last_order_at), and kpi (gmv_90d) in parallel
-  const [allBuyersRes, snapshotRes, kpiRes] = await Promise.all([
+  // Fetch all active buyer IDs + geography and V2 buyer metrics in parallel.
+  const [allBuyersRes, metricRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -655,38 +615,29 @@ export async function resolveAllBuyerIdsForRules(
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .is('deleted_at', null),
-    needsLastOrder
+    needsLastOrder || needsGmv
       ? db
           .schema('app')
-          .from('buyers_snapshot')
-          .select('buyer_id, last_order_at')
+          .from('metrics_buyer_snapshot')
+          .select('buyer_id, last_order_at, order_value_90d')
           .eq('tenant_id', tenantId)
-          .eq('scope', 'tenant')
-          .eq('is_active', true)
-      : Promise.resolve({ data: [], error: null }),
-    needsGmv
-      ? db
-          .schema('app')
-          .from('kpi_buyers_daily')
-          .select('buyer_id, orders_gmv')
-          .eq('tenant_id', tenantId)
-          .eq('scope', 'tenant')
-          .gte('day', ninetyDaysAgoDate)
+          .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (allBuyersRes.error) throw allBuyersRes.error;
+  if (metricRes.error) throw metricRes.error;
 
   const allBuyers = (allBuyersRes.data ?? []) as Array<{ id: string; geography?: { city?: string } | null }>;
 
   const lastOrderByBuyer = new Map<string, string | null>();
-  for (const row of (snapshotRes.data ?? []) as Array<{ buyer_id: string; last_order_at: string | null }>) {
+  for (const row of (metricRes.data ?? []) as Array<{ buyer_id: string; last_order_at: string | null }>) {
     lastOrderByBuyer.set(row.buyer_id, row.last_order_at);
   }
 
   const gmv90dByBuyer = new Map<string, number>();
-  for (const row of (kpiRes.data ?? []) as Array<{ buyer_id: string; orders_gmv: number | null }>) {
-    gmv90dByBuyer.set(row.buyer_id, (gmv90dByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
+  for (const row of (metricRes.data ?? []) as Array<{ buyer_id: string; order_value_90d: number | null }>) {
+    gmv90dByBuyer.set(row.buyer_id, Number(row.order_value_90d ?? 0));
   }
 
   return allBuyers

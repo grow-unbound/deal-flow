@@ -4,7 +4,6 @@ import type { WarehousesLandingResponse } from '@/types/tenant-warehouses';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
-import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 
 export default async function WarehousesPage({
   searchParams,
@@ -15,12 +14,11 @@ export default async function WarehousesPage({
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) return <RoleForbiddenPage />;
   if (claims.role !== 'seller_admin') return <RoleForbiddenPage />;
 
-  const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<WarehousesLandingResponse>(
-    `/api/tenant/warehouses/landing?period=${period}&limit=50`,
+    '/api/tenant/warehouses/landing?period=today&limit=50',
   );
   if (status === 403) return <RoleForbiddenPage />;
 
-  return <WarehousesLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
+  return <WarehousesLandingClient initialData={initialData} initialPeriod="today" initialSearch={initialSearch} />;
 }

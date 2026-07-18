@@ -70,14 +70,15 @@ describe('price-list-detail-page', () => {
     });
   });
 
-  it('renders markup discount in danger color and 4 meta tiles', () => {
+  it('renders the 4 Detail Pulse tiles from the metrics-v2 spec (doc lines 691-699)', () => {
     render(<PriceListDetailPage />);
-    expect(screen.getByText('Products covered')).toBeInTheDocument();
-    expect(screen.getByText('Customer groups assigned')).toBeInTheDocument();
-    expect(screen.getByText('Avg discount')).toBeInTheDocument();
-    expect(screen.getByText('Days left')).toBeInTheDocument();
+    expect(screen.getByText('Products priced')).toBeInTheDocument();
+    expect(screen.getByText('Customers reached')).toBeInTheDocument();
+    expect(screen.getByText('Typical discount')).toBeInTheDocument();
+    expect(screen.getByText('Items below cost/floor')).toBeInTheDocument();
 
-    const markup = screen.getByText('+20.0%');
-    expect(markup.className).toContain('text-danger-700');
+    // The one mocked item (price 1200) is priced above its base_selling_price (1000),
+    // i.e. no discounted/below-floor items, so both derived tiles read 0.
+    expect(screen.getByText('0%')).toBeInTheDocument();
   });
 });

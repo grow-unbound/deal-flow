@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { createTimer } from '@/lib/server-timing';
 import { getCohortsLandingPayload } from '../../cohorts/route';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       search: request.nextUrl.searchParams.get('search')?.trim() ?? '',
       brands: readArrayParam(request.nextUrl.searchParams, 'brands'),
       limit: parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER),
+      offset: parseRowsOffset(request.nextUrl.searchParams.get('offset')),
     });
     return timedJson(payload);
   } catch (error: any) {

@@ -81,6 +81,10 @@ export interface WarehousesLandingKpis {
   tracked_skus: number;
   low_stock_warehouses: number;
   idle_stock_skus: number;
+  /** Total warehouses in scope, regardless of search/status/stock filters — subtitle context only. */
+  warehouse_count: number;
+  /** Distinct locations with at least one linked warehouse in scope — subtitle context only. */
+  location_count: number;
 }
 
 export interface WarehousesLandingRow {
@@ -120,8 +124,13 @@ export interface WarehousesLandingResponse {
   };
   warehouses: WarehousesLandingRow[];
   total: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   period: string;
   refreshed_at: string;
+  as_of?: string;
+  commercial_horizon_days?: number | null;
 }
 
 export interface WarehouseDetailInventoryItem {
@@ -221,4 +230,6 @@ export interface WarehouseDetailResponse {
       updated_at: string;
     }>;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }

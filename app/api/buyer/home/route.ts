@@ -12,6 +12,19 @@ import { supabaseAdmin } from '@/lib/supabase';
 const RECENT_ORDER_PREVIEW_LIMIT = 20;
 const ORDER_AGAIN_PREVIEW_LIMIT = 5;
 const PROMOTIONS_PREVIEW_LIMIT = 5;
+const OPEN_ORDER_STATUSES = new Set(['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched']);
+
+function startOfMonthUtc(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function startOfYearUtc(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+}
+
+function addMonthsUtc(date: Date, months: number) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeResponse | { error: string }>> {
   try {
@@ -39,6 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         bestsellers: [],
         buy_again: [],
         preview_message: 'Preview mode — buyer-specific numbers show as 0.',
+        as_of: new Date().toISOString(),
       };
       return NextResponse.json(previewPayload, { headers: BUYER_CACHE_PERSONAL });
     }
@@ -54,19 +68,31 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       path: request.nextUrl.pathname,
     });
 
-    const [buyerHomeSummaryRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes] = await Promise.all([
+    const now = new Date();
+    const currentMonthStart = startOfMonthUtc(now);
+    const nextMonthStart = addMonthsUtc(currentMonthStart, 1);
+    const previousMonthStart = addMonthsUtc(currentMonthStart, -1);
+    const currentYearStart = startOfYearUtc(now);
+    // Widest of "previous month" or "year start" — covers MTD/YTD/trend in one
+    // date-bounded query instead of an arbitrary row-count LIMIT (which silently
+    // truncates YTD/open-invoice figures for any buyer with more than N invoices/year).
+    const financialWindowStart = previousMonthStart < currentYearStart ? previousMonthStart : currentYearStart;
+
+    const [buyerMetricsRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes, financialInvoicesRes] = await Promise.all([
       supabaseAdmin
         .schema('app')
-        .rpc('get_buyer_home_summary', {
-          p_tenant_id: tenantId,
-          p_buyer_id: buyerId,
-        }),
+        .from('metrics_buyer_snapshot')
+        .select('receivable_amount, overdue_amount, oldest_due_at, credit_limit, credit_available')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', buyerId)
+        .is('deleted_at', null)
+        .maybeSingle(),
       loadBuyerActivityFeed(supabaseAdmin as any, { tenantId, buyerId, limit: 10 }),
       getVisibleBuyerCatalogs(tenantId, buyerId),
       supabaseAdmin
         .schema('app')
         .from('orders')
-        .select('id, placed_at')
+        .select('id, placed_at, status')
         .eq('tenant_id', tenantId)
         .eq('buyer_id', buyerId)
         .is('deleted_at', null)
@@ -76,7 +102,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       supabaseAdmin
         .schema('app')
         .from('invoices')
-        .select('id, invoice_date')
+        .select('id, invoice_date, total_amount, outstanding_balance, due_date, status')
         .eq('tenant_id', tenantId)
         .eq('buyer_id', buyerId)
         .is('deleted_at', null)
@@ -94,33 +120,107 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .is('converted_to_order_id', null)
         .order('created_at', { ascending: false })
         .limit(RECENT_ORDER_PREVIEW_LIMIT),
+      // Financial figures (MTD/YTD/trend/open-invoice posture): date-bounded, not
+      // row-count-bounded — a buyer with >20 invoices/year must not silently
+      // under-report YTD from a 20-row preview window.
+      supabaseAdmin
+        .schema('app')
+        .from('invoices')
+        .select('id, invoice_date, total_amount, outstanding_balance, due_date')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', buyerId)
+        .is('deleted_at', null)
+        .gte('invoice_date', financialWindowStart.toISOString())
+        .lt('invoice_date', nextMonthStart.toISOString()),
     ]);
 
     const queryError =
-      buyerHomeSummaryRes.error
+      buyerMetricsRes.error
       ?? ordersRes.error
       ?? invoicesRes.error
-      ?? estimatesRes.error;
+      ?? estimatesRes.error
+      ?? financialInvoicesRes.error;
     if (queryError) {
       throw new Error(queryError.message ?? 'Failed to load buyer home');
     }
 
-    const buyerHomeSummaryRow = Array.isArray(buyerHomeSummaryRes.data)
-      ? buyerHomeSummaryRes.data[0]
-      : buyerHomeSummaryRes.data;
+    const buyerMetrics = buyerMetricsRes.data;
+    const recentOrders = (ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null; status: string | null }>;
+    const recentInvoices = (invoicesRes.data ?? []) as Array<{
+      id: string;
+      invoice_date: string | null;
+      total_amount: number | null;
+      outstanding_balance: number | null;
+      due_date: string | null;
+      status: string | null;
+    }>;
+    const recentEstimates = (estimatesRes.data ?? []) as Array<{ id: string; created_at: string | null }>;
+    const financialInvoices = (financialInvoicesRes.data ?? []) as Array<{
+      id: string;
+      invoice_date: string | null;
+      total_amount: number | null;
+      outstanding_balance: number | null;
+      due_date: string | null;
+    }>;
+
+    const gmvMtd = financialInvoices
+      .filter((row) => {
+        if (!row.invoice_date) return false;
+        const ts = new Date(row.invoice_date).getTime();
+        return ts >= currentMonthStart.getTime() && ts < nextMonthStart.getTime();
+      })
+      .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+    const gmvPreviousMonth = financialInvoices
+      .filter((row) => {
+        if (!row.invoice_date) return false;
+        const ts = new Date(row.invoice_date).getTime();
+        return ts >= previousMonthStart.getTime() && ts < currentMonthStart.getTime();
+      })
+      .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+    const gmvYtd = financialInvoices
+      .filter((row) => {
+        if (!row.invoice_date) return false;
+        const ts = new Date(row.invoice_date).getTime();
+        return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
+      })
+      .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+    const invoiceCountYtd = financialInvoices.filter((row) => {
+      if (!row.invoice_date) return false;
+      const ts = new Date(row.invoice_date).getTime();
+      return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
+    }).length;
+    const trendVsLastMonthPct = gmvPreviousMonth > 0
+      ? Math.round(((gmvMtd - gmvPreviousMonth) / gmvPreviousMonth) * 100)
+      : gmvMtd > 0 ? 100 : 0;
+    // Open invoices within the fetched window are a lower bound only (the window
+    // is ~12-13 months); the snapshot's oldest_due_at is the authoritative
+    // all-time value and takes priority when present.
+    const openInvoiceRows = financialInvoices.filter((row) => Number(row.outstanding_balance ?? 0) > 0);
+    const earliestDueDateFromWindow = openInvoiceRows
+      .map((row) => row.due_date)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? null;
+    const earliestDueDate = buyerMetrics?.oldest_due_at ?? earliestDueDateFromWindow;
+    const daysUntilEarliestDue = earliestDueDate
+      ? Math.ceil((new Date(earliestDueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
     const buyerHomeSummary = {
-      gmv_mtd: Number(buyerHomeSummaryRow?.gmv_mtd ?? 0),
-      gmv_ytd: Number(buyerHomeSummaryRow?.gmv_ytd ?? buyerHomeSummaryRow?.gmv_mtd ?? 0),
-      invoice_count_ytd: Number(buyerHomeSummaryRow?.invoice_count_ytd ?? 0),
-      trend_vs_last_month_pct: Number(buyerHomeSummaryRow?.trend_vs_last_month_pct ?? 0),
-      outstanding_dues: Number(buyerHomeSummaryRow?.outstanding_dues ?? 0),
-      open_invoice_count: Number(buyerHomeSummaryRow?.open_invoice_count ?? 0),
-      earliest_due_date: buyerHomeSummaryRow?.earliest_due_date ?? null,
-      days_until_earliest_due: buyerHomeSummaryRow?.days_until_earliest_due ?? null,
-      credit_limit: Number(buyerHomeSummaryRow?.credit_limit ?? buyer.credit_limit ?? 0),
-      available_credit: Number(buyerHomeSummaryRow?.available_credit ?? buyer.credit_limit ?? 0),
-      credit_used: Number(buyerHomeSummaryRow?.credit_used ?? 0),
-      open_orders_count: Number(buyerHomeSummaryRow?.open_orders_count ?? 0),
+      gmv_mtd: gmvMtd,
+      gmv_ytd: gmvYtd,
+      invoice_count_ytd: invoiceCountYtd,
+      trend_vs_last_month_pct: trendVsLastMonthPct,
+      outstanding_dues: Number(buyerMetrics?.receivable_amount ?? openInvoiceRows.reduce((sum, row) => sum + Number(row.outstanding_balance ?? 0), 0)),
+      open_invoice_count: openInvoiceRows.length,
+      earliest_due_date: earliestDueDate,
+      days_until_earliest_due: daysUntilEarliestDue,
+      credit_limit: Number(buyerMetrics?.credit_limit ?? buyer.credit_limit ?? 0),
+      available_credit: Number(buyerMetrics?.credit_available ?? buyer.credit_limit ?? 0),
+      credit_used: Number(
+        (buyerMetrics?.credit_limit != null && buyerMetrics?.credit_available != null)
+          ? Number(buyerMetrics.credit_limit) - Number(buyerMetrics.credit_available)
+          : buyerMetrics?.receivable_amount ?? 0,
+      ),
+      open_orders_count: recentOrders.filter((row) => OPEN_ORDER_STATUSES.has(String(row.status ?? ''))).length,
     };
 
     const visibleCatalogs = catalogs;
@@ -153,10 +253,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     // Gather items from all three sources in parallel then merge
     type EventSourceItem = { tenant_product_id: string; event_date: string; priority: number };
-
-    const recentOrders = (ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null }>;
-    const recentInvoices = (invoicesRes.data ?? []) as Array<{ id: string; invoice_date: string | null }>;
-    const recentEstimates = (estimatesRes.data ?? []) as Array<{ id: string; created_at: string | null }>;
 
     const [orderItemsRes, invoiceItemsRes, estimateItemsRes] = await Promise.all([
       recentOrders.length > 0
@@ -323,6 +419,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       recent_activity: activity,
       bestsellers,
       buy_again: buyAgain,
+      as_of: now.toISOString(),
     };
 
     return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });

@@ -2,7 +2,13 @@ type RpcError = { message?: string; code?: string } | null;
 
 type RpcClient = {
   schema(schemaName: 'app'): {
-    rpc<T>(fn: string, args: Record<string, unknown>): Promise<{ data: T | null; error: RpcError }>;
+    // supabase-js's .rpc() returns a PostgrestFilterBuilder — thenable
+    // (awaitable, resolves to {data,error}) but not a nominal Promise (no
+    // .catch/.finally/[Symbol.toStringTag] in its declared type). A real
+    // Promise return type here rejected every actual SupabaseClient caller;
+    // PromiseLike matches what's actually thenable without losing the
+    // resolved-shape check.
+    rpc<T>(fn: string, args: Record<string, unknown>): PromiseLike<{ data: T | null; error: RpcError }>;
   };
 };
 
