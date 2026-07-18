@@ -72,6 +72,9 @@ const AGGREGATE_PAYLOAD = {
       cohorts_covered: 2,
       cohorts_total: 4,
       products_with_overrides: 9,
+      products_with_custom_prices: 9,
+      customers_with_custom_prices: 17,
+      products_below_base_rate: 4,
     },
     counts: { active: 2, draft: 1, expired: 1 },
     todays_read: {
@@ -211,6 +214,9 @@ describe('GET /api/price-lists', () => {
       cohorts_covered: 2,
       cohorts_total: 4,
       products_with_overrides: 9,
+      products_with_custom_prices: 9,
+      customers_with_custom_prices: 17,
+      products_below_base_rate: 4,
     });
     expect(body.counts).toEqual({ active: 2, draft: 1, expired: 1 });
     expect(body.price_lists).toEqual([

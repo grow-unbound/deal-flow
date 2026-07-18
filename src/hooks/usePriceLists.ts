@@ -87,6 +87,9 @@ export interface PriceListsLandingResponse {
     cohorts_covered: number;
     cohorts_total: number;
     products_with_overrides: number;
+    products_with_custom_prices: number;
+    customers_with_custom_prices: number;
+    products_below_base_rate: number;
   };
   todays_read: {
     expiring_soon: Array<{

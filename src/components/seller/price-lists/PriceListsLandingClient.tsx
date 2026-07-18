@@ -193,25 +193,24 @@ function PriceListsLandingContent({
           tiles={[
             {
               label: 'Products with custom prices',
-              value: `${data?.kpis.products_with_overrides ?? 0}`,
-              sub: isSellerAssistant ? 'visible in these lists' : 'custom priced SKUs across active lists',
+              value: `${data?.kpis.products_with_custom_prices ?? data?.kpis.products_with_overrides ?? 0}`,
+              sub: 'products',
             },
             {
               label: 'Customers with active custom pricing',
-              value: '—',
-              sub: 'Deduplicated buyer reach — NEEDS BACKEND',
-              tone: 'warn',
+              value: `${data?.kpis.customers_with_custom_prices ?? 0}`,
+              sub: 'customers',
             },
             {
-              label: 'Items priced below cost/floor',
-              value: '—',
-              sub: 'Landing-scope exception count — NEEDS BACKEND',
+              label: 'Products priced below base rate',
+              value: `${data?.kpis.products_below_base_rate ?? 0}`,
+              sub: 'products',
               tone: 'warn',
             },
             {
               label: 'Pricelists expiring soon',
               value: `${data?.kpis.expiring_soon ?? 0}`,
-              sub: 'within 7 days · renew before they lapse',
+              sub: 'within 7 days',
               tone: 'warn',
             },
           ]}

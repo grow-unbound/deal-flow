@@ -193,18 +193,31 @@ function portfolioToResponse(
           offline_gmv: Number(row.invoice_value_90d ?? 0),
         };
       }),
-      top_locations: locations.slice(0, 5).map((row) => ({
-        location_id: String(row.location_id ?? ''),
-        name: String(row.name ?? 'Location'),
-        app_orders: 0,
-        app_gmv: Number(row.app_invoiced_sales_90d ?? row.app_demand_value_90d ?? 0),
-        share_pct: itemValue(invoiceShare),
-      })),
-      contribution_over_time: contributionMonths.slice(-12).map((row) => ({
+      top_locations: (() => {
+        const gmvOf = (row: Record<string, unknown>) => Number(row.app_invoiced_sales_90d ?? row.app_demand_value_90d ?? 0);
+        const totalLocationGmv = locations.reduce((sum, row) => sum + gmvOf(row), 0);
+        return locations.map((row) => {
+          const gmv = gmvOf(row);
+          return {
+            location_id: String(row.location_id ?? ''),
+            name: String(row.name ?? 'Location'),
+            app_orders: Number(row.app_demand_doc_count_90d ?? 0),
+            app_gmv: gmv,
+            demand_count: Number(row.app_demand_doc_count_90d ?? 0),
+            demand_value: Number(row.app_demand_value_90d ?? 0),
+            invoice_count: Number(row.app_invoice_count_90d ?? 0),
+            invoice_value: Number(row.app_invoiced_sales_90d ?? 0),
+            share_pct: totalLocationGmv > 0 ? Math.round((gmv / totalLocationGmv) * 100) : 0,
+          };
+        });
+      })(),
+      contribution_over_time: contributionMonths.map((row) => ({
         month: String(row.month ?? ''),
         app_demand_value: Number(row.app_demand_value ?? 0),
+        app_demand_count: Number(row.app_demand_count ?? 0),
         total_demand_value: Number(row.total_demand_value ?? 0),
         app_invoice_value: Number(row.app_invoice_value ?? 0),
+        app_invoice_count: Number(row.app_invoice_count ?? 0),
         total_invoice_value: Number(row.total_invoice_value ?? 0),
       })),
       refreshed_at: portfolio.as_of,

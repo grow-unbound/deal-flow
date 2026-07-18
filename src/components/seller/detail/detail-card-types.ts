@@ -49,7 +49,7 @@ export interface DetailDistributionCardBody {
   emptyTitle: string;
   emptyDescription?: ReactNode;
   compact?: boolean;
-  mode?: 'distribution' | 'mix';
+  mode?: 'distribution' | 'mix' | 'funnel';
 }
 
 export interface DetailMetricGridCardBody {

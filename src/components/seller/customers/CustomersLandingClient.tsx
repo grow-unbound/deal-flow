@@ -34,6 +34,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { loadCalloutRows } from '@/lib/callout-loader';
 
 type SortOption = 'Recent activity' | 'Sales (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent activity', 'Sales (high → low)', 'Outstanding (high → low)'];
@@ -50,6 +51,38 @@ function formatOverdueDays(value: number | null | undefined) {
 
 function tabularInline(value: string): ReactNode {
   return <span className="tabular-inline">{value}</span>;
+}
+
+function mapNeedsCallRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
+  return (callouts?.needs_call ?? []).map((buyer) => ({
+    id: buyer.id,
+    initials: buyer.avatar.initials,
+    hue: buyer.avatar.hue,
+    name: buyer.business_name,
+    reason: (
+      <>
+        {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
+        {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
+      </>
+    ),
+    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
+  }));
+}
+
+function mapWinBackRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
+  return (callouts?.win_back ?? []).map((buyer) => ({
+    id: buyer.id,
+    initials: buyer.avatar.initials,
+    hue: buyer.avatar.hue,
+    name: buyer.business_name,
+    reason: (
+      <>
+        {buyer.phone ?? '—'}
+        {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
+      </>
+    ),
+    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
+  }));
 }
 
 function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolean {
@@ -320,41 +353,25 @@ function CustomersLandingContent({
             id: 'collect_overdue_balances',
             kind: 'risk',
             eyebrow: 'Collect overdue balances',
-            hint: `${callouts?.needs_call?.length ?? 0}`,
+            hint: `${callouts?.needs_call_total ?? callouts?.needs_call?.length ?? 0}`,
             getHref: (row) => `/customers/${row.id}`,
-            rows: (callouts?.needs_call ?? []).map((buyer) => ({
-              id: buyer.id,
-              initials: buyer.avatar.initials,
-              hue: buyer.avatar.hue,
-              name: buyer.business_name,
-              reason: (
-                <>
-                  {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
-                  {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
-                </>
-              ),
-              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
-            })),
+            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapNeedsCallRows>[number]>(
+              '/api/tenant/customers?callout=needs_call',
+              async (payload) => mapNeedsCallRows(payload.callouts),
+            ),
+            rows: mapNeedsCallRows(callouts),
           },
           {
             id: 'win_back_inactive_customers',
             kind: 'opportunity',
             eyebrow: 'Win back inactive customers',
-            hint: `${callouts?.win_back?.length ?? 0}`,
+            hint: `${callouts?.win_back_total ?? callouts?.win_back?.length ?? 0}`,
             getHref: (row) => `/customers/${row.id}`,
-            rows: (callouts?.win_back ?? []).map((buyer) => ({
-              id: buyer.id,
-              initials: buyer.avatar.initials,
-              hue: buyer.avatar.hue,
-              name: buyer.business_name,
-              reason: (
-                <>
-                  {buyer.phone ?? '—'}
-                  {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
-                </>
-              ),
-              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
-            })),
+            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapWinBackRows>[number]>(
+              '/api/tenant/customers?callout=win_back',
+              async (payload) => mapWinBackRows(payload.callouts),
+            ),
+            rows: mapWinBackRows(callouts),
           },
         ]}
       />
