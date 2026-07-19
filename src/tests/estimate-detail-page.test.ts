@@ -31,6 +31,20 @@ vi.mock('@/lib/server/buyer-credit', () => ({
   loadBuyerCreditSnapshots: vi.fn().mockResolvedValue(new Map()),
 }));
 
+vi.mock('@/lib/server/whatsapp-document-send', () => ({
+  getBuyerDocumentSendState: vi.fn().mockResolvedValue({
+    can_send: true,
+    block_reason: null,
+    block_message: null,
+    credits_balance: 10,
+    required_credits: 1,
+    recipient_phone: '9876543210',
+    template_name: 'request_update_buyer',
+    seller_name: 'Yukti Seller',
+    seller_phone_display: '+91 98765 43210',
+  }),
+}));
+
 const estimateRow: Record<string, unknown> = {
   id: 'est-1',
   tenant_id: 'tenant-1',

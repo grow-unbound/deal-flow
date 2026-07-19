@@ -320,7 +320,7 @@ describe('GET /api/tenant/catalogs', () => {
     expect(response.status).toBe(200);
     expect(body.catalogs.map((row) => row.id)).toEqual(['campaign-2']);
     expect(body.kpis).toBeUndefined();
-    expect(metricsRpcCalls[0]).toMatchObject({
+    expect(metricsRpcCalls.find((call) => Array.isArray(call.p_campaign_ids))).toMatchObject({
       p_campaign_ids: ['campaign-2'],
       p_include_summary: false,
     });

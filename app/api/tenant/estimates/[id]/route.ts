@@ -6,6 +6,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getBuyerDocumentSendState } from '@/lib/server/whatsapp-document-send';
 import {
   isSellerLocationSelectionAllowed,
   loadAccessibleSellerLocations,
@@ -76,11 +77,17 @@ export async function GET(
     if (result === 'forbidden') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const whatsappSend = await getBuyerDocumentSendState(supabaseAdmin as DbClient, {
+      kind: 'estimate',
+      tenantId: claims.tenant_id,
+      buyerId: result.composerPayload.buyer_id,
+    });
     return NextResponse.json({
       data: {
         ...result.detailPayload,
         historical_items: result.detailPayload.items,
         ...result.composerPayload,
+        whatsapp_send: whatsappSend,
       },
     }, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {

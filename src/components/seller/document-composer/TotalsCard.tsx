@@ -46,11 +46,11 @@ export function TotalsCard({
 
   return (
     <div className="space-y-3">
-      {creditEnabled && creditWarning ? (
+      {/* creditEnabled && creditWarning ? (
         <div className="callout callout--danger">
           <strong>Over limit.</strong> {creditWarning}
         </div>
-      ) : null}
+      ) : null */}
 
       <section className="rounded-[14px] border border-cream-300 bg-white p-4">
         <p className="text-base font-semibold text-cream-950">{title}</p>

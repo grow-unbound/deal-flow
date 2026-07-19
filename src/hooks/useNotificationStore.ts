@@ -8,14 +8,15 @@ export type NotificationKind =
   | 'new_order'
   | 'estimate_updated'
   | 'order_updated'
-  | 'invoice_updated';
+  | 'invoice_updated'
+  | 'broadcast_updated';
 
 export interface AppNotification {
   id: string;
   kind: NotificationKind;
   title: string;
   body: string;
-  entityType: 'catalog' | 'estimate' | 'order' | 'invoice';
+  entityType: 'catalog' | 'estimate' | 'order' | 'invoice' | 'broadcast';
   entityId: string;
   href: string;
   readAt: string | null;

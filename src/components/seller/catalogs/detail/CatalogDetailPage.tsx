@@ -131,7 +131,12 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
   }
 
   const isDraft = data.header.status_value === 'draft';
-  const isPublished = data.header.status_value === 'published';
+  const isPublished =
+    data.header.status_raw_value === 'published'
+    || data.header.status_value === 'published'
+    || data.header.status_value === 'published_dirty'
+    || data.header.status_value === 'scheduled'
+    || data.header.status_value === 'expired';
 
   async function handleCopyShareLink() {
     try {
@@ -239,6 +244,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
                   Publish campaign
                 </Button>
                 <PublishCampaignDialog
+                  campaignId={id}
                   open={publishConfirmOpen}
                   onOpenChange={setPublishConfirmOpen}
                   mode="first_publish"

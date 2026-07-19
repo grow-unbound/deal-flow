@@ -163,6 +163,17 @@ function estimateForSoPrefill(): TenantEstimateDetailResponse {
     voided_at: null,
     converted_to_order_id: null,
     linked_order_number: null,
+    whatsapp_send: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'request_update_buyer',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+    },
   } as unknown as TenantEstimateDetailResponse;
 }
 

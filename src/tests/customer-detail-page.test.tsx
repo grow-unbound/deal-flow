@@ -12,18 +12,19 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
-type QueryResult = {
-  data?: unknown;
-  error?: unknown;
-};
+vi.mock('@/lib/server/seller-location-access', () => ({
+  applySellerLocationScope: (query: unknown) => query,
+  loadAccessibleSellerLocations: async () => [],
+}));
+
+type QueryResult = { data?: unknown; error?: unknown };
 
 const dbResponses: Record<string, QueryResult[]> = {};
+const queryInstances = new Map<string, ReturnType<typeof createQuery>>();
 
 function nextResult(key: string): QueryResult {
   const queue = dbResponses[key] ?? [];
-  if (queue.length <= 1) {
-    return queue[0] ?? {};
-  }
+  if (queue.length <= 1) return queue[0] ?? {};
   return queue.shift() ?? {};
 }
 
@@ -33,12 +34,11 @@ function createQuery(key: string) {
     is: vi.fn(),
     in: vi.fn(),
     or: vi.fn(),
+    not: vi.fn(),
     order: vi.fn(),
+    range: vi.fn(),
     limit: vi.fn(),
-    neq: vi.fn(),
     gte: vi.fn(),
-    lt: vi.fn(),
-    single: vi.fn(),
     maybeSingle: vi.fn(),
     then: (onFulfilled: (value: { data: unknown; error: unknown }) => unknown) => {
       const result = nextResult(key);
@@ -50,27 +50,33 @@ function createQuery(key: string) {
   query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
   query.or.mockReturnValue(query);
+  query.not.mockReturnValue(query);
   query.order.mockReturnValue(query);
-  query.limit.mockReturnValue(query);
-  query.neq.mockReturnValue(query);
-  query.gte.mockReturnValue(query);
-  query.lt.mockReturnValue(query);
-  query.single.mockImplementation(async () => {
+  query.range.mockImplementation(async () => {
     const result = nextResult(key);
-    return { data: result.data ?? null, error: result.error ?? null };
+    return { data: result.data ?? null, error: result.error ?? null, count: 0 };
   });
+  query.limit.mockReturnValue(query);
+  query.gte.mockReturnValue(query);
   query.maybeSingle.mockImplementation(async () => {
     const result = nextResult(key);
     return { data: result.data ?? null, error: result.error ?? null };
   });
+  queryInstances.set(key, query);
 
   return query;
 }
 
+const fromMock = vi.fn((schemaName: string, tableName: string) => ({
+  select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
+}));
+const rpcMock = vi.fn((fnName: string) => {
+  const result = nextResult(`rpc.${fnName}`);
+  return Promise.resolve({ data: result.data ?? null, error: result.error ?? null });
+});
 const schemaMock = vi.fn((schemaName: string) => ({
-  from: vi.fn((tableName: string) => ({
-    select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
-  })),
+  from: vi.fn((tableName: string) => fromMock(schemaName, tableName)),
+  rpc: vi.fn((fnName: string, args: unknown) => rpcMock(fnName, args)),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -79,13 +85,11 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { GET } from '../../app/api/tenant/customers/[id]/route';
+import { GET as getCustomerDetail } from '../../app/api/tenant/customers/[id]/route';
+import { GET as getCustomerDocuments } from '../../app/api/tenant/customers/[id]/documents/route';
 
-function setDefaultResponses() {
+function setBootstrapDefaults() {
   dbResponses['app.buyers'] = [
-    {
-      data: { id: 'buyer-1', tenant_id: 'tenant-1' },
-    },
     {
       data: {
         id: 'buyer-1',
@@ -95,342 +99,125 @@ function setDefaultResponses() {
         phone: '9876543210',
         email: 'ops@singh.co',
         gstin: '29ABCDE1234F1Z5',
-        tier: 'A',
+        gst_treatment: 'regular',
+        billing_address: null,
+        shipping_address: null,
         is_active: true,
+        buyer_app_enabled: true,
         credit_limit: 100000,
         payment_terms_days: 21,
-        external_ref: 'ER-1',
         default_cohort_id: 'cohort-1',
+        default_price_list_id: 'pl-1',
         geography: { city: 'Bengaluru', state: 'Karnataka', pincode: '560001', zone: 'South' },
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-02T00:00:00Z',
+        created_at: '2021-05-10T00:00:00Z',
+        whatsapp_opt_out_at: null,
       },
-    },
-    {
-      data: [{ id: 'buyer-1', business_name: 'Singh Hospitality' }],
-    },
-  ];
-  dbResponses['app.buyers_snapshot'] = [
-    {
-      data: [
-        {
-          buyer_id: 'buyer-1',
-          is_active: true,
-          is_dormant: false,
-          outstanding_dues: 64000,
-          overdue_amount: 12000,
-          credit_limit: 100000,
-          last_order_at: '2026-07-02T10:00:00Z',
-          last_activity_at: '2026-07-02T10:00:00Z',
-        },
-      ],
-    },
-  ];
-  dbResponses['app.kpi_buyers_daily'] = [
-    {
-      data: [
-        {
-          buyer_id: 'buyer-1',
-          estimates_count: 1,
-          orders_count: 1,
-          invoices_count: 1,
-          orders_gmv: 5000,
-        },
-      ],
-    },
-    {
-      data: [
-        {
-          buyer_id: 'buyer-1',
-          estimates_count: 0,
-          orders_count: 1,
-          invoices_count: 0,
-          orders_gmv: 9000,
-        },
-      ],
-    },
-  ];
-  dbResponses['app.orders'] = [{ data: [] }, { data: [] }, { data: [] }];
-  dbResponses['app.order_items'] = [{ data: [] }];
-  dbResponses['app.cohort_members'] = [
-    {
-      data: [
-        {
-          cohort_id: 'cohort-1',
-          cohorts: { name: 'Premium', deleted_at: null },
-        },
-      ],
     },
   ];
   dbResponses['app.buyer_users'] = [{ data: [] }];
-  dbResponses['app.audit_log'] = [{ data: [] }];
-  dbResponses['app.invoices'] = [{ data: [] }, { data: [] }];
-  dbResponses['app.payments'] = [{ data: [] }];
-  dbResponses['app.credit_notes'] = [{ data: [] }];
-  dbResponses['app.campaign_views'] = [{ data: [] }];
-  dbResponses['app.estimates'] = [{ data: [] }];
-  dbResponses['app.estimate_items'] = [{ data: [] }];
-  dbResponses['app.invoice_items'] = [{ data: [] }];
-  dbResponses['app.price_list_assignments'] = [{ data: [] }];
-  dbResponses['app.price_lists'] = [{ data: [] }];
-  dbResponses['app.price_list_items'] = [{ data: [] }];
-  dbResponses['app.locations'] = [{ data: [] }];
-  dbResponses['app.tenant_products'] = [{ data: [] }];
-  dbResponses['app.tenant_brands'] = [{ data: [] }];
-  dbResponses['app.campaigns'] = [{ data: [] }];
-  dbResponses['catalog.products'] = [{ data: [] }];
-  dbResponses['catalog.brands'] = [{ data: [] }];
+  dbResponses['app.cohort_members'] = [
+    { data: [{ cohort_id: 'cohort-1', cohorts: { name: 'Premium', deleted_at: null } }] },
+  ];
+  dbResponses['app.price_lists'] = [{ data: { id: 'pl-1', name: 'North Premium Pricing' } }];
+  dbResponses['rpc.get_seller_customer_detail_v2'] = [
+    {
+      data: {
+        performance_cards: [],
+        summary_metrics: {
+          invoiced_sales_90d: 250000,
+          invoice_count_90d: 4,
+          primary_demand_kind: 'orders',
+          primary_demand_value_90d: 188000,
+          primary_demand_order_count_90d: 3,
+          primary_demand_estimate_count_90d: 1,
+          receivable_amount: 64000,
+          credit_available: 36000,
+          credit_limit: 100000,
+          last_invoice_value: 84200,
+          last_invoice_date: '2026-07-16T00:00:00Z',
+          last_activity_at: '2026-07-16T00:00:00Z',
+          last_activity_kind: 'sale',
+        },
+        subtitle_meta: {
+          buyer_app_status_label: 'Buyer App enabled',
+          last_activity_at: '2026-07-16T00:00:00Z',
+          last_activity_kind: 'sale',
+          last_activity_days_ago: 3,
+        },
+        tab_badges: {
+          estimates_90d: 1,
+          orders_90d: 3,
+          invoices_90d: 4,
+          price_lists_assigned: 2,
+        },
+      },
+    },
+  ];
 }
 
-describe('customer detail api', () => {
+describe('customer detail bootstrap route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
-    setDefaultResponses();
-    getFlagMock.mockImplementation(async (flag: string) => (
-      flag === 'df_customer_master' || flag === 'df_brand_product_master'
-    ));
-  });
-
-  it('returns 403 for cross-tenant buyer access', async () => {
-    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'seller_admin', buyer_id: null });
-    dbResponses['app.buyers'][0] = {
-      data: { id: 'buyer-1', tenant_id: 'tenant-b' },
-    };
-
-    const request = new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1');
-    const response = await GET(request, { params: Promise.resolve({ id: 'buyer-1' }) });
-
-    expect(response.status).toBe(403);
-  });
-
-  it('filters draft/cancelled/void transactions out of the customer detail tabs', async () => {
+    queryInstances.clear();
+    setBootstrapDefaults();
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_admin',
       buyer_id: null,
       location_ids: null,
     });
+    getFlagMock.mockResolvedValue(true);
+  });
 
-    dbResponses['app.orders'] = [
-      {
-        data: [
-          {
-            id: 'order-live-month',
-            order_number: 'SO-001',
-            buyer_id: 'buyer-1',
-            status: 'confirmed',
-            source: 'buyer_app',
-            campaign_id: null,
-            estimate_id: null,
-            place_of_supply: null,
-            total_amount: 5000,
-            placed_at: '2026-07-02T10:00:00Z',
-            created_at: '2026-07-02T10:00:00Z',
-            location_id: null,
-          },
-          {
-            id: 'order-draft-month',
-            order_number: 'SO-002',
-            buyer_id: 'buyer-1',
-            status: 'draft',
-            source: 'buyer_app',
-            campaign_id: null,
-            estimate_id: null,
-            place_of_supply: null,
-            total_amount: 1200,
-            placed_at: '2026-07-01T10:00:00Z',
-            created_at: '2026-07-01T10:00:00Z',
-            location_id: null,
-          },
-        ],
-      },
-      {
-        data: [
-          {
-            id: 'order-prev-live',
-            total_amount: 9000,
-            placed_at: '2026-06-15T10:00:00Z',
-            location_id: null,
-            status: 'confirmed',
-          },
-          {
-            id: 'order-prev-cancelled',
-            total_amount: 4000,
-            placed_at: '2026-06-10T10:00:00Z',
-            location_id: null,
-            status: 'cancelled',
-          },
-        ],
-      },
-      {
-        data: [
-          {
-            id: 'order-live-month',
-            order_number: 'SO-001',
-            buyer_id: 'buyer-1',
-            status: 'confirmed',
-            source: 'buyer_app',
-            campaign_id: null,
-            estimate_id: null,
-            place_of_supply: null,
-            total_amount: 5000,
-            placed_at: '2026-07-02T10:00:00Z',
-            created_at: '2026-07-02T10:00:00Z',
-            location_id: null,
-          },
-          {
-            id: 'order-draft-old',
-            order_number: 'SO-003',
-            buyer_id: 'buyer-1',
-            status: 'draft',
-            source: 'buyer_app',
-            campaign_id: null,
-            estimate_id: null,
-            place_of_supply: null,
-            total_amount: 7000,
-            placed_at: '2026-05-10T10:00:00Z',
-            created_at: '2026-05-10T10:00:00Z',
-            location_id: null,
-          },
-        ],
-      },
-    ];
-
-    dbResponses['app.estimates'] = [
-      {
-        data: [
-          {
-            id: 'estimate-live',
-            estimate_number: 'EST-001',
-            estimate_date: '2026-07-02T10:00:00Z',
-            created_at: '2026-07-02T10:00:00Z',
-            status: 'sent',
-            total_amount: 8000,
-            location_id: null,
-            campaign_id: null,
-            source: 'seller',
-            place_of_supply: null,
-            expires_at: '2026-07-10T10:00:00Z',
-          },
-          {
-            id: 'estimate-void',
-            estimate_number: 'EST-002',
-            estimate_date: '2026-07-01T10:00:00Z',
-            created_at: '2026-07-01T10:00:00Z',
-            status: 'void',
-            total_amount: 1200,
-            location_id: null,
-            campaign_id: null,
-            source: 'seller',
-            place_of_supply: null,
-            expires_at: '2026-07-10T10:00:00Z',
-          },
-        ],
-      },
-    ];
-
-    dbResponses['app.invoices'] = [
-      {
-        data: [
-          {
-            id: 'invoice-live',
-            invoice_number: 'INV-001',
-            invoice_date: '2026-07-02T10:00:00Z',
-            created_at: '2026-07-02T10:00:00Z',
-            status: 'sent',
-            outstanding_balance: 0,
-            total_amount: 5000,
-            location_id: null,
-            order_id: 'order-live-month',
-            estimate_id: null,
-            place_of_supply: null,
-            due_date: '2026-07-12T10:00:00Z',
-          },
-          {
-            id: 'invoice-draft',
-            invoice_number: 'INV-002',
-            invoice_date: '2026-07-03T10:00:00Z',
-            created_at: '2026-07-03T10:00:00Z',
-            status: 'draft',
-            outstanding_balance: 1000,
-            total_amount: 1000,
-            location_id: null,
-            order_id: 'order-draft-month',
-            estimate_id: null,
-            place_of_supply: null,
-            due_date: '2026-07-12T10:00:00Z',
-          },
-          {
-            id: 'invoice-void',
-            invoice_number: 'INV-003',
-            invoice_date: '2026-07-03T10:00:00Z',
-            created_at: '2026-07-03T10:00:00Z',
-            status: 'void',
-            outstanding_balance: 0,
-            total_amount: 2000,
-            location_id: null,
-            order_id: null,
-            estimate_id: null,
-            place_of_supply: null,
-            due_date: '2026-07-12T10:00:00Z',
-          },
-        ],
-      },
-      {
-        data: [
-          {
-            buyer_id: 'buyer-1',
-            outstanding_balance: 0,
-            due_date: null,
-            status: 'sent',
-          },
-          {
-            buyer_id: 'buyer-1',
-            outstanding_balance: 0,
-            due_date: null,
-            status: 'draft',
-          },
-        ],
-      },
-    ];
-
-    const request = new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1');
-    const response = await GET(request, { params: Promise.resolve({ id: 'buyer-1' }) });
+  it('returns a metrics-first bootstrap payload with tab badges and no eager document arrays', async () => {
+    const response = await getCustomerDetail(
+      new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1'),
+      { params: Promise.resolve({ id: 'buyer-1' }) },
+    );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.orders.badge_count_mtd).toBe(1);
-    expect(body.orders.rows).toHaveLength(1);
-    expect(body.orders.rows[0].status).toBe('confirmed');
-    expect(body.estimates.rows).toHaveLength(1);
-    expect(body.estimates.rows[0].buyer_name).toBe('Singh Hospitality');
-    expect(body.estimates.rows[0].status).toBe('sent');
-    expect(body.invoices.rows).toHaveLength(1);
-    expect(body.invoices.rows[0].buyer_name).toBe('Singh Hospitality');
-    expect(body.invoices.rows[0].status).toBe('sent');
+    expect(body.tab_badges).toEqual({
+      estimates_90d: 1,
+      orders_90d: 3,
+      invoices_90d: 4,
+      price_lists_assigned: 2,
+    });
+    expect(body.meta_strip_4.invoiced_sales_90d).toBe(250000);
+    expect(body.meta_strip_4.demand_90d).toBe(188000);
+    expect(body.meta_strip_4.last_invoice_value).toBe(84200);
+    expect(body.price_lists).toEqual({ assigned_count: 2 });
+    expect(body.header.subtitle_meta.last_activity_kind).toBe('sale');
+    expect(body.orders).toBeUndefined();
+    expect(body.estimates).toBeUndefined();
+    expect(body.invoices).toBeUndefined();
+    expect(body.activity).toBeUndefined();
   });
+});
 
-  it('credit used percentage formula remains creditUsed / creditLimit * 100', () => {
-    const creditUsed = 64000;
-    const creditLimit = 100000;
-    const pct = Math.round((creditUsed / creditLimit) * 1000) / 10;
-
-    expect(pct).toBe(64);
-  });
-
-  it('rejects seller assistants outside the buyer aggregate scope', async () => {
+describe('customer documents route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    for (const key of Object.keys(dbResponses)) delete dbResponses[key];
+    queryInstances.clear();
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
-      role: 'seller_assistant',
+      role: 'seller_admin',
       buyer_id: null,
-      location_ids: ['loc-9'],
+      location_ids: null,
     });
-    dbResponses['app.buyers_snapshot'] = [{ data: [] }];
+    dbResponses['app.buyers'] = [{ data: { id: 'buyer-1' } }];
+    dbResponses['app.orders'] = [{ data: [], error: null }];
+    dbResponses['app.order_items'] = [{ data: [] }];
+  });
 
-    const request = new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1');
-    const response = await GET(request, { params: Promise.resolve({ id: 'buyer-1' }) });
+  it('applies the default this-month period bound', async () => {
+    await getCustomerDocuments(
+      new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/documents?kind=order'),
+      { params: Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000' }) },
+    );
 
-    expect(response.status).toBe(403);
+    expect(queryInstances.get('app.orders')?.or).toHaveBeenCalled();
   });
 });

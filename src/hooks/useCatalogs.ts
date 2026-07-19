@@ -4,15 +4,27 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
+import type {
+  CampaignWorkflowStatus,
+  CampaignWorkflowStatusLabel,
+  CampaignWorkflowStatusTone,
+  RawCampaignStatus,
+} from '@/lib/campaign-workflow-status';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerPriceSource, CatalogComposerTag } from '@/lib/zod';
+import type {
+  CatalogComposerFilterState,
+  CatalogComposerPayload,
+  CatalogComposerPriceSource,
+  CatalogComposerPricingStrategy,
+  CatalogComposerTag,
+} from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
-export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
-export type CatalogStatusTone = 'success' | 'warning' | 'neutral';
+export type CatalogDisplayStatus = CampaignWorkflowStatusLabel;
+export type CatalogStatusTone = CampaignWorkflowStatusTone;
 export type CatalogAvatarHue = 'teal' | 'ember' | 'cream';
 
 export interface CatalogLandingRow {
@@ -21,7 +33,8 @@ export interface CatalogLandingRow {
   initials: string;
   hue: CatalogAvatarHue;
   status: {
-    value: 'draft' | 'published' | 'archived';
+    value: CampaignWorkflowStatus;
+    raw_value?: RawCampaignStatus;
     label: CatalogDisplayStatus;
     tone: CatalogStatusTone;
   };
@@ -95,7 +108,8 @@ export interface CatalogDetailResponse {
     share_token: string | null;
     share_url: string | null;
     scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
-    status_value: 'draft' | 'published' | 'archived';
+    status_value: CampaignWorkflowStatus;
+    status_raw_value?: RawCampaignStatus;
     selected_cohort: {
       id: string | null;
       name: string;
@@ -224,8 +238,8 @@ export interface CatalogDetailResponse {
   };
   composer?: {
     name: string;
-    status: 'draft' | 'published' | 'archived';
-    live_status: 'draft' | 'published' | 'archived';
+    status: CampaignWorkflowStatus;
+    live_status: CampaignWorkflowStatus;
     has_unpublished_changes: boolean;
     valid_from: string;
     valid_to: string | null;
@@ -235,6 +249,7 @@ export interface CatalogDetailResponse {
     message?: string | null;
     price_source?: CatalogComposerPriceSource;
     price_list_id?: string | null;
+    pricing_strategy?: CatalogComposerPricingStrategy;
     filters: CatalogComposerFilterState;
     is_dynamic?: boolean;
     tag_overrides: Record<string, CatalogComposerTag | null>;

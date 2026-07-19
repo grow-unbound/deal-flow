@@ -4,6 +4,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import {
+  resolveCampaignWorkflowStatus,
+  type CampaignWorkflowStatusLabel,
+  type CampaignWorkflowStatusTone,
+  type RawCampaignStatus,
+} from '@/lib/campaign-workflow-status';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
@@ -24,11 +30,17 @@ import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
-import { CatalogComposerPayloadSchema, CatalogPublishActionSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
+import {
+  CatalogComposerPayloadSchema,
+  CatalogPublishActionSchema,
+  type CatalogComposerFilterState,
+  type CatalogComposerPricingStrategy,
+  type CatalogComposerTag,
+} from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
-type CatalogStatus = 'draft' | 'published' | 'archived';
+type CatalogStatus = RawCampaignStatus;
 
 type ScopeType = 'cohort' | 'buyer' | 'geography' | 'all';
 type ComposerScopeType = 'cohort' | 'buyer' | 'all';
@@ -43,6 +55,7 @@ type CatalogDraftSnapshot = {
   message: string | null;
   price_source: 'price_list' | 'manual';
   price_list_id: string | null;
+  pricing_strategy?: CatalogComposerPricingStrategy;
   filters: CatalogComposerFilterState;
   tag_overrides: Record<string, CatalogComposerTag | null>;
   items: Array<{
@@ -88,6 +101,7 @@ function buildCatalogScopeValue(input: {
   tagOverrides?: Record<string, CatalogComposerTag | null>;
   priceSource?: 'price_list' | 'manual';
   priceListId?: string | null;
+  pricingStrategy?: CatalogComposerPricingStrategy;
   draft?: CatalogDraftSnapshot | null;
 }) {
   return {
@@ -98,6 +112,7 @@ function buildCatalogScopeValue(input: {
       tag_overrides: input.tagOverrides ?? {},
       price_source: input.priceSource ?? 'manual',
       price_list_id: input.priceListId ?? null,
+      pricing_strategy: input.pricingStrategy,
     },
     ...(input.draft ? { composer_draft: input.draft } : {}),
   };
@@ -122,6 +137,7 @@ function buildCatalogDraftSnapshot(payload: z.infer<typeof CatalogComposerPayloa
     message: payload.message?.trim() || null,
     price_source: payload.price_source,
     price_list_id: payload.price_source === 'price_list' ? (payload.price_list_id ?? null) : null,
+    pricing_strategy: payload.pricing_strategy,
     filters: payload.filters,
     tag_overrides: payload.tag_overrides,
     items: payload.items,
@@ -182,13 +198,6 @@ async function ensureTenantPriceList(db: DbClient, tenantId: string, priceListId
 
   if (error) throw new Error('Failed to validate price list');
   return Boolean(data);
-}
-
-function getDisplayStatus(status: CatalogStatus, validTo: string | null): { label: 'Live' | 'Draft' | 'Ended'; tone: 'success' | 'warning' | 'neutral' } {
-  if (status === 'draft') return { label: 'Draft', tone: 'warning' };
-  if (status === 'archived') return { label: 'Ended', tone: 'neutral' };
-  if (validTo && new Date(validTo).getTime() < Date.now()) return { label: 'Ended', tone: 'neutral' };
-  return { label: 'Live', tone: 'success' };
 }
 
 function getInitials(name: string): string {
@@ -339,6 +348,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tag_overrides?: Record<string, CatalogComposerTag | null>;
       price_source?: 'price_list' | 'manual';
       price_list_id?: string | null;
+      pricing_strategy?: CatalogComposerPricingStrategy;
     };
     composer_draft?: CatalogDraftSnapshot;
   };
@@ -737,15 +747,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
   const publishedBy = catalog.created_by ? `User ${catalog.created_by.slice(0, 8)}` : 'System';
-  const status = getDisplayStatus(catalog.status, catalog.valid_to);
+  const workflowStatus = resolveCampaignWorkflowStatus({
+    rawStatus: catalog.status,
+    validFrom: catalog.valid_from,
+    validTo: catalog.valid_to,
+    hasUnpublishedChanges: Boolean(composerDraft),
+  });
   const currentCatalogViewMetrics = viewMetricsByCampaign.get(catalog.id) ?? viewMetrics;
 
   return NextResponse.json({
     header: {
       id: catalog.id,
       name: catalog.name,
-      status_label: status.label,
-      status_tone: status.tone,
+      status_label: workflowStatus.label,
+      status_tone: workflowStatus.tone,
       initials: getInitials(catalog.name),
       products_count: products.length,
       brands_covered: brandsCovered,
@@ -757,7 +772,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       share_token: catalog.share_token,
       share_url: catalog.share_token ? buildBuyerCatalogUrl(request.nextUrl.origin, catalog.share_token) : null,
       scope_type: catalog.scope_type,
-      status_value: catalog.status,
+      status_value: workflowStatus.value,
+      status_raw_value: catalog.status,
       selected_cohort: {
         id: selectedCohortId,
         name: selectedCohortName,
@@ -838,14 +854,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     composer: {
       name: composerDraft?.name ?? catalog.name,
-      status: composerDraft ? 'draft' : catalog.status,
-      live_status: catalog.status,
+      status: workflowStatus.value,
+      live_status: resolveCampaignWorkflowStatus({
+        rawStatus: catalog.status,
+        validFrom: catalog.valid_from,
+        validTo: catalog.valid_to,
+        hasUnpublishedChanges: false,
+      }).value,
       has_unpublished_changes: Boolean(composerDraft),
       valid_from: composerDraft?.valid_from ?? catalog.valid_from,
       valid_to: composerDraft?.valid_to ?? catalog.valid_to,
       message: composerDraft?.message ?? catalog.message ?? '',
       price_source: composerDraft?.price_source ?? composerScopeValue.composer?.price_source ?? 'manual',
       price_list_id: composerDraft?.price_list_id ?? composerScopeValue.composer?.price_list_id ?? null,
+      pricing_strategy: composerDraft?.pricing_strategy ?? composerScopeValue.composer?.pricing_strategy,
       scope_type: composerDraft?.scope_type ?? (catalog.scope_type === 'all' ? 'all' : catalog.scope_type === 'buyer' ? 'buyer' : 'cohort'),
       cohort_id: composerDraft?.cohort_id ?? composerScopeValue.cohort_id ?? null,
       buyer_ids: composerDraft?.buyer_ids ?? composerScopeValue.buyer_ids ?? (scopeValue.buyer_id ? [scopeValue.buyer_id] : []),
@@ -1144,6 +1166,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         tag_overrides?: Record<string, CatalogComposerTag | null>;
         price_source?: 'price_list' | 'manual';
         price_list_id?: string | null;
+        pricing_strategy?: CatalogComposerPricingStrategy;
       };
     };
 
@@ -1165,6 +1188,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           tagOverrides: liveScopeValue.composer?.tag_overrides ?? {},
           priceSource: liveScopeValue.composer?.price_source ?? 'manual',
           priceListId: liveScopeValue.composer?.price_list_id ?? null,
+          pricingStrategy: liveScopeValue.composer?.pricing_strategy,
           draft: buildCatalogDraftSnapshot(payload),
         }),
         updated_by: claims.sub,
@@ -1196,6 +1220,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     tagOverrides: payload.tag_overrides,
     priceSource: payload.price_source,
     priceListId: payload.price_list_id,
+    pricingStrategy: payload.pricing_strategy,
     draft: null,
   });
 

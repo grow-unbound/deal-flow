@@ -87,6 +87,8 @@ async function handleStatusUpdates(
   admin: ReturnType<typeof createAdminClient>,
   statuses: MetaStatusUpdate[],
 ): Promise<void> {
+  const touchedBroadcastIds = new Set<string>();
+
   for (const status of statuses) {
     const providerMessageId = status.id?.trim();
     const ledgerStatus = status.status ? mapMetaStatusToLedgerStatus(status.status) : null;
@@ -105,15 +107,57 @@ async function handleStatusUpdates(
       update.failure_reason = errMsg;
     }
 
-    const { error } = await admin
+    const { data: updatedRows, error } = await admin
       .schema('app')
       .from('whatsapp_messages')
       .update(update)
+      .select('id, whatsapp_broadcast_id')
       .eq('provider_message_id', providerMessageId);
 
     if (error) {
       console.error('[whatsapp-inbound-webhook] status update failed', {
         providerMessageId,
+        error: error.message,
+      });
+      continue;
+    }
+
+    const updated = (updatedRows ?? []) as Array<{ id: string; whatsapp_broadcast_id: string | null }>;
+    for (const row of updated) {
+      if (ledgerStatus === 'failed') {
+        const errMsg = status.errors?.[0]?.message ?? status.errors?.[0]?.title ?? 'Meta delivery failed';
+        const { error: queueError } = await admin
+          .schema('app')
+          .from('whatsapp_send_queue')
+          .update({
+            status: 'failed',
+            failure_reason: errMsg,
+          })
+          .eq('whatsapp_message_id', row.id)
+          .neq('status', 'cancelled');
+
+        if (queueError) {
+          console.error('[whatsapp-inbound-webhook] queue failure update failed', {
+            providerMessageId,
+            error: queueError.message,
+          });
+        }
+      }
+
+      if (row.whatsapp_broadcast_id) {
+        touchedBroadcastIds.add(row.whatsapp_broadcast_id);
+      }
+    }
+  }
+
+  for (const broadcastId of touchedBroadcastIds) {
+    const { error } = await admin
+      .schema('app')
+      .rpc('refresh_whatsapp_broadcast_rollup', { p_broadcast_id: broadcastId });
+
+    if (error) {
+      console.error('[whatsapp-inbound-webhook] broadcast rollup refresh failed', {
+        broadcastId,
         error: error.message,
       });
     }

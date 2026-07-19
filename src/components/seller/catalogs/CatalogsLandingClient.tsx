@@ -31,7 +31,7 @@ import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadM
 type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open to demand (high → low)';
 
 const SORT_OPTIONS: SortOption[] = ['Recently published', 'Demand value (high → low)', 'Open to demand (high → low)'];
-const STATUS_OPTIONS = ['Draft', 'Live', 'Expiring soon', 'Ended'] as const;
+const STATUS_OPTIONS = ['Draft', 'Scheduled', 'Live', 'Live · Unpublished Changes', 'Expiring soon', 'Expired', 'Archived'] as const;
 
 function CatalogsLoadingSkeleton() {
   return (
@@ -170,23 +170,26 @@ function CatalogsLandingContent({
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const interimRows = isFetching !== false ? catalogs.filter((catalog) => {
+    const interimRows = catalogs.filter((catalog) => {
         if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
         return statusFilter.some((value) => {
           if (value === 'Draft') return catalog.status.label === 'Draft';
+          if (value === 'Scheduled') return catalog.status.label === 'Scheduled';
           if (value === 'Live') return catalog.status.label === 'Live';
+          if (value === 'Live · Unpublished Changes') return catalog.status.label === 'Live · Unpublished Changes';
           if (value === 'Expiring soon') return catalog.days_left != null && catalog.days_left <= 7 && catalog.days_left > 0;
-          if (value === 'Ended') return catalog.status.label === 'Ended';
+          if (value === 'Expired') return catalog.status.label === 'Expired';
+          if (value === 'Archived') return catalog.status.label === 'Archived';
           return false;
         });
-      }).filter((catalog) => !query || catalog.name.toLowerCase().includes(query)) : catalogs;
+      }).filter((catalog) => !query || catalog.name.toLowerCase().includes(query));
     return interimRows
       .sort((a, b) => {
         if (sortBy === 'Recently published') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         if (sortBy === 'Demand value (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [catalogs, isFetching, search, sortBy, statusFilter]);
+  }, [catalogs, search, sortBy, statusFilter]);
 
   if (isLoading && !landingData) return <CatalogsLandingSkeleton />;
 
@@ -409,7 +412,11 @@ function CatalogsLandingContent({
                   <p className="text-xs text-cream-600">
                     {catalog.status.label === 'Draft'
                       ? 'Not yet sent'
-                      : catalog.status.label === 'Ended'
+                      : catalog.status.label === 'Scheduled'
+                        ? `Starts ${catalog.valid_from ? new Date(catalog.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'soon'}`
+                        : catalog.status.label === 'Live · Unpublished Changes'
+                          ? 'Live campaign has unpublished changes'
+                          : catalog.status.label === 'Expired' || catalog.status.label === 'Archived'
                         ? catalog.valid_until_label
                         : catalog.days_left != null
                           ? `${catalog.days_left}d · until ${catalog.valid_until_label}`

@@ -1,5 +1,6 @@
 import type { SellerLandingPeriodMeta } from '@/lib/seller-period';
 import type { LandingFilterMeta } from '@/lib/landing-filter-params';
+import type { WhatsAppDocumentSendState, WhatsAppInvoiceReminderState } from '@/types/whatsapp-document-send';
 
 export type InvoiceStatusValue = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 export type InvoiceStatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -286,6 +287,8 @@ export interface InvoiceDetailResponse {
   viewer_role: InvoiceDetailViewerRole;
   seller_note: string;
   payments: InvoicePaymentRecordDto[];
+  whatsapp_send: WhatsAppDocumentSendState;
+  whatsapp_reminder: WhatsAppInvoiceReminderState;
 }
 
 export interface InvoiceDetailPayload {

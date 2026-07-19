@@ -24,7 +24,7 @@ export interface EnqueueWhatsAppMessageInput {
   triggerSource: WhatsAppTriggerSource;
   sendPayload: WhatsAppSendPayload;
   whatsappBroadcastId?: string | null;
-  relatedEntityType?: 'estimates' | 'orders' | null;
+  relatedEntityType?: 'estimates' | 'orders' | 'invoices' | null;
   relatedEntityId?: string | null;
   priority?: 1 | 5;
   scheduledSendAt?: string | null;
@@ -40,6 +40,9 @@ const TRANSACTIONAL_TRIGGER_SOURCES: ReadonlySet<WhatsAppTriggerSource> = new Se
   'otp_login',
   'order_placed',
   'enquiry_received',
+  'estimate_update',
+  'invoice_update',
+  'payment_reminder',
   'dispatch_notice',
 ]);
 

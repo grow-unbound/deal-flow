@@ -45,8 +45,7 @@ TRUNCATE
   app.locations_snapshot,
   app.estimates_snapshot,
   app.invoices_snapshot,
-  app.buyers_snapshot,
-  app.buyer_current_snapshot,
+
   app.kpi_buyers_daily,
   app.products_snapshot,
   app.categories_snapshot,
@@ -738,6 +737,24 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
+  NULL, 'request_update_buyer', 'utility', 'estimate_notification', 'en',
+  E'Hi {{buyer_name}},\n\nHere is your enquiry {{request_number}} for ₹{{total_amount}} ({{item_count}} items).\n\nContact {{seller_name}} ({{seller_phone_number}}) to confirm the order at these prices.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"request_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
+  NULL, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}]'::jsonb,
+  'approved', true, false
+),
+(
+  NULL, 'invoice_update_buyer', 'utility', 'invoice_notification', 'en',
+  E'Hi {{buyer_name}},\n\nHere is invoice **{{invoice_number}}** for your review.\n\nAmount: **₹{{total_amount}} ({{item_count}} items)**\n\nContact {{seller_name}} ({{seller_phone_number}}) for next steps.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"invoice_number","description":"Invoice reference number"},{"key":"total_amount","description":"Invoice total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.useyukti.in/buy/invoices/{{1}}","variable_source":"invoice_id"}'::jsonb,
+  NULL, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/invoices/{{1}}","variable_source":"invoice_id"}]'::jsonb,
+  'approved', true, false
+),
+(
   NULL, 'buyer_payment_reminder', 'utility', 'payment_reminder', 'en',
   E'Hi {{buyer_name}},\n\nThis is a payment reminder from *{{seller_name}}* on {{due_invoice_count}} invoices.\n\nAmount Due: *₹{{outstanding_amount}} ({{due_status}})*\nContact: {{seller_phone_number}}\n\nCheck your dues and pay at the earliest.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"due_invoice_count","description":"Number of due invoices"},{"key":"outstanding_amount","description":"Outstanding amount in INR"},{"key":"due_status","description":"Due in X days or Overdue by X days status"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
@@ -818,8 +835,6 @@ UNION ALL
 SELECT 'user_profiles',                COUNT(*)         FROM app.user_profiles    WHERE user_id IN ('550e8400-e29b-41d4-a716-446655440701'::uuid,'550e8400-e29b-41d4-a716-446655440702'::uuid) AND deleted_at IS NULL
 UNION ALL
 SELECT 'products_snapshot',            COUNT(*)         FROM app.products_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
-UNION ALL
-SELECT 'buyers_snapshot',              COUNT(*)         FROM app.buyers_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 UNION ALL
 SELECT 'buyer_app_snapshot',           COUNT(*)         FROM app.buyer_app_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 ORDER BY table_name;

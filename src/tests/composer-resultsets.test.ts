@@ -380,16 +380,6 @@ class BuyerResultsetQueryBuilder {
     if (this.table === 'buyers') {
       return Promise.resolve(resolve({ ...this.buyersPayload(), error: null }));
     }
-    if (this.table === 'buyers_snapshot') {
-      return Promise.resolve(resolve({
-        data: [
-          { buyer_id: '66666666-6666-4666-8666-666666666666', last_order_at: '2026-07-02T00:00:00.000Z', outstanding_dues: 1000 },
-          { buyer_id: '77777777-7777-4777-8777-777777777777', last_order_at: '2026-07-03T00:00:00.000Z', outstanding_dues: 2000 },
-        ],
-        error: null,
-        count: null,
-      }));
-    }
     return Promise.resolve(resolve({
       data: [
         { buyer_id: '66666666-6666-4666-8666-666666666666', orders_gmv: 1000, orders_count: 1, day: '2026-07-04' },

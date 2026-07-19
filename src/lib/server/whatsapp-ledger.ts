@@ -10,6 +10,9 @@ export type WhatsAppMetaCategory = 'marketing' | 'utility' | 'authentication' | 
 export type WhatsAppTriggerSource =
   | 'order_placed'
   | 'enquiry_received'
+  | 'estimate_update'
+  | 'invoice_update'
+  | 'payment_reminder'
   | 'otp_login'
   | 'dispatch_notice'
   | 'broadcast';

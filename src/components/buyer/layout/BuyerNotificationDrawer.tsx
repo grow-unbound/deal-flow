@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { BookOpen, FilePen, FileText, Package, Receipt, Truck } from 'lucide-react';
+import { BookOpen, FilePen, FileText, Megaphone, Package, Receipt, Truck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -15,6 +15,7 @@ const KIND_META: Record<NotificationKind, { label: string; Icon: React.ElementTy
   estimate_updated: { label: 'Estimate Updated',  Icon: FilePen },
   order_updated:    { label: 'Order Updated',     Icon: Truck },
   invoice_updated:  { label: 'Invoice Updated',   Icon: Receipt },
+  broadcast_updated:{ label: 'Broadcast Update',  Icon: Megaphone },
 };
 
 function formatRelTime(iso: string): string {
