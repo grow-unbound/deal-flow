@@ -68,7 +68,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getSession();
 
   if (!session) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname + (request.nextUrl.search || ''));
+    return NextResponse.redirect(loginUrl);
   }
 
   // Decode JWT payload to extract custom claims set by custom_access_token_hook.

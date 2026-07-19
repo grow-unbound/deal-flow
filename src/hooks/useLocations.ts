@@ -5,6 +5,33 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
+// ─── Location document types ──────────────────────────────────────────────────
+
+export interface LocationDocumentRow {
+  id: string;
+  number: string | null;
+  placed_at: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+  due_date: string | null;
+  buyer_name: string | null;
+  place_of_supply: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct' | 'seller';
+  source_label: string | null;
+  campaign_name: string | null;
+  items_count: number;
+  total_amount: number;
+  outstanding_amount: number;
+  status: string;
+}
+
+export interface LocationDocumentPage {
+  rows: LocationDocumentRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // ─── Landing page types ───────────────────────────────────────────────────────
 
 export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
@@ -44,6 +71,12 @@ export interface LocationsLandingRow {
   stock_status: LocationStockStatus;
   oldest_unpaid_days: number | null;
   is_active: boolean;
+  invoice_count_90d: number;
+  estimate_count_90d: number;
+  estimate_value_90d: number;
+  order_count_90d: number;
+  order_value_90d: number;
+  conversion_90d: number;
 }
 
 export interface LocationsCalloutRow {
@@ -263,5 +296,34 @@ export function useLocationDetail(id: string) {
       if (!res.ok) throw new Error(`location-detail ${res.status}`);
       return res.json() as Promise<LocationDetailResponse>;
     },
+  });
+}
+
+export function useLocationDocuments(
+  locationId: string,
+  filters: {
+    kind: 'order' | 'estimate' | 'invoice';
+    period?: SellerLandingPeriod;
+    query?: string;
+    status?: string[];
+    sort?: string;
+  },
+  enabled = true,
+) {
+  return useQuery<LocationDocumentPage>({
+    queryKey: ['location-documents', locationId, filters],
+    enabled: Boolean(locationId) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ kind: filters.kind, limit: '200' });
+      params.set('period', filters.period ?? 'last90');
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      appendArrayParam(params, 'status', filters.status);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await fetch(`/api/tenant/locations/${locationId}/documents?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch location documents');
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }

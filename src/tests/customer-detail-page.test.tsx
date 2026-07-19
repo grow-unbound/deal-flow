@@ -212,12 +212,41 @@ describe('customer documents route', () => {
     dbResponses['app.order_items'] = [{ data: [] }];
   });
 
-  it('applies the default this-month period bound', async () => {
+  it('applies the documents route default period bound when no period is provided', async () => {
     await getCustomerDocuments(
       new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/documents?kind=order'),
       { params: Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000' }) },
     );
 
     expect(queryInstances.get('app.orders')?.or).toHaveBeenCalled();
+  });
+
+  it('filters explicit trailing 90 day order requests using order_date with created_at fallback', async () => {
+    await getCustomerDocuments(
+      new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/documents?kind=order&period=last90'),
+      { params: Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000' }) },
+    );
+
+    expect(queryInstances.get('app.orders')?.or).toHaveBeenCalledWith(
+      'order_date.gte.2026-04-21T00:00:00.000Z,order_date.lt.2026-07-20T00:00:00.000Z,and(order_date.is.null,created_at.gte.2026-04-21T00:00:00.000Z,created_at.lt.2026-07-20T00:00:00.000Z)',
+    );
+    expect(queryInstances.get('app.orders')?.order).toHaveBeenCalledWith('order_date', {
+      ascending: false,
+      nullsFirst: false,
+    });
+  });
+
+  it('honors an explicit trailing 90 day period for invoices using invoice_date fallback semantics', async () => {
+    dbResponses['app.invoices'] = [{ data: [], error: null }];
+    dbResponses['app.invoice_items'] = [{ data: [] }];
+
+    await getCustomerDocuments(
+      new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/documents?kind=invoice&period=last90'),
+      { params: Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000' }) },
+    );
+
+    expect(queryInstances.get('app.invoices')?.or).toHaveBeenCalledWith(
+      'invoice_date.gte.2026-04-21T00:00:00.000Z,invoice_date.lt.2026-07-20T00:00:00.000Z,and(invoice_date.is.null,created_at.gte.2026-04-21T00:00:00.000Z,created_at.lt.2026-07-20T00:00:00.000Z)',
+    );
   });
 });

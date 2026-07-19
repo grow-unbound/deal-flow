@@ -5,7 +5,6 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { applySellerLocationScope, loadAccessibleSellerLocations } from '@/lib/server/seller-location-access';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
@@ -15,9 +14,9 @@ type LinkedOrderRow = { id: string; campaign_id: string | null; source: string |
 const MAX_ITEMS_PER_DOCUMENT = 250;
 
 const CONFIG = {
-  order: { table: 'orders', number: 'order_number', date: 'order_date', amount: 'total_amount', items: 'order_items', parent: 'order_id', extra: 'campaign_id, source, is_buyer_app_order' },
-  estimate: { table: 'estimates', number: 'estimate_number', date: 'estimate_date', amount: 'total_amount', items: 'estimate_items', parent: 'estimate_id', extra: 'campaign_id, source, expires_at, is_buyer_app_estimate' },
-  invoice: { table: 'invoices', number: 'invoice_number', date: 'invoice_date', amount: 'total_amount', items: 'invoice_items', parent: 'invoice_id', extra: 'due_date, outstanding_balance, order_id, is_buyer_app_invoice' },
+  order: { table: 'orders', number: 'order_number', date: 'order_date', amount: 'total_amount', items: 'order_items', parent: 'order_id', extra: 'campaign_id, source, is_buyer_app_order, buyer_id' },
+  estimate: { table: 'estimates', number: 'estimate_number', date: 'estimate_date', amount: 'total_amount', items: 'estimate_items', parent: 'estimate_id', extra: 'campaign_id, source, expires_at, is_buyer_app_estimate, buyer_id' },
+  invoice: { table: 'invoices', number: 'invoice_number', date: 'invoice_date', amount: 'total_amount', items: 'invoice_items', parent: 'invoice_id', extra: 'due_date, outstanding_balance, order_id, is_buyer_app_invoice, buyer_id' },
 } as const;
 
 function buildDocumentPeriodFilter(dateColumn: string, currentStart: string, currentEndExclusive: string) {
@@ -42,14 +41,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const queryText = request.nextUrl.searchParams.get('q')?.trim();
   const statuses = readArrayParam(request.nextUrl.searchParams, 'status');
 
-  const buyer = await db.schema('app').from('buyers').select('id').eq('id', parsedParams.data.id)
+  const locationCheck = await db.schema('app').from('locations').select('id').eq('id', parsedParams.data.id)
     .eq('tenant_id', claims.tenant_id).is('deleted_at', null).maybeSingle();
-  if (buyer.error || !buyer.data) return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+  if (locationCheck.error || !locationCheck.data) return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
   let query = db.schema('app').from(config.table)
-    .select(`id, ${config.number}, ${config.date}, created_at, status, ${config.amount}, location_id, place_of_supply, ${config.extra}`, { count: 'exact' })
-    .eq('tenant_id', claims.tenant_id).eq('buyer_id', parsedParams.data.id).is('deleted_at', null);
-  query = applySellerLocationScope(query, claims);
+    .select(`id, ${config.number}, ${config.date}, created_at, status, ${config.amount}, place_of_supply, ${config.extra}`, { count: 'exact' })
+    .eq('tenant_id', claims.tenant_id).eq('location_id', parsedParams.data.id).is('deleted_at', null);
   query = query.or(buildDocumentPeriodFilter(config.date, period.current_start, period.current_end_exclusive));
   if (queryText) query = query.ilike(config.number, `%${queryText.replace(/[%_\\]/g, '\\$&')}%`);
   if (statuses.length === 1) query = query.eq('status', statuses[0]);
@@ -74,7 +72,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const ascending = sort === 'oldest' || sort === 'amount_asc' || sort === 'status_asc';
   const pageResult = await query.order(sortColumn, { ascending, nullsFirst: false }).order('id', { ascending: true }).range(offset, offset + limit - 1);
   if (pageResult.error) {
-    console.error('[GET /api/tenant/customers/[id]/documents]', pageResult.error);
+    console.error('[GET /api/tenant/locations/[id]/documents]', pageResult.error);
     return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
   }
 
@@ -82,6 +80,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const ids = rows.map((row: any) => row.id);
   const supplementalRowLimit = Math.max(ids.length, 1);
   const itemRowLimit = Math.max(ids.length * MAX_ITEMS_PER_DOCUMENT, 1);
+
+  const buyerIds = Array.from(new Set(rows.map((row: any) => row.buyer_id).filter(Boolean)));
   const linkedOrdersResult = parsedKind.data === 'invoice' && rows.some((row: any) => row.order_id)
     ? await db.schema('app').from('orders').select('id, campaign_id, source').eq('tenant_id', claims.tenant_id)
       .in('id', rows.map((row: any) => row.order_id).filter(Boolean)).is('deleted_at', null)
@@ -93,16 +93,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const campaignIds = rows
     .map((row: any) => row.campaign_id ?? linkedOrders.get(String(row.order_id))?.campaign_id)
     .filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
-  const [itemsResult, locations, campaignsResult] = await Promise.all([
+
+  const [itemsResult, buyersResult, campaignsResult] = await Promise.all([
     ids.length ? db.schema('app').from(config.items).select(`id, ${config.parent}`).in(config.parent, ids).is('deleted_at', null)
       .limit(itemRowLimit) : Promise.resolve({ data: [] }),
-    loadAccessibleSellerLocations(db, claims.tenant_id, claims),
+    buyerIds.length > 0 ? db.schema('app').from('buyers').select('id, business_name').eq('tenant_id', claims.tenant_id)
+      .in('id', buyerIds).is('deleted_at', null).limit(supplementalRowLimit) : Promise.resolve({ data: [] }),
     campaignIds.length > 0 ? db.schema('app').from('campaigns').select('id, name').eq('tenant_id', claims.tenant_id)
       .in('id', campaignIds).is('deleted_at', null).limit(supplementalRowLimit) : Promise.resolve({ data: [] }),
   ]);
   const itemCounts = new Map<string, number>();
   for (const item of itemsResult.data ?? []) itemCounts.set(String(item[config.parent]), (itemCounts.get(String(item[config.parent])) ?? 0) + 1);
-  const locationNames = new Map(locations.map((row) => [row.id, row.name]));
+  const buyerNames = new Map((buyersResult.data ?? []).map((row: any) => [String(row.id), String(row.business_name ?? '')]));
   const campaignNames = new Map((campaignsResult.data ?? []).map((row: any) => [String(row.id), String(row.name)]));
 
   return NextResponse.json({
@@ -116,7 +118,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         created_at: row.created_at ?? null,
         expires_at: row.expires_at ?? null,
         due_date: row.due_date ?? null,
-        location_name: row.location_id ? locationNames.get(row.location_id) ?? null : null,
+        buyer_name: row.buyer_id ? (buyerNames.get(String(row.buyer_id)) ?? null) : null,
         place_of_supply: row.place_of_supply ?? null,
         source_kind: parsedKind.data === 'estimate' ? (row.is_buyer_app_estimate ? 'buyer_app' : 'seller') : row[`is_buyer_app_${parsedKind.data}`] ? 'buyer_app' : row.order_id ? 'converted' : 'direct',
         source_label: row.source ?? linkedOrder?.source ?? null,

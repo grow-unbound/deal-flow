@@ -42,6 +42,16 @@ function isPhoneOtpSendResponse(
   return 'registered' in data;
 }
 
+function safeNext(raw: string | null): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    if ((decoded.startsWith('/buy/') || decoded.startsWith('/c/')) && !decoded.startsWith('//'))
+      return decoded;
+  } catch { /* ignore */ }
+  return null;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,6 +59,7 @@ function LoginForm() {
   const accountVerified = searchParams.get('verified') === '1';
   const prefillEmail = searchParams.get('email') ?? '';
   const requestedView = searchParams.get('view');
+  const next = safeNext(searchParams.get('next'));
 
   const [view, setView] = useState<LoginView>(
     requestedView === 'email' || prefillEmail ? 'email' : 'otp',
@@ -87,7 +98,8 @@ function LoginForm() {
       if (data.registered) {
         shouldResetLoading = false;
         router.push(
-          `/verify?ref_id=${encodeURIComponent(data.ref_id ?? '')}&phone=${encodeURIComponent(phoneNumber)}`,
+          `/verify?ref_id=${encodeURIComponent(data.ref_id ?? '')}&phone=${encodeURIComponent(phoneNumber)}`
+          + (next ? `&next=${encodeURIComponent(next)}` : ''),
         );
         return;
       }
@@ -172,9 +184,11 @@ function LoginForm() {
       shouldResetLoading = false;
       const baseRedirect = data.redirect ?? '/dashboard';
       const redirectPath =
-        accountVerified && baseRedirect === '/dashboard'
-          ? '/dashboard?first_run=1'
-          : baseRedirect;
+        next && baseRedirect.startsWith('/buy')
+          ? next
+          : accountVerified && baseRedirect === '/dashboard'
+            ? '/dashboard?first_run=1'
+            : baseRedirect;
       router.replace(redirectPath);
       router.refresh();
     } catch {

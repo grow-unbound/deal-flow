@@ -23,7 +23,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
-import { formatCompactInr } from '@/lib/utils';
+import { formatCompactInr, formatMetricValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
@@ -212,7 +212,7 @@ function CategoriesLandingContent({
                 // This is an approximation until that field is exposed.
                 label: `Invoiced sales · ${metricSuffix}`,
                 value: formatCompactInr(rows.reduce((s, r) => s + r.gmv_mtd, 0)),
-                sub: `${Math.max(0, kpis.active_count - kpis.uncategorized_count)} categories with sales`,
+                sub: `${Math.max(0, kpis.active_count - kpis.uncategorized_count)} categories`,
                 tone: 'accent',
               },
               {
@@ -223,13 +223,14 @@ function CategoriesLandingContent({
               {
                 label: 'Categories with no sale in 90D',
                 value: `${kpis.uncategorized_count}`,
-                sub: `${kpis.low_stock_count} categories have stock risk`,
+                sub: `${kpis.uncategorized_count > 1 ? `${kpis.uncategorized_count} categories` : 'category'}`,
                 tone: 'warn',
               },
               {
                 label: 'Uncategorised active products',
                 value: `${kpis.uncategorised_active_product_count}`,
-                sub: 'products need a category assigned',
+                sub: 'products don\'t have a category',
+                tone: 'warn',
               },
             ]}
           />
@@ -247,7 +248,7 @@ function CategoriesLandingContent({
                   initials: c.initials,
                   hue: 'teal' as const,
                   name: c.name,
-                  reason: `${c.oos_sku_count ?? 0} OOS · ${c.low_stock_sku_count ?? 0} low-stock`,
+                  reason: `${c.oos_sku_count ?? 0} out of stock · ${c.low_stock_sku_count ?? 0} low stock`,
                   trailing: null,
                 })),
               },
@@ -257,14 +258,14 @@ function CategoriesLandingContent({
                 eyebrow: 'Categories with no sale in 90 days',
                 // Derived from already-fetched category rows, not a tenant-wide backend
                 // aggregate — honest about undercounting until every page is loaded.
-                hint: hasNextPage ? `${noSaleCategories.length}+ categories` : `${noSaleCategories.length} categories`,
+                hint: hasNextPage ? `${noSaleCategories.length}+` : `${noSaleCategories.length}`,
                 getHref: (row) => `/categories/${row.id}`,
                 rows: noSaleCategories.map((c) => ({
                   id: c.id,
                   initials: c.initials,
                   hue: 'teal' as const,
                   name: c.name,
-                  reason: `${c.active_sku_count} active SKUs`,
+                  reason: `${c.active_sku_count} active products`,
                   trailing: null,
                 })),
               },
@@ -283,7 +284,7 @@ function CategoriesLandingContent({
                   // never returns it for this list, so the previous `c.growth_pct ?? 0` fallback
                   // silently rendered a permanent "flat" badge. Show the real GMV instead.
                   reason: `${c.units_mtd ?? 0} units sold`,
-                  trailing: formatCompactInr(c.gmv_mtd ?? 0),
+                  trailing: formatMetricValue('value', c.gmv_mtd ?? 0),
                 })),
               },
             ]}
@@ -311,8 +312,9 @@ function CategoriesLandingContent({
               { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
               { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-              { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: 'Trend · 90D', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: 'Products', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: 'Out of stock SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { width: 40, className: 'px-4' },
             ]}
             tableMinWidth={1080}
@@ -352,16 +354,16 @@ function CategoriesLandingContent({
                   {row.brand_count}
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                  {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
+                  {row.gmv_mtd > 0 ? formatMetricValue('value', row.gmv_mtd) : '—'}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   <GrowthPill value={row.growth_pct} />
                 </td>
-                <td className="px-5 py-3.5 text-right text-sm text-cream-700">
-                  <span className="font-medium text-cream-900">{row.active_sku_count}</span>
-                  {row.oos_sku_count > 0 && (
-                    <span className="ml-1 text-xs text-danger-600">({row.oos_sku_count} OOS)</span>
-                  )}
+                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                  {formatMetricValue('count', row.active_sku_count)}
+                </td>
+                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                  {row.oos_sku_count > 0 ? formatMetricValue('count', row.oos_sku_count) : '—'}
                 </td>
                 <td className="px-4 py-3.5 text-right text-cream-400">
                   <ChevronRight size={16} />

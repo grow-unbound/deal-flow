@@ -184,7 +184,7 @@ export function CustomerOrdersTab({
     scopeKey: buyerId,
     version: 1,
     initialState: {
-      period: 'quarter' as SellerLandingPeriod,
+      period: 'last90' as SellerLandingPeriod,
       search: '',
       filters: {
         source: [] as string[],
@@ -333,7 +333,7 @@ export function CustomerOrdersTab({
         options,
         values: [period],
         onChange: (values) => {
-          const nextPeriod = (values[0] as SellerLandingPeriod | undefined) ?? 'quarter';
+          const nextPeriod = (values[0] as SellerLandingPeriod | undefined) ?? 'last90';
           setPeriod(nextPeriod);
           setRouteState((current) => ({ ...current, period: nextPeriod }));
         },
