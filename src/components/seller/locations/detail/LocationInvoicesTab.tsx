@@ -2,18 +2,6 @@
 
 import { LocationOrdersTab } from './LocationOrdersTab';
 
-export function LocationInvoicesTab({
-  rows,
-}: {
-  rows: Parameters<typeof LocationOrdersTab>[0]['rows'];
-}) {
-  return (
-    <LocationOrdersTab
-      kind="invoice"
-      rows={rows}
-      title="Invoices"
-      description="All invoices issued at this location"
-      routeBase="/invoices"
-    />
-  );
+export function LocationInvoicesTab({ locationId }: { locationId: string }) {
+  return <LocationOrdersTab locationId={locationId} kind="invoice" routeBase="/invoices" />;
 }

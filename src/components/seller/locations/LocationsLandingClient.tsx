@@ -26,7 +26,7 @@ import {
   type LocationsLandingResponse,
   type LocationsLandingRow,
 } from '@/hooks/useLocations';
-import { formatCompactInr } from '@/lib/utils';
+import { formatCompactInr, formatMetricValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { LocationsLandingSkeleton as SharedLocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -260,19 +260,19 @@ function LocationsLandingContent({
             tiles={[
               {
                 label: 'Invoiced sales 90D',
-                value: formatCompactInr(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0)),
+                value: formatMetricValue('value', filtered.reduce((sum, row) => sum + row.gmv_mtd, 0)),
                 sub: `${filtered.length} active locations in view`,
               },
               {
                 label: 'Overdue amount',
-                value: formatCompactInr(kpis.outstanding_dues_total),
+                value: formatMetricValue('value', kpis.outstanding_dues_total),
                 sub: `across ${kpis.dues_location_count} locations`,
                 tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Customers who purchased',
-                value: `${filtered.reduce((sum, row) => sum + row.active_buyers, 0)}`,
-                sub: 'location-linked sales activity',
+                label: 'Customers who bought',
+                value: formatMetricValue('count', filtered.reduce((sum, row) => sum + row.active_buyers, 0)),
+                sub: `across ${kpis.active_locations} locations`,
               },
               {
                 label:
@@ -281,11 +281,12 @@ function LocationsLandingContent({
                     : kpis.open_primary_demand_kind === 'estimates'
                       ? 'Open estimate value'
                       : 'Open primary demand value',
-                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(kpis.open_primary_demand_value),
+                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatMetricValue('value', kpis.open_primary_demand_value),
                 sub:
                   kpis.open_primary_demand_kind === 'none'
                     ? 'Enable Estimates or Sales Orders'
-                    : 'current location-level workload',
+                    : `across ${kpis.active_locations} locations`,
+                tone: kpis.open_primary_demand_kind === 'none' ? 'warn' : undefined,
               },
             ]}
           />
@@ -296,38 +297,38 @@ function LocationsLandingContent({
                 id: 'conversions',
                 kind: 'info',
                 eyebrow: 'Locations with expiring estimates',
-                hint: `${callouts.conversions.length} estimates expiring`,
+                hint: `${callouts.conversions.length}`,
                 rows: callouts.conversions.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
                   name: row.name,
                   reason: `${row.estimate_number} · exp in ${row.expires_in_days}d`,
-                  trailing: formatCompactInr(row.total_amount ?? 0),
+                  trailing: formatMetricValue('value', row.total_amount ?? 0),
                 })),
               },
               {
                 id: 'top_locations',
                 kind: 'info',
                 eyebrow: 'Locations driving sales',
-                hint: 'by invoiced sales',
+                hint: `${callouts.top_locations.length}`,
                 rows: callouts.top_locations.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
                   name: row.name,
                   reason: `${row.orders_count} orders · ${row.buyers_count} buyers`,
-                  trailing: formatCompactInr(row.gmv_mtd ?? 0),
+                  trailing: formatMetricValue('value', row.gmv_mtd ?? 0),
                 })),
               },
               {
                 id: 'collections_overdue',
                 kind: 'risk',
                 eyebrow: 'Locations with overdue balances',
-                hint: `${callouts.collections_overdue.length} locations`,
+                hint: `${callouts.collections_overdue.length}`,
                 rows: callouts.collections_overdue.map((row) => ({
                   initials: row.initials,
                   hue: 'ember' as const,
                   name: row.name,
-                  reason: `${formatCompactInr(row.outstanding_dues ?? 0)} · oldest ${row.oldest_unpaid_days}d unpaid`,
+                  reason: `${formatMetricValue('value', row.outstanding_dues ?? 0)} · oldest ${row.oldest_unpaid_days}d unpaid`,
                   trailing: <StatusTag tone="danger" label="Overdue" />,
                 })),
               },
@@ -349,7 +350,7 @@ function LocationsLandingContent({
           />
 
           {showTableSkeleton ? (
-            <LandingTableRowsSkeleton columns={8} tableMinWidth={1260} />
+            <LandingTableRowsSkeleton columns={12} tableMinWidth={1700} />
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
@@ -363,18 +364,23 @@ function LocationsLandingContent({
           ) : (
           <LandingTable
             columns={[
-                { label: 'Location', width: 280, minWidth: 280, maxWidth: 360, className: 'px-5' },
-                { label: 'Location type', width: 160, minWidth: 160, maxWidth: 200, className: 'px-5' },
+                { label: 'Location', width: 220, minWidth: 200, maxWidth: 360, className: 'px-5' },
                 { label: 'Sales · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
-                { label: 'Trend', minWidth: 120, maxWidth: 140, className: 'px-5' },
-                { label: 'Customers who purchased', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+                { label: 'Invoices · 90D', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: kpis.open_primary_demand_kind === 'orders' ? 'Order value · 90D' : 'Estimate value · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: kpis.open_primary_demand_kind === 'orders' ? 'Orders · 90D' : 'Estimates · 90D', align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+                { label: 'Conversion · 90D', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
+                { label: 'Active customers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
                 { label: 'Overdue amount', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
                 { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}
-              tableMinWidth={1260}
+              tableMinWidth={1700}
             >
-              {filtered.map((row) => (
+              {filtered.map((row) => {
+                const demandCount = kpis.open_primary_demand_kind === 'orders' ? row.order_count_90d : row.estimate_count_90d;
+                const demandValue = kpis.open_primary_demand_kind === 'orders' ? row.order_value_90d : row.estimate_value_90d;
+                return (
                 <tr
                   key={row.id}
                   onClick={() => router.push(`/locations/${row.id}`)}
@@ -389,14 +395,20 @@ function LocationsLandingContent({
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-cream-700">
-                    Branch
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.gmv_mtd > 0 ? formatMetricValue('value', row.gmv_mtd) : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
+                    {row.invoice_count_90d > 0 ? row.invoice_count_90d : '—'}
                   </td>
-                  <td className="px-5 py-3.5">
-                    <GrowthPill value={row.growth_pct} />
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {kpis.open_primary_demand_kind === 'none' ? '—' : demandValue > 0 ? formatMetricValue('value', demandValue) : '—'}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {kpis.open_primary_demand_kind === 'none' ? '—' : demandCount > 0 ? demandCount : '—'}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {kpis.open_primary_demand_kind === 'none' ? '—' : row.conversion_90d > 0 ? `${row.conversion_90d}%` : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.active_buyers}
@@ -411,7 +423,8 @@ function LocationsLandingContent({
                     <ChevronRight size={14} className="text-cream-400" />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </LandingTable>
           )}
         </>

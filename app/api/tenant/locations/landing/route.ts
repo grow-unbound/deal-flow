@@ -38,6 +38,16 @@ interface LocationRowMetric {
   active_buyers: number | string | null;
 }
 
+interface LocationSnapshotRow {
+  location_id: string;
+  invoice_count_90d: number | string | null;
+  estimate_count_90d: number | string | null;
+  estimate_value_90d: number | string | null;
+  order_count_90d: number | string | null;
+  order_value_90d: number | string | null;
+  conversion_90d: number | string | null;
+}
+
 interface LocationSearchIdRow {
   id: string;
   total_count: number | string | null;
@@ -200,6 +210,15 @@ export async function GET(request: NextRequest) {
           p_previous_end_exclusive: previousEndExclusive,
         })
       : Promise.resolve({ data: [], error: null });
+    // Pre-computed snapshot fields — all demand metrics live in metrics_location_snapshot since
+    // migration 20260719093500_add_demand_metrics_to_location_snapshot.
+    const locationSnapshotQuery = pageIds.length > 0
+      ? db.schema('app').from('metrics_location_snapshot')
+          .select('location_id, invoice_count_90d, estimate_count_90d, estimate_value_90d, order_count_90d, order_value_90d, conversion_90d')
+          .eq('tenant_id', tenantId)
+          .in('location_id', pageIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null });
 
     // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
     // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
@@ -214,16 +233,18 @@ export async function GET(request: NextRequest) {
           .is('deleted_at', null)
       : Promise.resolve({ count: 0, error: null });
 
-    const [summaryRes, seedsRes, rowMetricsRes, demandKindRes, linkedWarehouseCountRes] = await Promise.all([
+    const [summaryRes, seedsRes, rowMetricsRes, locationSnapshotRes, demandKindRes, linkedWarehouseCountRes] = await Promise.all([
       summaryQuery,
       seedsQuery,
       rowMetricsQuery,
+      locationSnapshotQuery,
       demandKindQuery,
       linkedWarehouseCountQuery,
     ]);
     if (summaryRes.error) throw summaryRes.error;
     if (seedsRes.error) throw seedsRes.error;
     if (rowMetricsRes.error) throw rowMetricsRes.error;
+    if (locationSnapshotRes.error) throw locationSnapshotRes.error;
     if (demandKindRes.error) throw demandKindRes.error;
     if (linkedWarehouseCountRes.error) throw linkedWarehouseCountRes.error;
 
@@ -250,8 +271,7 @@ export async function GET(request: NextRequest) {
         .limit(10000);
       if (error) throw error;
       openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
-        (sum, row) => sum + Number(row.total_amount ?? 0),
-        0,
+        (sum, row) => sum + Number(row.total_amount ?? 0), 0,
       );
     } else if (includeSummary && primaryDemandKind === 'orders') {
       const { data, error } = await db.schema('app')
@@ -264,14 +284,18 @@ export async function GET(request: NextRequest) {
         .limit(10000);
       if (error) throw error;
       openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
-        (sum, row) => sum + Number(row.total_amount ?? 0),
-        0,
+        (sum, row) => sum + Number(row.total_amount ?? 0), 0,
       );
     }
 
     const seedsById = new Map(((seedsRes.data ?? []) as LocationSeedRow[]).map((row) => [row.id, row]));
     const rowMetricsById = new Map(
       ((rowMetricsRes.data ?? []) as LocationRowMetric[]).map((row) => [String(row.location_id), row]),
+    );
+
+    // All demand + invoice metrics come from metrics_location_snapshot (one row per location)
+    const snapshotByLocation = new Map<string, LocationSnapshotRow>(
+      ((locationSnapshotRes.data ?? []) as LocationSnapshotRow[]).map((r) => [String(r.location_id), r]),
     );
 
     const locations: LocationsLandingRow[] = pageIds
@@ -284,6 +308,7 @@ export async function GET(request: NextRequest) {
         const stockStatus: LocationStockStatus = outOfStock > 0 ? 'out_of_stock' : lowStock > 0 ? 'low_stock' : 'clear';
         const gmvCurrent = Number(metrics?.gmv_current ?? 0);
         const gmvPrevious = Number(metrics?.gmv_previous ?? 0);
+        const snap = snapshotByLocation.get(seed.id);
         return {
           id: seed.id,
           name: seed.name,
@@ -302,6 +327,12 @@ export async function GET(request: NextRequest) {
           stock_status: stockStatus,
           oldest_unpaid_days: metrics?.oldest_unpaid_days != null ? Number(metrics.oldest_unpaid_days) : null,
           is_active: seed.status !== 'inactive',
+          invoice_count_90d: Number(snap?.invoice_count_90d ?? 0),
+          estimate_count_90d: Number(snap?.estimate_count_90d ?? 0),
+          estimate_value_90d: Number(snap?.estimate_value_90d ?? 0),
+          order_count_90d: Number(snap?.order_count_90d ?? 0),
+          order_value_90d: Number(snap?.order_value_90d ?? 0),
+          conversion_90d: Number(snap?.conversion_90d ?? 0),
         };
       });
 

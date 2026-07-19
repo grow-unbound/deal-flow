@@ -231,9 +231,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       {tab === 'performance' ? (
         <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} />
       ) : null}
-      {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
-      {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}
-      {tab === 'invoices' ? <LocationInvoicesTab rows={data.invoices} /> : null}
+      {tab === 'orders' ? <LocationOrdersTab locationId={id} /> : null}
+      {tab === 'estimates' ? <LocationEstimatesTab locationId={id} /> : null}
+      {tab === 'invoices' ? <LocationInvoicesTab locationId={id} /> : null}
       {tab === 'activity' ? <LocationActivityTab activity={data.activity} /> : null}
 
       <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={editingLocation} />

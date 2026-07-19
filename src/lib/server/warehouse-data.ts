@@ -340,7 +340,7 @@ export async function loadWarehouseSnapshot(
   if (!row) return null;
 
   const trackedSkus = Number(row.tracked_skus ?? 0);
-  const sellableUnits = Number(row.sellable_units ?? 0);
+  const sellableUnits = Math.round(Number(row.sellable_units ?? 0));
   const lowStockSkus = Number(row.low_stock_skus ?? 0);
   const stockoutSkus = Number(row.stockout_skus ?? 0);
   const idleStockSkus = Number(row.idle_stock_skus ?? 0);
@@ -465,8 +465,8 @@ export async function loadWarehousePerformanceHighlights(
   warehouseId: string,
   snapshot?: WarehouseSnapshotRow | null,
 ): Promise<{
-  idle_stock: WarehouseDetailResponse['performance']['idle_stock'];
-  recent_replenishment: WarehouseDetailResponse['performance']['recent_replenishment'];
+  idle_stock: Array<{ tenant_product_id: string; product_name: string; brand_name: string; sellable_units: number; last_demand_at: string | null }>;
+  recent_replenishment: Array<{ tenant_product_id: string; product_name: string; brand_name: string; qty_available: number; qty_reserved: number; updated_at: string }>;
 }> {
   if (snapshot && snapshot.tracked_skus <= 0 && snapshot.sellable_units <= 0) {
     return {
@@ -528,12 +528,8 @@ export async function loadWarehouseSummary(
 
   const mappedLocationUsers = warehouse.location?.associated_users?.length ? warehouse.location.associated_users : [];
 
-  const [storedSnapshot, inventoryTrend] = await Promise.all([
-    loadWarehouseSnapshot(db, tenantId, warehouseId),
-    loadWarehouseInventoryTrend(db, tenantId, warehouseId),
-  ]);
+  const storedSnapshot = await loadWarehouseSnapshot(db, tenantId, warehouseId);
   const snapshot = storedSnapshot ?? await loadLatestWarehouseDailySnapshot(db, tenantId, warehouseId);
-  const highlights = await loadWarehousePerformanceHighlights(db, warehouseId, snapshot);
 
   const trackedSkus = snapshot?.tracked_skus ?? 0;
   const sellableUnits = snapshot?.sellable_units ?? 0;
@@ -576,23 +572,6 @@ export async function loadWarehouseSummary(
       stockout_skus: stockoutSkus,
       reorder_triggered_skus: reorderTriggeredSkus,
       last_inventory_update: snapshot?.last_inventory_update ?? null,
-    },
-    performance: {
-      inventory_health: {
-        active_skus: trackedSkus,
-        low_stock_skus: lowStockSkus,
-        stockout_skus: stockoutSkus,
-        avg_sellable_per_sku: trackedSkus > 0 ? Math.round(sellableUnits / trackedSkus) : null,
-      },
-      stock_posture: {
-        sellable_units: sellableUnits,
-        reorder_triggered_skus: reorderTriggeredSkus,
-        is_default: warehouse.is_default,
-        linked_location_name: warehouse.location?.name ?? null,
-      },
-      inventory_trend: inventoryTrend,
-      idle_stock: highlights.idle_stock,
-      recent_replenishment: highlights.recent_replenishment,
     },
   };
 }

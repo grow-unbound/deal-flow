@@ -274,14 +274,14 @@ export function WarehousesLandingClient({
       ) : (
         <LandingTable
           columns={[
-            { label: 'Warehouse', minWidth: 280, maxWidth: 360, className: 'px-5' },
+            { label: 'Warehouse', width: 320, minWidth: 280, maxWidth: 360, className: 'px-5' },
             { label: 'Linked location', minWidth: 180, maxWidth: 220, className: 'px-5' },
-            { label: 'Status', minWidth: 130, maxWidth: 160, className: 'px-5' },
+            { label: 'Status', width: 140, minWidth: 130, maxWidth: 200, className: 'px-5' },
+            { label: 'Stock status', width: 180, minWidth: 130, maxWidth: 200, className: 'px-5' },
             { label: 'Tracked SKUs', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
             { label: 'Sellable units', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
             { label: 'Stock risk SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
             { label: 'Idle stock SKUs', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
-            { label: 'Last updated', minWidth: 130, maxWidth: 160, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
           tableMinWidth={1360}
@@ -308,13 +308,15 @@ export function WarehousesLandingClient({
               </td>
               <td className="px-5 py-3.5 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
               <td className="px-5 py-3.5">
-                <StatusTag tone={stockTone(row.stock_status)} label={`${row.status === 'active' ? 'Active' : 'Inactive'} · ${stockLabel(row.stock_status)}`} />
+                <StatusTag tone={row.status === 'active' ? 'success' : 'warning'} label={`${row.status === 'active' ? 'Active' : 'Inactive'}`} />
+              </td>
+              <td className="px-5 py-3.5">
+                <StatusTag tone={stockTone(row.stock_status)} label={`${stockLabel(row.stock_status)}`} />
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.sellable_units.toLocaleString('en-IN')}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
-              <td className="px-5 py-3.5 text-sm text-cream-700">{formatDate(row.last_updated)}</td>
               <td className="px-4 py-3.5 text-right text-cream-500">
                 <ChevronRight size={14} className="text-cream-400" />
               </td>

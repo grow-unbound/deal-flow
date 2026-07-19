@@ -1,10 +1,10 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Layers } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
-import { LandingTable } from '@/components/seller/layout';
-import { GrowthPill } from '@/components/seller/layout';
+import { EntityAvatar, FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import type { CategoryDetailBrand } from '@/hooks/useCategories';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -12,65 +12,122 @@ interface CategoryBrandsTabProps {
   brands: CategoryDetailBrand[];
 }
 
+type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'SKUs (high → low)';
+const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'SKUs (high → low)'];
+
+function getInitials(name: string): string {
+  return String(name)
+    .split(' ')
+    .map((w) => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export function CategoryBrandsTab({ brands }: CategoryBrandsTabProps) {
   const router = useRouter();
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return brands
+      .filter((b) => !q || b.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        if (sortBy === 'Name (A → Z)') return a.name.localeCompare(b.name);
+        if (sortBy === 'SKUs (high → low)') return b.sku_count - a.sku_count;
+        return b.gmv_mtd - a.gmv_mtd;
+      });
+  }, [brands, search, sortBy]);
 
   return (
-    <div className="mt-6">
+    <section className="mt-5">
+      <FilterBar
+        count={`${filtered.length} brand${filtered.length !== 1 ? 's' : ''}`}
+        searchPlaceholder="Search brand…"
+        chips={[]}
+        activeChip=""
+        sortBy={sortBy}
+        hideViewToggle
+        searchValue={search}
+        onSearchChange={setSearch}
+        sortOptions={[...SORT_OPTIONS]}
+        onSortChange={(option) => setSortBy(option as SortOption)}
+      />
       <LandingTable
         columns={[
-          { label: 'Brand', width: '35%' },
-          { label: 'SKUs in category', align: 'right' },
-          { label: 'GMV MTD', align: 'right' },
-          { label: 'Growth', align: 'right' },
-          { label: 'Status', align: 'center' },
-          { label: '', width: 40 },
+          { label: 'Brand', minWidth: 240, className: 'px-5' },
+          { label: 'SKUs', align: 'right', minWidth: 80, className: 'px-5' },
+          { label: 'Revenue · 90D', align: 'right', minWidth: 140, className: 'px-5' },
+          { label: 'Units Sold · 90D', align: 'right', minWidth: 140, className: 'px-5' },
+          { label: 'Demand · 90D', align: 'right', minWidth: 140, className: 'px-5' },
+          { label: 'Demand Units · 90D', align: 'right', minWidth: 150, className: 'px-5' },
+          { label: 'Status', minWidth: 110, className: 'px-5' },
+          { width: 40, className: 'px-4' },
         ]}
-        showEmptyState={brands.length === 0}
+        tableMinWidth={1100}
+        showEmptyState={filtered.length === 0}
         emptyState={
           <EmptyState
             icon={<Layers size={28} strokeWidth={1.5} />}
-            heading="No brands in this category"
-            description="Products assigned to this category will appear here."
+            heading={search.trim() ? 'No matching brands' : 'No brands in this category'}
+            description={search.trim() ? 'Try a different search.' : 'Products assigned to this category will appear here.'}
           />
         }
       >
-        {brands.map((b) => (
+        {filtered.map((b) => (
           <tr
             key={b.id}
-            className="cursor-pointer border-b border-cream-200 transition-colors last:border-0 hover:bg-cream-50"
+            className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             onClick={() => router.push(`/brands/${b.id}`)}
           >
-            <td className="px-4 py-3">
+            <td className="px-5 py-3.5">
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] bg-teal-100 text-xs font-semibold text-teal-700">
-                  {b.initials}
-                </span>
-                <span className="text-sm font-medium text-cream-900">{b.name}</span>
+                <EntityAvatar
+                  initials={getInitials(b.name)}
+                  hue={b.is_active ? 'teal' : 'cream'}
+                  imageUrl={b.logo_url}
+                  size={38}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-base font-medium text-cream-900">{b.name}</p>
+                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">
+                    {b.sku_count} SKU{b.sku_count !== 1 ? 's' : ''}
+                  </p>
+                </div>
               </div>
             </td>
-            <td className="px-4 py-3 text-right text-sm text-cream-700">{b.sku_count}</td>
-            <td className="px-4 py-3 text-right text-sm font-medium text-cream-900">
-              {b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—'}
+            <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              {b.sku_count}
             </td>
-            <td className="px-4 py-3 text-right">
-              <GrowthPill value={b.growth_pct} />
-            </td>
-            <td className="px-4 py-3 text-center">
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  b.is_active ? 'bg-success-100 text-success-700' : 'bg-cream-100 text-cream-500'
-                }`}
-              >
-                {b.is_active ? 'Active' : 'Archived'}
+            <td className="px-5 py-3.5 text-right">
+              <span className="font-display text-md font-medium tabular-nums text-cream-900">
+                {b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—'}
               </span>
             </td>
-            <td className="px-4 py-3 text-right text-cream-400">
+            <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-700">
+              {b.units_90d > 0 ? b.units_90d.toLocaleString('en-IN') : '—'}
+            </td>
+            <td className="px-5 py-3.5 text-right">
+              <span className="font-display text-md font-medium tabular-nums text-cream-900">
+                {b.demand_90d > 0 ? formatCompactInr(b.demand_90d) : '—'}
+              </span>
+            </td>
+            <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-700">
+              {b.demand_units_90d > 0 ? b.demand_units_90d.toLocaleString('en-IN') : '—'}
+            </td>
+            <td className="px-5 py-3.5">
+              <StatusTag
+                tone={b.is_active ? 'success' : 'neutral'}
+                label={b.is_active ? 'Active' : 'Archived'}
+              />
+            </td>
+            <td className="px-4 py-3.5 text-right text-cream-400">
               <ChevronRight size={16} />
             </td>
           </tr>
         ))}
       </LandingTable>
-    </div>
+    </section>
   );
 }

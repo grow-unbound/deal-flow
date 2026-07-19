@@ -23,6 +23,7 @@ export const SELLER_LANDING_PERIOD_OPTIONS: SellerLandingPeriodOption[] = [
   { value: 'month', label: 'This Month' },
   { value: 'quarter', label: 'This Quarter' },
   { value: 'year', label: 'This Year' },
+  { value: 'last90', label: 'Trailing 90 days' },
 ];
 
 export function isSellerLandingPeriod(value: string | null | undefined): value is SellerLandingPeriod {

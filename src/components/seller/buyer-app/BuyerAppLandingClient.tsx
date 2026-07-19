@@ -14,7 +14,7 @@ import {
 } from '@/components/seller/layout';
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
-import { cn } from '@/lib/utils';
+import { cn, formatMetricValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   useBuyerAppLanding,
@@ -190,7 +190,7 @@ function BuyerAppLandingContent({
             id: 'used_no_demand',
             kind: 'info',
             eyebrow: 'Used the app, no demand yet',
-            hint: `${(snap?.used_no_demand_buyers ?? []).length} customers`,
+            hint: `${(snap?.used_no_demand_buyers ?? []).length}`,
             loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
               id: string;
               initials: string;
@@ -222,7 +222,7 @@ function BuyerAppLandingContent({
             id: 'valuable_without_access',
             kind: 'opportunity',
             eyebrow: 'Valuable customers without app access',
-            hint: 'highest assisted sales',
+            hint: `${(snap?.no_app_buyers ?? []).length}`,
             loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
               id: string;
               initials: string;
@@ -237,7 +237,7 @@ function BuyerAppLandingContent({
                 initials: b.initials,
                 hue: 'cream' as const,
                 name: b.name,
-                reason: `${formatCompactInr(b.offline_gmv ?? 0)} invoiced sales outside the app`,
+                reason: `${formatMetricValue('value', b.offline_gmv ?? 0)} invoiced sales outside the app`,
                 trailing: (
                   <Link
                     href={`/customers/${b.buyer_id}`}

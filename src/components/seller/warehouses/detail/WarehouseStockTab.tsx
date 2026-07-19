@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Package } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -94,6 +94,19 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
   const total = stockQuery.data?.pages[0]?.total ?? 0;
   const isTransitioning = stockQuery.isFetching || search !== debouncedSearch;
 
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting && stockQuery.hasNextPage && !stockQuery.isFetchingNextPage) {
+        void stockQuery.fetchNextPage();
+      }
+    }, { threshold: 0.1 });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [stockQuery.hasNextPage, stockQuery.isFetchingNextPage, stockQuery.fetchNextPage]);
+
   const filterGroups: FilterBarGroup[] = [
     {
       key: 'status',
@@ -129,7 +142,7 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
   }, [isTransitioning, search, sortBy, statuses, stock]);
 
   return (
-    <div className="mt-5 space-y-4">
+    <div className="mt-5">
       <FilterBar
         count={`${filtered.length} of ${total} SKUs${isTransitioning ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
@@ -199,16 +212,15 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
           ))}
       </LandingTable>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="mt-4 flex items-center justify-between gap-3">
         <p className="text-sm text-cream-600">
           Showing {filtered.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')} SKUs
         </p>
-        {stockQuery.hasNextPage ? (
-          <Button variant="outline" size="sm" onClick={() => void stockQuery.fetchNextPage()} disabled={stockQuery.isFetchingNextPage}>
-            {stockQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </Button>
+        {stockQuery.isFetchingNextPage ? (
+          <p className="text-sm text-cream-500">Loading…</p>
         ) : null}
       </div>
+      <div ref={sentinelRef} className="h-1" />
     </div>
   );
 }
