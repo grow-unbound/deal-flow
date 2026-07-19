@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { WhatsAppTemplatePreview } from '@/components/seller/catalogs/detail/WhatsAppTemplatePreview';
 import type { CatalogPublishPreviewResponse } from '@/hooks/useCatalogs';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 export type PublishCampaignDialogMode = 'first_publish' | 'publish_updates';
 
@@ -36,6 +37,7 @@ function formatValidity(validFrom: string, validTo: string | null) {
 }
 
 export interface PublishCampaignDialogProps {
+  campaignId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: PublishCampaignDialogMode;
@@ -53,6 +55,7 @@ export interface PublishCampaignDialogProps {
 }
 
 export function PublishCampaignDialog({
+  campaignId,
   open,
   onOpenChange,
   mode,
@@ -162,6 +165,23 @@ export function PublishCampaignDialog({
                       value={heroUrls}
                       onChange={(urls) => setHeroImageUrl(urls[0] ?? null)}
                       maxFiles={1}
+                      uploadFile={campaignId
+                        ? async (file) => {
+                            const response = await uploadEntityFile({
+                              endpoint: '/api/upload/catalog-hero',
+                              entityType: 'catalog_hero',
+                              entityId: campaignId,
+                              file,
+                            });
+                            const uploadedUrl = response.urls.medium ?? response.urls.original;
+                            if (!uploadedUrl) {
+                              throw new Error('Image upload succeeded but no campaign image URL was returned.');
+                            }
+                            return uploadedUrl;
+                          }
+                        : async () => {
+                            throw new Error('Save the campaign draft before uploading a campaign image.');
+                          }}
                       previewInline
                       label="Browse image"
                       emptyLabel="Drop an image here or browse"

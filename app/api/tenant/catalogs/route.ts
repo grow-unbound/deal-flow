@@ -5,6 +5,7 @@ import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
+import { resolveCampaignWorkflowStatus, type CampaignWorkflowStatus, type CampaignWorkflowStatusLabel, type CampaignWorkflowStatusTone, type RawCampaignStatus } from '@/lib/campaign-workflow-status';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
@@ -23,9 +24,9 @@ import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast'
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
-type CatalogStatus = 'draft' | 'published' | 'archived';
-type DisplayStatus = 'Live' | 'Draft' | 'Ended';
-type StatusTone = 'success' | 'warning' | 'neutral';
+type CatalogStatus = RawCampaignStatus;
+type DisplayStatus = CampaignWorkflowStatusLabel;
+type StatusTone = CampaignWorkflowStatusTone;
 type AvatarHue = 'teal' | 'ember' | 'cream';
 
 interface CatalogRow {
@@ -124,19 +125,6 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-function getDisplayStatus(status: CatalogStatus, validTo: string | null, nowTs: number): DisplayStatus {
-  if (status === 'draft') return 'Draft';
-  if (status === 'archived') return 'Ended';
-  if (validTo && new Date(validTo).getTime() < nowTs) return 'Ended';
-  return 'Live';
-}
-
-function getStatusTone(status: DisplayStatus): StatusTone {
-  if (status === 'Live') return 'success';
-  if (status === 'Draft') return 'warning';
-  return 'neutral';
-}
-
 function buildCatalogScopeValue(input: {
   scopeType: 'cohort' | 'buyer' | 'geography' | 'all';
   cohortId?: string | null;
@@ -193,7 +181,7 @@ type CatalogMetric = {
 type CatalogCallout = {
   id: string;
   name: string;
-  status: { value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
+  status: { value: CampaignWorkflowStatus; raw_value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
   cohort_name: string;
   gmv: number;
   conversions: number;
@@ -218,6 +206,10 @@ type CatalogMetricsRpc = {
 function calloutToLandingRow(callout: CatalogCallout, index: number) {
   return {
     ...callout,
+    status: {
+      ...callout.status,
+      raw_value: callout.status.raw_value ?? (callout.status.value === 'draft' ? 'draft' : callout.status.value === 'archived' ? 'archived' : 'published'),
+    },
     initials: getInitials(callout.name),
     hue: getHue(index),
     audience_count: null,
@@ -308,11 +300,18 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
       views: 0, view_pct: 0, conversion_pct: 0, growth_pct: 0, products_count: 0,
       brands_count: 0, audience_label: 'All buyers', audience_count: 0,
     };
-    const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
-    const daysLeft = catalog.valid_to && displayStatus === 'Live' ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000)) : null;
+    const workflowStatus = resolveCampaignWorkflowStatus({
+      rawStatus: catalog.status,
+      validFrom: catalog.valid_from,
+      validTo: catalog.valid_to,
+      now,
+    });
+    const daysLeft = catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
+      ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000))
+      : null;
     return [{
       id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
-      status: { value: catalog.status, label: displayStatus, tone: getStatusTone(displayStatus) },
+      status: { value: workflowStatus.value, raw_value: catalog.status, label: workflowStatus.label, tone: workflowStatus.tone },
       cohort_name: metric.audience_label, audience_count: metric.audience_count,
       products_count: Number(metric.products_count), brands_count: Number(metric.brands_count),
       gmv: Number(metric.gmv), orders: Number(metric.order_count), order_count: Number(metric.order_count),
@@ -700,8 +699,12 @@ export async function GET(req: NextRequest) {
     }
 
     const catalogRows = catalogs.map((catalog, index) => {
-      const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
-      const tone = getStatusTone(displayStatus);
+      const workflowStatus = resolveCampaignWorkflowStatus({
+        rawStatus: catalog.status,
+        validFrom: catalog.valid_from,
+        validTo: catalog.valid_to,
+        now,
+      });
       const catalogItems = itemsByCatalog.get(catalog.id) ?? [];
       const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
       const conversionMetrics = buildCatalogAttributedMetrics(
@@ -744,7 +747,7 @@ export async function GET(req: NextRequest) {
           ? Number(((views / audience.buyerCount) * 100).toFixed(1))
           : 0;
       const daysLeft =
-        catalog.valid_to && displayStatus === 'Live'
+        catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
           ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / (1000 * 60 * 60 * 24)))
           : null;
 
@@ -754,9 +757,10 @@ export async function GET(req: NextRequest) {
         initials: getInitials(catalog.name),
         hue: getHue(index),
         status: {
-          value: catalog.status,
-          label: displayStatus,
-          tone,
+          value: workflowStatus.value,
+          raw_value: catalog.status,
+          label: workflowStatus.label,
+          tone: workflowStatus.tone,
         },
         cohort_name: audience.label,
         audience_count: audience.buyerCount,
@@ -778,9 +782,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live');
+    const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live' || catalog.status.label === 'Live · Unpublished Changes');
     const draftCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Draft');
-    const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Ended');
+    const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Expired' || catalog.status.label === 'Archived');
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const expiring7d = liveCatalogs.filter(
       (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
@@ -829,7 +833,7 @@ export async function GET(req: NextRequest) {
         ? Number((liveCatalogs.reduce((sum, catalog) => sum + catalog.conversion_pct, 0) / liveCatalogs.length).toFixed(1))
         : 0;
     const needsAttention = catalogRows
-      .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Ended' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
+      .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Expired' || catalog.status.label === 'Archived' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
       .slice(0, 3);
     const topPerformers = [...liveCatalogs].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
     const latestByCohort = new Map<string, Array<typeof catalogRows[number]>>();

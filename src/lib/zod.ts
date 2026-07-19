@@ -404,6 +404,13 @@ export type CatalogComposerTag = z.infer<typeof CatalogComposerTagSchema>;
 
 export const CatalogComposerPriceSourceSchema = z.enum(['price_list', 'manual']);
 export type CatalogComposerPriceSource = z.infer<typeof CatalogComposerPriceSourceSchema>;
+export const CatalogComposerPricingModeSchema = z.enum(['edit_each', 'percent_off_base', 'flat_off_base']);
+export type CatalogComposerPricingMode = z.infer<typeof CatalogComposerPricingModeSchema>;
+export const CatalogComposerPricingStrategySchema = z.object({
+  mode: CatalogComposerPricingModeSchema,
+  value: z.string().default(''),
+});
+export type CatalogComposerPricingStrategy = z.infer<typeof CatalogComposerPricingStrategySchema>;
 
 export const CatalogComposerFilterStateSchema = z.object({
   brand_names: z.array(z.string()).default([]),
@@ -432,6 +439,7 @@ export const CatalogComposerPayloadSchema = z
     message: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional().or(z.literal('')),
     price_source: CatalogComposerPriceSourceSchema.default('manual'),
     price_list_id: z.string().uuid('Invalid price list').nullable().optional(),
+    pricing_strategy: CatalogComposerPricingStrategySchema.optional(),
     filters: CatalogComposerFilterStateSchema.default({
       brand_names: [],
       category_names: [],

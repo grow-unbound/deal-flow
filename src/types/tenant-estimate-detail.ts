@@ -1,4 +1,5 @@
 import type { EstimateDbStatus, EstimateStatusTone } from '@/types/tenant-estimates';
+import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
 
 import type { EstimateComposerDocument } from './estimate-composer';
 
@@ -65,4 +66,5 @@ export interface EstimateDetailPayload {
 /** Merged GET `/api/tenant/estimates/[id]` payload (detail KPIs + composer document). */
 export type TenantEstimateDetailResponse = Omit<EstimateDetailPayload, 'items'> & EstimateComposerDocument & {
   historical_items?: EstimateDetailLineItem[];
+  whatsapp_send: WhatsAppDocumentSendState;
 };

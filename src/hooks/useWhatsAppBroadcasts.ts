@@ -38,11 +38,22 @@ export interface ManageBroadcastRow {
   display_at: string;
   template_name: string | null;
   target_label: string;
+  sent_count: number;
   delivered_count: number;
+  failed_count: number;
   total_count: number;
 }
 
+export interface BroadcastKpis {
+  total_broadcasts: number;
+  delivered_this_month: number;
+  scheduled_count: number;
+  success_rate_pct: number;
+  sent_this_month: number;
+}
+
 export interface BroadcastsPageResponse {
+  kpis: BroadcastKpis;
   broadcasts: ManageBroadcastRow[];
   total: number;
   next_offset: number | null;
@@ -177,6 +188,13 @@ export function useWhatsAppBroadcastsInfinite(
       const res = await apiFetch(`/api/whatsapp/broadcasts?${searchParams.toString()}`);
       if (res.status === 403) {
         return {
+          kpis: {
+            total_broadcasts: 0,
+            delivered_this_month: 0,
+            scheduled_count: 0,
+            success_rate_pct: 0,
+            sent_this_month: 0,
+          },
           broadcasts: [],
           total: 0,
           next_offset: null,

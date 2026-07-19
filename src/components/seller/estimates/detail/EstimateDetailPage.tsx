@@ -19,7 +19,6 @@ import {
   resolveEstimateBandStatus,
   TotalsCard,
   type EstimateComposerLineRow,
-  ModalSendDocument,
 } from '@/components/seller/document-composer';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -37,7 +36,7 @@ import {
   useConvertEstimateToInvoice,
   useDuplicateEstimate,
   useEstimateDetail,
-  useSendEstimate,
+  useSendEstimateDetailWhatsApp,
   useVoidEstimate,
   seedEstimateComposerCache,
 } from '@/hooks/useEstimates';
@@ -49,6 +48,7 @@ import { formatCompactInr } from '@/lib/utils';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 
 const noop = () => {};
 
@@ -63,7 +63,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
   const convertToInvoiceMut = useConvertEstimateToInvoice(id);
   const voidMut = useVoidEstimate(id);
   const dupMut = useDuplicateEstimate(id);
-  const sendMut = useSendEstimate(id);
+  const sendMut = useSendEstimateDetailWhatsApp(id);
 
   const [convertOpen, setConvertOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -383,22 +383,25 @@ export function EstimateDetailPage({ id }: { id: string }) {
         onConfirmInvoice={handleConvertToInvoice}
       />
 
-      <ModalSendDocument
+      <SendDocumentWhatsAppDialog
         open={sendOpen}
         onOpenChange={setSendOpen}
         title="Send estimate"
-        recipientDefault={buyer?.phone ?? buyer?.email ?? ''}
-        messageDefault="Please review this estimate."
-        lineCount={diffLines.length}
-        grandTotal={totals.grand_total}
+        confirmLabel="Send estimate"
         isPending={sendMut.isPending}
-        onConfirm={async (payload) => {
-          try {
-            await sendMut.mutateAsync(payload);
-            setSendOpen(false);
-          } catch {
-            // toast handled by useSendEstimate.onError
-          }
+        sendState={data.whatsapp_send}
+        buyerName={buyer?.business_name ?? '—'}
+        phoneNumber={data.whatsapp_send.recipient_phone}
+        documentNumberLabel="Estimate Number"
+        documentNumber={data.estimate_number}
+        amount={totals.grand_total}
+        itemCount={diffLines.length}
+        onConfirm={() => {
+          sendMut.mutate(undefined, {
+            onSuccess: () => {
+              setSendOpen(false);
+            },
+          });
         }}
       />
 

@@ -346,6 +346,29 @@ export function useSendEstimate(estimateId: string | null) {
   });
 }
 
+export function useSendEstimateDetailWhatsApp(estimateId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiPatch(`/api/tenant/estimates/${estimateId}/send`, {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to send estimate');
+      }
+      return (await res.json()) as { data: { id: string } };
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed to send estimate');
+    },
+    onSuccess: () => {
+      toast.success('Estimate sent');
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+    },
+  });
+}
+
 export function useBuyerEstimateContext(buyerId: string | null) {
   return useQuery({
     queryKey: ['estimate-buyer-context', buyerId],

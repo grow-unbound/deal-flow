@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('react', async () => {
@@ -23,9 +23,48 @@ vi.mock('@/components/seller/customers/AddCustomerDialog', () => ({
 }));
 
 const useRoleMock = vi.fn(() => ({ isSellerAdmin: true, isSellerAssistant: false }));
+const useTenantSettingsMock = vi.fn(() => ({
+  data: {
+    modules: {
+      orders: {
+        features: {
+          enquiries: true,
+          sales_orders: true,
+          invoices: true,
+        },
+      },
+      catalog: {
+        price_lists_enabled: true,
+      },
+    },
+  },
+}));
+const useCustomerPriceListsMock = vi.fn(() => ({
+  isLoading: false,
+  isFetching: false,
+  data: {
+    total: 1,
+    assigned: [
+      {
+        id: 'pl-1',
+        name: 'North Premium Pricing',
+        priority: 20,
+        target_type: 'cohort' as const,
+        target_label: 'Cohort · Premium',
+        valid_from: '2026-06-01T00:00:00Z',
+        valid_to: '2026-06-30T00:00:00Z',
+        status: 'active' as const,
+      },
+    ],
+  },
+}));
 
 vi.mock('@/hooks/useRole', () => ({
   useRole: () => useRoleMock(),
+}));
+
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => useTenantSettingsMock(),
 }));
 
 vi.mock('@/hooks/useBusinessPolicy', () => ({
@@ -45,21 +84,34 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
         status_label: 'Active',
         status_tone: 'success',
         buyer_app_enabled: true,
+        whatsapp_opted_out: false,
         city: 'Bengaluru',
         buyer_since: '2021-05-10T00:00:00Z',
         years_label: '5 yrs loyal',
         net_terms_days: 21,
+        subtitle_meta: {
+          buyer_app_status_label: 'Buyer App enabled',
+          city: 'Bengaluru',
+          phone: '9876543210',
+          last_activity_at: '2026-07-16T00:00:00Z',
+          last_activity_kind: 'sale',
+          last_activity_days_ago: 3,
+          last_activity_date_label: '16 Jul 2026',
+        },
       },
       meta_strip_4: {
-        spend_mtd: 250000,
-        growth_pct: 12,
-        orders_mtd: 4,
-        aov_mtd: 62500,
-        last_order_label: 'Jun 24',
-        last_order_primary_product_qty: 'Cabernet Sauvignon ×24',
+        invoiced_sales_90d: 250000,
+        invoice_count_90d: 4,
+        primary_demand_kind: 'orders' as const,
+        demand_90d: 188000,
+        demand_order_count_90d: 3,
+        demand_estimate_count_90d: 1,
         credit_used: 64000,
+        credit_available: 36000,
         credit_limit: 100000,
         credit_used_pct: 64,
+        last_invoice_value: 84200,
+        last_invoice_date: '2026-07-16T00:00:00Z',
       },
       details: {
         business_name: 'Singh Hospitality',
@@ -67,10 +119,13 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
         phone: '9876543210',
         email: 'ops@singh.co',
         gstin: '29ABCDE1234F1Z5',
+        gst_treatment: 'regular',
         city: 'Bengaluru',
         state: 'Karnataka',
         pincode: '560001',
         zone: 'South',
+        billing_address: null,
+        shipping_address: null,
         payment_terms_days: 21,
         credit_limit: 100000,
         default_price_list_id: 'pl-1',
@@ -93,6 +148,7 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
             status: 'Active',
           },
         ],
+        contacts: [],
       },
       performance: {
         monthly_spend_trend: [],
@@ -106,63 +162,33 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
           orders_mtd: 4,
           aov_mtd: 62500,
         },
-        brand_mix: {
-          total_spend: 250000,
-          rows: [
-            { brand: 'WineYard', spend: 120000, pct: 48 },
-            { brand: 'Khanna Brewing', spend: 55000, pct: 22 },
-          ],
-        },
-        top_skus: [
-          { name: 'Cabernet Sauvignon 2021', sku: 'VINO-CAB-750-2021', revenue: 240000, units: 96 },
-        ],
+        brand_mix: { total_spend: 0, rows: [] },
+        top_skus: [],
         credit_ops: {
           last_order_days_ago: '3d ago',
           last_order_value: 84200,
-          catalog_opens_mtd: 14,
+          catalog_opens_mtd: 0,
           credit_used: 64000,
           credit_limit: 100000,
           credit_util_pct: 64,
-          payment_behavior_summary: 'Payment behavior — On time · 2 of 4 invoices',
+          payment_behavior_summary: 'Payment behavior - current',
         },
       },
-      orders: {
-        badge_count_mtd: 4,
-        rows: [],
-      },
-      estimates: {
-        rows: [],
-      },
-      invoices: {
-        rows: [],
+      performance_cards: [],
+      detail_v2: {},
+      tab_badges: {
+        orders_90d: 3,
+        estimates_90d: 1,
+        invoices_90d: 4,
+        price_lists_assigned: 1,
       },
       cohorts_summary: {
         rows: [{ id: 'cohort-1', name: 'Premium', member_count: 1 }],
       },
       price_lists: {
-        assigned: [
-          {
-            id: 'pl-1',
-            name: 'North Premium Pricing',
-            target_type: 'cohort' as const,
-            target_label: 'Cohort · Premium',
-            valid_from: '2026-06-01T00:00:00Z',
-            valid_to: '2026-06-30T00:00:00Z',
-            status: 'active' as const,
-          },
-        ],
-        lookup_products: [
-          {
-            tenant_product_id: 'tp-1',
-            name: 'Cabernet Sauvignon 2021',
-            sku: 'VINO-CAB-750-2021',
-          },
-        ],
+        assigned_count: 1,
       },
-      activity: [],
-      computed: {
-        last_order_date_human: '24 Jun',
-      },
+      role: 'seller_admin',
     },
   }),
   useToggleCustomerStatusOptimistic: () => ({
@@ -172,6 +198,12 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
   useCreateCustomerOptimistic: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
+  }),
+  useCustomerPriceLists: () => useCustomerPriceListsMock(),
+  useCustomerDocuments: () => ({
+    isLoading: false,
+    isFetching: false,
+    data: { rows: [], total: 0, limit: 50, offset: 0 },
   }),
 }));
 
@@ -191,57 +223,78 @@ function renderPage() {
 describe('customers/[id] detail shell', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+    useTenantSettingsMock.mockReturnValue({
+      data: {
+        modules: {
+          orders: {
+            features: {
+              enquiries: true,
+              sales_orders: true,
+              invoices: true,
+            },
+          },
+          catalog: {
+            price_lists_enabled: true,
+          },
+        },
+      },
+    });
   });
 
-  it('renders the expanded admin tab set including estimates, invoices, cohorts, and price lists', () => {
-    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+  it('renders settings-enabled tabs and omits activity', () => {
     renderPage();
 
     expect(screen.getByRole('tab', { name: /Details/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Performance/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Orders/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Estimates/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Invoices/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Estimates/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Invoices/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Customer Groups/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Price Lists/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Activity/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
-  it('keeps buyer since in subtitle and not as a meta tile', () => {
+  it('renders the compact subtitle and updated KPI order', () => {
     renderPage();
 
-    expect(screen.getByText(/Buyer since May 2021 · 5 yrs loyal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Buyer app enabled/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Tier/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Buyer App enabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bengaluru/i)).toBeInTheDocument();
+    expect(screen.getByText(/9876543210/i)).toBeInTheDocument();
+    expect(screen.getByText(/Last sale 3d ago/i)).toBeInTheDocument();
+    expect(screen.getByText('Invoiced sales · 90D')).toBeInTheDocument();
+    expect(screen.getByText('Demand · 90D')).toBeInTheDocument();
+    expect(screen.getByText('Credit used / available')).toBeInTheDocument();
+    expect(screen.getByText('Last sale')).toBeInTheDocument();
   });
 
-  it('shows credit used tile with backend percentage and orders badge', () => {
+  it('hides module tabs when tenant settings disable them', () => {
+    useTenantSettingsMock.mockReturnValue({
+      data: {
+        modules: {
+          orders: {
+            features: {
+              enquiries: false,
+              sales_orders: true,
+              invoices: false,
+            },
+          },
+          catalog: {
+            price_lists_enabled: false,
+          },
+        },
+      },
+    });
+
     renderPage();
 
-    expect(screen.getByText('Credit used')).toBeInTheDocument();
-    expect(screen.getByText(/of ₹1L · 64%/i)).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Orders/i })).toBeInTheDocument();
-    const ordersTile = screen.getByText('Invoices · 90D').closest('article');
-    expect(ordersTile).not.toBeNull();
-    expect(within(ordersTile as HTMLElement).getByText('4')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Estimates/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Orders/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Invoices/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Price Lists/i })).not.toBeInTheDocument();
   });
 
-  it('defaults to performance tab active', () => {
-    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
-    renderPage();
-
-    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
-  });
-
-  it('hides Performance tab for seller assistants', () => {
-    useRoleMock.mockReturnValue({ isSellerAdmin: false, isSellerAssistant: true });
-    renderPage();
-
-    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
-  });
-
-  it('renders assigned price list cards with source label and validity copy', () => {
+  it('lazy-loads the price lists tab content', () => {
     renderPage();
 
     fireEvent.click(screen.getByRole('tab', { name: /Price Lists/i }));
@@ -250,26 +303,16 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByText('North Premium Pricing')).toBeInTheDocument();
     expect(screen.getByText(/Cohort · Premium/i)).toBeInTheDocument();
     expect(screen.getByText(/Validity/i)).toBeInTheDocument();
-    expect(screen.getByText(/Resolved price lookup/i)).toBeInTheDocument();
   });
 
-  it('shows header actions and buyer user table in the details tab', () => {
-    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+  it('shows details tab content and buyer user data', () => {
     renderPage();
-
-    expect(screen.getByText(/Send Message/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit Buyer/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Delete Buyer/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /Details/i }));
 
     expect(screen.getByText('Buyer details')).toBeInTheDocument();
     expect(screen.getByText('Default pricelist')).toBeInTheDocument();
-    expect(screen.getByText('Buyer app')).toBeInTheDocument();
     expect(screen.getByText('Buyer users')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Add User/i })).toBeInTheDocument();
     expect(screen.getByText('Amit Sharma')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Deactivate$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Reactivate$/i })).not.toBeInTheDocument();
   });
 });

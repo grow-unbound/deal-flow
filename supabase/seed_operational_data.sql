@@ -151,8 +151,7 @@ BEGIN
       app.locations_snapshot,
       app.estimates_snapshot,
       app.invoices_snapshot,
-      app.buyers_snapshot,
-      app.buyer_current_snapshot,
+
       app.kpi_buyers_daily,
       app.products_snapshot,
       app.categories_snapshot,

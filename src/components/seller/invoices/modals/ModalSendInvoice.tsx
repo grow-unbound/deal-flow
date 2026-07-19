@@ -1,54 +1,39 @@
 'use client';
 
 import { MessageCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { formatCompactInr } from '@/lib/utils';
-
-function defaultReminderMessage(docNumber: string, grandTotal: number, dueDate: string | null): string {
-  const due = dueDate ? ` on ${dueDate}` : '';
-  return `Hi — friendly reminder: invoice ${docNumber} for ${formatCompactInr(grandTotal)} is due${due}. Please let us know once payment is arranged. Thank you.`;
-}
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { DialogBody } from '@/components/ui/dialog';
+import type { WhatsAppInvoiceReminderState } from '@/types/whatsapp-document-send';
 
 export function ModalSendInvoice({
   open,
   onOpenChange,
-  docNumber,
-  grandTotal,
-  dueDateYmd,
+  buyerName,
+  reminderState,
   isPending,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  docNumber: string;
-  grandTotal: number;
-  dueDateYmd: string | null;
+  buyerName: string;
+  reminderState: WhatsAppInvoiceReminderState;
   isPending: boolean;
-  onConfirm: (payload: { message: string }) => Promise<void>;
+  onConfirm: () => Promise<void>;
 }) {
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    if (open) {
-      setMessage(defaultReminderMessage(docNumber, grandTotal, dueDateYmd));
-    }
-  }, [open, docNumber, grandTotal, dueDateYmd]);
-
   async function handleSubmit() {
     try {
-      await onConfirm({ message: message.trim() });
+      await onConfirm();
       onOpenChange(false);
     } catch {
       /* parent toast */
@@ -56,27 +41,84 @@ export function ModalSendInvoice({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Send payment reminder</DialogTitle>
-        </DialogHeader>
-        <DialogBody className="space-y-3">
-          <Label htmlFor="remind-msg" className="text-base">
-            Message
-          </Label>
-          <Textarea id="remind-msg" rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className="text-base" />
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (isPending) return;
+        onOpenChange(nextOpen);
+      }}
+    >
+      <AlertDialogContent className="bg-cream-50 border-cream-200">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-display text-cream-900">
+            Send payment reminder
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-cream-700">
+            This sends the `buyer_payment_reminder` WhatsApp template to this buyer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <DialogBody className="space-y-4">
+          {!reminderState.can_send && reminderState.block_message ? (
+            <Alert variant={reminderState.block_reason === 'insufficient_credits' ? 'warning' : 'danger'}>
+              <AlertDescription>{reminderState.block_message}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="space-y-2 rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
+            <div>
+              <span className="text-cream-600">Buyer Name: </span>
+              {buyerName}
+            </div>
+            <div>
+              <span className="text-cream-600">Phone Number: </span>
+              {reminderState.recipient_phone ? `+91 ${reminderState.recipient_phone}` : '—'}
+            </div>
+            <div>
+              <span className="text-cream-600">Outstanding Amount: </span>
+              ₹{reminderState.outstanding_amount}
+            </div>
+            <div>
+              <span className="text-cream-600">Due invoice count: </span>
+              {reminderState.due_invoice_count}
+            </div>
+            <div>
+              <span className="text-cream-600">Due status: </span>
+              {reminderState.due_status || '—'}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
+            <p className="mb-2 text-cream-600">Template preview</p>
+            <pre className="whitespace-pre-wrap font-sans text-body-sm text-cream-800">
+              {reminderState.preview_message}
+            </pre>
+          </div>
+
+          <div className="rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
+            <div>
+              <span className="text-cream-600">WhatsApp credits required: </span>
+              {reminderState.required_credits}
+            </div>
+            <div>
+              <span className="text-cream-600">Credits available: </span>
+              {reminderState.credits_balance}
+            </div>
+          </div>
         </DialogBody>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="button" className="gap-2" onClick={() => void handleSubmit()} disabled={isPending || !message.trim()}>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isPending || !reminderState.can_send}
+            onClick={(event) => {
+              event.preventDefault();
+              void handleSubmit();
+            }}
+          >
             <MessageCircle className="h-4 w-4" />
             {isPending ? 'Sending…' : 'Send reminder'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

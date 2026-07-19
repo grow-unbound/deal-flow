@@ -69,6 +69,33 @@ export function useSendInvoice(id: string) {
   });
 }
 
+export function useSendInvoiceDetailWhatsApp(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/tenant/invoices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to send invoice');
+      }
+      return (await res.json()) as { ok: boolean };
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed to send invoice');
+    },
+    onSuccess: () => {
+      toast.success('Invoice sent');
+      void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
+      void qc.invalidateQueries({ queryKey: ['tenant-invoice-composer', id] });
+      void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    },
+  });
+}
+
 export function useMarkInvoicePaid(id: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -180,11 +207,11 @@ export function useVoidInvoice(id: string) {
 export function useSendInvoiceReminder(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { message?: string }) => {
+    mutationFn: async () => {
       const res = await apiFetch(`/api/tenant/invoices/${id}/remind`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((json as { error?: string }).error ?? 'Request failed');

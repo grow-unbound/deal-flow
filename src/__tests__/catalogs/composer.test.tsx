@@ -318,6 +318,92 @@ describe('CatalogComposer', () => {
     });
   });
 
+  it('hydrates saved manual pricing strategy and row prices in edit mode', async () => {
+    useCatalogComposerDetailMock.mockReturnValue({
+      data: {
+        header: { name: 'Saved Catalog' },
+        composer: {
+          name: 'Saved Catalog',
+          status: 'draft',
+          live_status: 'draft',
+          has_unpublished_changes: false,
+          valid_from: '2026-06-01T00:00:00.000Z',
+          valid_to: '2026-06-30T00:00:00.000Z',
+          scope_type: 'cohort',
+          cohort_id: COHORT_1_ID,
+          price_source: 'manual',
+          price_list_id: null,
+          pricing_strategy: { mode: 'flat_off_base', value: '75' },
+          filters: {
+            brand_names: ['Solar Estates', 'Luna Cellars'],
+            category_names: ['Red wine', 'White wine'],
+            availability: 'show_everything',
+          },
+          tag_overrides: {},
+          items: [
+            { tenant_product_id: PRODUCT_1_ID, display_order: 0, price_override: 675 },
+            { tenant_product_id: PRODUCT_2_ID, display_order: 1, price_override: 605 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<CatalogComposer mode="edit" catalogId="cat-1" />);
+
+    expect(screen.getByText('Flat discount off base price')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('75')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('675')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('605')).toBeInTheDocument();
+  });
+
+  it('hydrates persisted percent-off strategy even when the visible table is only partially loaded', async () => {
+    useCatalogComposerProductsMock.mockReturnValue({
+      data: { pages: [{ products: [bootstrap.products[0]], total: bootstrap.products.length, nextCursor: null }] },
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    useCatalogComposerDetailMock.mockReturnValue({
+      data: {
+        header: { name: 'Saved Catalog' },
+        composer: {
+          name: 'Saved Catalog',
+          status: 'draft',
+          live_status: 'draft',
+          has_unpublished_changes: false,
+          valid_from: '2026-06-01T00:00:00.000Z',
+          valid_to: '2026-06-30T00:00:00.000Z',
+          scope_type: 'cohort',
+          cohort_id: COHORT_1_ID,
+          price_source: 'manual',
+          price_list_id: null,
+          pricing_strategy: { mode: 'percent_off_base', value: '12' },
+          filters: {
+            brand_names: ['Solar Estates', 'Luna Cellars'],
+            category_names: ['Red wine', 'White wine'],
+            availability: 'show_everything',
+          },
+          tag_overrides: {},
+          items: [
+            { tenant_product_id: PRODUCT_1_ID, display_order: 0, price_override: 660 },
+            { tenant_product_id: PRODUCT_2_ID, display_order: 1, price_override: 598.4 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<CatalogComposer mode="edit" catalogId="cat-1" />);
+
+    expect(screen.getByText('% off base price')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('12')).toBeInTheDocument();
+  });
+
   it('bulk adjust applies a tag override to selected rows', async () => {
     render(<CatalogComposer mode="create" />);
 

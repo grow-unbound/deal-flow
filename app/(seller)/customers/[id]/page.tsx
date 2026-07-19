@@ -9,11 +9,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FeatureGate } from '@/components/FeatureGate';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, DistributionList, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
-import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
-import { CustomerActivityTab } from '@/components/seller/customers/detail/CustomerActivityTab';
+import { DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
 import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
+import { CustomerPriceListsTab } from '@/components/seller/customers/detail/CustomerPriceListsTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { toast } from 'sonner';
 import { CustomerDetailSkeleton as SharedCustomerDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -24,10 +23,11 @@ const CustomerPerformanceTab = dynamic(
 );
 import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatCompactInr } from '@/lib/utils';
 
-type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists' | 'activity';
+type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists';
 
 function CustomerDetailSkeleton() {
   return (
@@ -69,61 +69,23 @@ function CustomerDetailSkeleton() {
   );
 }
 
-function buyerSinceLabel(value: string | null, yearsLabel: string) {
-  if (!value) return `Buyer since — · ${yearsLabel}`;
-  const since = new Date(value).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
-  return `Buyer since ${since} · ${yearsLabel}`;
-}
-
-function BuyerAppPill({ enabled }: { enabled: boolean }) {
-  return (
-    <span
-      className={[
-        'rounded-full px-2 py-0.5 text-xs font-medium',
-        enabled ? 'bg-success-50 text-success-700' : 'bg-cream-200 text-cream-700',
-      ].join(' ')}
-    >
-      Buyer app {enabled ? 'enabled' : 'disabled'}
-    </span>
-  );
-}
-
-// WhatsApp Broadcast Phase C (§7.2, §9): display-only opted-out indicator.
-// Excluding opted-out buyers from the composer's audience preview/manual
-// picker is Phase E's job (the composer doesn't exist yet) — this badge just
-// needs to be visible and correct now.
-function WhatsappOptedOutPill() {
-  return (
-    <span className="rounded-full bg-cream-200 px-2 py-0.5 text-xs font-medium text-cream-700">
-      WhatsApp: opted out
-    </span>
-  );
-}
-
-function formatValidityWindow(validFrom: string | null, validTo: string | null) {
-  const formatDate = (value: string | null) =>
-    value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Open';
-
-  return `${formatDate(validFrom)} → ${formatDate(validTo)}`;
-}
-
-function PriceListStatusPill({ status }: { status: 'active' | 'draft' | 'expired' }) {
-  const classes = status === 'active'
-    ? 'bg-teal-50 text-teal-700'
-    : status === 'expired'
-      ? 'bg-cream-200 text-cream-700'
-      : 'bg-amber-50 text-amber-700';
-
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${classes}`}>
-      {status}
-    </span>
-  );
+function formatLastActivity(subtitleMeta: {
+  last_activity_kind: string | null;
+  last_activity_days_ago: number | null;
+  last_activity_date_label: string;
+}) {
+  if (!subtitleMeta.last_activity_kind) return 'Last activity unavailable';
+  const when =
+    subtitleMeta.last_activity_days_ago != null && subtitleMeta.last_activity_days_ago <= 30
+      ? `${subtitleMeta.last_activity_days_ago}d ago`
+      : subtitleMeta.last_activity_date_label;
+  return `Last ${subtitleMeta.last_activity_kind} ${when}`;
 }
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { isSellerAdmin, isSellerAssistant } = useRole();
+  const { data: settings } = useTenantSettings();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-customer-detail-tab',
     scopeKey: id,
@@ -132,18 +94,25 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const deleteMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
+
+  const featureVisibility = useMemo(() => ({
+    estimates: settings?.modules.orders.features.enquiries !== false,
+    salesOrders: settings?.modules.orders.features.sales_orders !== false,
+    invoices: settings?.modules.orders.features.invoices !== false,
+    priceLists: settings?.modules.catalog.price_lists_enabled !== false,
+  }), [settings?.modules.catalog.price_lists_enabled, settings?.modules.orders.features.enquiries, settings?.modules.orders.features.invoices, settings?.modules.orders.features.sales_orders]);
+
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Details' },
       ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
-      { id: 'estimates', label: 'Estimates', badge: data?.estimates.rows.length ?? 0 },
-      { id: 'orders', label: 'Orders', badge: data?.orders.badge_count_mtd ?? 0 },
-      { id: 'invoices', label: 'Invoices', badge: data?.invoices.rows.length ?? 0 },
+      ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates', badge: data?.tab_badges.estimates_90d ?? 0 }] : []),
+      ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders', badge: data?.tab_badges.orders_90d ?? 0 }] : []),
+      ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices', badge: data?.tab_badges.invoices_90d ?? 0 }] : []),
       { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
-      { id: 'price-lists', label: 'Price Lists', badge: data?.price_lists.assigned.length ?? 0 },
-      { id: 'activity', label: 'Activity' },
+      ...(featureVisibility.priceLists ? [{ id: 'price-lists', label: 'Price Lists', badge: data?.tab_badges.price_lists_assigned ?? 0 }] : []),
     ],
-    [data?.cohorts_summary.rows.length, data?.estimates.rows.length, data?.invoices.rows.length, data?.orders.badge_count_mtd, data?.price_lists.assigned.length, isSellerAssistant],
+    [data?.cohorts_summary.rows.length, data?.tab_badges.estimates_90d, data?.tab_badges.invoices_90d, data?.tab_badges.orders_90d, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, isSellerAssistant],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -155,61 +124,35 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   const tiles = useMemo(() => {
     if (!data) return [];
-    if (isSellerAssistant) {
-      return [
-        {
-          label: 'Invoices · 90D',
-          value: data.meta_strip_4.orders_mtd,
-          sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
-        },
-        {
-          label: 'Last sale',
-          value: data.meta_strip_4.last_order_label,
-          sub: data.meta_strip_4.last_order_primary_product_qty,
-        },
-        {
-          label: 'Credit used',
-          value: formatCompactInr(data.meta_strip_4.credit_used),
-          sub: `of ${formatCompactInr(data.meta_strip_4.credit_limit)} · ${data.meta_strip_4.credit_used_pct}%`,
-        },
-        {
-          label: 'Net terms',
-          value: `${data.header.net_terms_days} days`,
-          sub: 'Buyer payment terms',
-        },
-      ];
-    }
+    const demandCount = data.meta_strip_4.primary_demand_kind === 'orders'
+      ? data.meta_strip_4.demand_order_count_90d
+      : data.meta_strip_4.primary_demand_kind === 'estimates'
+        ? data.meta_strip_4.demand_estimate_count_90d
+        : 0;
+    const demandLabel = data.meta_strip_4.primary_demand_kind === 'estimates' ? 'estimate' : 'order';
     return [
       {
         label: 'Invoiced sales · 90D',
-        value: formatCompactInr(data.meta_strip_4.spend_mtd),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct).toFixed(1)}%
-            </span>{' '}
-            vs last month
-          </span>
-        ),
+        value: formatCompactInr(data.meta_strip_4.invoiced_sales_90d),
+        sub: `${data.meta_strip_4.invoice_count_90d} invoices`,
       },
       {
-        label: 'Invoices · 90D',
-        value: data.meta_strip_4.orders_mtd,
-        sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+        label: 'Demand · 90D',
+        value: formatCompactInr(data.meta_strip_4.demand_90d),
+        sub: demandCount > 0 ? `${demandCount} ${demandLabel}${demandCount === 1 ? '' : 's'}` : 'No recent primary demand',
+      },
+      {
+        label: 'Credit used / available',
+        value: `${formatCompactInr(data.meta_strip_4.credit_used)} / ${formatCompactInr(data.meta_strip_4.credit_available)}`,
+        sub: `${data.meta_strip_4.credit_used_pct}% of ${formatCompactInr(data.meta_strip_4.credit_limit)}`,
       },
       {
         label: 'Last sale',
-        value: data.meta_strip_4.last_order_label,
-        sub: data.meta_strip_4.last_order_primary_product_qty,
-      },
-      {
-        label: 'Credit used',
-        value: formatCompactInr(data.meta_strip_4.credit_used),
-        sub: `of ${formatCompactInr(data.meta_strip_4.credit_limit)} · ${data.meta_strip_4.credit_used_pct}%`,
+        value: data.meta_strip_4.last_invoice_value > 0 ? formatCompactInr(data.meta_strip_4.last_invoice_value) : '—',
+        sub: data.meta_strip_4.last_invoice_date ? `Invoiced on ${new Date(data.meta_strip_4.last_invoice_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'No invoice yet',
       },
     ];
-  }, [data, isSellerAssistant]);
+  }, [data]);
 
   if (isLoading) return <SharedCustomerDetailSkeleton />;
   if (isError || !data) {
@@ -228,11 +171,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           title={data.header.buyer_name}
           status={{ label: data.header.status_label, tone: data.header.status_tone }}
           subtitle={[
-            <BuyerAppPill key="app" enabled={data.header.buyer_app_enabled} />,
-            ...(data.header.whatsapp_opted_out ? [<WhatsappOptedOutPill key="whatsapp-opt-out" />] : []),
-            data.header.city,
-            buyerSinceLabel(data.header.buyer_since, data.header.years_label),
-            `Net ${data.header.net_terms_days} terms`,
+            data.header.subtitle_meta.buyer_app_status_label,
+            data.header.subtitle_meta.city,
+            data.header.subtitle_meta.phone,
+            formatLastActivity(data.header.subtitle_meta),
           ]}
           actions={
             <div className="flex items-center gap-2 pt-1">
@@ -312,21 +254,19 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {activeTab === 'estimates' ? (
           <CustomerOrdersTab
             buyerId={id}
+            buyerName={data.header.buyer_name}
             kind="estimate"
-            orders={data.estimates.rows}
             title="Estimates"
-            description="Drafted and sent estimates visible to this role."
             routeBase="/estimates"
           />
         ) : null}
-        {activeTab === 'orders' ? <CustomerOrdersTab buyerId={id} kind="order" orders={data.orders.rows} /> : null}
+        {activeTab === 'orders' ? <CustomerOrdersTab buyerId={id} buyerName={data.header.buyer_name} kind="order" /> : null}
         {activeTab === 'invoices' ? (
           <CustomerOrdersTab
             buyerId={id}
+            buyerName={data.header.buyer_name}
             kind="invoice"
-            orders={data.invoices.rows}
             title="Invoices"
-            description="Issued invoices visible to this role."
             routeBase="/invoices"
           />
         ) : null}
@@ -349,60 +289,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </section>
         ) : null}
         {activeTab === 'price-lists' ? (
-          <section className="mt-5 space-y-4">
-            <PerformanceCard title="Assigned price lists" subtitle="Buyer-specific, cohort, and all-buyer pricing" bodyClassName="p-0">
-              <RankedList
-                items={data.price_lists.assigned.map((priceList) => ({
-                  id: `${priceList.id}-${priceList.target_type}`,
-                  label: priceList.name,
-                  meta: priceList.target_label,
-                  value: <PriceListStatusPill status={priceList.status} />,
-                  supporting: `Validity · ${formatValidityWindow(priceList.valid_from, priceList.valid_to)}`,
-                }))}
-                emptyTitle="No applied price lists"
-                emptyDescription="No buyer-specific, cohort, or all-buyer price lists currently apply to this customer."
-              />
-            </PerformanceCard>
-            <PerformanceCard title="Pricing coverage" subtitle="How this buyer receives pricing today" bodyClassName="p-0">
-              <DistributionList
-                mode="mix"
-                items={[
-                  {
-                    id: 'buyer',
-                    label: 'Buyer specific',
-                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'buyer').length,
-                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'buyer').length / data.price_lists.assigned.length) * 100) : 0,
-                  },
-                  {
-                    id: 'cohort',
-                    label: 'Customer group',
-                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'cohort').length,
-                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'cohort').length / data.price_lists.assigned.length) * 100) : 0,
-                  },
-                  {
-                    id: 'all-buyers',
-                    label: 'All buyers',
-                    value: data.price_lists.assigned.filter((priceList) => priceList.target_type === 'all_buyers').length,
-                    pct: data.price_lists.assigned.length > 0 ? Math.round((data.price_lists.assigned.filter((priceList) => priceList.target_type === 'all_buyers').length / data.price_lists.assigned.length) * 100) : 0,
-                  },
-                ].filter((item) => item.value > 0)}
-                emptyTitle="No pricing coverage yet"
-                emptyDescription="This buyer does not currently inherit an active price list."
-              />
-            </PerformanceCard>
-            <ResolvedPriceLookupCard
-              buyerId={id}
-              productOptions={data.price_lists.lookup_products.map((product) => ({
-                id: product.tenant_product_id,
-                label: product.name,
-                meta: product.sku,
-              }))}
-              title="Resolved price lookup"
-              description="Check the live resolved price for this buyer across recently transacted products."
-            />
-          </section>
+          <CustomerPriceListsTab buyerId={id} />
         ) : null}
-        {activeTab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
 
         <AddCustomerDialog
           open={editOpen}

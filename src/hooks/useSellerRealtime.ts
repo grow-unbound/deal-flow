@@ -12,6 +12,38 @@ interface UseSellerRealtimeOptions {
   onPatch?: (entityType: AppNotification['entityType'], entityId: string, patch: Pick<AppNotification, 'title' | 'body'>) => void;
 }
 
+interface BroadcastRecord {
+  id: string;
+  name: string;
+  status: string;
+  actual_recipient_count: number | null;
+  estimated_recipient_count: number | null;
+  sent_count: number | null;
+  delivered_count: number | null;
+  failed_count: number | null;
+  updated_at: string;
+}
+
+function toBroadcastRecord(record: Record<string, unknown>): BroadcastRecord | null {
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const status = typeof record.status === 'string' ? record.status : null;
+  const updatedAt = typeof record.updated_at === 'string' ? record.updated_at : new Date().toISOString();
+  if (!id || !name || !status) return null;
+
+  return {
+    id,
+    name,
+    status,
+    actual_recipient_count: typeof record.actual_recipient_count === 'number' ? record.actual_recipient_count : null,
+    estimated_recipient_count: typeof record.estimated_recipient_count === 'number' ? record.estimated_recipient_count : null,
+    sent_count: typeof record.sent_count === 'number' ? record.sent_count : null,
+    delivered_count: typeof record.delivered_count === 'number' ? record.delivered_count : null,
+    failed_count: typeof record.failed_count === 'number' ? record.failed_count : null,
+    updated_at: updatedAt,
+  };
+}
+
 function passesLocationFilter(
   record: Record<string, unknown>,
   locationIds: string[] | null,
@@ -67,6 +99,33 @@ function numberBecameAvailable(
   const oldNumber = (oldRecord?.[field] as string | null | undefined)?.trim() ?? '';
   const newNumber = (newRecord[field] as string | null | undefined)?.trim() ?? '';
   return Boolean(newNumber && oldNumber !== newNumber);
+}
+
+function buildBroadcastProgress(record: BroadcastRecord) {
+  const total = record.actual_recipient_count ?? record.estimated_recipient_count ?? 0;
+  const sent = record.sent_count ?? 0;
+  const delivered = record.delivered_count ?? 0;
+  const failed = record.failed_count ?? 0;
+
+  if (delivered > 0) return `${delivered}/${total} delivered`;
+  if (sent > 0) return `${sent}/${total} sent`;
+  if (failed > 0) return `${failed}/${total} failed`;
+  if (record.status === 'scheduled') return 'Scheduled';
+  return total > 0 ? `0/${total} queued` : 'Queued';
+}
+
+function buildBroadcastNotification(record: BroadcastRecord): AppNotification {
+  return {
+    id: `broadcast:${record.id}`,
+    kind: 'broadcast_updated',
+    title: `Broadcast update · ${record.name}`,
+    body: buildBroadcastProgress(record),
+    entityType: 'broadcast',
+    entityId: record.id,
+    href: '/customers/broadcasts',
+    readAt: null,
+    createdAt: record.updated_at ?? new Date().toISOString(),
+  };
 }
 
 export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: UseSellerRealtimeOptions) {
@@ -131,6 +190,20 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
       void queryClient.invalidateQueries({ queryKey: ['seller-dashboard'] });
     };
 
+    const handleBroadcastUpdate = (record: Record<string, unknown>) => {
+      const parsed = toBroadcastRecord(record);
+      if (!parsed) return;
+      const notification = buildBroadcastNotification(parsed);
+      if (onPatchRef.current) {
+        onPatchRef.current('broadcast', notification.entityId, {
+          title: notification.title,
+          body: notification.body,
+        });
+      }
+      onNewRef.current(notification);
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-broadcasts'] });
+    };
+
     const channel = supabaseBrowser
       .channel(`seller:${tenantId}`)
       .on(
@@ -165,6 +238,13 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
           const newRecord = payload.new as Record<string, unknown>;
           if (!numberBecameAvailable(oldRecord, newRecord, 'order_number')) return;
           handleOrderReady(newRecord, true);
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'app', table: 'whatsapp_broadcasts', filter: `tenant_id=eq.${tenantId}` },
+        (payload) => {
+          handleBroadcastUpdate(payload.new as Record<string, unknown>);
         },
       )
       .subscribe();

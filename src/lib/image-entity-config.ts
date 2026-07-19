@@ -55,7 +55,7 @@ export const ENTITY_VARIANT_CONFIG: Record<string, EntityVariantConfig> = {
     variants: ['medium'],
     flattenOnWhite: false,
     requiresTenantId: true,
-    buildBaseKey: (entityId, tenantId) => `tenants/${tenantId}/catalogs/${entityId}`,
+    buildBaseKey: (entityId, tenantId) => `tenants/${tenantId}/campaigns/${entityId}/picture`,
   },
   user_avatar: {
     variants: ['thumb', 'small'],

@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { readArrayParam } from '@/lib/landing-filter-params';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { applySellerLocationScope, loadAccessibleSellerLocations } from '@/lib/server/seller-location-access';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 const KindSchema = z.enum(['order', 'estimate', 'invoice']);
-const SortSchema = z.enum(['newest', 'oldest', 'amount_desc', 'amount_asc', 'status_asc']).catch('newest');
+const SortSchema = z.enum(['newest', 'oldest', 'amount_desc', 'amount_asc', 'status_asc', 'items_desc', 'expiry_asc', 'outstanding_desc']).catch('newest');
 type LinkedOrderRow = { id: string; campaign_id: string | null; source: string | null };
 const MAX_ITEMS_PER_DOCUMENT = 250;
 
@@ -17,6 +19,10 @@ const CONFIG = {
   estimate: { table: 'estimates', number: 'estimate_number', date: 'estimate_date', amount: 'total_amount', items: 'estimate_items', parent: 'estimate_id', extra: 'campaign_id, source, expires_at, is_buyer_app_estimate' },
   invoice: { table: 'invoices', number: 'invoice_number', date: 'invoice_date', amount: 'total_amount', items: 'invoice_items', parent: 'invoice_id', extra: 'due_date, outstanding_balance, order_id, is_buyer_app_invoice' },
 } as const;
+
+function buildDocumentPeriodFilter(dateColumn: string, currentStart: string, currentEndExclusive: string) {
+  return `${dateColumn}.gte.${currentStart},${dateColumn}.lt.${currentEndExclusive},and(${dateColumn}.is.null,created_at.gte.${currentStart},created_at.lt.${currentEndExclusive})`;
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const parsedParams = ParamsSchema.safeParse(await params);
@@ -32,9 +38,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), 50);
   const offset = Math.max(0, Number(request.nextUrl.searchParams.get('offset') ?? 0) || 0);
   const sort = SortSchema.parse(request.nextUrl.searchParams.get('sort'));
+  const period = getSellerLandingPeriodMeta(request.nextUrl.searchParams.get('period'));
   const queryText = request.nextUrl.searchParams.get('q')?.trim();
-  const statusParam = request.nextUrl.searchParams.get('status');
-  const statuses = statusParam === 'in_transit' ? ['dispatched', 'partially_dispatched'] : statusParam ? [statusParam] : [];
+  const statuses = readArrayParam(request.nextUrl.searchParams, 'status');
 
   const buyer = await db.schema('app').from('buyers').select('id').eq('id', parsedParams.data.id)
     .eq('tenant_id', claims.tenant_id).is('deleted_at', null).maybeSingle();
@@ -44,15 +50,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .select(`id, ${config.number}, ${config.date}, created_at, status, ${config.amount}, location_id, place_of_supply, ${config.extra}`, { count: 'exact' })
     .eq('tenant_id', claims.tenant_id).eq('buyer_id', parsedParams.data.id).is('deleted_at', null);
   query = applySellerLocationScope(query, claims);
+  query = query.or(buildDocumentPeriodFilter(config.date, period.current_start, period.current_end_exclusive));
   if (queryText) query = query.ilike(config.number, `%${queryText.replace(/[%_\\]/g, '\\$&')}%`);
   if (statuses.length === 1) query = query.eq('status', statuses[0]);
   if (statuses.length > 1) query = query.in('status', statuses);
-  if (!statusParam) {
+  if (statuses.length === 0) {
     if (parsedKind.data === 'order') query = query.not('status', 'in', '(draft,cancelled)');
     if (parsedKind.data === 'estimate') query = query.not('status', 'in', '(pending,void)');
     if (parsedKind.data === 'invoice') query = query.not('status', 'in', '(draft,void)');
   }
-  const sortColumn = sort.startsWith('amount') ? config.amount : sort === 'status_asc' ? 'status' : config.date;
+  const sortColumn =
+    sort === 'items_desc'
+      ? 'id'
+      : sort === 'expiry_asc'
+        ? 'expires_at'
+        : sort === 'outstanding_desc'
+          ? 'outstanding_balance'
+          : sort.startsWith('amount')
+            ? config.amount
+            : sort === 'status_asc'
+              ? 'status'
+              : config.date;
   const ascending = sort === 'oldest' || sort === 'amount_asc' || sort === 'status_asc';
   const pageResult = await query.order(sortColumn, { ascending, nullsFirst: false }).order('id', { ascending: true }).range(offset, offset + limit - 1);
   if (pageResult.error) {
