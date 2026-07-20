@@ -3,7 +3,7 @@ import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layou
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail, type CatalogProductDetailRow } from '@/hooks/useDetailTabSearch';
-import { cn, formatInr, formatSalesInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 
 type SortOption = 'Catalog order' | 'Brand (A → Z)' | 'Units sold MTD (high → low)' | 'Days cover (low → high)';
 
@@ -179,11 +179,11 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-base text-cream-900">{row.brand_name}</td>
-                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatSalesInr(row.catalog_gmv, 1) : '—'}</td>
+                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatInr(row.mrp) : '—'}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                  {catalogPrice != null ? formatInr(catalogPrice) : '—'}
+                  {catalogPrice != null ? formatNumberValue(catalogPrice, 'CURRENCY_EXACT') : '—'}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   {label ? (

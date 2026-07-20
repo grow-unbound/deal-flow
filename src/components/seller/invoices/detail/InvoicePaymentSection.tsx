@@ -2,7 +2,7 @@
 
 import type { InvoiceDetailPayload, InvoiceStatusValue } from '@/types/tenant-invoices';
 import { StatusTag } from '@/components/seller/layout';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { formatShortDate } from './invoice-detail-dates';
 
 interface InvoicePaymentSectionProps {
@@ -29,7 +29,7 @@ export function InvoicePaymentSection({ data }: InvoicePaymentSectionProps) {
         <StatusTag label={badge.label} tone={badge.tone} />
         <div className="text-right">
           <div className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Amount</div>
-          <div className="font-mono text-lg font-semibold text-cream-950">{formatCompactInr(invoice.total_amount)}</div>
+          <div className="font-mono text-lg font-semibold text-cream-950">{formatNumberValue(invoice.total_amount, 'CURRENCY_EXACT')}</div>
         </div>
       </div>
       {invoice.paid_at ? (
@@ -47,7 +47,7 @@ export function InvoicePaymentSection({ data }: InvoicePaymentSectionProps) {
         <div className="mb-1 flex justify-between text-xs font-medium text-cream-600">
           <span>Credit used</span>
           <span>
-            {formatCompactInr(credit.used)} / {formatCompactInr(credit.limit)}
+            {formatNumberValue(credit.used, 'CURRENCY_EXACT')} / {formatNumberValue(credit.limit, 'CURRENCY_EXACT')}
           </span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-cream-200">
@@ -60,7 +60,7 @@ export function InvoicePaymentSection({ data }: InvoicePaymentSectionProps) {
             role="progressbar"
           />
         </div>
-        <p className="mt-1 text-xs text-cream-600">Available {formatCompactInr(credit.available)}</p>
+        <p className="mt-1 text-xs text-cream-600">Available {formatNumberValue(credit.available, 'CURRENCY_EXACT')}</p>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -25,7 +26,7 @@ import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection'
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useBuyerActivityInfinite } from '@/hooks/useBuyerActivity';
 import type { StatusTone } from '@/components/ui/status-pill';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 const BuyerNotificationDrawer = dynamic(
   () => import('@/components/buyer/layout/BuyerNotificationDrawer').then((m) => m.BuyerNotificationDrawer),
@@ -203,7 +204,7 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)' }}
               >
-                {formatBuyerCurrency(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0)}
+                {formatNumberValue(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0, 'CURRENCY_EXACT')}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-white/70" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year
@@ -226,7 +227,7 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}
               >
-                {formatBuyerCurrency(dues?.outstanding_dues ?? 0)}
+                {formatNumberValue(dues?.outstanding_dues ?? 0, 'CURRENCY_EXACT')}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {formatDueSummary(dues?.days_until_earliest_due ?? null, dues?.open_invoice_count ?? 0, dues?.outstanding_dues ?? 0)}
@@ -249,10 +250,10 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}
               >
-                {formatBuyerCurrency(credit?.available_credit ?? 0)}
+                {formatNumberValue(credit?.available_credit ?? 0, 'CURRENCY_EXACT')}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
-                of {formatBuyerCurrency(credit?.credit_limit ?? 0)} limit
+                of {formatNumberValue(credit?.credit_limit ?? 0, 'CURRENCY_EXACT')} limit
               </p>
             </>
           )}
@@ -351,7 +352,7 @@ export default function HomePage() {
                       <span className="tabular-inline">{formatRelativeTime(item.timestamp)}</span>
                     </span>
                   )}
-                  amount={<span className="tabular-inline font-mono">{formatBuyerCurrency(item.amount)}</span>}
+                  amount={<span className="tabular-inline font-mono">{formatNumberValue(item.amount, 'CURRENCY_EXACT')}</span>}
                 />
                 {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
               </Fragment>

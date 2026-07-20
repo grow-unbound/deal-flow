@@ -3,7 +3,7 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { DetailCardRenderer, PerformanceCard, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
-import { formatCompactInr, formatCurrency, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface CustomerPerformanceTabProps {
   performance: TenantCustomerDetailResponse['performance'];
@@ -57,14 +57,14 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
           emptyDescription="This customer does not have enough recent invoiced history for a trend."
           summary={(
             <div className="flex items-end gap-3">
-              <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendValue, 1)}</p>
+              <p className="font-display text-3xl leading-none text-cream-950">{formatNumberValue(trendValue, 'CURRENCY_THRESHOLD')}</p>
               <p className="pb-1 text-base text-cream-700">
                 <span className={growth >= 0 ? 'text-success-500' : 'text-danger-500'}>
                   {growth >= 0 ? '↑ +' : '↓ '}
-                  {Math.abs(growth).toFixed(1)}%
+                  {formatNumberValue(Math.abs(growth), 'PERCENTAGE')}
                 </span>
                 {' · '}
-                {performanceV2.headline.orders_mtd} invoices · Avg invoice {formatCompactInr(performanceV2.headline.aov_mtd, 1)}
+                {performanceV2.headline.orders_mtd} invoices · Avg invoice {formatNumberValue(performanceV2.headline.aov_mtd, 'CURRENCY_THRESHOLD')}
               </p>
             </div>
           )}
@@ -85,7 +85,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
                   tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
                   tickFormatter={monthTick}
                 />
-                <Tooltip formatter={(value: number) => formatCompactInr(Number(value))} />
+                <Tooltip formatter={(value: number) => formatNumberValue(Number(value), 'CURRENCY_THRESHOLD')} />
                 <Area dataKey="spend" stroke="var(--teal-700)" strokeWidth={2.4} fill="url(#customer-spend-fill)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -101,7 +101,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
               id: `${row.brand}-${index}`,
               label: row.brand,
               pct: row.pct,
-              value: formatCompactInr(row.spend, 1),
+              value: formatNumberValue(row.spend, 'CURRENCY_THRESHOLD'),
               tone: MIX_COLORS[index % MIX_COLORS.length],
             })),
             emptyTitle: 'No brand mix data yet',
@@ -119,7 +119,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
               id: `${sku.sku}-${index}`,
               label: sku.name,
               meta: sku.sku,
-              value: formatMetricValue('value', sku.revenue),
+              value: formatNumberValue(sku.revenue, 'CURRENCY_THRESHOLD'),
               supporting: `${sku.units} units`,
             })),
             emptyTitle: 'No SKU activity yet',
@@ -140,15 +140,15 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
                 id: 'credit-used',
                 label: 'Credit used',
                 pct: performanceV2.credit_ops.credit_util_pct,
-                value: formatCurrency(performanceV2.credit_ops.credit_used),
-                supporting: `of ${formatMetricValue('value', performanceV2.credit_ops.credit_limit)}`,
+                value: formatNumberValue(performanceV2.credit_ops.credit_used, 'CURRENCY_EXACT'),
+                supporting: `of ${formatNumberValue(performanceV2.credit_ops.credit_limit, 'CURRENCY_EXACT')}`,
               },
               {
                 id: 'last-order',
                 label: 'Last order',
                 pct: null,
                 value: performanceV2.credit_ops.last_order_days_ago,
-                supporting: formatMetricValue('value', performanceV2.credit_ops.last_order_value),
+                supporting: formatNumberValue(performanceV2.credit_ops.last_order_value, 'CURRENCY_EXACT'),
               },
               {
                 id: 'catalog-opens',

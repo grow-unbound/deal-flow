@@ -6,7 +6,7 @@ import type { CohortDetailBuyer } from '@/hooks/useCohorts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCohortBuyersDetail } from '@/hooks/useDetailTabSearch';
 import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
-import { formatCompactInr, formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 
 type SortOption =
   | 'MTD spend (high → low)'
@@ -170,12 +170,12 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
                     {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatCompactInr(buyer.mtd_spend, 1)}</td>
+                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_EXACT')}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders_mtd}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                  {buyer.orders_mtd > 0 ? formatCompactInr(buyer.aov, 1) : '—'}
+                  {buyer.orders_mtd > 0 ? formatNumberValue(buyer.aov, 'CURRENCY_EXACT') : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatCompactInr(buyer.credit_used, 1)}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_EXACT')}</td>
                 <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
               </tr>
             );

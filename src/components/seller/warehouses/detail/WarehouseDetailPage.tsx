@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useState } from 'react';
 import { PencilIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -130,7 +131,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
           },
           {
             label: 'Sellable units',
-            value: data.meta_strip.sellable_units.toLocaleString('en-IN'),
+            value: formatNumberValue(data.meta_strip.sellable_units, 'COUNT'),
             sub: 'available to fulfill',
           },
           {

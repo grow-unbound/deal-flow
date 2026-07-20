@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { useBrandBuyers, type BrandDetailBuyer } from '@/hooks/useBrands';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type Sort = 'Spend (high → low)' | 'Spend (low → high)' | 'Orders (high → low)';
 
@@ -85,7 +85,7 @@ export function BrandBuyersTab({ brandId, buyers }: BrandBuyersTabProps) {
               <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
             </td>
             <td className="px-5 py-3.5 text-cream-900">{buyer.cohort}</td>
-            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatCompactInr(buyer.spend)}</td>
+            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatNumberValue(buyer.spend, 'CURRENCY_THRESHOLD')}</td>
             <td className="px-5 py-3.5 text-cream-900">{buyer.orders}</td>
             <td className="px-5 py-3.5 text-cream-900">{buyer.last_order ? new Date(buyer.last_order).toLocaleDateString('en-IN') : '—'}</td>
             <td className="px-5 py-3.5 text-cream-900">

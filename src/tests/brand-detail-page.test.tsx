@@ -49,8 +49,6 @@ describe('brand-detail-page integration', () => {
     expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
     fireEvent.click(screen.getByRole('tab', { name: /Buyers/i }));
     expect(screen.getByText('Singh Hospitality')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('tab', { name: /Activity/i }));
-    expect(screen.getByText('updated tenant_brand')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 });

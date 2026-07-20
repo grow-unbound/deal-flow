@@ -1,8 +1,9 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 export interface EstimateSummary {
   id: string;
@@ -64,7 +65,7 @@ export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {
         statusTone={badge.tone}
         middleLeft={estimate.notes ?? '—'}
         middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
-        amount={<span className="tabular-inline">{formatBuyerCurrency(estimate.total_amount)}</span>}
+        amount={<span className="tabular-inline">{formatNumberValue(estimate.total_amount, 'CURRENCY_EXACT')}</span>}
       />
     </div>
   );

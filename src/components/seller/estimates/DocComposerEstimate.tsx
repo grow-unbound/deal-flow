@@ -73,7 +73,7 @@ import {
 } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
 import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 const BASE_PRICING_OPTION = '__base__';
 
@@ -501,7 +501,7 @@ export function DocComposerEstimate({
     : !documentState.buyer_id || activeLines.length === 0;
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
-    ? `Over limit by ${formatCompactInr(overLimitBy)}. Estimate can still be sent — converting to SO needs approval.`
+    ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}. Estimate can still be sent — converting to SO needs approval.`
     : null;
   const isInterState = Boolean(
     buyer?.seller_state
@@ -671,7 +671,7 @@ export function DocComposerEstimate({
           },
         ]}
         title={mode === 'edit' ? 'Edit estimate' : 'Add an estimate'}
-        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this estimate.'}
+        subtitle={buyer ? `${buyer.business_name}` : 'Pick a buyer to begin composing this estimate.'}
         status={
           mode === 'edit' && documentState.status === 'sent'
             ? { label: 'Editing live draft', tone: 'live' }
@@ -888,7 +888,7 @@ export function DocComposerEstimate({
                 />
               </div>
               <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
-                Buyer sees {diffLines.filter((line) => line.diff !== 'removed').length} lines totaling {formatCompactInr(totals.grand_total)}.
+                Buyer sees {diffLines.filter((line) => line.diff !== 'removed').length} lines totaling {formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')}.
               </div>
             </div>
           </DialogBody>

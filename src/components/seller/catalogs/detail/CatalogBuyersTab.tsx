@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { useCatalogBuyers, type CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatCompactInr, formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 
 type SortOption = 'GMV (high → low)' | 'Conversions (high → low)' | 'Recently opened' | 'Buyer name (A → Z)';
 
@@ -92,7 +92,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
               <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Attributed GMV</p>
-              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{formatCompactInr(totals.gmv, 1)}</p>
+              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{formatNumberValue(totals.gmv, 'CURRENCY_THRESHOLD')}</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
                 <StatusTag label={buyer.opened_status} tone={statusTone(buyer.opened_status)} />
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders}</td>
-              <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{buyer.spend > 0 ? formatCompactInr(buyer.spend, 1) : '—'}</td>
+              <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{buyer.spend > 0 ? formatNumberValue(buyer.spend, 'CURRENCY_THRESHOLD') : '—'}</td>
               <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
               <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
             </tr>

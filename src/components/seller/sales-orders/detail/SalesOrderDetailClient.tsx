@@ -47,7 +47,7 @@ import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { mapSalesOrderDetailToComposerLines, formatEstimateChipLabel } from '@/lib/sales-orders/tenant-order-detail';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -204,7 +204,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const showSend = ui === 'received' || ui === 'confirmed' || ui === 'dispatched';
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
-  const creditWarning = buyer && overLimitBy > 0 ? `Over limit by ${formatCompactInr(overLimitBy)}.` : null;
+  const creditWarning = buyer && overLimitBy > 0 ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.` : null;
   const isInterState = Boolean(
     buyer?.seller_state
     && buyer?.place_of_supply

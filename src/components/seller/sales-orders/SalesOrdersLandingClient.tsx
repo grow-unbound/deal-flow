@@ -25,7 +25,7 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -259,24 +259,24 @@ function SalesOrdersLandingContent({
               tiles={[
                 {
                   label: 'Order value · MTD',
-                  value: formatCompactInr(landingData.kpis.gmv_mtd),
+                  value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
                   sub: `${landingData.kpis.orders_mtd} sales orders`,
                 },
                 {
                   label: 'Open orders',
-                  value: formatCompactInr(landingData.kpis.open_value),
+                  value: formatNumberValue(landingData.kpis.open_value, 'CURRENCY_THRESHOLD'),
                   sub: `${landingData.kpis.open_total} open orders`,
                   tone: 'accent',
                 },
                 {
                   label: 'Waiting to dispatch',
-                  value: formatCompactInr(pulseAggregates?.waiting_dispatch_value ?? 0),
+                  value: formatNumberValue(pulseAggregates?.waiting_dispatch_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.waiting_dispatch_count ?? 0} confirmed, awaiting dispatch`,
                   tone: 'warn',
                 },
                 {
                   label: 'Waiting for confirmation',
-                  value: formatCompactInr(pulseAggregates?.waiting_confirmation_value ?? 0),
+                  value: formatNumberValue(pulseAggregates?.waiting_confirmation_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.waiting_confirmation_count ?? 0} awaiting confirmation`,
                 },
               ]}
@@ -293,7 +293,7 @@ function SalesOrdersLandingContent({
                   rows: landingData.todays_read.needs_attention.map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.order_id} · ${formatDate(row.placed_at)}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
                 {
@@ -305,7 +305,7 @@ function SalesOrdersLandingContent({
                   rows: landingData.todays_read.to_dispatch.map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
                 {
@@ -317,7 +317,7 @@ function SalesOrdersLandingContent({
                   rows: landingData.todays_read.stock_shortage.map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
               ]}

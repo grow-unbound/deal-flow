@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { EntityAvatar } from '@/components/seller/layout';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { LocationDetailCustomer } from '@/hooks/useLocations';
 
 interface LocationCustomersTabProps {
@@ -51,13 +51,13 @@ export function LocationCustomersTab({ customers }: LocationCustomersTabProps) {
                 </div>
               </td>
               <td className="px-4 py-3 text-right font-mono text-cream-900">
-                {formatCompactInr(c.spend_mtd)}
+                {formatNumberValue(c.spend_mtd, 'CURRENCY_THRESHOLD')}
               </td>
               <td className="px-4 py-3 text-right font-mono text-cream-700">{c.orders_mtd}</td>
               <td
                 className={`px-4 py-3 text-right font-mono font-semibold ${c.outstanding_dues > 0 ? 'text-danger-600' : 'text-cream-400'}`}
               >
-                {c.outstanding_dues > 0 ? `₹${formatCompactInr(c.outstanding_dues)}` : '—'}
+                {c.outstanding_dues > 0 ? `₹${formatNumberValue(c.outstanding_dues, 'CURRENCY_THRESHOLD')}` : '—'}
               </td>
               <td className="px-4 py-3 text-cream-600">
                 {c.last_order_at

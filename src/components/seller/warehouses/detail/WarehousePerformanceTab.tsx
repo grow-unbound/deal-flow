@@ -1,7 +1,7 @@
 'use client';
 
 import { DetailCardRenderer, type DetailCardPayload } from '@/components/seller/detail';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 import type { WarehouseDetailResponse } from '@/types/tenant-warehouses';
 
 export function WarehousePerformanceTab({
@@ -60,7 +60,7 @@ export function WarehousePerformanceTab({
           subtitle: 'Routing context and replenishment pressure',
           body: {
             items: [
-              { id: 'sellable', label: 'Sellable units', value: data.stock_posture.sellable_units.toLocaleString('en-IN') },
+              { id: 'sellable', label: 'Sellable units', value: formatNumberValue(data.stock_posture.sellable_units, 'COUNT') },
               { id: 'reorder', label: 'Reorder triggered', value: String(data.stock_posture.reorder_triggered_skus) },
               { id: 'default', label: 'Default warehouse', value: data.stock_posture.is_default ? 'Yes' : 'No' },
               { id: 'location', label: 'Linked location', value: data.stock_posture.linked_location_name ?? '—' },
@@ -82,7 +82,7 @@ export function WarehousePerformanceTab({
               id: row.tenant_product_id,
               label: row.product_name,
               meta: `${row.brand_name} · ${row.last_demand_at ? `Last demand ${formatDate(row.last_demand_at)}` : 'No recorded demand'}`,
-              value: row.sellable_units.toLocaleString('en-IN'),
+              value: formatNumberValue(row.sellable_units, 'COUNT'),
               supporting: 'sellable units',
             })),
             emptyTitle: 'No idle stock SKUs right now',
@@ -102,8 +102,8 @@ export function WarehousePerformanceTab({
               id: row.tenant_product_id,
               label: row.product_name,
               meta: `${row.brand_name} · Updated ${formatDate(row.updated_at)}`,
-              value: row.qty_available.toLocaleString('en-IN'),
-              supporting: `${row.qty_reserved.toLocaleString('en-IN')} reserved`,
+              value: formatNumberValue(row.qty_available, 'COUNT'),
+              supporting: `${formatNumberValue(row.qty_reserved, 'COUNT')} reserved`,
             })),
             emptyTitle: 'No replenishment updates yet',
             emptyDescription: 'There are no recent warehouse transfer or replenishment cues yet.',

@@ -23,7 +23,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
-import { formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
@@ -211,7 +211,7 @@ function CategoriesLandingContent({
                 // true total_gmv internally but does not return it in its kpis object.
                 // This is an approximation until that field is exposed.
                 label: `Invoiced sales · ${metricSuffix}`,
-                value: formatCompactInr(rows.reduce((s, r) => s + r.gmv_mtd, 0)),
+                value: formatNumberValue(rows.reduce((s, r) => s + r.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
                 sub: `${Math.max(0, kpis.active_count - kpis.uncategorized_count)} categories`,
                 tone: 'accent',
               },
@@ -284,7 +284,7 @@ function CategoriesLandingContent({
                   // never returns it for this list, so the previous `c.growth_pct ?? 0` fallback
                   // silently rendered a permanent "flat" badge. Show the real GMV instead.
                   reason: `${c.units_mtd ?? 0} units sold`,
-                  trailing: formatMetricValue('value', c.gmv_mtd ?? 0),
+                  trailing: formatNumberValue(c.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
                 })),
               },
             ]}
@@ -354,16 +354,16 @@ function CategoriesLandingContent({
                   {row.brand_count}
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                  {row.gmv_mtd > 0 ? formatMetricValue('value', row.gmv_mtd) : '—'}
+                  {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   <GrowthPill value={row.growth_pct} />
                 </td>
                 <td className="px-5 py-3.5 text-right text-medium text-cream-700">
-                  {formatMetricValue('count', row.active_sku_count)}
+                  {formatNumberValue(row.active_sku_count, 'COUNT')}
                 </td>
                 <td className="px-5 py-3.5 text-right text-medium text-cream-700">
-                  {row.oos_sku_count > 0 ? formatMetricValue('count', row.oos_sku_count) : '—'}
+                  {row.oos_sku_count > 0 ? formatNumberValue(row.oos_sku_count, 'COUNT') : '—'}
                 </td>
                 <td className="px-4 py-3.5 text-right text-cream-400">
                   <ChevronRight size={16} />

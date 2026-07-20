@@ -44,7 +44,7 @@ import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -148,7 +148,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
-    ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+    ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.`
     : null;
   const isInterState = Boolean(
     buyer?.seller_state

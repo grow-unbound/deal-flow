@@ -6,13 +6,8 @@ import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Pressable } from '@/components/ui/pressable';
-import { cn } from '@/lib/utils';
-import {
-  BUYER_CARD_RADIUS_CLASS,
-  BUYER_TWO_LINE_TITLE_CLASS,
-  formatBuyerCurrency,
-  hasBuyerCampaignPrice,
-} from '@/lib/buyer-ui';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -260,11 +255,11 @@ export function ProductCard({
                   letterSpacing: '-0.01em',
                 }}
               >
-                {formatBuyerCurrency(item.price)}
+                {formatNumberValue(item.price, 'CURRENCY_EXACT')}
               </span>
               {showCampaignPrice ? (
                 <span className="text-xs line-through text-[var(--fg-3)]">
-                  {formatBuyerCurrency(item.resolved_price)}
+                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                 </span>
               ) : null}
             </div>

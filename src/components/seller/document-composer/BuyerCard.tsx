@@ -9,8 +9,18 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOverlayPlacement } from '@/hooks/useOverlayPlacement';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
-import type { EstimateComposerBuyerContext, EstimateComposerPriceListOption } from '@/types/estimate-composer';
-import { cn, formatCompactInr } from '@/lib/utils';
+import type {
+  EstimateComposerBuyerContext,
+  EstimateComposerCreditTone,
+  EstimateComposerPriceListOption,
+} from '@/types/estimate-composer';
+import {
+  hasEstimateComposerCreditLimit,
+  resolveEstimateComposerCreditPreviewPct,
+  resolveEstimateComposerCreditTone,
+  resolveEstimateComposerCreditUsedPct,
+} from '@/types/estimate-composer';
+import { cn, formatNumberValue } from '@/lib/utils';
 
 type BuyerCardEmptyRow = Pick<EstimateComposerBuyerContext, 'id' | 'business_name' | 'place_of_supply'>;
 
@@ -238,58 +248,76 @@ export function BuyerCardLoading() {
   );
 }
 
+const CREDIT_BAR_FILL_CLASS: Record<EstimateComposerCreditTone, string> = {
+  success: 'bg-success-500',
+  warning: 'bg-warning-500',
+  danger: 'bg-danger-500',
+};
+
+const CREDIT_BAR_PREVIEW_CLASS: Record<EstimateComposerCreditTone, string> = {
+  success: 'bg-success-400/85',
+  warning: 'bg-warning-400/85',
+  danger: 'bg-danger-400/85',
+};
+
 export function CreditBar({
   used,
   limit,
   preview,
 }: {
   used: number;
-  limit: number;
+  limit: number | null;
   preview: number;
 }) {
-  if (limit <= 0) {
-    const tone = used + preview > 0 ? 'danger' : 'success';
+  const usedPct = resolveEstimateComposerCreditUsedPct(used, limit);
+  const tone = resolveEstimateComposerCreditTone(used, limit, preview);
+  const previewPct = resolveEstimateComposerCreditPreviewPct(used, limit, preview, usedPct);
+  const hasLimit = hasEstimateComposerCreditLimit(limit);
+
+  if (!hasLimit) {
     return (
       <div>
         <div className="flex items-center justify-between text-sm text-cream-700">
           <span>Credit headroom</span>
           <span className="font-mono">
-            {formatCompactInr(used)} / ₹0
+            {formatNumberValue(used, 'CURRENCY_EXACT')} / —
           </span>
         </div>
-        <div className="credit-bar mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
-          <div className={cn('h-full rounded-full credit-bar__used', `credit-bar__used--${tone}`)} style={{ width: '100%' }} />
+        <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-cream-200">
+          <div className={cn('h-full w-full shrink-0 rounded-full', CREDIT_BAR_FILL_CLASS[tone])} />
         </div>
-        <p className="mt-1 text-xs text-cream-600">Available ₹0</p>
+        <p className="mt-1 text-xs text-cream-600">No credit limit set</p>
       </div>
     );
   }
-
-  const usedPct = Math.min((used / limit) * 100, 100);
-  const previewTotal = used + preview;
-  const previewPctRaw = (previewTotal / limit) * 100;
-  const barFull = previewPctRaw >= 100;
-  const previewPct = barFull ? 100 : Math.min(previewPctRaw, 100);
-  const tone = previewPctRaw > 100 ? 'danger' : previewPctRaw >= 80 ? 'warning' : 'success';
 
   return (
     <div>
       <div className="flex items-center justify-between text-sm text-cream-700">
         <span>Credit headroom</span>
         <span className="font-mono">
-          {formatCompactInr(used)} / {formatCompactInr(limit)}
+          {formatNumberValue(used, 'CURRENCY_EXACT')} / {formatNumberValue(limit, 'CURRENCY_EXACT')}
         </span>
       </div>
-      <div className="credit-bar mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
-        <div className="relative h-full">
-          <div className={cn('h-full rounded-full credit-bar__used', `credit-bar__used--${tone}`)} style={{ width: `${usedPct}%` }} />
+      <div
+        className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-cream-200"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(usedPct)}
+      >
+        <div
+          className={cn('h-full shrink-0 rounded-full', CREDIT_BAR_FILL_CLASS[tone])}
+          style={{ width: `${usedPct}%` }}
+        />
+        {previewPct > 0 ? (
           <div
-            className={cn('credit-bar__preview absolute h-2 rounded-full', `credit-bar__preview--${tone}`)}
-            style={{ width: `${Math.max(previewPct - usedPct, 0)}%`, marginLeft: `${usedPct}%` }}
+            className={cn('h-full shrink-0 rounded-full', CREDIT_BAR_PREVIEW_CLASS[tone])}
+            style={{ width: `${previewPct}%` }}
           />
-        </div>
+        ) : null}
       </div>
-      <p className="mt-1 text-xs text-cream-600">Available {formatCompactInr(Math.max(limit - used, 0))}</p>
+      <p className="mt-1 text-xs text-cream-600">Available {formatNumberValue(Math.max(limit - used, 0), 'CURRENCY_EXACT')}</p>
     </div>
   );
 }

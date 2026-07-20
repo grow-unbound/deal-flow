@@ -36,7 +36,7 @@ import {
   isZohoDailySyncSchedule,
 } from '@/lib/integrations/schedule';
 import { formatIntegrationDateTimeLabel } from '@/lib/integrations/format';
-import { cn } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { FieldMappingsPanel } from './FieldMappingsPanel';
 import { IntegrationJobLiveLog } from './IntegrationJobLiveLog';
 import { SyncWindowDialog, type SyncConfirmOptions } from './SyncWindowDialog';
@@ -59,10 +59,6 @@ function formatDate(value?: string | null, withTime = false) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return withTime ? 'Not yet' : 'Not set';
   return new Intl.DateTimeFormat('en-IN', withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }).format(date);
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat('en-IN').format(value);
 }
 
 type EntityGroupKey = 'locations' | 'customers' | 'products' | 'transactions';
@@ -775,8 +771,8 @@ function getEntityCards(job: IntegrationSyncJob | null, flows: IntegrationDataFl
         metaParts.push(scheduleSummary.nextRunLabel);
       }
       if (effectiveStat.stat) {
-        metaParts.push(`${formatNumber(effectiveStat.stat.failed)} failed`);
-        metaParts.push(`${formatNumber(effectiveStat.stat.pages)} pages`);
+        metaParts.push(`${formatNumberValue(effectiveStat.stat.failed, 'COUNT')} failed`);
+        metaParts.push(`${formatNumberValue(effectiveStat.stat.pages, 'COUNT')} pages`);
       }
       const meta = metaParts.length > 0 ? metaParts.join(' · ') : 'No sync yet';
 
@@ -836,8 +832,8 @@ function getSummaryChips(job: IntegrationSyncJob | null) {
     chips.push({ label: 'Window', value: job.sync_window ?? job.summary?.sync_window ?? 'Unknown' });
   }
   if (job.summary?.last_synced_at) chips.push({ label: 'Completed', value: formatDate(job.summary.last_synced_at, true) });
-  if (job.summary?.total_processed != null) chips.push({ label: 'Processed', value: formatNumber(job.summary.total_processed) });
-  if (job.summary?.total_failed != null) chips.push({ label: 'Failed', value: formatNumber(job.summary.total_failed) });
+  if (job.summary?.total_processed != null) chips.push({ label: 'Processed', value: formatNumberValue(job.summary.total_processed, 'COUNT') });
+  if (job.summary?.total_failed != null) chips.push({ label: 'Failed', value: formatNumberValue(job.summary.total_failed, 'COUNT') });
   // Never let a degraded run (a phase skipped after failing) read as plain
   // success in the UI — see server.ts's mergePostSyncWarnings.
   if (job.summary?.warnings?.length) chips.push({ label: 'Status', value: 'Completed with issues' });
@@ -1346,7 +1342,7 @@ export function ConnectedIntegrationCard({
                       </div>
                       <div className="flex items-center justify-between text-xs text-cream-600">
                         <span>
-                          {formatNumber(currentRunProgress.numerator)} / {formatNumber(currentRunProgress.denominator)}
+                          {formatNumberValue(currentRunProgress.numerator, 'COUNT')} / {formatNumberValue(currentRunProgress.denominator, 'COUNT')}
                         </span>
                         <span>{currentRunProgress.percent}% complete</span>
                       </div>
@@ -1366,7 +1362,7 @@ export function ConnectedIntegrationCard({
                             <div className="text-sm font-medium text-cream-900">{phase.label}</div>
                             <div className="mt-0.5 text-xs text-cream-600">
                               {phase.stat
-                                ? `${formatNumber(phase.stat.processed)} synced · ${formatNumber(phase.stat.failed)} failed · ${formatNumber(phase.stat.pages)} pages`
+                                ? `${formatNumberValue(phase.stat.processed, 'COUNT')} synced · ${formatNumberValue(phase.stat.failed, 'COUNT')} failed · ${formatNumberValue(phase.stat.pages, 'COUNT')} pages`
                                 : 'No progress yet'}
                             </div>
                           </div>
@@ -1472,7 +1468,7 @@ export function ConnectedIntegrationCard({
                           <StatusPill label="Done" variant="success" />
                         ) : null}
                         {!analysisComplete && !analysisRunning && !anyActive && !anyPaused && phaseTotal > 0 && phaseGroup.id !== 'analysis' ? (
-                          <span className="text-sm font-medium text-cream-900">{formatNumber(phaseTotal)} records</span>
+                          <span className="text-sm font-medium text-cream-900">{formatNumberValue(phaseTotal, 'COUNT')} records</span>
                         ) : null}
                         {phaseGroup.canSyncAgain ? (
                           <Button
@@ -1556,17 +1552,17 @@ export function ConnectedIntegrationCard({
                                     {sub.isSyncing ? (
                                       <div className="text-info-700">
                                         {sub.currentSynced
-                                          ? `${formatNumber(sub.currentSynced.processed)} synced so far`
+                                          ? `${formatNumberValue(sub.currentSynced.processed, 'COUNT')} synced so far`
                                           : sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
                                       </div>
                                     ) : sub.count > 0 ? (
-                                      <div className="font-medium text-cream-900">{formatNumber(sub.count)}</div>
+                                      <div className="font-medium text-cream-900">{formatNumberValue(sub.count, 'COUNT')}</div>
                                     ) : (
                                       <div className="text-cream-500">—</div>
                                     )}
                                     {sub.isSyncing && sub.previousSynced ? (
                                       <div className="text-xs text-cream-500">
-                                        last sync: {formatNumber(sub.previousSynced.processed)}
+                                        last sync: {formatNumberValue(sub.previousSynced.processed, 'COUNT')}
                                       </div>
                                     ) : null}
                                   </div>
@@ -1723,8 +1719,8 @@ export function ConnectedIntegrationCard({
                           <StatusPill label={card.telemetry.delete ? 'DELETE' : 'DELETE off'} variant={card.telemetry.delete ? 'success' : 'outline'} />
                         </div>
                         <div className="mt-3 space-y-1 text-sm text-cream-700">
-                          <div>today · {formatNumber(card.telemetry.processed_last_24h)} processed</div>
-                          <div>{formatNumber(card.telemetry.failed_last_24h)} failed</div>
+                          <div>today · {formatNumberValue(card.telemetry.processed_last_24h, 'COUNT')} processed</div>
+                          <div>{formatNumberValue(card.telemetry.failed_last_24h, 'COUNT')} failed</div>
                         </div>
                       </>
                     ) : null}
@@ -1807,7 +1803,7 @@ export function ConnectedIntegrationCard({
                                 <div className="text-sm font-medium text-cream-900">{phase.label}</div>
                                 <div className="mt-1 text-xs text-cream-600">
                                   {phase.stat
-                                    ? `${formatNumber(phase.stat.processed)} synced · ${formatNumber(phase.stat.failed)} failed · ${formatNumber(phase.stat.pages)} pages`
+                                    ? `${formatNumberValue(phase.stat.processed, 'COUNT')} synced · ${formatNumberValue(phase.stat.failed, 'COUNT')} failed · ${formatNumberValue(phase.stat.pages, 'COUNT')} pages`
                                     : 'No progress yet'}
                                 </div>
                                 <div className="mt-2">

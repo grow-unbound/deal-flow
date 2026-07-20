@@ -24,7 +24,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -322,7 +322,7 @@ function BrandLandingContent({
         tiles={[
           {
             label: 'Invoiced sales · 90D',
-            value: formatMetricValue('sales', portfolioGmv),
+            value: formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD'),
             sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs prior 90D`,
             tone: 'accent',
           },
@@ -381,7 +381,7 @@ function BrandLandingContent({
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
               reason: `${portfolioGmv > 0 ? Math.round((brand.gmv_mtd / portfolioGmv) * 100) : 0}% of portfolio`,
-              trailing: formatMetricValue('sales', brand.gmv_mtd),
+              trailing: formatNumberValue(brand.gmv_mtd, 'CURRENCY_THRESHOLD'),
             })),
           },
           {
@@ -397,7 +397,7 @@ function BrandLandingContent({
               initials: brand.initials,
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
-              reason: `${formatCompactInr(brand.gmv)} invoiced ${lowerLabel}`,
+              reason: `${formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD')} invoiced ${lowerLabel}`,
               trailing: `↓ ${Math.abs(brand.growth)}%`,
             })),
           },
@@ -492,7 +492,7 @@ function BrandLandingContent({
               </div>
             </td>
             <td className="px-5 py-3.5 text-right text-base text-cream-900">
-              <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatMetricValue('sales', brand.gmv)}</span>
+              <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD')}</span>
             </td>
             <td className="px-5 py-3.5 text-right text-base text-cream-900">
               <GrowthPill value={brand.growth} />
@@ -504,7 +504,7 @@ function BrandLandingContent({
                   style={{ width: `${Math.max(0, Math.min(100, brand.share))}%` }}
                 />
               </div>
-              <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatMetricValue('sales', portfolioGmv)}</p>
+              <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD')}</p>
             </td>
             <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>

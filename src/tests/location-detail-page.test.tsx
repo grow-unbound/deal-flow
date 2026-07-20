@@ -77,6 +77,7 @@ describe('location detail page', () => {
 
     expect(screen.getByRole('tab', { name: 'Performance' })).toHaveClass('border-ember-500');
     expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
-    expect(screen.getByText('Revenue trend')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Orders/i })).toBeInTheDocument();
   });
 });

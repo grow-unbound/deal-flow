@@ -97,7 +97,7 @@ export function CatalogLookbookCard({
           className={
             isList
               ? 'mt-2 flex items-center justify-between text-sm text-[var(--fg-2)]'
-              : 'mt-2 flex items-center justify-between text-[var(--b-text-sub)] font-medium tracking-[-0.01em] text-[var(--cream-700)]'
+              : 'mt-2 flex items-center justify-between text-[var(--b-text-sub)] font-medium tracking-[-0.01em]'
           }
         >
           <span>

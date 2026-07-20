@@ -7,8 +7,8 @@ import { EntityAvatar } from '@/components/seller/layout';
 import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { formatNumberForInput, parseCurrencyDigits } from '@/lib/currency-input';
-import { cn, formatInr } from '@/lib/utils';
+import { formatNumberInput, parseNumberInput } from '@/lib/number-format';
+import { cn, formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerLineInput, EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 
 import { ProductSearchDropdown } from './ProductSearchDropdown';
@@ -338,16 +338,16 @@ export function LinesTable({
                         <p className="truncate font-medium text-cream-900" title={line.product_name}>{line.product_name}</p>
                         <p className="truncate text-xs text-cream-600">
                           {line.sku}
-                          {(line.mrp ?? 0) > 0 ? ` · MRP ${formatInr(line.mrp)}` : ''}
+                          {(line.mrp ?? 0) > 0 ? ` · MRP ${formatNumberValue(line.mrp, 'CURRENCY_EXACT')}` : ''}
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}
-                          {line.base_selling_price != null ? ` · Base Price ${formatInr(line.base_selling_price)}` : ''}
+                          {line.base_selling_price != null ? ` · Base Price ${formatNumberValue(line.base_selling_price, 'CURRENCY_EXACT')}` : ''}
                         </p>
                       </div>
                     </div>
                   </td>
                   <td className="num px-2 py-3 text-right">
                     {readOnly ? (
-                      <span className="field-value tabular-nums">{formatNumberForInput(line.qty)}</span>
+                      <span className="field-value tabular-nums">{formatNumberInput(line.qty, 'COUNT')}</span>
                     ) : (
                       <div className="qty-cell editable inline-flex items-center justify-end">
                         <Input
@@ -356,9 +356,9 @@ export function LinesTable({
                           }}
                           className="h-8 w-[4.5rem] text-right tabular-nums"
                           inputMode="numeric"
-                          value={formatNumberForInput(line.qty)}
+                          value={formatNumberInput(line.qty, 'COUNT')}
                           onChange={(event) => {
-                            const next = parseCurrencyDigits(event.target.value);
+                            const next = parseNumberInput(event.target.value, 'COUNT') ?? 0;
                             if (next <= 0) return;
                             onLineChange(line.id, { qty: next });
                           }}
@@ -368,13 +368,13 @@ export function LinesTable({
                   </td>
                   <td className="num px-2 py-3 text-right">
                     {readOnly ? (
-                      <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price ?? line.base_selling_price ?? 0)}</span>
+                      <span className="field-value font-mono tabular-nums">{formatNumberValue(line.unit_price ?? line.base_selling_price ?? 0, 'CURRENCY_EXACT')}</span>
                     ) : (
-                      <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price ?? line.base_selling_price ?? 0)}</span>
+                      <span className="field-value font-mono tabular-nums">{formatNumberValue(line.unit_price ?? line.base_selling_price ?? 0, 'CURRENCY_EXACT')}</span>
                     )}
                   </td>
-                  <td className="num-display px-2 pr-6 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
-                    {formatInr(line.line_total)}
+                  <td className="num-display px-2 pr-6 py-3 text-right font-mono tabular-nums text-cream-900">
+                    {formatNumberValue(line.line_total, 'CURRENCY_EXACT')}
                   </td>
                   {!readOnly ? (
                     <td className="pl-1 pr-3 py-3 text-right">

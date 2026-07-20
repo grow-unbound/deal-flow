@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Package, ShoppingCart } from 'lucide-react';
@@ -18,7 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { roundMoney } from '@/lib/gst';
@@ -128,11 +129,11 @@ function LineItemRow({ item }: { item: TransactionLineItem }) {
           </p>
         )}
         <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-          {item.qty} {item.unit ?? 'unit'} × {formatBuyerCurrency(item.unit_price)}
+          {item.qty} {item.unit ?? 'unit'} × {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
         </p>
       </div>
       <p className="shrink-0 font-mono text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">
-        {formatBuyerCurrency(item.line_total)}
+        {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
       </p>
     </div>
   );
@@ -169,24 +170,24 @@ function TotalsBlock({
     >
       <div className="flex justify-between text-[var(--b-text-body)] text-[var(--cream-700)]">
         <span>Subtotal</span>
-        <span className="font-mono">{formatBuyerCurrency(subtotal)}</span>
+        <span className="font-mono">{formatNumberValue(subtotal, 'CURRENCY_EXACT')}</span>
       </div>
       <div className="mt-2 flex justify-between text-[var(--b-text-body)] text-[var(--cream-600)]">
         <span>GST</span>
         <span className="font-mono">
           {gstInclusive
             ? 'Included in Prices'
-            : `${formatBuyerCurrency(displayTax)}${respectBusinessPolicyTotals ? ` (${gstRate}%)` : ''}`}
+            : `${formatNumberValue(displayTax, 'CURRENCY_EXACT')}${respectBusinessPolicyTotals ? ` (${gstRate}%)` : ''}`}
         </span>
       </div>
       <div className="mt-3 flex justify-between border-t border-[var(--border-1)] pt-3">
         <span className="font-semibold text-[var(--cream-900)]">Total</span>
-        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{formatBuyerCurrency(displayTotal)}</span>
+        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{formatNumberValue(displayTotal, 'CURRENCY_EXACT')}</span>
       </div>
       {outstandingBalance != null && outstandingBalance > 0 && (
         <div className="mt-2 flex justify-between text-[var(--b-text-sub)] text-[var(--danger-500)]">
           <span>Outstanding</span>
-          <span className="font-mono font-semibold">{formatBuyerCurrency(outstandingBalance)}</span>
+          <span className="font-mono font-semibold">{formatNumberValue(outstandingBalance, 'CURRENCY_EXACT')}</span>
         </div>
       )}
     </div>

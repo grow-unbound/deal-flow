@@ -1,8 +1,9 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 export interface InvoiceSummary {
   id: string;
@@ -59,10 +60,10 @@ export function InvoiceCard({ invoice, href }: InvoiceCardProps) {
       middleRight={<span className="tabular-inline">{middleRight}</span>}
       amount={
         <div className="flex flex-col items-end gap-0.5">
-          <span className="tabular-inline">{formatBuyerCurrency(invoice.total_amount)}</span>
+          <span className="tabular-inline">{formatNumberValue(invoice.total_amount, 'CURRENCY_EXACT')}</span>
           {invoice.outstanding_balance != null && invoice.outstanding_balance > 0 && (
-            <span className="text-[var(--b-text-eyebrow)] text-[var(--danger-500)]">
-              Outstanding: {formatBuyerCurrency(invoice.outstanding_balance)}
+            <span className="text-[var(--danger-500)]">
+              Outstanding: {formatNumberValue(invoice.outstanding_balance, 'CURRENCY_EXACT')}
             </span>
           )}
         </div>

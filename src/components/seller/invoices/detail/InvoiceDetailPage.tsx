@@ -36,7 +36,7 @@ import {
 } from '@/hooks/useInvoiceDetail';
 import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
@@ -166,7 +166,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const overLimitBy = buyerContext ? totals.grand_total - buyerContext.credit_available : 0;
   const creditWarning =
     buyerContext && overLimitBy > 0 && data?.status !== 'paid' && data?.status !== 'void'
-      ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+      ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.`
       : null;
 
   if (orderManagement === false || invoicesFlag === false) {

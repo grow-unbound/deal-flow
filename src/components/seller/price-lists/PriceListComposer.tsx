@@ -31,7 +31,7 @@ import {
   formatStrategySummary,
   strategyLabelShort,
 } from '@/lib/price-list-strategy';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, formatDate, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
 import { appendArrayParam } from '@/lib/landing-filter-params';
@@ -50,26 +50,6 @@ type FilterOption = {
   name: string;
   count: number;
 };
-
-function formatInr(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return '—';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatNumberForInput(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return '';
-  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
-}
-
-function parseCurrencyInput(value: string) {
-  const digits = value.replace(/[^\d]/g, '');
-  if (!digits) return '';
-  return String(Number(digits));
-}
 
 function getInitials(value: string) {
   return value
@@ -355,7 +335,7 @@ export function PriceListComposer({
       if (Math.round(previous * 10) !== Math.round(current * 10)) {
         items.push({
           label: 'Avg discount vs base',
-          value: `-${Math.abs(previous).toFixed(1)}% → -${Math.abs(current).toFixed(1)}%`,
+          value: `-${formatNumberValue(Math.abs(previous), 'PERCENTAGE')} → -${formatNumberValue(Math.abs(current), 'PERCENTAGE')}`,
         });
       }
     }
@@ -366,7 +346,7 @@ export function PriceListComposer({
       if (Math.round(previous * 10) !== Math.round(current * 10)) {
         items.push({
           label: 'Avg margin retained',
-          value: `${previous.toFixed(1)}% → ${current.toFixed(1)}%`,
+          value: `${formatNumberValue(previous, 'PERCENTAGE')} → ${formatNumberValue(current, 'PERCENTAGE')}`,
         });
       }
     }
@@ -880,7 +860,7 @@ export function PriceListComposer({
                         </>
                       ) : (
                         <>
-                          <strong className="font-medium text-cream-900">-₹{Number(strategyValue || 0).toLocaleString('en-IN')} off base</strong> applies to all selected products. Click a row price to override it.
+                          <strong className="font-medium text-cream-900">-{formatNumberValue(Number(strategyValue || 0), 'CURRENCY_EXACT')} off base</strong> applies to all selected products. Click a row price to override it.
                         </>
                       )}
                     </div>
@@ -1039,9 +1019,9 @@ export function PriceListComposer({
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.cost_price)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.mrp)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.base_selling_price)}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.cost_price, 'CURRENCY_EXACT')}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.mrp, 'CURRENCY_EXACT')}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT')}</td>
                             <td className="px-4 py-3 text-right">
                               <div
                                 className={cn(
@@ -1056,11 +1036,11 @@ export function PriceListComposer({
                               >
                                 <span className="text-cream-700">₹</span>
                                 <input
-                                  value={formatNumberForInput(nextPrice)}
+                                  value={formatNumberInput(nextPrice, 'CURRENCY_EXACT')}
                                   onChange={(event) =>
                                     setRowOverrides((current) => ({
                                       ...current,
-                                      [product.id]: parseCurrencyInput(event.target.value),
+                                      [product.id]: String(parseNumberInput(event.target.value, 'CURRENCY_EXACT') ?? ''),
                                     }))
                                   }
                                   className="w-full bg-transparent text-right outline-none"
@@ -1075,13 +1055,13 @@ export function PriceListComposer({
                             )}>
                               {discountVsBase == null
                                 ? '—'
-                                : `${discountVsBase >= 0 ? '-' : '+'}${Math.abs(discountVsBase).toFixed(1)}%`}
+                                : `${discountVsBase >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(discountVsBase), 'PERCENTAGE')}`}
                             </td>
                             <td className={cn(
                               'px-4 py-3 text-right font-mono text-xs font-medium',
                               marginPct == null ? 'text-cream-500' : 'text-cream-900',
                             )}>
-                              {marginPct == null ? '—' : `${marginPct.toFixed(1)}%`}
+                              {marginPct == null ? '—' : `${formatNumberValue(marginPct, 'PERCENTAGE')}`}
                             </td>
                           </ComposerSelectableRow>
                         );
@@ -1135,13 +1115,13 @@ export function PriceListComposer({
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg discount vs base</span>
                     <span className="font-mono font-medium text-cream-900">
-                      {currentMetrics.avgDiscount == null ? '—' : `-${Math.abs(currentMetrics.avgDiscount).toFixed(1)}%`}
+                      {currentMetrics.avgDiscount == null ? '—' : `-${formatNumberValue(Math.abs(currentMetrics.avgDiscount), 'PERCENTAGE')}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg margin retained</span>
                     <span className="font-mono font-medium text-cream-900">
-                      {currentMetrics.avgMargin == null ? '—' : `${currentMetrics.avgMargin.toFixed(1)}%`}
+                      {currentMetrics.avgMargin == null ? '—' : `${formatNumberValue(currentMetrics.avgMargin, 'PERCENTAGE')}`}
                     </span>
                   </div>
                 </div>

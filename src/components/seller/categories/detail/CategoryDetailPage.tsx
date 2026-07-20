@@ -14,7 +14,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCategoryDetail } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
-import { formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { TenantCategory } from '@/types/tenant-categories';
 import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
@@ -81,22 +81,22 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
         // supporting value (product count) instead — see doc line 962.
         label: 'Invoiced sales 90D',
-        value: formatMetricValue('value', m.gmv_mtd),
+        value: formatNumberValue(m.gmv_mtd, 'CURRENCY_THRESHOLD'),
         sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
         label: 'Units sold',
-        value: formatMetricValue('count', m.units_90d),
+        value: formatNumberValue(m.units_90d, 'COUNT'),
         sub: `${m.sold_sku_count} products that sold`,
       },
       {
         label: 'Recent sellers low/out of stock',
-        value: formatMetricValue('count', m.oos_sku_count),
+        value: formatNumberValue(m.oos_sku_count, 'COUNT'),
         sub: `${m.low_stock_sku_count} more low-stock`,
       },
       {
         label: 'Products in category',
-        value: formatMetricValue('count', m.active_sku_count),
+        value: formatNumberValue(m.active_sku_count, 'COUNT'),
         sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
       },
     ];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
@@ -16,13 +16,12 @@ import {
   useUpdateTenantBrand,
   type BrandDetailResponse,
 } from '@/hooks/useBrands';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { BrandDetailSkeleton as SharedBrandDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { BrandDetailsTab } from './BrandDetailsTab';
 import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
 import { BrandCatalogsTab } from './BrandCatalogsTab';
-import { BrandActivityTimeline } from './BrandActivityTimeline';
 import { AddBrandCommand } from '../AddBrandCommand';
 
 const BrandPerformanceTab = dynamic(
@@ -30,7 +29,7 @@ const BrandPerformanceTab = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs' | 'activity';
+type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs';
 
 interface BrandDetailPageProps {
   id: string;
@@ -86,7 +85,7 @@ function subtitle(header: BrandDetailResponse['header']) {
     header.category,
     header.region,
     `Carried since ${carriedSince}`,
-    `${header.skus} SKUs · ${header.portfolio_share_pct.toFixed(1)}% of portfolio`,
+    `${header.skus} SKUs · ${formatNumberValue(header.portfolio_share_pct, 'PERCENTAGE')} of portfolio`,
   ];
 }
 
@@ -101,6 +100,24 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
   const updateMutation = useUpdateTenantBrand(id);
   const archiveMutation = useArchiveTenantBrand(id);
 
+  const tabs = useMemo(
+    () => [
+      { id: 'details', label: 'Details' },
+      { id: 'performance', label: 'Performance' },
+      { id: 'products', label: 'Products', badge: data?.header.skus },
+      { id: 'buyers', label: 'Buyers', badge: data?.buyers_total },
+      { id: 'catalogs', label: 'Catalogs', badge: data?.catalogs.length },
+    ],
+    [data?.buyers_total, data?.catalogs.length, data?.header.skus],
+  );
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'performance';
+
+  useEffect(() => {
+    if (activeTab !== tab) {
+      setTab(activeTab as TabId);
+    }
+  }, [activeTab, setTab, tab]);
+
   const tiles = useMemo(() => {
     if (!data) return [];
     const m = data.meta_strip_4;
@@ -110,7 +127,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         // show a fabricated growth badge. Show the doc-recommended supporting value
         // (product count) instead — see doc line 758.
         label: 'Invoiced sales 90D',
-        value: formatCompactInr(m.gmv_mtd),
+        value: formatNumberValue(m.gmv_mtd, 'CURRENCY_THRESHOLD'),
         sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
@@ -187,32 +204,24 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
-        tabs={[
-          { id: 'details', label: 'Details' },
-          { id: 'performance', label: 'Performance' },
-          { id: 'products', label: 'Products', badge: data.header.skus },
-          { id: 'buyers', label: 'Buyers', badge: data.buyers_total },
-          { id: 'catalogs', label: 'Catalogs', badge: data.catalogs.length },
-          { id: 'activity', label: 'Activity' },
-        ]}
-        active={tab}
+        tabs={tabs}
+        active={activeTab}
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'details' ? (
+      {activeTab === 'details' ? (
         <BrandDetailsTab
           details={data.details}
           isSaving={updateMutation.isPending}
           onSave={(payload) => updateMutation.mutate(payload)}
         />
       ) : null}
-      {tab === 'performance' ? (
+      {activeTab === 'performance' ? (
         <BrandPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
-      {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
-      {tab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
-      {tab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
-      {tab === 'activity' ? <BrandActivityTimeline activity={data.activity} /> : null}
+      {activeTab === 'products' ? <BrandProductsTab brandId={id} /> : null}
+      {activeTab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
+      {activeTab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
 
       <AddBrandCommand
         open={editOpen}

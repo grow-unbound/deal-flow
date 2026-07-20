@@ -228,8 +228,8 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByText('Customer activity')).toBeInTheDocument();
     expect(screen.getByText('Location comparison')).toBeInTheDocument();
     expect(screen.getByText('Recent activity')).toBeInTheDocument();
-    expect(screen.getAllByText('₹4.2L')).toHaveLength(2);
-    expect(screen.getAllByText('₹10K').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹4.20L')).toHaveLength(2);
+    expect(screen.getAllByText('₹10.00K').length).toBeGreaterThan(0);
 
     const businessFlowSection = screen.getByText('Business flow').closest('section');
     expect(businessFlowSection).not.toBeNull();

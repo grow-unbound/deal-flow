@@ -14,14 +14,13 @@ import {
 } from '@/components/seller/layout';
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
-import { cn, formatMetricValue } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   useBuyerAppLanding,
   type BuyerAppLandingResponse,
   type BuyerAppCalloutBuyer,
 } from '@/hooks/useBuyerApp';
-import { formatCompactInr } from '@/lib/utils';
 import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -141,7 +140,7 @@ function BuyerAppLandingContent({
           },
           {
             label: `App-sourced invoiced sales · ${metricSuffix}`,
-            value: formatCompactInr(snap?.invoiced_app_value_mtd ?? kpis.invoiced_value),
+            value: formatNumberValue(snap?.invoiced_app_value_mtd ?? kpis.invoiced_value, 'CURRENCY_THRESHOLD'),
             sub: `${snap?.invoiced_share_of_total_pct ?? 0}% of total invoiced sales`,
           },
           {
@@ -237,7 +236,7 @@ function BuyerAppLandingContent({
                 initials: b.initials,
                 hue: 'cream' as const,
                 name: b.name,
-                reason: `${formatMetricValue('value', b.offline_gmv ?? 0)} invoiced sales outside the app`,
+                reason: `${formatNumberValue(b.offline_gmv ?? 0, 'CURRENCY_THRESHOLD')} invoiced sales outside the app`,
                 trailing: (
                   <Link
                     href={`/customers/${b.buyer_id}`}
@@ -253,7 +252,7 @@ function BuyerAppLandingContent({
               initials: b.initials,
               hue: 'cream' as const,
               name: b.name,
-              reason: `${formatCompactInr(b.offline_gmv ?? 0)} invoiced sales outside the app`,
+              reason: `${formatNumberValue(b.offline_gmv ?? 0, 'CURRENCY_THRESHOLD')} invoiced sales outside the app`,
               trailing: (
                 <Link
                   href={`/customers/${b.buyer_id}`}
@@ -299,7 +298,7 @@ function BuyerAppLandingContent({
               tiles: [
                 {
                   label: primaryDemandKind === 'estimates' ? 'App enquiries' : 'App orders',
-                  value: formatCompactInr(primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd),
+                  value: formatNumberValue(primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd, 'CURRENCY_THRESHOLD'),
                   sub: `${snap.total_gmv_mtd > 0 ? Math.round(((primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd) / snap.total_gmv_mtd) * 100) : 0}% of total demand · ${
                     primaryDemandKind === 'estimates'
                       ? `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'enquiry' : 'enquiries'}`
@@ -309,7 +308,7 @@ function BuyerAppLandingContent({
                 primaryDemandKind === 'estimates'
                   ? {
                       label: 'Converted to order',
-                      value: formatCompactInr(snap.converted_order_value_mtd),
+                      value: formatNumberValue(snap.converted_order_value_mtd, 'CURRENCY_THRESHOLD'),
                       sub: `${snap.app_gmv_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.app_gmv_mtd) * 100) : 0}% of app enquiries · ${snap.converted_order_count_mtd} orders`,
                     }
                   : {
@@ -319,7 +318,7 @@ function BuyerAppLandingContent({
                     },
                 {
                   label: 'Invoiced sales',
-                  value: formatCompactInr(snap.invoiced_app_value_mtd),
+                  value: formatNumberValue(snap.invoiced_app_value_mtd, 'CURRENCY_THRESHOLD'),
                   sub: `${snap.invoiced_share_of_total_pct}% of total invoiced sales`,
                 },
               ],
@@ -341,8 +340,8 @@ function BuyerAppLandingContent({
                 return {
                   id: month.month,
                   label: new Date(month.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
-                  meta: `${month.app_demand_count} ${month.app_demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${formatCompactInr(month.app_demand_value)} demand`,
-                  value: formatCompactInr(month.app_invoice_value),
+                  meta: `${month.app_demand_count} ${month.app_demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${formatNumberValue(month.app_demand_value, 'CURRENCY_THRESHOLD')} demand`,
+                  value: formatNumberValue(month.app_invoice_value, 'CURRENCY_THRESHOLD'),
                   valueSupporting: `${month.app_invoice_count} invoice${month.app_invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
                 };
               })}
@@ -367,8 +366,8 @@ function BuyerAppLandingContent({
                 return {
                   id: location.location_id,
                   label: location.name,
-                  meta: `${location.demand_count} ${location.demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${location.demand_value > 0 ? formatCompactInr(location.demand_value) : '—'} demand`,
-                  value: location.invoice_value > 0 ? formatCompactInr(location.invoice_value) : '—',
+                  meta: `${location.demand_count} ${location.demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${location.demand_value > 0 ? formatNumberValue(location.demand_value, 'CURRENCY_THRESHOLD') : '—'} demand`,
+                  value: location.invoice_value > 0 ? formatNumberValue(location.invoice_value, 'CURRENCY_THRESHOLD') : '—',
                   valueSupporting: `${location.invoice_count} invoice${location.invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
                 };
               })}

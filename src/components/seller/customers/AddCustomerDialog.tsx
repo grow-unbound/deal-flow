@@ -38,7 +38,7 @@ import { Switch } from '@/components/ui/switch';
 import { BuyerCreateSchema, type BuyerCreateInput } from '@/lib/zod';
 import { INDIAN_STATES } from '@/constants';
 import { apiFetch } from '@/lib/api-fetch';
-import { formatInrInput, parseInrInput } from '@/lib/utils';
+import { formatNumberInput, parseNumberInput } from '@/lib/utils';
 import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { usePriceLists } from '@/hooks/usePriceLists';
@@ -492,8 +492,8 @@ export function AddCustomerDialog({
                                 ₹
                               </span>
                               <Input
-                                value={field.value ? formatInrInput(String(field.value)) : ''}
-                                onChange={(e) => field.onChange(parseInrInput(formatInrInput(e.target.value)) ?? 0)}
+                                value={field.value ? formatNumberInput(String(field.value), 'CURRENCY_EXACT') : ''}
+                                onChange={(e) => field.onChange(parseNumberInput(formatNumberInput(e.target.value, 'CURRENCY_EXACT'), 'CURRENCY_EXACT') ?? 0)}
                                 placeholder="0"
                                 className="rounded-l-none font-mono tabular-nums tracking-wide"
                               />
