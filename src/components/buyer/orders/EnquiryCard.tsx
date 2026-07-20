@@ -2,6 +2,7 @@
 
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 export interface EstimateSummary {
   id: string;
@@ -16,13 +17,6 @@ interface EnquiryCardProps {
   estimate: EstimateSummary;
   href?: string;
   highlighted?: boolean;
-}
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
 }
 
 function formatDate(iso: string): string {
@@ -70,7 +64,7 @@ export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {
         statusTone={badge.tone}
         middleLeft={estimate.notes ?? '—'}
         middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
-        amount={<span className="tabular-inline">{inr(estimate.total_amount)}</span>}
+        amount={<span className="tabular-inline">{formatBuyerCurrency(estimate.total_amount)}</span>}
       />
     </div>
   );

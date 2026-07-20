@@ -243,13 +243,13 @@ function CatalogsLandingContent({
         tiles={[
           {
             label: 'Customers who opened campaigns',
-            value: '—',
-            sub: 'Needs backend — unique openers are not aggregated tenant-wide yet',
+            value: `${landingData.kpis.opened_customers_mtd ?? 0}`,
+            sub: `unique customers who opened live campaigns in ${metricSuffix.toLowerCase()}`,
           },
           {
             label: 'Customers with campaign-linked demand',
-            value: '—',
-            sub: 'Needs backend — unique demand customers are not aggregated tenant-wide yet',
+            value: `${landingData.kpis.conversions_mtd ?? 0}`,
+            sub: `unique customers with linked ${primaryDemandNoun}`,
           },
           {
             label: `Campaign-linked demand value · ${metricSuffix}`,
@@ -260,7 +260,7 @@ function CatalogsLandingContent({
           {
             label: primaryDemandKind === 'estimates' ? 'Open-to-enquiry rate' : 'Open-to-order rate',
             value: `${landingData.kpis.avg_conversion_pct}%`,
-            sub: 'average across live campaigns',
+            sub: `${landingData.kpis.conversions_mtd ?? 0} of ${landingData.kpis.opened_customers_mtd ?? 0} customers`,
           },
         ]}
       />
@@ -401,7 +401,7 @@ function CatalogsLandingContent({
               <td className="px-5 py-3.5 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
-                    {(catalog.conversions ?? 0) > 0 ? catalog.conversions : '—'}
+                    {catalog.demand_customers ?? 0}
                   </p>
                   <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
                 </div>

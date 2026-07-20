@@ -6,8 +6,13 @@ import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Pressable } from '@/components/ui/pressable';
-import { cn, formatCurrency } from '@/lib/utils';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
+import {
+  BUYER_CARD_RADIUS_CLASS,
+  BUYER_TWO_LINE_TITLE_CLASS,
+  formatBuyerCurrency,
+  hasBuyerCampaignPrice,
+} from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -45,10 +50,11 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
   const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
   const productHref = `/buy/product/${item.tenant_product_id}`;
+  const showCampaignPrice = hasBuyerCampaignPrice(item);
 
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
-  const brandImg = productImgError && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
-  const categoryImg = productImgError && brandImgError && !categoryImgError && item.category_image_url ? item.category_image_url : null;
+  const brandImg = !productImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const categoryImg = !productImg && !brandImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
   const activeImg = productImg ?? brandImg ?? categoryImg;
 
   function handleQuickAdd(e: React.MouseEvent): void {
@@ -62,6 +68,8 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       internal_sku: item.internal_sku,
       image_url: item.image_urls[0],
       unit_price: item.price,
+      resolved_price: item.resolved_price,
+      has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
@@ -234,11 +242,11 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                   letterSpacing: '-0.01em',
                 }}
               >
-                {formatCurrency(item.price)}
+                {formatBuyerCurrency(item.price)}
               </span>
-              {item.has_campaign_price && item.resolved_price != null ? (
+              {showCampaignPrice ? (
                 <span className="text-xs line-through text-[var(--fg-3)]">
-                  {formatCurrency(item.resolved_price)}
+                  {formatBuyerCurrency(item.resolved_price)}
                 </span>
               ) : null}
             </div>

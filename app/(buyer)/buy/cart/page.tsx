@@ -11,9 +11,9 @@ import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
-import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -110,6 +110,8 @@ export default function CartPage() {
         internal_sku: product.internal_sku,
         image_url: product.image_urls[0],
         unit_price: product.price,
+        resolved_price: product.resolved_price,
+        has_campaign_price: product.has_campaign_price,
         gst_rate: product.gst_rate ?? gstRate,
         unit: product.default_uom ?? undefined,
         quantity,
@@ -426,6 +428,8 @@ export default function CartPage() {
                 internal_sku: product.internal_sku,
                 image_url: product.image_urls[0],
                 unit_price: product.price,
+                resolved_price: product.resolved_price,
+                has_campaign_price: product.has_campaign_price,
                 gst_rate: product.gst_rate ?? gstRate,
                 unit: product.default_uom ?? undefined,
                 quantity: 1,
@@ -441,16 +445,16 @@ export default function CartPage() {
         {/* Totals card */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
-            <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
-            <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)} isText={gstInclusive} />
-            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatCurrency(deliveryFee)} isText />
+            <TotalsRow label="Subtotal" value={formatBuyerCurrency(totals.subtotal)} />
+            <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)} isText={gstInclusive} />
+            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatBuyerCurrency(deliveryFee)} isText />
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-1)' }}>
             <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
               Total
             </span>
             <span style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg-1, var(--cream-900))' }}>
-              {formatCurrency(total)}
+              {formatBuyerCurrency(total)}
             </span>
           </div>
         </div>
@@ -602,6 +606,11 @@ function CartPageItem({
   unavailable?: boolean;
 }) {
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
+  const showCampaignPrice = Boolean(
+    item.has_campaign_price
+    && item.resolved_price != null
+    && Math.abs(item.resolved_price - item.unit_price) > 0.004,
+  );
 
   return (
     <>
@@ -636,6 +645,19 @@ function CartPageItem({
               <p className="mt-0.5 truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
                 {subline}
               </p>
+            ) : null}
+            {!unavailable ? (
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
+                <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
+                  {formatBuyerCurrency(item.unit_price)}
+                  {item.unit ? ` / ${item.unit}` : ''}
+                </span>
+                {showCampaignPrice ? (
+                  <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
+                    {formatBuyerCurrency(item.resolved_price)}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
             {unavailable ? (
               <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
@@ -692,7 +714,7 @@ function CartPageItem({
               className="tabular-nums font-semibold"
               style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
             >
-              {formatCurrency(item.line_total)}
+              {formatBuyerCurrency(item.line_total)}
             </span>
           )}
         </div>

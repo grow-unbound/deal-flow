@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
-import { formatCurrency, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
@@ -12,7 +12,7 @@ import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/Product
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -54,6 +54,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       internal_sku: item.internal_sku,
       image_url: item.image_urls[0],
       unit_price: item.price,
+      resolved_price: item.resolved_price,
+      has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
@@ -105,6 +107,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   const firstImage = !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
   const brandLogo = !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const showCampaignPrice = hasBuyerCampaignPrice(item);
   const metaParts = [item.internal_sku, item.category_name].filter(Boolean);
   const stockLabel =
     item.stock_status === 'out_of_stock'
@@ -177,9 +180,16 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
               {metaParts.join(' · ')}
             </p>
           ) : null}
-          <p className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
-            {formatCurrency(item.price)}
-          </p>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <p className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+              {formatBuyerCurrency(item.price)}
+            </p>
+            {showCampaignPrice ? (
+              <span className="text-sm line-through text-[var(--fg-3)]">
+                {formatBuyerCurrency(item.resolved_price)}
+              </span>
+            ) : null}
+          </div>
           {item.has_campaign_price && item.campaign_valid_until ? (
             <p className="text-sm text-amber-700">
               Valid until{' '}
@@ -258,9 +268,16 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         }}
       >
         <div className="flex items-center justify-between gap-4">
-          <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
-            {formatCurrency(item.price)}
-          </span>
+          <div className="flex flex-col items-end">
+            <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+              {formatBuyerCurrency(item.price)}
+            </span>
+            {showCampaignPrice ? (
+              <span className="text-sm line-through text-[var(--fg-3)]">
+                {formatBuyerCurrency(item.resolved_price)}
+              </span>
+            ) : null}
+          </div>
           {cartLine ? (
             <div
               className="flex min-h-11 items-center overflow-hidden rounded-xl"

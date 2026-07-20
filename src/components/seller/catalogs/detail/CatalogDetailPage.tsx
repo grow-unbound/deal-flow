@@ -7,9 +7,12 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useRole } from '@/hooks/useRole';
 import {
+  type CatalogNotifyRecipientFilter,
   useCatalogPublishPreview,
   useEnsureCatalogShareLink,
+  useNotifyCatalogBuyers,
   usePublishCatalog,
+  usePublishCatalogUpdates,
   useTenantCatalogDetail,
 } from '@/hooks/useCatalogs';
 import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
@@ -84,12 +87,22 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     initialState: 'performance',
   });
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'first_publish' | 'publish_updates' | 'notify_buyers'>('first_publish');
   const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError } = useTenantCatalogDetail(id);
   const publishMutation = usePublishCatalog(id);
+  const publishUpdatesMutation = usePublishCatalogUpdates(id);
+  const notifyBuyersMutation = useNotifyCatalogBuyers(id);
   const ensureShareLinkMutation = useEnsureCatalogShareLink(id);
-  const publishPreviewQuery = useCatalogPublishPreview(id, notifyWhatsappPreview, publishConfirmOpen && isSellerAdmin);
+  const publishPreviewQuery = useCatalogPublishPreview(
+    id,
+    {
+      notifyWhatsapp: dialogMode === 'notify_buyers' ? true : notifyWhatsappPreview,
+      mode: dialogMode === 'notify_buyers' ? 'notify_buyers' : 'first_publish',
+    },
+    publishConfirmOpen && isSellerAdmin && (dialogMode === 'first_publish' || dialogMode === 'notify_buyers'),
+  );
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -109,7 +122,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       },
       {
         label: 'Customers with demand',
-        value: `${data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
+        value: `${data.meta_strip_4.demand_customers ?? data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
         sub: `${data.meta_strip_4.conversion_rate}% open-to-demand`,
       },
       {
@@ -125,18 +138,71 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     ];
   }, [data]);
 
+  const publishUpdatesPreview = useMemo(() => {
+    if (!data || dialogMode !== 'publish_updates') return undefined;
+    return {
+      campaign: {
+        id: data.header.id,
+        name: data.composer?.name ?? data.header.name,
+        valid_from: data.composer?.valid_from ?? data.header.valid_until_iso ?? new Date().toISOString(),
+        valid_to: data.composer?.valid_to ?? data.header.valid_until_iso ?? null,
+        audience_label: data.header.selected_cohort.display_label,
+        products_count: data.products_summary.included_count,
+        pricing_scheme: data.composer?.price_source === 'price_list'
+          ? 'Price list'
+          : 'Manual campaign prices',
+        buyer_note: data.composer?.message ?? '',
+        hero_image_url: null,
+        header_image_url: data.header.share_url ?? '',
+        header_image_source: 'platform_default' as const,
+      },
+      whatsapp: {
+        feature_enabled: false,
+        notify_available: false,
+        can_notify: false,
+        blockers: [],
+        recipient_count: 0,
+        credits_per_message: 0,
+        estimated_credits: 0,
+        estimated_inr: 0,
+        credits_balance: 0,
+        credit_price_inr: 0,
+        template_approved: false,
+        tenant_phone_configured: false,
+        broadcast_sending_paused: false,
+        quality_rating_blocked: false,
+      },
+      template: {
+        seller_name: 'Your business',
+        seller_phone_display: 'Your business number',
+        footer_text: 'Powered by Yukti',
+        buttons: [
+          { label: 'View campaign', type: 'url' as const },
+          { label: 'Enquire now', type: 'url' as const },
+          { label: 'Unsubscribe', type: 'quick_reply' as const },
+        ],
+      },
+    };
+  }, [data, dialogMode]);
+
   if (isLoading) return <SharedCatalogDetailSkeleton />;
   if (isError || !data) {
     return <ErrorState heading="Couldn't load campaign" description="There was a problem fetching this campaign detail page." />;
   }
 
   const isDraft = data.header.status_value === 'draft';
-  const isPublished =
+  const isPublishedDirty = data.header.status_value === 'published_dirty';
+  const isPublished = data.header.status_value === 'published';
+  const hasPublishedLinkTools =
     data.header.status_raw_value === 'published'
     || data.header.status_value === 'published'
     || data.header.status_value === 'published_dirty'
     || data.header.status_value === 'scheduled'
     || data.header.status_value === 'expired';
+  const activeMutationPending =
+    publishMutation.isPending
+    || publishUpdatesMutation.isPending
+    || notifyBuyersMutation.isPending;
 
   async function handleCopyShareLink() {
     try {
@@ -153,8 +219,35 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     buyerNote: string;
     notifyScheduledFor: string | null;
     heroImageUrl: string | null;
+    recipientFilter?: CatalogNotifyRecipientFilter;
   }) {
     try {
+      if (dialogMode === 'notify_buyers') {
+        const response = await notifyBuyersMutation.mutateAsync({
+          recipientFilter: input.recipientFilter ?? 'all_eligible',
+          buyerNote: input.buyerNote,
+          notifyScheduledFor: input.notifyScheduledFor,
+        });
+        setPublishConfirmOpen(false);
+        const notifySuffix = response.whatsapp_notify
+          ? input.notifyScheduledFor
+            ? ` scheduled for ${response.whatsapp_notify.recipient_count} buyers.`
+            : ` queued for ${response.whatsapp_notify.recipient_count} buyers.`
+          : '.';
+        toast.success(`Buyer notify${notifySuffix}`);
+        return;
+      }
+
+      if (dialogMode === 'publish_updates') {
+        await publishUpdatesMutation.mutateAsync({
+          buyerNote: input.buyerNote,
+          heroImageUrl: input.heroImageUrl,
+        });
+        setPublishConfirmOpen(false);
+        toast.success('Campaign updates published.');
+        return;
+      }
+
       const response = await publishMutation.mutateAsync({
         notifyWhatsapp: input.notifyWhatsapp,
         buyerNote: input.buyerNote,
@@ -176,8 +269,14 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         },
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to publish campaign');
+      toast.error(error instanceof Error ? error.message : 'Failed to complete campaign action');
     }
+  }
+
+  function openDialog(mode: 'first_publish' | 'publish_updates' | 'notify_buyers') {
+    setDialogMode(mode);
+    setNotifyWhatsappPreview(true);
+    setPublishConfirmOpen(true);
   }
 
   return (
@@ -191,7 +290,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         title={data.header.name}
         status={{ label: data.header.status_label, tone: data.header.status_tone }}
         statusActions={
-          isPublished ? (
+          hasPublishedLinkTools ? (
             <>
               <Button
                 asChild
@@ -237,27 +336,44 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
               </Button>
             ) : null}
 
-            {isDraft ? (
-              <>
-                <Button type="button" variant="accent" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
-                  <Send size={14} />
-                  Publish campaign
-                </Button>
-                <PublishCampaignDialog
-                  campaignId={id}
-                  open={publishConfirmOpen}
-                  onOpenChange={setPublishConfirmOpen}
-                  mode="first_publish"
-                  preview={publishPreviewQuery.data}
-                  previewLoading={publishPreviewQuery.isLoading}
-                  previewError={publishPreviewQuery.error instanceof Error ? publishPreviewQuery.error.message : null}
-                  isPublishing={publishMutation.isPending}
-                  onNotifyWhatsappChange={setNotifyWhatsappPreview}
-                  onPublish={handlePublishCatalog}
-                />
-              </>
+            {isDraft || isPublishedDirty ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                onClick={() => openDialog(isDraft ? 'first_publish' : 'publish_updates')}
+                disabled={activeMutationPending}
+              >
+                <Send size={14} />
+                Publish campaign
+              </Button>
             ) : null}
 
+            {isPublished ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                onClick={() => openDialog('notify_buyers')}
+                disabled={activeMutationPending}
+              >
+                <Send size={14} />
+                Notify buyers
+              </Button>
+            ) : null}
+
+            <PublishCampaignDialog
+              campaignId={id}
+              open={publishConfirmOpen}
+              onOpenChange={setPublishConfirmOpen}
+              mode={dialogMode}
+              preview={dialogMode === 'publish_updates' ? publishUpdatesPreview : publishPreviewQuery.data}
+              previewLoading={dialogMode === 'publish_updates' ? false : publishPreviewQuery.isLoading}
+              previewError={dialogMode === 'publish_updates' ? null : publishPreviewQuery.error instanceof Error ? publishPreviewQuery.error.message : null}
+              isPublishing={activeMutationPending}
+              onNotifyWhatsappChange={setNotifyWhatsappPreview}
+              onPublish={handlePublishCatalog}
+            />
           </div>
         }
       />

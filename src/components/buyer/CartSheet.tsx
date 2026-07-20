@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { ShoppingCart, Trash2, Minus, Plus, Package } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody, SheetFooter } from '@/components/ui/sheet';
 
@@ -13,6 +14,8 @@ export interface CartItem {
   brand?: string;
   imageUrl?: string;
   price: number;
+  resolvedPrice?: number | null;
+  hasCampaignPrice?: boolean;
   unit?: string;
   quantity: number;
 }
@@ -74,7 +77,7 @@ function CartSheet({ open, onOpenChange, items, onQuantityChange, onRemove, onCh
             <div className="w-full space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-body-sm text-cream-700">Subtotal ({itemCount} items)</span>
-                <span className="text-h4 font-mono font-semibold text-cream-900">{formatCurrency(subtotal)}</span>
+                <span className="text-h4 font-mono font-semibold text-cream-900">{formatBuyerCurrency(subtotal)}</span>
               </div>
               <p className="text-caption text-cream-500">Taxes and shipping calculated at checkout</p>
               <Button
@@ -83,7 +86,7 @@ function CartSheet({ open, onOpenChange, items, onQuantityChange, onRemove, onCh
                 onClick={onCheckout}
                 disabled={checkingOut}
               >
-                {checkingOut ? 'Placing order…' : `Place order · ${formatCurrency(subtotal)}`}
+                {checkingOut ? 'Placing order…' : `Place order · ${formatBuyerCurrency(subtotal)}`}
               </Button>
             </div>
           </SheetFooter>
@@ -102,6 +105,12 @@ function CartItemRow({
   onQuantityChange: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
 }) {
+  const showCampaignPrice = hasBuyerCampaignPrice({
+    has_campaign_price: item.hasCampaignPrice,
+    price: item.price,
+    resolved_price: item.resolvedPrice,
+  });
+
   return (
     <div className="flex gap-3 items-start">
       {/* Thumbnail */}
@@ -117,7 +126,12 @@ function CartItemRow({
       <div className="flex-1 min-w-0">
         {item.brand && <p className="eyebrow text-cream-500">{item.brand}</p>}
         <p className="text-body-sm font-medium text-cream-900 truncate">{item.name}</p>
-        <p className="text-body-sm font-mono text-cream-700 mt-0.5">{formatCurrency(item.price)}{item.unit && ` / ${item.unit}`}</p>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-cream-700">
+          <p className="text-body-sm font-mono">{formatBuyerCurrency(item.price)}{item.unit && ` / ${item.unit}`}</p>
+          {showCampaignPrice ? (
+            <span className="text-caption line-through">{formatBuyerCurrency(item.resolvedPrice)}</span>
+          ) : null}
+        </div>
       </div>
 
       {/* Qty + remove */}
@@ -147,7 +161,7 @@ function CartItemRow({
           </button>
         </div>
         <p className="text-caption font-mono font-semibold text-cream-900">
-          {formatCurrency(item.price * item.quantity)}
+          {formatBuyerCurrency(item.price * item.quantity)}
         </p>
       </div>
     </div>

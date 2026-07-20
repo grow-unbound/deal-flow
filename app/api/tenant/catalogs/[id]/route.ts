@@ -26,13 +26,19 @@ import {
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
+import {
+  queueCampaignFollowupNotify,
+  queueCampaignPublishNotify,
+} from '@/lib/server/campaign-publish-notify';
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import {
+  CatalogNotifyBuyersActionSchema,
+  CatalogPublishUpdatesActionSchema,
   CatalogComposerPayloadSchema,
   CatalogPublishActionSchema,
+  type CatalogNotifyRecipientFilter,
   type CatalogComposerFilterState,
   type CatalogComposerPricingStrategy,
   type CatalogComposerTag,
@@ -71,6 +77,8 @@ const PatchSchema = z.discriminatedUnion('action', [
     valid_until: z.string().datetime(),
   }),
   CatalogPublishActionSchema,
+  CatalogPublishUpdatesActionSchema,
+  CatalogNotifyBuyersActionSchema,
   z.object({
     action: z.literal('ensure_share_link'),
   }),
@@ -142,6 +150,41 @@ function buildCatalogDraftSnapshot(payload: z.infer<typeof CatalogComposerPayloa
     tag_overrides: payload.tag_overrides,
     items: payload.items,
   };
+}
+
+function readComposerDraft(scopeValue: Record<string, unknown> | null): CatalogDraftSnapshot | null {
+  const value = (scopeValue ?? {}) as { composer_draft?: CatalogDraftSnapshot | null };
+  return value.composer_draft ?? null;
+}
+
+function resolveDetailWorkflowStatus(input: {
+  rawStatus: CatalogStatus;
+  validFrom: string | null;
+  validTo: string | null;
+  scopeValue: Record<string, unknown> | null;
+}) {
+  return resolveCampaignWorkflowStatus({
+    rawStatus: input.rawStatus,
+    validFrom: input.validFrom,
+    validTo: input.validTo,
+    hasUnpublishedChanges: Boolean(readComposerDraft(input.scopeValue)),
+  });
+}
+
+function buildScopeValueFromDraft(
+  draft: CatalogDraftSnapshot,
+) {
+  return buildCatalogScopeValue({
+    scopeType: draft.scope_type,
+    cohortId: draft.cohort_id,
+    buyerIds: draft.buyer_ids,
+    filters: draft.filters,
+    tagOverrides: draft.tag_overrides,
+    priceSource: draft.price_source,
+    priceListId: draft.price_list_id,
+    pricingStrategy: draft.pricing_strategy,
+    draft: null,
+  });
 }
 
 async function ensureTenantProducts(
@@ -636,7 +679,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const growthPct = previousGmv > 0 ? Number((((gmv - previousGmv) / previousGmv) * 100).toFixed(1)) : gmv > 0 ? 100 : 0;
-  const conversionRate = uniqueViewers > 0 ? Number(((conversionCount / uniqueViewers) * 100).toFixed(1)) : 0;
+  const demandCustomers = convertingBuyerIds.size;
+  const conversionRate = uniqueViewers > 0 ? Number(((demandCustomers / uniqueViewers) * 100).toFixed(1)) : 0;
   const abandoners = Math.max(0, uniqueViewers - convertingBuyerIds.size);
   const aov = conversionCount > 0 ? gmv / conversionCount : 0;
   const today = Date.now();
@@ -787,6 +831,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       growth_pct: growthPct,
       orders: conversionCount,
       conversions: conversionCount,
+      demand_customers: demandCustomers,
       order_count: orderCount,
       estimate_count: estimateCount,
       conversion_rate: conversionRate,
@@ -812,6 +857,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       summary: {
         orders: conversionCount,
         conversions: conversionCount,
+        demand_customers: demandCustomers,
         order_count: orderCount,
         estimate_count: estimateCount,
         gmv,
@@ -827,6 +873,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       funnel: {
         unique_viewers: uniqueViewers,
         conversions: conversionCount,
+        demand_customers: demandCustomers,
         orders: orderCount,
         estimates: estimateCount,
         gmv,
@@ -902,7 +949,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
     .from('campaigns')
-    .select('id, tenant_id, status, share_token, scope_type, scope_value')
+    .select('id, tenant_id, name, status, share_token, scope_type, scope_value, valid_from, valid_to, message, hero_image_url')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -910,6 +957,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (globalCatalogError) return NextResponse.json({ error: 'Failed to fetch catalog' }, { status: 500 });
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const globalWorkflowStatus = resolveDetailWorkflowStatus({
+    rawStatus: globalCatalog.status as CatalogStatus,
+    validFrom: globalCatalog.valid_from as string | null,
+    validTo: globalCatalog.valid_to as string | null,
+    scopeValue: (globalCatalog.scope_value ?? {}) as Record<string, unknown> | null,
+  });
+  const globalComposerDraft = readComposerDraft((globalCatalog.scope_value ?? {}) as Record<string, unknown>);
 
   if (actionParsed.success && actionParsed.data.action === 'extend_validity') {
     if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -1050,6 +1105,118 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       },
       whatsapp_notify: whatsappNotify,
     });
+  }
+
+  if (actionParsed.success && actionParsed.data.action === 'publish_catalog_updates') {
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (globalWorkflowStatus.value !== 'published_dirty' || !globalComposerDraft) {
+      return NextResponse.json({ error: 'Only live campaigns with unpublished changes can publish updates' }, { status: 400 });
+    }
+
+    const buyerNote = actionParsed.data.buyer_note?.trim() ?? globalComposerDraft.message ?? globalCatalog.message ?? null;
+    const nextScopeValue = buildScopeValueFromDraft(globalComposerDraft);
+
+    const { data: updatedCatalog, error: updateCatalogError } = await db
+      .schema('app')
+      .from('campaigns')
+      .update({
+        name: globalComposerDraft.name,
+        scope_type: globalComposerDraft.scope_type,
+        scope_value: nextScopeValue,
+        valid_from: globalComposerDraft.valid_from,
+        valid_to: globalComposerDraft.valid_to,
+        message: buyerNote || null,
+        ...(actionParsed.data.hero_image_url ? { hero_image_url: actionParsed.data.hero_image_url } : {}),
+        updated_by: claims.sub,
+      })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .select('id, status')
+      .single();
+
+    if (updateCatalogError || !updatedCatalog) {
+      return NextResponse.json({ error: 'Failed to publish campaign updates' }, { status: 500 });
+    }
+
+    const deletedAt = new Date().toISOString();
+    const { error: deleteItemsError } = await db
+      .schema('app')
+      .from('campaign_items')
+      .update({ deleted_at: deletedAt, updated_by: claims.sub })
+      .eq('campaign_id', id)
+      .is('deleted_at', null);
+
+    if (deleteItemsError) {
+      return NextResponse.json({ error: 'Failed to refresh campaign items' }, { status: 500 });
+    }
+
+    if (globalComposerDraft.items.length > 0) {
+      const { error: insertItemsError } = await db
+        .schema('app')
+        .from('campaign_items')
+        .upsert(
+          globalComposerDraft.items.map((item) => ({
+            campaign_id: id,
+            tenant_product_id: item.tenant_product_id,
+            display_order: item.display_order,
+            price_override: item.price_override ?? null,
+            deleted_at: null,
+            created_by: claims.sub,
+            updated_by: claims.sub,
+          })),
+          { onConflict: 'campaign_id,tenant_product_id' },
+        );
+
+      if (insertItemsError) {
+        return NextResponse.json({ error: 'Failed to save campaign items' }, { status: 500 });
+      }
+    }
+
+    revalidateSellerDashboardCache(claims.tenant_id);
+    return NextResponse.json({ ok: true, catalog: updatedCatalog });
+  }
+
+  if (actionParsed.success && actionParsed.data.action === 'notify_catalog_buyers') {
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (globalWorkflowStatus.value !== 'published') {
+      return NextResponse.json({ error: 'Only live published campaigns can notify buyers' }, { status: 400 });
+    }
+
+    const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
+    if (!flagEnabled) {
+      return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
+    }
+    if (actionParsed.data.notify_scheduled_for && new Date(actionParsed.data.notify_scheduled_for).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+    }
+
+    try {
+      const whatsappNotify = await queueCampaignFollowupNotify(db, {
+        tenantId: claims.tenant_id,
+        actorId: claims.sub ?? claims.tenant_id,
+        campaignId: id,
+        campaignName: (globalCatalog.name as string) ?? 'Campaign',
+        scopeType: globalCatalog.scope_type as ScopeType,
+        scopeValue: (globalCatalog.scope_value ?? {}) as Record<string, unknown>,
+        buyerNote: actionParsed.data.buyer_note?.trim() ?? (globalCatalog.message as string | null) ?? null,
+        scheduledFor: actionParsed.data.notify_scheduled_for ?? null,
+        heroImageUrl: (globalCatalog.hero_image_url as string | null) ?? null,
+        recipientFilter: actionParsed.data.recipient_filter as CatalogNotifyRecipientFilter,
+      });
+
+      revalidateSellerDashboardCache(claims.tenant_id);
+      return NextResponse.json({ ok: true, whatsapp_notify: whatsappNotify });
+    } catch (notifyError) {
+      return NextResponse.json(
+        { error: notifyError instanceof Error ? notifyError.message : 'Failed to notify buyers' },
+        { status: 500 },
+      );
+    }
   }
 
   if (actionParsed.success && actionParsed.data.action === 'ensure_share_link') {

@@ -12,6 +12,7 @@ export interface CampaignPublishPreflightInput {
   scopeType: CampaignScopeType;
   scopeValue: Record<string, unknown> | null;
   notifyWhatsapp: boolean;
+  recipientBuyerIds?: string[];
 }
 
 export interface CampaignPublishPreflightResult {
@@ -22,9 +23,11 @@ export interface CampaignPublishPreflightResult {
   estimated_credits: number;
   estimated_inr: number;
   credits_balance: number;
+  credit_price_inr: number;
   template_approved: boolean;
   tenant_phone_configured: boolean;
   broadcast_sending_paused: boolean;
+  quality_rating_blocked: boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -60,13 +63,15 @@ export async function runCampaignPublishPreflight(
     scopeValue: input.scopeValue,
   });
 
-  const eligibleBuyerIds = await resolveBroadcastAudience(db, {
-    tenantId: input.tenantId,
-    targetType: target.targetType,
-    targetCohortId: target.targetCohortId,
-    targetFilter: target.targetFilter,
-    targetBuyerIds: target.targetBuyerIds,
-  });
+  const eligibleBuyerIds = input.recipientBuyerIds
+    ? Array.from(new Set(input.recipientBuyerIds))
+    : await resolveBroadcastAudience(db, {
+        tenantId: input.tenantId,
+        targetType: target.targetType,
+        targetCohortId: target.targetCohortId,
+        targetFilter: target.targetFilter,
+        targetBuyerIds: target.targetBuyerIds,
+      });
 
   const recipientCount = eligibleBuyerIds.length;
 
@@ -132,9 +137,11 @@ export async function runCampaignPublishPreflight(
       estimated_credits: estimatedCredits,
       estimated_inr: estimatedInr,
       credits_balance: creditsBalance,
+      credit_price_inr: creditPriceInr,
       template_approved: templateApproved,
       tenant_phone_configured: tenantPhoneConfigured,
       broadcast_sending_paused: broadcastSendingPaused,
+      quality_rating_blocked: platformState?.quality_rating_state === 'red',
     };
   }
 
@@ -166,8 +173,10 @@ export async function runCampaignPublishPreflight(
     estimated_credits: estimatedCredits,
     estimated_inr: estimatedInr,
     credits_balance: creditsBalance,
+    credit_price_inr: creditPriceInr,
     template_approved: templateApproved,
     tenant_phone_configured: tenantPhoneConfigured,
     broadcast_sending_paused: broadcastSendingPaused,
+    quality_rating_blocked: platformState?.quality_rating_state === 'red',
   };
 }

@@ -2,6 +2,7 @@
 
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 export interface InvoiceSummary {
   id: string;
@@ -16,13 +17,6 @@ export interface InvoiceSummary {
 interface InvoiceCardProps {
   invoice: InvoiceSummary;
   href?: string;
-}
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
 }
 
 function formatDate(iso: string): string {
@@ -65,10 +59,10 @@ export function InvoiceCard({ invoice, href }: InvoiceCardProps) {
       middleRight={<span className="tabular-inline">{middleRight}</span>}
       amount={
         <div className="flex flex-col items-end gap-0.5">
-          <span className="tabular-inline">{inr(invoice.total_amount)}</span>
+          <span className="tabular-inline">{formatBuyerCurrency(invoice.total_amount)}</span>
           {invoice.outstanding_balance != null && invoice.outstanding_balance > 0 && (
             <span className="text-[var(--b-text-eyebrow)] text-[var(--danger-500)]">
-              Outstanding: {inr(invoice.outstanding_balance)}
+              Outstanding: {formatBuyerCurrency(invoice.outstanding_balance)}
             </span>
           )}
         </div>

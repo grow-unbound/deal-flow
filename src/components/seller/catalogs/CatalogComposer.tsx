@@ -474,9 +474,11 @@ export function CatalogComposer({
         estimated_credits: 0,
         estimated_inr: 0,
         credits_balance: 0,
+        credit_price_inr: 0,
         template_approved: false,
         tenant_phone_configured: false,
         broadcast_sending_paused: false,
+        quality_rating_blocked: false,
       },
       template: {
         seller_name: 'Your business',

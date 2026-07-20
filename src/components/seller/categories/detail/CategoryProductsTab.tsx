@@ -116,7 +116,7 @@ export function CategoryProductsTab({ products, categoryId: _categoryId }: Categ
                 )}
               </td>
               <td className="px-5 py-3.5 text-right">
-                <DaysCoverBadge value={Math.round(p.days_cover)} />
+                <DaysCoverBadge value={p.days_cover == null ? null : Math.round(p.days_cover)} />
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-700">
                 {p.units_mtd > 0 ? p.units_mtd : '—'}

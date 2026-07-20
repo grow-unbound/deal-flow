@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
-import { formatCurrency } from '@/lib/utils';
+import { formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { Button } from '@/components/ui/button';
 import { Pressable } from '@/components/ui/pressable';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -102,13 +102,13 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
                 className="text-base font-semibold"
                 style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
               >
-                {formatCurrency(totals.subtotal)}
+                {formatBuyerCurrency(totals.subtotal)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
               <span>{gstInclusive ? 'GST included in prices' : 'GST'}</span>
               <span className="font-mono" style={{ color: 'var(--fg-1, var(--cream-900))' }}>
-                {gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)}
+                {gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
@@ -118,7 +118,7 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
             <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
               <span className="text-sm font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))' }}>Total</span>
               <span className="text-base font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
-                {formatCurrency(totals.total)}
+                {formatBuyerCurrency(totals.total)}
               </span>
             </div>
             {availableItems.length > 0 ? (
@@ -158,6 +158,12 @@ function CartItemRow({
   onQtyChange: (tenant_product_id: string, qty: number) => void;
   onRemove: (tenant_product_id: string) => void;
 }) {
+  const showCampaignPrice = hasBuyerCampaignPrice({
+    has_campaign_price: item.has_campaign_price,
+    price: item.unit_price,
+    resolved_price: item.resolved_price,
+  });
+
   return (
     <div className="flex gap-3 items-start">
       {/* Thumbnail */}
@@ -188,9 +194,16 @@ function CartItemRow({
             {item.internal_sku}
           </p>
         )}
-        <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
-          <span className="tabular-inline">{formatCurrency(item.unit_price)}</span>{item.unit ? ` / ${item.unit}` : ''}
-        </p>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+          <p className="text-xs">
+            <span className="tabular-inline">{formatBuyerCurrency(item.unit_price)}</span>{item.unit ? ` / ${item.unit}` : ''}
+          </p>
+          {showCampaignPrice ? (
+            <span className="text-[11px] line-through">
+              {formatBuyerCurrency(item.resolved_price)}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Qty + remove */}
@@ -232,7 +245,7 @@ function CartItemRow({
         </div>
 
         <p className="text-xs font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
-          {formatCurrency(item.line_total)}
+          {formatBuyerCurrency(item.line_total)}
         </p>
       </div>
     </div>

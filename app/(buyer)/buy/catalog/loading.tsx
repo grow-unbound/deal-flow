@@ -27,7 +27,7 @@ export default function CatalogLoading() {
           <div className="-mx-1 flex gap-2 overflow-hidden px-1">
             {Array.from({ length: 2 }).map((_, i) => (
               <div key={i} className="w-[280px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200">
-                <div className="aspect-[19/10] w-full animate-pulse bg-cream-100" />
+                <div className="aspect-[15/8] w-full animate-pulse bg-cream-100" />
                 <div className="space-y-2 bg-white px-5 py-4">
                   <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
                   <div className="h-4 w-full animate-pulse rounded bg-cream-200" />

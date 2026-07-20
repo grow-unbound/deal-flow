@@ -17,6 +17,8 @@ export interface BuyerCartItem {
   internal_sku?: string;
   image_url?: string;
   unit_price: number;
+  resolved_price?: number | null;
+  has_campaign_price?: boolean;
   gst_rate?: number | null;
   unit?: string;
   quantity: number;

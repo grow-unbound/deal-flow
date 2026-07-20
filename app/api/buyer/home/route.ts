@@ -50,7 +50,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         latest_promotions_preview: [],
         recent_activity: { items: [], next_cursor: null },
         bestsellers: [],
-        buy_again: [],
         preview_message: 'Preview mode — buyer-specific numbers show as 0.',
         as_of: new Date().toISOString(),
       };
@@ -343,18 +342,16 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     // Fetch recommendation data (non-blocking — empty arrays on failure)
     let bestsellers: import('@/types/buyer').BuyerCatalogItem[] = [];
-    let buyAgain: import('@/types/buyer').BuyerCatalogItem[] = [];
     try {
       const recoRes = await supabaseAdmin
         .schema('app')
         .rpc('reco_get_home', { p_tenant_id: tenantId, p_buyer_id: buyerId });
 
       if (!recoRes.error && recoRes.data) {
-        const recoData = recoRes.data as { bestsellers?: string[]; buy_again?: string[] };
+        const recoData = recoRes.data as { bestsellers?: string[] };
         const bestsellerIds = (recoData.bestsellers ?? []).slice(0, 12);
-        const buyAgainIds = (recoData.buy_again ?? []).slice(0, 10);
 
-        const [bestsellerMap, buyAgainMap] = await Promise.all([
+        const [bestsellerMap] = await Promise.all([
           bestsellerIds.length > 0
             ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
                 tenantId,
@@ -367,25 +364,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
                 priceOverrides: new Map(),
               })
             : Promise.resolve(new Map<string, import('@/types/buyer').BuyerCatalogItem>()),
-          buyAgainIds.length > 0
-            ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
-                tenantId,
-                buyerId,
-                productIds: buyAgainIds,
-                allowedTenantBrandIds,
-                campaignId: null,
-                campaignName: null,
-                campaignValidUntil: null,
-                priceOverrides: new Map(),
-              })
-            : Promise.resolve(new Map<string, import('@/types/buyer').BuyerCatalogItem>()),
         ]);
 
         bestsellers = bestsellerIds
           .map((id) => bestsellerMap.get(id))
-          .filter((item): item is NonNullable<typeof item> => Boolean(item));
-        buyAgain = buyAgainIds
-          .map((id) => buyAgainMap.get(id))
           .filter((item): item is NonNullable<typeof item> => Boolean(item));
       }
     } catch {
@@ -418,7 +400,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       latest_promotions_preview: promotionsPreview,
       recent_activity: activity,
       bestsellers,
-      buy_again: buyAgain,
       as_of: now.toISOString(),
     };
 

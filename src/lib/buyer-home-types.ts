@@ -49,8 +49,6 @@ export interface BuyerHomeResponse {
   recent_activity: BuyerActivityFeedResponse;
   // W1 — Bestsellers (weighted by invoice×2 + order×1 + estimate×0.5)
   bestsellers: BuyerCatalogItem[];
-  // W4 — Buy Again (from buyer's purchase history; empty if no history)
-  buy_again: BuyerCatalogItem[];
   preview_message?: string | null;
   as_of?: string;
 }

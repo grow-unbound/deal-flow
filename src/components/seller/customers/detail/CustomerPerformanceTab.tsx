@@ -3,7 +3,7 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { DetailCardRenderer, PerformanceCard, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
-import { formatCompactInr, formatCurrency } from '@/lib/utils';
+import { formatCompactInr, formatCurrency, formatMetricValue } from '@/lib/utils';
 
 interface CustomerPerformanceTabProps {
   performance: TenantCustomerDetailResponse['performance'];
@@ -119,7 +119,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
               id: `${sku.sku}-${index}`,
               label: sku.name,
               meta: sku.sku,
-              value: formatCompactInr(sku.revenue, 1),
+              value: formatMetricValue('value', sku.revenue),
               supporting: `${sku.units} units`,
             })),
             emptyTitle: 'No SKU activity yet',
@@ -141,14 +141,14 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
                 label: 'Credit used',
                 pct: performanceV2.credit_ops.credit_util_pct,
                 value: formatCurrency(performanceV2.credit_ops.credit_used),
-                supporting: `of ${formatCurrency(performanceV2.credit_ops.credit_limit)}`,
+                supporting: `of ${formatMetricValue('value', performanceV2.credit_ops.credit_limit)}`,
               },
               {
                 id: 'last-order',
                 label: 'Last order',
                 pct: null,
                 value: performanceV2.credit_ops.last_order_days_ago,
-                supporting: formatCurrency(performanceV2.credit_ops.last_order_value),
+                supporting: formatMetricValue('value', performanceV2.credit_ops.last_order_value),
               },
               {
                 id: 'catalog-opens',
