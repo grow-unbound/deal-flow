@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
   const { data: estimate, error: estErr } = await admin
     .schema('app')
     .from('estimates')
-    .select('id, tenant_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at')
+    .select('id, tenant_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at, place_of_supply')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();

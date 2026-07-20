@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
@@ -603,6 +604,29 @@ function formatEstimateNumber(sequence: number): string {
   return `EST-${year}-${String(sequence).padStart(5, '0')}`;
 }
 
+const EstimateCreateItemSchema = z.object({
+  tenant_product_id: z.string().uuid(),
+  qty: z.number().positive(),
+  unit_price: z.number().min(0),
+  disc_pct: z.number().min(0).max(100),
+  tax_pct: z.number().min(0).max(100),
+  scheme_tag: z.string().nullable().optional(),
+});
+
+const EstimateCreatePayloadSchema = z.object({
+  buyer_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
+  estimate_date: z.string().optional(),
+  valid_until: z.string().optional(),
+  buyer_po_ref: z.string().max(255).optional(),
+  place_of_supply: z.string().max(120).optional(),
+  seller_note: z.string().max(8000).optional(),
+  freight: z.number().min(0).optional(),
+  discount_flat: z.number().min(0).optional(),
+  round_off: z.number().optional(),
+  items: z.array(EstimateCreateItemSchema).optional(),
+}).optional();
+
 export async function POST(request: NextRequest) {
   try {
     const claims = await getVerifiedClaims(request);
@@ -631,6 +655,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
+    let rawBody: unknown = {};
+    try { rawBody = await request.json(); } catch { /* empty body is fine */ }
+    const parsedPayload = EstimateCreatePayloadSchema.safeParse(rawBody);
+    const payload = parsedPayload.success ? parsedPayload.data : undefined;
+
     const db = supabaseAdmin as any;
 
     const estimateCountRes = await db
@@ -645,36 +674,51 @@ export async function POST(request: NextRequest) {
     }
 
     const today = isoDateInTimeZone(new Date());
-    const validUntil = offsetIsoDateInTimeZone(new Date(), 14);
+    const defaultValidUntil = offsetIsoDateInTimeZone(new Date(), 14);
+    const validUntil = payload?.valid_until ?? defaultValidUntil;
 
     const estimateNumber = formatEstimateNumber((estimateCountRes.count ?? 0) + 1);
     const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
-    const locationId = resolveDefaultSellerLocationId(claims, availableLocations);
+    const resolvedDefaultLocationId = resolveDefaultSellerLocationId(claims, availableLocations);
+    const locationId = payload?.location_id ?? resolvedDefaultLocationId;
     if (!locationId) {
       return NextResponse.json({ error: 'No accessible location available for this user' }, { status: 400 });
     }
+
+    type CreateItem = z.infer<typeof EstimateCreateItemSchema>;
+    const items: CreateItem[] = payload?.items ?? [];
+    const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price * (1 - item.disc_pct / 100), 0);
+    const taxAmount = items.reduce((sum, item) => {
+      const taxable = item.qty * item.unit_price * (1 - item.disc_pct / 100);
+      return sum + taxable * (item.tax_pct / 100);
+    }, 0);
+    const discountFlat = payload?.discount_flat ?? 0;
+    const freight = payload?.freight ?? 0;
+    const roundOff = payload?.round_off ?? 0;
+    const grandTotal = Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff;
+
     const { data: inserted, error: insertError } = await db
       .schema('app')
       .from('estimates')
       .insert({
         tenant_id: claims.tenant_id,
         location_id: locationId,
-        buyer_id: null,
+        buyer_id: payload?.buyer_id ?? null,
         estimate_number: estimateNumber,
         status: 'draft',
         source: 'seller',
-        subtotal: 0,
-        tax_amount: 0,
-        total_amount: 0,
-        estimate_date: today,
+        subtotal,
+        tax_amount: taxAmount,
+        total_amount: grandTotal,
+        estimate_date: payload?.estimate_date ?? today,
         valid_until: validUntil,
         expires_at: `${validUntil}T23:59:59.000Z`,
-        buyer_po_ref: null,
-        place_of_supply: '',
-        notes: null,
-        discount_flat: 0,
-        freight: 0,
-        round_off: 0,
+        buyer_po_ref: payload?.buyer_po_ref || null,
+        place_of_supply: payload?.place_of_supply?.trim() ?? '',
+        notes: payload?.seller_note || null,
+        discount_flat: discountFlat,
+        freight,
+        round_off: roundOff,
         created_by: claims.sub,
         updated_by: claims.sub,
       })
@@ -682,13 +726,41 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError || !inserted?.id) {
-      console.error('[POST /api/tenant/estimates] draft insert error', insertError);
-      return NextResponse.json({ error: 'Failed to create estimate draft' }, { status: 500 });
+      console.error('[POST /api/tenant/estimates] insert error', insertError);
+      return NextResponse.json({ error: 'Failed to create estimate' }, { status: 500 });
+    }
+
+    if (items.length > 0) {
+      const { error: itemsError } = await db
+        .schema('app')
+        .from('estimate_items')
+        .insert(
+          items.map((item) => {
+            const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
+            return {
+              estimate_id: inserted.id,
+              tenant_product_id: item.tenant_product_id,
+              qty: item.qty,
+              unit_price: item.unit_price,
+              discount_pct: item.disc_pct,
+              disc_pct: item.disc_pct,
+              tax_rate: item.tax_pct,
+              tax_pct: item.tax_pct,
+              line_total: discounted + discounted * (item.tax_pct / 100),
+              scheme_tag: item.scheme_tag ?? null,
+              created_by: claims.sub,
+              updated_by: claims.sub,
+            };
+          }),
+        );
+      if (itemsError) {
+        console.error('[POST /api/tenant/estimates] items insert error', itemsError);
+      }
     }
 
     const composerDoc = await loadEstimateDocument(supabaseAdmin as DbClient, claims.tenant_id, inserted.id, claims.role ?? null, claims);
     if (!composerDoc || composerDoc === 'forbidden') {
-      return NextResponse.json({ error: 'Draft created but could not be loaded' }, { status: 500 });
+      return NextResponse.json({ error: 'Estimate created but could not be loaded' }, { status: 500 });
     }
     return NextResponse.json({ data: composerDoc.composerPayload });
   } catch (error) {

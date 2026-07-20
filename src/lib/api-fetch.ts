@@ -52,13 +52,20 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${session.access_token}` };
 }
 
-export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+export type ApiFetchInit = RequestInit & {
+  /** Bypass browser HTTP cache — use for auth-gated detail views that must reflect latest status. */
+  fresh?: boolean;
+};
+
+export async function apiFetch(url: string, init?: ApiFetchInit): Promise<Response> {
+  const { fresh, ...requestInit } = init ?? {};
   const authHeaders = await getAuthHeaders();
   return fetch(url, {
-    ...init,
+    ...requestInit,
+    cache: fresh ? 'no-store' : requestInit.cache,
     headers: {
       ...authHeaders,
-      ...init?.headers,
+      ...requestInit.headers,
     },
   });
 }

@@ -157,10 +157,10 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
                   </Button>
                   <span className="text-[11px] text-cream-500 pr-0.5">
                     {formatRefreshedAt(data.details_rules.last_refreshed_at)}
-  </span>
+   </span>
                 </div>
               ) : null}
-              <Button variant="accent" size="sm" className="h-9 px-4" asChild>
+              <Button variant="outline" size="sm" className="h-9 px-4" asChild>
                 <Link href={`/customer-groups/${id}/edit`}>
                   <Pencil size={16} strokeWidth={2} aria-hidden />
                   Edit customer group

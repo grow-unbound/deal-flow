@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
+import { sendOrderReceivedBuyer } from '@/lib/server/whatsapp';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const SendSchema = z.object({
@@ -55,7 +57,7 @@ export async function PATCH(
     const { data: order, error: orderError } = await db
       .schema('app')
       .from('orders')
-      .select('id, tenant_id, status')
+      .select('id, tenant_id, status, buyer_id, location_id, order_number, total_amount')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -68,6 +70,42 @@ export async function PATCH(
     }
     if (order.status === 'cancelled' || order.status === 'delivered') {
       return NextResponse.json({ error: 'Cannot send a cancelled or delivered order.' }, { status: 400 });
+    }
+
+    if (parsed.data.channel === 'whatsapp') {
+      const buyerId = (order.buyer_id as string | null) ?? null;
+      if (!buyerId) {
+        return NextResponse.json({ error: 'This order does not have a buyer linked yet.' }, { status: 400 });
+      }
+
+      const ctx = await fetchWhatsappNotificationContext(
+        claims.tenant_id,
+        buyerId,
+        (order.location_id as string | null) ?? null,
+        'order_placed',
+      );
+      if (!ctx) {
+        return NextResponse.json({ error: 'WhatsApp send is unavailable for this order.' }, { status: 409 });
+      }
+
+      const { count: itemCount } = await db
+        .schema('app')
+        .from('order_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('order_id', id)
+        .is('deleted_at', null);
+
+      const sent = await sendOrderReceivedBuyer(
+        ctx,
+        id,
+        String(order.order_number ?? ''),
+        Number(order.total_amount ?? 0),
+        itemCount ?? 0,
+      );
+
+      if (!sent) {
+        return NextResponse.json({ error: 'Failed to send sales order via WhatsApp' }, { status: 409 });
+      }
     }
 
     const { error: auditError } = await db.schema('app').from('audit_log').insert({

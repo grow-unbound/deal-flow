@@ -34,6 +34,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import {
   useCancelSalesOrder,
   useDeliverSalesOrder,
@@ -80,10 +82,17 @@ function formatPlacedAt(iso: string | null): string {
 export function SalesOrderDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
   const { createInvoices } = useCreateFlags();
   const { data, isLoading, isError, error } = useSalesOrderDetail(id);
+  useDocumentWhatsAppRealtime({
+    kind: 'order',
+    documentId: id,
+    tenantId: currentTenantId,
+    enabled: Boolean(data),
+  });
   const dispatchMut = useDispatchSalesOrder(id);
   const deliverMut = useDeliverSalesOrder(id);
   const cancelMut = useCancelSalesOrder(id);

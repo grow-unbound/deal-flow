@@ -185,7 +185,7 @@ export function LinesTable({
                 (activeLines.length === 0 ? 'Add your first product' : `${activeLines.length} line${activeLines.length === 1 ? '' : 's'}`)}
           </p>
           <p className="sub mt-1 text-sm text-cream-600">
-            {readOnly ? 'View only — duplicate or edit to make changes.' : description ?? 'Pricelist auto-applies. Adjust qty, price, or discount as needed.'}
+            {readOnly ? 'Edit to make changes.' : description ?? 'Pricelist auto-applies. Adjust qty, price, or discount as needed.'}
           </p>
         </div>
         {!readOnly ? (

@@ -26,6 +26,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useInvoiceDetail,
@@ -54,9 +56,16 @@ const INVOICE_CHIP_LABEL: Record<InvoiceViewBandStatus, string> = {
 export function InvoiceDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
   const { data, isLoading, isError, error } = useInvoiceDetail(id);
+  useDocumentWhatsAppRealtime({
+    kind: 'invoice',
+    documentId: id,
+    tenantId: currentTenantId,
+    enabled: Boolean(data),
+  });
   const payMut = useMarkInvoicePaid(id);
   const voidMut = useVoidInvoice(id);
   const remindMut = useSendInvoiceReminder(id);

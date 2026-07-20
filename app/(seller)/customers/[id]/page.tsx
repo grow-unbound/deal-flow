@@ -312,6 +312,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           onOpenChange={setEditOpen}
           mode="edit"
           customerId={id}
+          assignedPriceListName={data.details.assigned_price_list}
           defaultValues={{
             business_name: data.details.business_name,
             contact_name: data.details.contact_name ?? '',

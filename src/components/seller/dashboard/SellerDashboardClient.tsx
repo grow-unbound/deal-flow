@@ -587,7 +587,7 @@ export function SellerDashboardClient({
   }
 
   const subtitle = dashboard.role === 'seller_admin'
-    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'} · this month’s sales and current operations.`
+    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'}`
     : `Action centre for ${dashboard.tenant.location_names.length > 0 ? dashboard.tenant.location_names.join(', ') : 'your assigned locations'} · confirmations, collections, and follow-ups right now.`;
 
   return (

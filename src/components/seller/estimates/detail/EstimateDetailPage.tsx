@@ -40,7 +40,9 @@ import {
   useVoidEstimate,
   seedEstimateComposerCache,
 } from '@/hooks/useEstimates';
+import { useAuth } from '@/contexts/AuthContext';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
+import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
@@ -55,10 +57,17 @@ const noop = () => {};
 export function EstimateDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
   const { createSalesOrders, createInvoices } = useCreateFlags();
   const { data, isLoading, isError, error } = useEstimateDetail(id);
+  useDocumentWhatsAppRealtime({
+    kind: 'estimate',
+    documentId: id,
+    tenantId: currentTenantId,
+    enabled: Boolean(data),
+  });
   const convertMut = useConvertEstimateToOrder(id);
   const convertToInvoiceMut = useConvertEstimateToInvoice(id);
   const voidMut = useVoidEstimate(id);
@@ -220,7 +229,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
           { label: data.estimate_number, current: true },
         ]}
         title={data.estimate_number}
-        subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address} · ${buyer.place_of_supply}` : 'No buyer assigned.'}
+        subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address}` : 'No buyer assigned.'}
         status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
         titleActions={(
           <>
