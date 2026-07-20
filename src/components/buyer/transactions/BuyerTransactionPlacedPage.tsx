@@ -189,7 +189,7 @@ export function BuyerTransactionPlacedPage({
         <button
           type="button"
           onClick={() => window.history.back()}
-          className="flex h-8 w-8 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--cream-800)]"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--cream-800)] transition-colors active:bg-[var(--cream-100)]"
           aria-label="Go back"
         >
           <ChevronLeft className="h-5 w-5" />

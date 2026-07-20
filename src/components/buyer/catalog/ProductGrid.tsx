@@ -12,6 +12,7 @@ interface ProductGridProps {
   loadingMore?: boolean;
   sentinelIndex?: number;
   sentinelRef?: RefObject<HTMLDivElement>;
+  showPromotionBadge?: boolean;
 }
 
 export function ProductGrid({
@@ -20,6 +21,7 @@ export function ProductGrid({
   loadingMore = false,
   sentinelIndex = -1,
   sentinelRef,
+  showPromotionBadge = true,
 }: ProductGridProps) {
   if (loading) return <LoadingSkeleton count={6} />;
 
@@ -29,7 +31,7 @@ export function ProductGrid({
     <div className="grid grid-cols-2 gap-2 px-2 pb-3">
       {items.map((item, index) => (
         <Fragment key={item.id}>
-          <ProductCard item={item} />
+          <ProductCard item={item} showPromotionBadge={showPromotionBadge} />
           {index === sentinelIndex && sentinelRef ? (
             <div ref={sentinelRef} className="col-span-2 h-px" aria-hidden />
           ) : null}

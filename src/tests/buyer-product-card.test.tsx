@@ -113,6 +113,83 @@ describe('buyer product card', () => {
     expect(screen.getByRole('button', { name: /add to cart/i })).toBeDisabled();
   });
 
+  it('shows a promotion badge for campaign-priced products outside campaign detail views', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    render(
+      <ProductCard
+        item={{
+          id: 'promo-1',
+          tenant_product_id: 'tp-promo-1',
+          campaign_id: 'camp-1',
+          campaign_name: 'Monsoon Promo',
+          internal_sku: 'PROMO-001',
+          display_name: 'Promo Camera',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          category_id: null,
+          category_name: null,
+          mrp: 10000,
+          price: 8500,
+          has_campaign_price: true,
+          resolved_price: 10000,
+          default_uom: 'box',
+          pack_size: null,
+          campaign_valid_until: '2026-07-31T00:00:00.000Z',
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 10,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Promotion')).toBeInTheDocument();
+  });
+
+  it('can suppress the promotion badge on campaign detail views', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    render(
+      <ProductCard
+        showPromotionBadge={false}
+        item={{
+          id: 'promo-2',
+          tenant_product_id: 'tp-promo-2',
+          campaign_id: 'camp-2',
+          campaign_name: 'Flash Promo',
+          internal_sku: 'PROMO-002',
+          display_name: 'Promo Dome Camera',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          category_id: null,
+          category_name: null,
+          mrp: 10000,
+          price: 8200,
+          has_campaign_price: true,
+          resolved_price: 10000,
+          default_uom: 'box',
+          pack_size: null,
+          campaign_valid_until: '2026-07-31T00:00:00.000Z',
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 10,
+        }}
+      />,
+    );
+
+    expect(screen.queryByText('Promotion')).not.toBeInTheDocument();
+  });
+
   it('falls back to the category image when the product has no image', () => {
     useCartMock.mockReset();
     useCartMock.mockReturnValue({

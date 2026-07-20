@@ -10,7 +10,6 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
-import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
@@ -74,13 +73,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     updateQty(item.tenant_product_id, cartLine.quantity + 1);
   }
 
-  const searchHref = item
-    ? buildBuyerSearchHref({
-        category_id: item.category_id ?? undefined,
-        brand_id: item.brand_id ?? undefined,
-      })
-    : buildBuyerSearchHref({});
-
   if (loading) {
     return <ProductDetailLoadingSkeleton />;
   }
@@ -88,7 +80,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   if (error || !item) {
     return (
       <div className="flex min-h-[50vh] flex-col" style={{ background: 'var(--bg-base)' }}>
-        <BuyerDetailShell title="Product" searchHref={buildBuyerSearchHref({})}>
+        <BuyerDetailShell title="Product" hideSearch>
           <div className="flex flex-col gap-4 px-4 py-8">
             <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
             <button
@@ -122,7 +114,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   return (
     <div className="flex min-h-[50vh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
-      <BuyerDetailShell title="Product" searchHref={searchHref}>
+      <BuyerDetailShell title="Product" hideSearch>
         {/* Hero image */}
         <div
           className="relative -mx-3 w-[calc(100%+1.5rem)] bg-[var(--bg-surface)]"

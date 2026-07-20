@@ -339,19 +339,23 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
               </div>
             )}
             {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center px-6 py-16 text-center gap-3">
-                <p className="text-3xl">&#x1F50D;</p>
-                <p className="text-base font-semibold text-[var(--fg-1)]">No products found</p>
-                <p className="text-sm text-[var(--fg-3)]">Try adjusting your search or filters</p>
-                {hasActiveFilters && (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="mt-2 text-sm font-medium text-[var(--teal-500)] border border-[var(--teal-500)] rounded-full px-4 py-1.5 hover:bg-[var(--teal-500)] hover:text-white transition-colors"
-                  >
-                    Clear filters
-                  </button>
-                )}
+              <div className="px-4 py-10">
+                <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[0_1px_3px_rgba(34,30,26,0.04)]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-2xl">
+                    &#x1F50D;
+                  </div>
+                  <p className="text-base font-semibold text-[var(--fg-1)]">No products found</p>
+                  <p className="text-sm leading-6 text-[var(--fg-3)]">Try adjusting your search or filters.</p>
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="mt-2 text-sm font-medium text-[var(--teal-500)] border border-[var(--teal-500)] rounded-full px-4 py-1.5 hover:bg-[var(--teal-500)] hover:text-white transition-colors"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <ProductGrid
@@ -359,6 +363,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
                 loadingMore={loadingMore}
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
+                showPromotionBadge={false}
               />
             )}
 

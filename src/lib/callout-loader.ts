@@ -6,7 +6,7 @@ export async function loadCalloutRows<T, TRow>(
   url: string,
   selectRows: (payload: T) => Promise<TRow[]> | TRow[],
 ) {
-  const response = await apiFetch(url);
+  const response = await apiFetch(url, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Failed to load callout rows from ${url}`);
   }

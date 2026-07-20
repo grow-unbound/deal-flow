@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -56,11 +56,11 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 const BACK_BTN: React.CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: 0,
-  background: 'transparent',
-  border: 'none',
+  width: 44,
+  height: 44,
+  borderRadius: 999,
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border-1)',
   color: 'var(--cream-800)',
 };
 
@@ -309,7 +309,7 @@ export default function CartPage() {
       <>
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
           <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
             Cart
@@ -346,7 +346,7 @@ export default function CartPage() {
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
         <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-5 w-5" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
           Cart
@@ -446,7 +446,7 @@ export default function CartPage() {
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
             <TotalsRow label="Subtotal" value={formatBuyerCurrency(totals.subtotal)} />
-            <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)} isText={gstInclusive} />
+            <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatBuyerCurrency(totals.tax_amount)} isText={gstInclusive} />
             <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatBuyerCurrency(deliveryFee)} isText />
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-1)' }}>
@@ -538,7 +538,7 @@ export default function CartPage() {
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
               <WhatsAppIcon className="w-4 h-4 shrink-0" />
-              {requestingQuote ? 'Requesting…' : 'Get WhatsApp quote'}
+              {requestingQuote ? 'Requesting...' : 'Get WhatsApp quote'}
             </button>
           )}
           {allowPlaceOrder && (
@@ -555,28 +555,6 @@ export default function CartPage() {
         </div>
       </div>
 
-      {isBusy ? (
-        <div
-          className="fixed inset-0 z-30 flex items-center justify-center"
-          style={{
-            left: '50%',
-            transform: 'translateX(-50%)',
-            maxWidth: BUYER_PREVIEW_MAX_WIDTH,
-            background: 'rgba(250, 247, 242, 0.72)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-          }}
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="flex flex-col items-center gap-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm">
-            <Loader2 className="h-8 w-8 animate-spin text-[var(--teal-500)]" />
-            <p className="font-semibold text-[var(--fg-1)]" style={{ fontSize: 'var(--b-text-label)' }}>
-              {placingOrder ? 'Placing your order…' : 'Requesting your quote…'}
-            </p>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

@@ -106,9 +106,9 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
-              <span>{gstInclusive ? 'GST included in prices' : 'GST'}</span>
+              <span>GST</span>
               <span className="font-mono" style={{ color: 'var(--fg-1, var(--cream-900))' }}>
-                {gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)}
+                {gstInclusive ? 'Included in Prices' : formatBuyerCurrency(totals.tax_amount)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
