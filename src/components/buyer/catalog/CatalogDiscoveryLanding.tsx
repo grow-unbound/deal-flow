@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { SearchX } from 'lucide-react';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { DiscoveryThumbTile } from '@/components/buyer/catalog/DiscoveryThumbTile';
@@ -189,9 +190,22 @@ function CatalogSearchResults({
   }
   if (items.length === 0) {
     return (
-      <p className="px-1 pt-4 text-center text-sm text-[var(--fg-3)]">
-        No matches for &ldquo;{query}&rdquo;. Try another term.
-      </p>
+      <div className="px-1 pt-4">
+        <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[0_1px_3px_rgba(34,30,26,0.04)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-[var(--cream-700)]">
+            <SearchX className="h-5 w-5" />
+          </div>
+          <h2
+            className="mt-4 text-lg font-semibold text-[var(--fg-1)]"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            No products found
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--fg-3)]">
+            No matches for &ldquo;{query}&rdquo;. Try another term.
+          </p>
+        </div>
+      </div>
     );
   }
   return (

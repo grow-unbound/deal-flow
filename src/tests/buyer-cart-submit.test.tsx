@@ -169,7 +169,7 @@ describe('buyer cart submission', () => {
     fireEvent.click(placeButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Placing your order…')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Placing…' })).toBeInTheDocument();
     });
     expect(placeButton).toBeDisabled();
 

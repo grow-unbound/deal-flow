@@ -20,6 +20,8 @@ import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { roundMoney } from '@/lib/gst';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,7 @@ interface TransactionDetailPageProps {
   title: string;
   endpoint: string;
   docType: DocType;
+  respectBusinessPolicyTotals?: boolean;
   /** Extract TransactionDoc from the API response payload */
   pickDoc: (payload: any) => TransactionDoc | null;
 }
@@ -140,12 +143,25 @@ function TotalsBlock({
   tax_total,
   total_amount,
   outstandingBalance,
+  gstInclusive,
+  gstRate,
+  respectBusinessPolicyTotals,
 }: {
   subtotal: number;
   tax_total: number;
   total_amount: number;
   outstandingBalance?: number | null;
+  gstInclusive: boolean;
+  gstRate: number;
+  respectBusinessPolicyTotals: boolean;
 }) {
+  const displayTax = respectBusinessPolicyTotals
+    ? (gstInclusive ? 0 : roundMoney(subtotal * (gstRate / 100)))
+    : tax_total;
+  const displayTotal = respectBusinessPolicyTotals
+    ? roundMoney(subtotal + displayTax)
+    : total_amount;
+
   return (
     <div
       className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}
@@ -155,15 +171,17 @@ function TotalsBlock({
         <span>Subtotal</span>
         <span className="font-mono">{formatBuyerCurrency(subtotal)}</span>
       </div>
-      {tax_total > 0 && (
-        <div className="mt-2 flex justify-between text-[var(--b-text-body)] text-[var(--cream-600)]">
-          <span>GST (18%)</span>
-          <span className="font-mono">{formatBuyerCurrency(tax_total)}</span>
-        </div>
-      )}
+      <div className="mt-2 flex justify-between text-[var(--b-text-body)] text-[var(--cream-600)]">
+        <span>GST</span>
+        <span className="font-mono">
+          {gstInclusive
+            ? 'Included in Prices'
+            : `${formatBuyerCurrency(displayTax)}${respectBusinessPolicyTotals ? ` (${gstRate}%)` : ''}`}
+        </span>
+      </div>
       <div className="mt-3 flex justify-between border-t border-[var(--border-1)] pt-3">
         <span className="font-semibold text-[var(--cream-900)]">Total</span>
-        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{formatBuyerCurrency(total_amount)}</span>
+        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{formatBuyerCurrency(displayTotal)}</span>
       </div>
       {outstandingBalance != null && outstandingBalance > 0 && (
         <div className="mt-2 flex justify-between text-[var(--b-text-sub)] text-[var(--danger-500)]">
@@ -273,11 +291,15 @@ export function TransactionDetailPage({
   title,
   endpoint,
   docType,
+  respectBusinessPolicyTotals = false,
   pickDoc,
 }: TransactionDetailPageProps) {
+  const { data: meData } = useBuyerMe();
   const [loading, setLoading] = React.useState(true);
   const [fetchError, setFetchError] = React.useState(false);
   const [doc, setDoc] = React.useState<TransactionDoc | null>(null);
+  const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
+  const gstRate = meData?.business_policy.gst_rate ?? 18;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -385,6 +407,9 @@ export function TransactionDetailPage({
               tax_total={doc.tax_total}
               total_amount={doc.total_amount}
               outstandingBalance={doc.outstandingBalance}
+              gstInclusive={gstInclusive}
+              gstRate={gstRate}
+              respectBusinessPolicyTotals={respectBusinessPolicyTotals}
             />
 
             {deliveryPlace ? (

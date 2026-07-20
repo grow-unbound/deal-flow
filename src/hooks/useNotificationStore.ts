@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type NotificationKind =
   | 'new_catalog'
@@ -52,19 +52,26 @@ function saveToStorage(userId: string, notifications: AppNotification[]) {
 
 export function useNotificationStore(userId: string | null) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const notificationsRef = useRef<AppNotification[]>([]);
 
   useEffect(() => {
-    if (!userId) { setNotifications([]); return; }
-    setNotifications(loadFromStorage(userId));
+    if (!userId) {
+      notificationsRef.current = [];
+      setNotifications([]);
+      return;
+    }
+    const initial = loadFromStorage(userId);
+    notificationsRef.current = initial;
+    setNotifications(initial);
   }, [userId]);
 
   const add = useCallback((n: AppNotification) => {
-    setNotifications((prev) => {
-      if (prev.some((p) => p.id === n.id)) return prev;
-      const next = [n, ...prev].slice(0, MAX_ENTRIES);
-      if (userId) saveToStorage(userId, next);
-      return next;
-    });
+    if (notificationsRef.current.some((p) => p.id === n.id)) return false;
+    const next = [n, ...notificationsRef.current].slice(0, MAX_ENTRIES);
+    notificationsRef.current = next;
+    setNotifications(next);
+    if (userId) saveToStorage(userId, next);
+    return true;
   }, [userId]);
 
   const patchByEntityId = useCallback((
@@ -72,34 +79,31 @@ export function useNotificationStore(userId: string | null) {
     entityId: string,
     patch: Pick<AppNotification, 'title' | 'body'>,
   ) => {
-    setNotifications((prev) => {
-      let changed = false;
-      const next = prev.map((n) => {
-        if (n.entityType !== entityType || n.entityId !== entityId) return n;
-        changed = true;
-        return { ...n, ...patch };
-      });
-      if (!changed) return prev;
-      if (userId) saveToStorage(userId, next);
-      return next;
+    let changed = false;
+    const next = notificationsRef.current.map((n) => {
+      if (n.entityType !== entityType || n.entityId !== entityId) return n;
+      changed = true;
+      return { ...n, ...patch };
     });
+    if (!changed) return;
+    notificationsRef.current = next;
+    setNotifications(next);
+    if (userId) saveToStorage(userId, next);
   }, [userId]);
 
   const markRead = useCallback((id: string) => {
-    setNotifications((prev) => {
-      const next = prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
-      if (userId) saveToStorage(userId, next);
-      return next;
-    });
+    const next = notificationsRef.current.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
+    notificationsRef.current = next;
+    setNotifications(next);
+    if (userId) saveToStorage(userId, next);
   }, [userId]);
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => {
-      const now = new Date().toISOString();
-      const next = prev.map((n) => (n.readAt ? n : { ...n, readAt: now }));
-      if (userId) saveToStorage(userId, next);
-      return next;
-    });
+    const now = new Date().toISOString();
+    const next = notificationsRef.current.map((n) => (n.readAt ? n : { ...n, readAt: now }));
+    notificationsRef.current = next;
+    setNotifications(next);
+    if (userId) saveToStorage(userId, next);
   }, [userId]);
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;

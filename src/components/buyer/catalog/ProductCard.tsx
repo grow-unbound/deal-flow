@@ -21,6 +21,7 @@ import type { BuyerCatalogItem } from '@/types/buyer';
 interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
+  showPromotionBadge?: boolean;
 }
 
 function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
@@ -40,7 +41,22 @@ function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock
   );
 }
 
-export function ProductCard({ item, className }: ProductCardProps): React.ReactNode {
+function ProductPromotionBadge(): React.ReactNode {
+  return (
+    <span
+      className="absolute left-2 top-2 z-[1] rounded-full border border-[#F97316] bg-[#FFF1E8] px-2.5 py-1 font-extrabold uppercase tracking-[0.12em] text-[#C2410C] shadow-[0_6px_14px_rgba(249,115,22,0.22)]"
+      style={{ fontSize: 'var(--b-text-eyebrow)' }}
+    >
+      Special Price
+    </span>
+  );
+}
+
+export function ProductCard({
+  item,
+  className,
+  showPromotionBadge = true,
+}: ProductCardProps): React.ReactNode {
   const { items, addItem, updateQty } = useCart();
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
@@ -128,6 +144,8 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
               <span className="absolute left-2 top-2 z-[1] rounded bg-[var(--teal-500)] px-2 py-0.5 font-bold uppercase tracking-wide text-white" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                 New
               </span>
+            ) : showPromotionBadge && showCampaignPrice ? (
+              <ProductPromotionBadge />
             ) : null}
             {item.stock_status === 'limited' || item.stock_status === 'out_of_stock' ? (
               <ProductStockCornerBadge status={item.stock_status} />
