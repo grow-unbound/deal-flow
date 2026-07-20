@@ -55,7 +55,7 @@ import {
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import { Input } from '@/components/ui/input';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
-import type {
+import type { 
   EstimateComposerBuyerContext,
   EstimateComposerDocument,
   EstimateComposerProductSearchRow,

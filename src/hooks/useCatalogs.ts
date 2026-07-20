@@ -4,15 +4,27 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
+import type {
+  CampaignWorkflowStatus,
+  CampaignWorkflowStatusLabel,
+  CampaignWorkflowStatusTone,
+  RawCampaignStatus,
+} from '@/lib/campaign-workflow-status';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerPriceSource, CatalogComposerTag } from '@/lib/zod';
+import type {
+  CatalogComposerFilterState,
+  CatalogComposerPayload,
+  CatalogComposerPriceSource,
+  CatalogComposerPricingStrategy,
+  CatalogComposerTag,
+} from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
-export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
-export type CatalogStatusTone = 'success' | 'warning' | 'neutral';
+export type CatalogDisplayStatus = CampaignWorkflowStatusLabel;
+export type CatalogStatusTone = CampaignWorkflowStatusTone;
 export type CatalogAvatarHue = 'teal' | 'ember' | 'cream';
 
 export interface CatalogLandingRow {
@@ -21,7 +33,8 @@ export interface CatalogLandingRow {
   initials: string;
   hue: CatalogAvatarHue;
   status: {
-    value: 'draft' | 'published' | 'archived';
+    value: CampaignWorkflowStatus;
+    raw_value?: RawCampaignStatus;
     label: CatalogDisplayStatus;
     tone: CatalogStatusTone;
   };
@@ -35,6 +48,7 @@ export interface CatalogLandingRow {
   order_count: number;
   estimate_count: number;
   conversions: number;
+  demand_customers?: number;
   views: number;
   view_pct: number;
   conversion_pct: number;
@@ -63,6 +77,7 @@ export interface CatalogsLandingResponse {
     ended_catalogs: number;
     expiring7d: number;
     scheduled_catalogs?: number;
+    opened_customers_mtd?: number;
     gmv_mtd: number;
     gmv_prev_mtd: number;
     gmv_growth_pct: number;
@@ -95,7 +110,8 @@ export interface CatalogDetailResponse {
     share_token: string | null;
     share_url: string | null;
     scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
-    status_value: 'draft' | 'published' | 'archived';
+    status_value: CampaignWorkflowStatus;
+    status_raw_value?: RawCampaignStatus;
     selected_cohort: {
       id: string | null;
       name: string;
@@ -109,6 +125,7 @@ export interface CatalogDetailResponse {
     growth_pct: number;
     orders: number;
     conversions?: number;
+    demand_customers?: number;
     order_count?: number;
     estimate_count?: number;
     conversion_rate: number;
@@ -158,6 +175,7 @@ export interface CatalogDetailResponse {
     summary: {
       orders: number;
       conversions?: number;
+      demand_customers?: number;
       order_count?: number;
       estimate_count?: number;
       gmv: number;
@@ -173,6 +191,7 @@ export interface CatalogDetailResponse {
     funnel: {
       unique_viewers: number;
       conversions: number;
+      demand_customers?: number;
       orders: number;
       estimates?: number;
       gmv: number;
@@ -224,8 +243,8 @@ export interface CatalogDetailResponse {
   };
   composer?: {
     name: string;
-    status: 'draft' | 'published' | 'archived';
-    live_status: 'draft' | 'published' | 'archived';
+    status: CampaignWorkflowStatus;
+    live_status: CampaignWorkflowStatus;
     has_unpublished_changes: boolean;
     valid_from: string;
     valid_to: string | null;
@@ -235,6 +254,7 @@ export interface CatalogDetailResponse {
     message?: string | null;
     price_source?: CatalogComposerPriceSource;
     price_list_id?: string | null;
+    pricing_strategy?: CatalogComposerPricingStrategy;
     filters: CatalogComposerFilterState;
     is_dynamic?: boolean;
     tag_overrides: Record<string, CatalogComposerTag | null>;
@@ -670,9 +690,16 @@ export interface CatalogPublishPreviewResponse {
     estimated_credits: number;
     estimated_inr: number;
     credits_balance: number;
+    credit_price_inr: number;
     template_approved: boolean;
     tenant_phone_configured: boolean;
     broadcast_sending_paused: boolean;
+    quality_rating_blocked: boolean;
+    recipient_segments?: {
+      all_eligible: number;
+      not_viewed: number;
+      viewed_not_ordered: number;
+    };
   };
   template: {
     seller_name: string;
@@ -682,6 +709,9 @@ export interface CatalogPublishPreviewResponse {
   };
 }
 
+export type CatalogDetailDialogMode = 'first_publish' | 'publish_updates' | 'notify_buyers';
+export type CatalogNotifyRecipientFilter = 'all_eligible' | 'not_viewed' | 'viewed_not_ordered';
+
 export interface CatalogPublishInput {
   notifyWhatsapp?: boolean;
   buyerNote?: string;
@@ -689,11 +719,21 @@ export interface CatalogPublishInput {
   heroImageUrl?: string | null;
 }
 
-export function useCatalogPublishPreview(campaignId: string, notifyWhatsapp: boolean, enabled: boolean) {
+export function useCatalogPublishPreview(
+  campaignId: string,
+  options: {
+    notifyWhatsapp: boolean;
+    mode?: Extract<CatalogDetailDialogMode, 'first_publish' | 'notify_buyers'>;
+  },
+  enabled: boolean,
+) {
   return useQuery({
-    queryKey: ['catalog-publish-preview', campaignId, notifyWhatsapp],
+    queryKey: ['catalog-publish-preview', campaignId, options.notifyWhatsapp, options.mode ?? 'first_publish'],
     queryFn: async (): Promise<CatalogPublishPreviewResponse> => {
-      const params = new URLSearchParams({ notify_whatsapp: notifyWhatsapp ? 'true' : 'false' });
+      const params = new URLSearchParams({
+        notify_whatsapp: options.notifyWhatsapp ? 'true' : 'false',
+        mode: options.mode ?? 'first_publish',
+      });
       const res = await apiFetch(`/api/tenant/catalogs/${campaignId}/publish-preview?${params.toString()}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -726,7 +766,10 @@ export function useComposerPublishPreview(input: ComposerPublishPreviewInput & {
   const hasCampaignId = Boolean(input.campaignId);
   const savedDraftPreview = useCatalogPublishPreview(
     input.campaignId ?? '',
-    input.notifyWhatsapp,
+    {
+      notifyWhatsapp: input.notifyWhatsapp,
+      mode: 'first_publish',
+    },
     input.enabled && hasCampaignId,
   );
 
@@ -848,6 +891,79 @@ export function usePublishCatalog(id: string) {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       queryClient.invalidateQueries({ queryKey: ['catalog-composer-detail', id] });
+    },
+  });
+}
+
+export function usePublishCatalogUpdates(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input?: Pick<CatalogPublishInput, 'buyerNote' | 'heroImageUrl'>) => {
+      const res = await apiFetch(`/api/tenant/catalogs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'publish_catalog_updates',
+          buyer_note: input?.buyerNote,
+          hero_image_url: input?.heroImageUrl ?? undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to publish campaign updates');
+      }
+
+      return res.json() as Promise<{ ok: true }>;
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Publish failed');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-composer-detail', id] });
+    },
+  });
+}
+
+export function useNotifyCatalogBuyers(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      recipientFilter: CatalogNotifyRecipientFilter;
+      buyerNote?: string;
+      notifyScheduledFor?: string | null;
+    }) => {
+      const res = await apiFetch(`/api/tenant/catalogs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'notify_catalog_buyers',
+          recipient_filter: input.recipientFilter,
+          buyer_note: input.buyerNote,
+          notify_scheduled_for: input.notifyScheduledFor ?? undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to notify buyers');
+      }
+
+      return res.json() as Promise<{
+        ok: true;
+        whatsapp_notify?: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null;
+      }>;
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Notify failed');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
     },
   });
 }

@@ -22,6 +22,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useRole } from '@/hooks/useRole';
 import {
   useWhatsAppBroadcastsInfinite,
+  type BroadcastKpis,
   type BroadcastSortOption,
   type BroadcastsPageResponse,
   type ManageBroadcastRow,
@@ -31,19 +32,19 @@ import { formatDate } from '@/lib/utils';
 const PAGE_LIMIT = 50;
 
 const SORT_OPTIONS = [
-  'Date (new → old)',
-  'Date (old → new)',
-  'Name (A→Z)',
-  'Name (Z→A)',
+  'Sent date (newest first)',
+  'Sent date (oldest first)',
+  'Broadcast name (A→Z)',
+  'Broadcast name (Z→A)',
 ] as const;
 
 type SortLabel = (typeof SORT_OPTIONS)[number];
 
 const SORT_TO_API: Record<SortLabel, BroadcastSortOption> = {
-  'Date (new → old)': 'date_desc',
-  'Date (old → new)': 'date_asc',
-  'Name (A→Z)': 'name_asc',
-  'Name (Z→A)': 'name_desc',
+  'Sent date (newest first)': 'date_desc',
+  'Sent date (oldest first)': 'date_asc',
+  'Broadcast name (A→Z)': 'name_asc',
+  'Broadcast name (Z→A)': 'name_desc',
 };
 
 const STATUS_FILTER_GROUP: FilterBarGroup = {
@@ -62,19 +63,46 @@ const STATUS_FILTER_GROUP: FilterBarGroup = {
   onChange: () => {},
 };
 
-const PLACEHOLDER_KPIS = [
-  { label: 'Total broadcasts', value: '—' },
-  { label: 'Delivered this month', value: '—' },
-  { label: 'Scheduled', value: '—' },
-  { label: 'Success rate', value: '—' },
-] as const;
+const EMPTY_KPIS: BroadcastKpis = {
+  total_broadcasts: 0,
+  delivered_this_month: 0,
+  scheduled_count: 0,
+  success_rate_pct: 0,
+  sent_this_month: 0,
+};
 
 function formatBroadcastDate(row: ManageBroadcastRow): string {
   return formatDate(row.display_at);
 }
 
 function formatDeliveryStatus(row: ManageBroadcastRow): string {
-  return `${row.delivered_count}/${row.total_count} delivered`;
+  if (row.delivered_count > 0) {
+    return `${row.delivered_count}/${row.total_count} delivered`;
+  }
+  if (row.sent_count > 0) {
+    return `${row.sent_count}/${row.total_count} sent`;
+  }
+  if (row.failed_count > 0 && row.total_count > 0) {
+    return `${row.failed_count}/${row.total_count} failed`;
+  }
+  return `0/${row.total_count} queued`;
+}
+
+function buildInsightTiles(kpis: BroadcastKpis) {
+  return [
+    { label: 'Total broadcasts', value: kpis.total_broadcasts.toLocaleString('en-IN') },
+    {
+      label: 'Delivered this month',
+      value: kpis.delivered_this_month.toLocaleString('en-IN'),
+      sub: `${kpis.sent_this_month.toLocaleString('en-IN')} sent this month`,
+    },
+    { label: 'Scheduled', value: kpis.scheduled_count.toLocaleString('en-IN') },
+    {
+      label: 'Success rate',
+      value: `${kpis.success_rate_pct}%`,
+      sub: 'Delivered or read vs terminal sends',
+    },
+  ];
 }
 
 function ManageBroadcastsInner({
@@ -119,6 +147,7 @@ function ManageBroadcastsInner({
     () => data?.pages.flatMap((page) => page.broadcasts) ?? [],
     [data?.pages],
   );
+  const kpis = data?.pages[0]?.kpis ?? initialData?.kpis ?? EMPTY_KPIS;
   const total = data?.pages[0]?.total ?? broadcasts.length;
   const showTableSkeleton = isLoading && broadcasts.length === 0;
 
@@ -141,7 +170,7 @@ function ManageBroadcastsInner({
 
   return (
     <PageWrap className="pt-7">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <div>
           <nav className="mb-4 flex items-center gap-1.5 text-sm text-cream-600">
             <Link href="/customers" className="hover:text-cream-900">
@@ -153,13 +182,13 @@ function ManageBroadcastsInner({
           <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950">
             Manage Broadcasts
           </h1>
-          <p className="mt-1 text-sm text-cream-600">
+          <p className="mt-[10px] max-w-[64ch] text-md leading-[1.55] text-cream-700">
             Send targeted messages to select groups of customers and monitor delivery
           </p>
         </div>
         <Button
           type="button"
-          className="shrink-0"
+          className="shrink-0 sm:self-end"
           onClick={() => setComposerOpen(true)}
           disabled={isSellerAssistant}
           title={isSellerAssistant ? 'Only admins can send broadcasts' : undefined}
@@ -169,7 +198,7 @@ function ManageBroadcastsInner({
         </Button>
       </header>
 
-      <InsightStrip4 className="mt-6" tiles={[...PLACEHOLDER_KPIS]} />
+      <InsightStrip4 className="mt-6" tiles={buildInsightTiles(kpis)} />
 
       <FilterBar
         count={`Showing ${broadcasts.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}

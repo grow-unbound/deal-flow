@@ -29,8 +29,8 @@ import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-type SortOption = 'Recent first' | 'GMV (high → low)' | 'Items (high → low)';
-const SORT_OPTIONS: SortOption[] = ['Recent first', 'GMV (high → low)', 'Items (high → low)'];
+type SortOption = 'Recent first' | 'Order value (high → low)' | 'Items (high → low)';
+const SORT_OPTIONS: SortOption[] = ['Recent first', 'Order value (high → low)', 'Items (high → low)'];
 
 function mapRowToCallout(row: Pick<OrderLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
   return {
@@ -45,6 +45,12 @@ function buyerGeographyLabel(row: OrderLandingRow) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
 }
 
+function orderSourceFilterLabel(row: OrderLandingRow) {
+  if (row.source_kind === 'converted') return 'Converted Estimate';
+  if (row.source_kind === 'buyer_app') return 'Buyer App';
+  return 'Direct';
+}
+
 function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
@@ -53,6 +59,7 @@ function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
     row.buyer_name,
     row.location_name,
     row.source_label,
+    row.source_detail,
     row.campaign_name ?? null,
     row.catalog_name ?? null,
     row.place_of_supply ?? null,
@@ -165,7 +172,7 @@ function SalesOrdersLandingContent({
           return false;
         }
 
-        if (filters.source.length > 0 && !filters.source.includes(row.source_label)) {
+        if (filters.source.length > 0 && !filters.source.includes(orderSourceFilterLabel(row))) {
           return false;
         }
 
@@ -181,7 +188,7 @@ function SalesOrdersLandingContent({
       })
       .sort((a, b) => {
       if (sortBy === 'Recent first') return new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime();
-      if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
+      if (sortBy === 'Order value (high → low)') return b.gmv - a.gmv;
       return b.items_count - a.items_count;
     });
   }, [filters.location_id, filters.source, filters.status, orders, search, sortBy]);
@@ -251,9 +258,9 @@ function SalesOrdersLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Order value created',
+                  label: 'Order value · MTD',
                   value: formatCompactInr(landingData.kpis.gmv_mtd),
-                  sub: `${landingData.kpis.orders_mtd} sales orders this month`,
+                  sub: `${landingData.kpis.orders_mtd} sales orders`,
                 },
                 {
                   label: 'Open orders',

@@ -324,7 +324,7 @@ export function useCohortDetail(id: string) {
     queryFn: async (): Promise<CohortDetailResponse> => {
       const res = await apiFetch(`/api/cohorts/${id}`);
       if (!res.ok) {
-        throw new Error('Failed to fetch cohort detail');
+        throw new Error('Failed to fetch customer group detail');
       }
       return res.json();
     },
@@ -341,7 +341,7 @@ export function useCohortComposerData() {
     queryFn: async (): Promise<CohortComposerResponse> => {
       const res = await apiFetch('/api/cohorts/composer');
       if (!res.ok) {
-        throw new Error('Failed to fetch cohort composer data');
+        throw new Error('Failed to fetch customer group composer data');
       }
       return res.json();
     },
@@ -371,7 +371,7 @@ export function useCohortComposerBuyers({
       appendArrayParam(params, 'gmv', gmvBuckets);
       const res = await apiFetch(`/api/cohorts/composer/buyers?${params.toString()}`, { signal });
       if (!res.ok) {
-        throw new Error('Failed to fetch cohort buyers');
+        throw new Error('Failed to fetch customer group buyers');
       }
       return res.json();
     },
@@ -391,7 +391,7 @@ export function useCohortMembers(id: string) {
     queryFn: async (): Promise<CohortMembersResponse> => {
       const res = await apiFetch(`/api/cohorts/${id}/members`);
       if (!res.ok) {
-        throw new Error('Failed to fetch cohort members');
+        throw new Error('Failed to fetch customer group members');
       }
       return res.json();
     },
@@ -415,7 +415,7 @@ export function useSaveCohortComposer(cohortId?: string) {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? 'Failed to save cohort');
+        throw new Error((body as { error?: string }).error ?? 'Failed to save customer group');
       }
 
       return res.json() as Promise<{
@@ -472,10 +472,10 @@ export function useSaveCohortComposer(cohortId?: string) {
           };
         });
       }
-      toast.success(cohortId ? 'Cohort saved' : 'Cohort created');
+      toast.success(cohortId ? 'Customer group updated' : 'Customer group created');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not save cohort');
+      toast.error(error instanceof Error ? error.message : 'Could not save customer group');
     },
   });
 }
@@ -493,7 +493,7 @@ export function useUpdateCohortDetail(id: string) {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? 'Failed to update cohort');
+        throw new Error((body as { error?: string }).error ?? 'Failed to update customer group');
       }
 
       return res.json() as Promise<{ cohort: { updated_at: string } }>;
@@ -583,7 +583,7 @@ export function useUpdateCohortDetail(id: string) {
     },
     onError: (error, _payload, ctx) => {
       rollbackSnapshots(queryClient, ctx?.snapshots);
-      toast.error(error instanceof Error ? error.message : 'Could not update cohort');
+      toast.error(error instanceof Error ? error.message : 'Could not update customer group');
     },
     onSuccess: () => {
       toast.success('Cohort updated');
@@ -631,7 +631,7 @@ export function useRefreshCohort(id: string) {
       toast.success('Membership refreshed');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not refresh cohort');
+      toast.error(error instanceof Error ? error.message : 'Could not refresh customer group');
     },
   });
 }
@@ -647,7 +647,7 @@ export function useArchiveCohortDetail(id: string) {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? 'Failed to archive cohort');
+        throw new Error((body as { error?: string }).error ?? 'Failed to archive customer group');
       }
 
       return res.json() as Promise<{ ok: true }>;
@@ -658,7 +658,7 @@ export function useArchiveCohortDetail(id: string) {
       toast.success('Cohort archived');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not archive cohort');
+      toast.error(error instanceof Error ? error.message : 'Could not archive customer group');
     },
   });
 }

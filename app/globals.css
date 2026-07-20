@@ -316,9 +316,9 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 
-  /* Campaign / lookbook card hero — WhatsApp template ratio (1125 × 600) */
+  /* Campaign / lookbook card hero — exact campaign hero ratio (1125 × 600) */
   .buyer-lookbook-preview {
-    aspect-ratio: 19 / 10;
+    aspect-ratio: 15 / 8;
     position: relative;
     width: 100%;
     overflow: hidden;

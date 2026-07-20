@@ -5,6 +5,7 @@ import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
+import { resolveCampaignWorkflowStatus, type CampaignWorkflowStatus, type CampaignWorkflowStatusLabel, type CampaignWorkflowStatusTone, type RawCampaignStatus } from '@/lib/campaign-workflow-status';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
@@ -23,9 +24,9 @@ import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast'
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
-type CatalogStatus = 'draft' | 'published' | 'archived';
-type DisplayStatus = 'Live' | 'Draft' | 'Ended';
-type StatusTone = 'success' | 'warning' | 'neutral';
+type CatalogStatus = RawCampaignStatus;
+type DisplayStatus = CampaignWorkflowStatusLabel;
+type StatusTone = CampaignWorkflowStatusTone;
 type AvatarHue = 'teal' | 'ember' | 'cream';
 
 interface CatalogRow {
@@ -124,19 +125,6 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-function getDisplayStatus(status: CatalogStatus, validTo: string | null, nowTs: number): DisplayStatus {
-  if (status === 'draft') return 'Draft';
-  if (status === 'archived') return 'Ended';
-  if (validTo && new Date(validTo).getTime() < nowTs) return 'Ended';
-  return 'Live';
-}
-
-function getStatusTone(status: DisplayStatus): StatusTone {
-  if (status === 'Live') return 'success';
-  if (status === 'Draft') return 'warning';
-  return 'neutral';
-}
-
 function buildCatalogScopeValue(input: {
   scopeType: 'cohort' | 'buyer' | 'geography' | 'all';
   cohortId?: string | null;
@@ -190,10 +178,18 @@ type CatalogMetric = {
   audience_count: number | null;
 };
 
+type CampaignAttributedPeriodTotals = {
+  gmv: number;
+  conversionCount: number;
+  demandCustomers: number;
+  openedCustomers: number;
+  conversionPct: number;
+};
+
 type CatalogCallout = {
   id: string;
   name: string;
-  status: { value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
+  status: { value: CampaignWorkflowStatus; raw_value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
   cohort_name: string;
   gmv: number;
   conversions: number;
@@ -218,6 +214,10 @@ type CatalogMetricsRpc = {
 function calloutToLandingRow(callout: CatalogCallout, index: number) {
   return {
     ...callout,
+    status: {
+      ...callout.status,
+      raw_value: callout.status.raw_value ?? (callout.status.value === 'draft' ? 'draft' : callout.status.value === 'archived' ? 'archived' : 'published'),
+    },
     initials: getInitials(callout.name),
     hue: getHue(index),
     audience_count: null,
@@ -267,6 +267,19 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   const primaryDemandKind: 'orders' | 'estimates' | 'none' =
     primaryDemandKindRes.data === 'estimates' || primaryDemandKindRes.data === 'none' ? primaryDemandKindRes.data : 'orders';
   const pageIds = landingSearch.ids;
+  const summaryIds = includeSummary && landingSearch.total > pageIds.length
+    ? (
+      await searchSellerLandingEntityIds({
+        tenantId,
+        entity: 'campaigns',
+        query: search,
+        statuses,
+        limit: landingSearch.total,
+        offset: 0,
+      })
+    ).ids
+    : pageIds;
+  const metricCatalogIds = Array.from(new Set([...pageIds, ...summaryIds]));
   const metricsRes = await db.schema('app').rpc('get_catalog_landing_metrics', {
     p_tenant_id: tenantId,
     p_campaign_ids: pageIds,
@@ -284,15 +297,15 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   }
 
   let catalogs: CatalogRow[] = [];
-  if (pageIds.length > 0) {
+  if (metricCatalogIds.length > 0) {
     const catalogsRes = await db
       .schema('app')
       .from('campaigns')
       .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
       .eq('tenant_id', tenantId)
-      .in('id', pageIds)
+      .in('id', metricCatalogIds)
       .is('deleted_at', null)
-      .limit(limit);
+      .limit(Math.max(metricCatalogIds.length, limit));
     if (catalogsRes.error) return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
     catalogs = (catalogsRes.data ?? []) as CatalogRow[];
   }
@@ -300,24 +313,203 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   const rpc = (metricsRes.data ?? {}) as CatalogMetricsRpc;
   const metricsById = rpc.row_metrics ?? {};
   const catalogById = new Map(catalogs.map((catalog) => [catalog.id, catalog]));
+  const pageCatalogs = pageIds
+    .map((id) => catalogById.get(id))
+    .filter((catalog): catalog is CatalogRow => Boolean(catalog));
+
+  let attributedByCampaign = new Map<string, CampaignAttributedPeriodTotals>();
+  let summaryOpenedCustomers = 0;
+  let summaryDemandCustomers = 0;
+  let summaryDemandValue = 0;
+  let summaryDemandDocs = 0;
+
+  if (metricCatalogIds.length > 0) {
+    const periodFilter = buildPeriodFallbackFilter(
+      'order_date',
+      'created_at',
+      period.current_start,
+      period.current_end_exclusive,
+    );
+    const estimatePeriodFilter = buildPeriodFallbackFilter(
+      'estimate_date',
+      'created_at',
+      period.current_start,
+      period.current_end_exclusive,
+    );
+    const [itemsRes, ordersRes, estimatesRes, viewsRes, createFlags] = await Promise.all([
+      db
+        .schema('app')
+        .from('campaign_items')
+        .select('campaign_id, tenant_product_id')
+        .in('campaign_id', metricCatalogIds)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('orders')
+        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
+        .eq('tenant_id', tenantId)
+        .in('campaign_id', metricCatalogIds)
+        .is('deleted_at', null)
+        .or(periodFilter),
+      db
+        .schema('app')
+        .from('estimates')
+        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
+        .eq('tenant_id', tenantId)
+        .in('campaign_id', metricCatalogIds)
+        .is('deleted_at', null)
+        .or(estimatePeriodFilter),
+      db
+        .schema('app')
+        .from('campaign_views')
+        .select('campaign_id, buyer_id, viewed_at')
+        .eq('tenant_id', tenantId)
+        .in('campaign_id', metricCatalogIds)
+        .gte('viewed_at', period.current_start)
+        .lt('viewed_at', period.current_end_exclusive),
+      getInAppCreateFlags(tenantId),
+    ]);
+
+    if (itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
+      console.error(
+        '[GET /api/tenant/catalogs] optimized enrichment error:',
+        itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error,
+      );
+      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+    }
+
+    const items = (itemsRes.data ?? []) as CatalogItemRow[];
+    const orders = ((ordersRes.data ?? []) as OrderRow[]).map((order) => ({
+      ...order,
+      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
+    }));
+    const estimates = ((estimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
+      ...estimate,
+      created_at: estimate.estimate_date ?? estimate.created_at,
+    }));
+    const viewsByCampaign = aggregateCampaignViewsByCampaign((viewsRes.data ?? []) as CampaignViewRow[]);
+    const productsByCampaign = new Map<string, Set<string>>();
+    const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
+
+    for (const item of items) {
+      if (!productsByCampaign.has(item.campaign_id)) productsByCampaign.set(item.campaign_id, new Set());
+      productsByCampaign.get(item.campaign_id)?.add(item.tenant_product_id);
+    }
+
+    const [orderItemsRes, estimateItemsRes] = await Promise.all([
+      orders.length > 0 && tenantProductIds.length > 0
+        ? db
+            .schema('app')
+            .from('order_items')
+            .select('order_id, tenant_product_id, qty, line_total, unit_price')
+            .in('order_id', orders.map((order) => order.id))
+            .in('tenant_product_id', tenantProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      estimates.length > 0 && tenantProductIds.length > 0
+        ? db
+            .schema('app')
+            .from('estimate_items')
+            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
+            .in('estimate_id', estimates.map((estimate) => estimate.id))
+            .in('tenant_product_id', tenantProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (orderItemsRes.error || estimateItemsRes.error) {
+      console.error(
+        '[GET /api/tenant/catalogs] optimized enrichment line items error:',
+        orderItemsRes.error || estimateItemsRes.error,
+      );
+      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+    }
+
+    const orderItemsRaw = (orderItemsRes.data ?? []) as Array<{
+      order_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>;
+    const estimateItemsRaw = (estimateItemsRes.data ?? []) as Array<{
+      estimate_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>;
+    const channelOptions = {
+      includeOrders: createFlags.create_sales_orders,
+      includeEstimates: createFlags.create_enquiries,
+    };
+    const openedBuyerIds = new Set<string>();
+    const demandBuyerIds = new Set<string>();
+
+    for (const catalogId of metricCatalogIds) {
+      const conversionMetrics = buildCatalogAttributedMetrics(
+        catalogId,
+        productsByCampaign.get(catalogId) ?? new Set<string>(),
+        orders as CampaignOrderRow[],
+        estimates as CampaignEstimateRow[],
+        orderItemsRaw,
+        estimateItemsRaw,
+        channelOptions,
+      );
+      const viewMetrics = viewsByCampaign.get(catalogId);
+      const openedCustomers = viewMetrics?.uniqueViewers ?? 0;
+      const demandCustomers = conversionMetrics.convertingBuyerIds.size;
+      const conversionPct = openedCustomers > 0
+        ? Number(((demandCustomers / openedCustomers) * 100).toFixed(1))
+        : 0;
+
+      attributedByCampaign.set(catalogId, {
+        gmv: conversionMetrics.gmv,
+        conversionCount: conversionMetrics.conversionCount,
+        demandCustomers,
+        openedCustomers,
+        conversionPct,
+      });
+
+      for (const buyerId of viewMetrics?.lastOpenedAtByBuyer.keys() ?? []) openedBuyerIds.add(buyerId);
+      for (const buyerId of conversionMetrics.convertingBuyerIds) demandBuyerIds.add(buyerId);
+      summaryDemandValue += conversionMetrics.gmv;
+      summaryDemandDocs += conversionMetrics.conversionCount;
+    }
+
+    summaryOpenedCustomers = openedBuyerIds.size;
+    summaryDemandCustomers = demandBuyerIds.size;
+  }
+
   const rows = pageIds.flatMap((id, index) => {
-    const catalog = catalogById.get(id);
+    const catalog = pageCatalogs.find((row) => row.id === id);
     if (!catalog) return [];
     const metric = metricsById[id] ?? {
       gmv: 0, previous_gmv: 0, order_count: 0, estimate_count: 0, conversions: 0,
       views: 0, view_pct: 0, conversion_pct: 0, growth_pct: 0, products_count: 0,
       brands_count: 0, audience_label: 'All buyers', audience_count: 0,
     };
-    const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
-    const daysLeft = catalog.valid_to && displayStatus === 'Live' ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000)) : null;
+    const attributed = attributedByCampaign.get(id);
+    const workflowStatus = resolveCampaignWorkflowStatus({
+      rawStatus: catalog.status,
+      validFrom: catalog.valid_from,
+      validTo: catalog.valid_to,
+      now,
+    });
+    const daysLeft = catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
+      ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000))
+      : null;
     return [{
       id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
-      status: { value: catalog.status, label: displayStatus, tone: getStatusTone(displayStatus) },
+      status: { value: workflowStatus.value, raw_value: catalog.status, label: workflowStatus.label, tone: workflowStatus.tone },
       cohort_name: metric.audience_label, audience_count: metric.audience_count,
       products_count: Number(metric.products_count), brands_count: Number(metric.brands_count),
       gmv: Number(metric.gmv), orders: Number(metric.order_count), order_count: Number(metric.order_count),
-      estimate_count: Number(metric.estimate_count), conversions: Number(metric.conversions), views: Number(metric.views),
-      view_pct: Number(metric.view_pct), conversion_pct: Number(metric.conversion_pct),
+      estimate_count: Number(metric.estimate_count), conversions: attributed?.conversionCount ?? Number(metric.conversions),
+      demand_customers: attributed?.demandCustomers ?? 0,
+      views: attributed?.openedCustomers ?? Number(metric.views),
+      view_pct: Number(metric.view_pct),
+      conversion_pct: attributed?.conversionPct ?? Number(metric.conversion_pct),
       valid_from: catalog.valid_from, valid_to: catalog.valid_to,
       valid_until_label: catalog.valid_to ? new Date(catalog.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'No end date',
       days_left: daysLeft, created_at: catalog.created_at, growth_pct: Number(metric.growth_pct),
@@ -336,7 +528,17 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
     channels: { orders_enabled: createFlags.create_sales_orders, estimates_enabled: createFlags.create_enquiries },
     primary_demand_kind: primaryDemandKind,
     ...(summary ? {
-      kpis: { ...summary.kpis, scheduled_catalogs: scheduledCatalogs },
+      kpis: {
+        ...summary.kpis,
+        scheduled_catalogs: scheduledCatalogs,
+        opened_customers_mtd: summaryOpenedCustomers,
+        orders_attributed_mtd: summaryDemandDocs,
+        conversions_mtd: summaryDemandCustomers,
+        gmv_mtd: summaryDemandValue,
+        avg_conversion_pct: summaryOpenedCustomers > 0
+          ? Number(((summaryDemandCustomers / summaryOpenedCustomers) * 100).toFixed(1))
+          : 0,
+      },
       todays_read: {
         needs_attention: previewRows('needs_attention', summary.todays_read.needs_attention.map(calloutToLandingRow)),
         top_performers: previewRows('top_performers', summary.todays_read.top_performers.map(calloutToLandingRow)),
@@ -700,8 +902,12 @@ export async function GET(req: NextRequest) {
     }
 
     const catalogRows = catalogs.map((catalog, index) => {
-      const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
-      const tone = getStatusTone(displayStatus);
+      const workflowStatus = resolveCampaignWorkflowStatus({
+        rawStatus: catalog.status,
+        validFrom: catalog.valid_from,
+        validTo: catalog.valid_to,
+        now,
+      });
       const catalogItems = itemsByCatalog.get(catalog.id) ?? [];
       const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
       const conversionMetrics = buildCatalogAttributedMetrics(
@@ -716,8 +922,9 @@ export async function GET(req: NextRequest) {
       const viewMetrics = viewsByCampaign.get(catalog.id);
       const gmv = conversionMetrics.gmv;
       const conversionCount = conversionMetrics.conversionCount;
+      const demandCustomers = conversionMetrics.convertingBuyerIds.size;
       const views = viewMetrics?.uniqueViewers ?? 0;
-      const conversionPct = views > 0 ? Number(((conversionCount / views) * 100).toFixed(1)) : 0;
+      const conversionPct = views > 0 ? Number(((demandCustomers / views) * 100).toFixed(1)) : 0;
       const brandSet = new Set<string>();
 
       for (const item of catalogItems) {
@@ -744,7 +951,7 @@ export async function GET(req: NextRequest) {
           ? Number(((views / audience.buyerCount) * 100).toFixed(1))
           : 0;
       const daysLeft =
-        catalog.valid_to && displayStatus === 'Live'
+        catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
           ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / (1000 * 60 * 60 * 24)))
           : null;
 
@@ -754,9 +961,10 @@ export async function GET(req: NextRequest) {
         initials: getInitials(catalog.name),
         hue: getHue(index),
         status: {
-          value: catalog.status,
-          label: displayStatus,
-          tone,
+          value: workflowStatus.value,
+          raw_value: catalog.status,
+          label: workflowStatus.label,
+          tone: workflowStatus.tone,
         },
         cohort_name: audience.label,
         audience_count: audience.buyerCount,
@@ -767,6 +975,7 @@ export async function GET(req: NextRequest) {
         estimate_count: estimateCount,
         orders: orderCount,
         conversions: conversionCount,
+        demand_customers: demandCustomers,
         views,
         view_pct: viewPct,
         conversion_pct: conversionPct,
@@ -778,9 +987,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live');
+    const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live' || catalog.status.label === 'Live · Unpublished Changes');
     const draftCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Draft');
-    const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Ended');
+    const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Expired' || catalog.status.label === 'Archived');
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const expiring7d = liveCatalogs.filter(
       (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
@@ -799,9 +1008,10 @@ export async function GET(req: NextRequest) {
         );
         acc.gmv += metrics.gmv;
         acc.conversionCount += metrics.conversionCount;
+        for (const buyerId of metrics.convertingBuyerIds) acc.demandBuyerIds.add(buyerId);
         return acc;
       },
-      { gmv: 0, conversionCount: 0 },
+      { gmv: 0, conversionCount: 0, demandBuyerIds: new Set<string>() },
     );
     const prevPeriodConversionMetrics = catalogs.reduce(
       (acc, catalog) => {
@@ -817,19 +1027,23 @@ export async function GET(req: NextRequest) {
         );
         acc.gmv += metrics.gmv;
         acc.conversionCount += metrics.conversionCount;
+        for (const buyerId of metrics.convertingBuyerIds) acc.demandBuyerIds.add(buyerId);
         return acc;
       },
-      { gmv: 0, conversionCount: 0 },
+      { gmv: 0, conversionCount: 0, demandBuyerIds: new Set<string>() },
     );
+    const openedBuyerIds = new Set<string>();
+    for (const metrics of viewsByCampaign.values()) {
+      for (const buyerId of metrics.lastOpenedAtByBuyer.keys()) openedBuyerIds.add(buyerId);
+    }
+    const openedCustomers = openedBuyerIds.size;
+    const demandCustomers = periodConversionMetrics.demandBuyerIds.size;
     const gmvMtd = periodConversionMetrics.gmv;
     const gmvPrevMtd = prevPeriodConversionMetrics.gmv;
     const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
-    const avgConversion =
-      liveCatalogs.length > 0
-        ? Number((liveCatalogs.reduce((sum, catalog) => sum + catalog.conversion_pct, 0) / liveCatalogs.length).toFixed(1))
-        : 0;
+    const avgConversion = openedCustomers > 0 ? Number(((demandCustomers / openedCustomers) * 100).toFixed(1)) : 0;
     const needsAttention = catalogRows
-      .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Ended' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
+      .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Expired' || catalog.status.label === 'Archived' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
       .slice(0, 3);
     const topPerformers = [...liveCatalogs].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
     const latestByCohort = new Map<string, Array<typeof catalogRows[number]>>();
@@ -864,12 +1078,13 @@ export async function GET(req: NextRequest) {
         draft_catalogs: draftCatalogs.length,
         ended_catalogs: endedCatalogs.length,
         expiring7d,
+        opened_customers_mtd: openedCustomers,
         gmv_mtd: gmvMtd,
         gmv_prev_mtd: gmvPrevMtd,
         gmv_growth_pct: gmvGrowthPct,
         avg_conversion_pct: avgConversion,
         orders_attributed_mtd: periodConversionMetrics.conversionCount,
-        conversions_mtd: periodConversionMetrics.conversionCount,
+        conversions_mtd: demandCustomers,
       },
       todays_read: {
         needs_attention: needsAttention,

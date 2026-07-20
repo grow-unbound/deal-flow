@@ -1,5 +1,6 @@
 'use client';
 
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -13,6 +14,7 @@ import {
 } from '@/components/seller/layout';
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
+import { cn, formatMetricValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   useBuyerAppLanding,
@@ -23,6 +25,43 @@ import { formatCompactInr } from '@/lib/utils';
 import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+
+const BUYER_APP_SCROLL_CARD_HEIGHT = 'h-[320px]';
+
+function ScrollCardBody({ children }: { children: ReactNode }) {
+  const [scrollActive, setScrollActive] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current != null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        BUYER_APP_SCROLL_CARD_HEIGHT,
+        'dashboard-vscroll overflow-y-auto',
+        scrollActive && 'dashboard-vscroll--active',
+      )}
+      onScroll={() => {
+        setScrollActive(true);
+        if (resetTimerRef.current != null) {
+          window.clearTimeout(resetTimerRef.current);
+        }
+        resetTimerRef.current = window.setTimeout(() => {
+          setScrollActive(false);
+          resetTimerRef.current = null;
+        }, 900);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function BuyerAppLandingContent({
   initialData,
@@ -73,6 +112,7 @@ function BuyerAppLandingContent({
     snap && snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0;
   const primaryDemandKind = landingData.portfolio?.primary_demand_kind ?? 'orders';
   const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
+  const primaryDemandNounSingular = primaryDemandKind === 'estimates' ? 'enquiry' : 'order';
   const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
 
   return (
@@ -118,7 +158,7 @@ function BuyerAppLandingContent({
             id: 'access_enabled_never_used',
             kind: 'risk',
             eyebrow: 'Access enabled, never used',
-            hint: `${(snap?.not_ordering_buyers ?? []).length} customers`,
+            hint: `${(snap?.not_ordering_buyers ?? []).length}`,
             loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
               id: string;
               initials: string;
@@ -150,7 +190,7 @@ function BuyerAppLandingContent({
             id: 'used_no_demand',
             kind: 'info',
             eyebrow: 'Used the app, no demand yet',
-            hint: `${(snap?.used_no_demand_buyers ?? []).length} customers`,
+            hint: `${(snap?.used_no_demand_buyers ?? []).length}`,
             loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
               id: string;
               initials: string;
@@ -182,7 +222,7 @@ function BuyerAppLandingContent({
             id: 'valuable_without_access',
             kind: 'opportunity',
             eyebrow: 'Valuable customers without app access',
-            hint: 'highest assisted sales',
+            hint: `${(snap?.no_app_buyers ?? []).length}`,
             loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
               id: string;
               initials: string;
@@ -197,7 +237,7 @@ function BuyerAppLandingContent({
                 initials: b.initials,
                 hue: 'cream' as const,
                 name: b.name,
-                reason: `${formatCompactInr(b.offline_gmv ?? 0)} invoiced sales outside the app`,
+                reason: `${formatMetricValue('value', b.offline_gmv ?? 0)} invoiced sales outside the app`,
                 trailing: (
                   <Link
                     href={`/customers/${b.buyer_id}`}
@@ -245,82 +285,98 @@ function BuyerAppLandingContent({
               ],
               emptyTitle: 'No enabled buyers yet',
               emptyDescription: 'Adoption will appear once buyers are enabled for the app.',
+              mode: 'funnel',
             },
           }}
         />
         <DetailCardRenderer
           card={{
             id: 'buyer-app-business-through-app',
-            representation: 'distribution',
+            representation: 'posture',
             title: 'Business through app',
             subtitle: 'Trailing 90 days',
             body: {
-              items: [
+              tiles: [
                 {
-                  id: 'estimates',
                   label: primaryDemandKind === 'estimates' ? 'App enquiries' : 'App orders',
                   value: formatCompactInr(primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd),
-                  pct: snap.total_gmv_mtd > 0 ? Math.round(((primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd) / snap.total_gmv_mtd) * 100) : 0,
-                  supporting: primaryDemandKind === 'estimates'
-                    ? `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'enquiry' : 'enquiries'}`
-                    : `${snap.converted_order_count_mtd} ${snap.converted_order_count_mtd === 1 ? 'order' : 'orders'}`,
+                  sub: `${snap.total_gmv_mtd > 0 ? Math.round(((primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd) / snap.total_gmv_mtd) * 100) : 0}% of total demand · ${
+                    primaryDemandKind === 'estimates'
+                      ? `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'enquiry' : 'enquiries'}`
+                      : `${snap.converted_order_count_mtd} ${snap.converted_order_count_mtd === 1 ? 'order' : 'orders'}`
+                  }`,
                 },
+                primaryDemandKind === 'estimates'
+                  ? {
+                      label: 'Converted to order',
+                      value: formatCompactInr(snap.converted_order_value_mtd),
+                      sub: `${snap.app_gmv_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.app_gmv_mtd) * 100) : 0}% of app enquiries · ${snap.converted_order_count_mtd} orders`,
+                    }
+                  : {
+                      label: 'Repeat demand',
+                      value: `${snap.repeat_mtd}`,
+                      sub: `${repeatShareOfEnabledPct}% of enabled customers · repeat buyers`,
+                    },
                 {
-                  id: 'converted',
-                  label: primaryDemandKind === 'estimates' ? 'Converted to order' : 'Repeat demand',
-                  value: formatCompactInr(snap.converted_order_value_mtd),
-                  pct: snap.app_gmv_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.app_gmv_mtd) * 100) : 0,
-                  supporting: primaryDemandKind === 'estimates' ? `${snap.converted_order_count_mtd} orders` : `${snap.repeat_mtd} repeat customers`,
-                },
-                {
-                  id: 'invoiced',
                   label: 'Invoiced sales',
                   value: formatCompactInr(snap.invoiced_app_value_mtd),
-                  pct: snap.total_gmv_mtd > 0 ? Math.round((snap.invoiced_app_value_mtd / snap.total_gmv_mtd) * 100) : 0,
-                  supporting: `${snap.total_gmv_mtd > 0 ? Math.round((snap.invoiced_app_value_mtd / snap.total_gmv_mtd) * 100) : 0}% of total submitted demand`,
+                  sub: `${snap.invoiced_share_of_total_pct}% of total invoiced sales`,
                 },
               ],
-              emptyTitle: 'No app-sourced business yet',
-              emptyDescription: 'Commercial flow through the buyer app will appear here.',
             },
           }}
         />
         <PerformanceCard
           title="App contribution over time"
-          subtitle="Monthly app-sourced invoiced sales"
+          subtitle="Monthly primary demand vs. converted invoices · Trailing 12 months"
           bodyClassName="p-0"
         >
-          <RankedList
-            items={[...snap.contribution_over_time].reverse().map((month) => ({
-              id: month.month,
-              label: new Date(month.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
-              value: formatCompactInr(month.app_invoice_value),
-              supporting: `${month.total_invoice_value > 0 ? Math.round((month.app_invoice_value / month.total_invoice_value) * 100) : 0}% of that month's invoiced sales`,
-            }))}
-            emptyTitle="No app contribution history yet"
-            emptyDescription="Monthly app-sourced invoiced sales will appear here once orders start invoicing through."
-          />
+          <ScrollCardBody>
+            <RankedList
+              compact
+              items={[...snap.contribution_over_time].reverse().map((month) => {
+                const conversionPct = month.app_demand_value > 0
+                  ? Math.round((month.app_invoice_value / month.app_demand_value) * 100)
+                  : 0;
+                return {
+                  id: month.month,
+                  label: new Date(month.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+                  meta: `${month.app_demand_count} ${month.app_demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${formatCompactInr(month.app_demand_value)} demand`,
+                  value: formatCompactInr(month.app_invoice_value),
+                  valueSupporting: `${month.app_invoice_count} invoice${month.app_invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
+                };
+              })}
+              emptyTitle="No app contribution history yet"
+              emptyDescription="Monthly app-sourced demand and invoiced sales will appear here once orders start invoicing through."
+            />
+          </ScrollCardBody>
         </PerformanceCard>
-        <DetailCardRenderer
-          card={{
-            id: 'buyer-app-location-usage',
-            representation: 'mix',
-            title: 'Adoption by location',
-            subtitle: 'Buyer App demand and invoiced sales',
-            body: {
-              items: snap.top_locations.map((location) => ({
-                id: location.location_id,
-                label: location.name,
-                value: location.app_gmv > 0 ? formatCompactInr(location.app_gmv) : '—',
-                pct: location.share_pct,
-                supporting: `${location.app_orders} order${location.app_orders !== 1 ? 's' : ''}`,
-              })),
-              emptyTitle: 'No location usage yet',
-              emptyDescription: 'Location-level buyer app activity will show here once orders are placed.',
-              mode: 'mix',
-            },
-          }}
-        />
+        <PerformanceCard
+          title="Adoption by location"
+          subtitle="Buyer App demand and converted invoices"
+          bodyClassName="p-0"
+          actions={<StatusTag label="Trailing 90 days" tone="neutral" />}
+        >
+          <ScrollCardBody>
+            <RankedList
+              compact
+              items={snap.top_locations.map((location) => {
+                const conversionPct = location.demand_value > 0
+                  ? Math.round((location.invoice_value / location.demand_value) * 100)
+                  : 0;
+                return {
+                  id: location.location_id,
+                  label: location.name,
+                  meta: `${location.demand_count} ${location.demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${location.demand_value > 0 ? formatCompactInr(location.demand_value) : '—'} demand`,
+                  value: location.invoice_value > 0 ? formatCompactInr(location.invoice_value) : '—',
+                  valueSupporting: `${location.invoice_count} invoice${location.invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
+                };
+              })}
+              emptyTitle="No location usage yet"
+              emptyDescription="Location-level buyer app activity will show here once orders are placed."
+            />
+          </ScrollCardBody>
+        </PerformanceCard>
       </div>
     </PageWrap>
   );

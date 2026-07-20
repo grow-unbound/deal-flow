@@ -25,18 +25,12 @@ import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection'
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useBuyerActivityInfinite } from '@/hooks/useBuyerActivity';
 import type { StatusTone } from '@/components/ui/status-pill';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 const BuyerNotificationDrawer = dynamic(
   () => import('@/components/buyer/layout/BuyerNotificationDrawer').then((m) => m.BuyerNotificationDrawer),
   { ssr: false },
 );
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
-}
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -143,7 +137,7 @@ export default function HomePage() {
   });
 
   useEffect(() => {
-    setRefreshFn(() => async () => {
+    setRefreshFn(async () => {
       await Promise.all([refetchHome(), refetchActivity()]);
     });
     return () => setRefreshFn(null);
@@ -174,7 +168,6 @@ export default function HomePage() {
   const reorderItems = homeData?.order_again_preview ?? [];
   const promotions = homeData?.latest_promotions_preview ?? [];
   const bestsellers = homeData?.bestsellers ?? [];
-  const buyAgain = homeData?.buy_again ?? [];
 
   return (
     <div className="pb-8">
@@ -210,7 +203,7 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)' }}
               >
-                {inr(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0)}
+                {formatBuyerCurrency(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0)}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-white/70" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year
@@ -233,7 +226,7 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}
               >
-                {inr(dues?.outstanding_dues ?? 0)}
+                {formatBuyerCurrency(dues?.outstanding_dues ?? 0)}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {formatDueSummary(dues?.days_until_earliest_due ?? null, dues?.open_invoice_count ?? 0, dues?.outstanding_dues ?? 0)}
@@ -256,21 +249,15 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}
               >
-                {inr(credit?.available_credit ?? 0)}
+                {formatBuyerCurrency(credit?.available_credit ?? 0)}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
-                of {inr(credit?.credit_limit ?? 0)} limit
+                of {formatBuyerCurrency(credit?.credit_limit ?? 0)} limit
               </p>
             </>
           )}
         </div>
       </div>
-
-      {buyAgain.length > 0 && (
-        <div className="pt-10">
-          <RecoSection title="Buy Again" widget="buy_again" items={buyAgain} />
-        </div>
-      )}
 
       <div className="pt-10">
         <BuyerSectionRow title="Promotions" href="/buy/promotions" linkLabel="See all" />
@@ -364,7 +351,7 @@ export default function HomePage() {
                       <span className="tabular-inline">{formatRelativeTime(item.timestamp)}</span>
                     </span>
                   )}
-                  amount={<span className="tabular-inline font-mono">{inr(item.amount)}</span>}
+                  amount={<span className="tabular-inline font-mono">{formatBuyerCurrency(item.amount)}</span>}
                 />
                 {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
               </Fragment>

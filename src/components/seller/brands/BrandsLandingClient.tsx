@@ -24,12 +24,12 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { formatCompactInr } from '@/lib/utils';
+import { formatCompactInr, formatMetricValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Campaign age (most recent)';
+type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Growth (high → low)' | 'Campaign age (most recent)';
 
 interface BrandVm {
   id: string;
@@ -52,7 +52,7 @@ interface BrandVm {
   logoUrl: string | null;
 }
 
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Campaign age (most recent)'];
+const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Growth (high → low)', 'Campaign age (most recent)'];
 const PAGE_SIZE = 20;
 
 const AddBrandCommand = dynamic(
@@ -168,7 +168,7 @@ function BrandLandingContent({
         categories: [] as string[],
         cohorts: [] as string[],
       },
-      sortBy: 'GMV (high → low)' as SortOption,
+      sortBy: 'Sales (high → low)' as SortOption,
       visibleCount: PAGE_SIZE,
     },
   });
@@ -221,8 +221,8 @@ function BrandLandingContent({
       return brand.name.toLowerCase().includes(query) || brand.category.toLowerCase().includes(query);
       })
       .sort((a, b) => {
-      if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
-      if (sortBy === 'GMV (low → high)') return a.gmv - b.gmv;
+      if (sortBy === 'Sales (high → low)') return b.gmv - a.gmv;
+      if (sortBy === 'Sales (low → high)') return a.gmv - b.gmv;
       if (sortBy === 'Growth (high → low)') return b.growth - a.growth;
       return a.daysSinceCatalog - b.daysSinceCatalog;
       });
@@ -271,7 +271,7 @@ function BrandLandingContent({
     const list = alerts ?? [];
     const reasons: string[] = [];
     if (list.includes('low_stock')) reasons.push('Low stock SKUs (qty <= reorder point)');
-    if (list.includes('gmv_decline')) reasons.push('GMV is below previous month-to-date');
+    if (list.includes('gmv_decline')) reasons.push('Sales is below previous month-to-date');
     if (list.includes('not_in_catalog_mtd')) reasons.push(`Not published in any catalog ${lowerLabel}`);
     // get_seller_brand_landing_summary's needs_attention rows are sourced from the
     // low_stock/out_of_stock join only (id, name) — no per-brand alert breakdown is
@@ -321,15 +321,15 @@ function BrandLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Invoiced sales 90D',
-            value: formatCompactInr(portfolioGmv),
+            label: 'Invoiced sales · 90D',
+            value: formatMetricValue('sales', portfolioGmv),
             sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs prior 90D`,
             tone: 'accent',
           },
           {
             label: 'Active brands',
             value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
-            sub: `${activeBuyers} customers bought across the portfolio`,
+            sub: `${activeBuyers} of ${totalBuyers} customers purchased`,
           },
           {
             label: 'Brands with stock risk',
@@ -337,7 +337,7 @@ function BrandLandingContent({
             // get_seller_brand_landing_summary's needs_attention rows carry no
             // per-alert breakdown (see attentionReason above), so this can't sum
             // "alerts open" — that field is always undefined at runtime.
-            sub: 'have low or out-of-stock SKUs',
+            sub: 'have low or out-of-stock products',
             tone: 'warn',
           },
           {
@@ -354,7 +354,7 @@ function BrandLandingContent({
             id: 'brand_stock_risk',
             kind: 'risk',
             eyebrow: 'Brand stock risk',
-            hint: `${attention.length} brands`,
+            hint: `${attention.length}`,
             getHref: (row) => `/brands/${row.id}`,
             // Pass the full sorted list — V3CalloutPanel slices to 2 for the preview
             // itself, and its "see all" sheet renders straight from these rows with
@@ -373,7 +373,7 @@ function BrandLandingContent({
             id: 'brands_driving_sales',
             kind: 'info',
             eyebrow: 'Brands driving sales',
-            hint: 'by invoiced sales',
+            hint: `${topPerformers.length}`,
             getHref: (row) => `/brands/${row.id}`,
             rows: topPerformers.map((brand, index) => ({
               id: String(brand.id),
@@ -381,16 +381,16 @@ function BrandLandingContent({
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
               reason: `${portfolioGmv > 0 ? Math.round((brand.gmv_mtd / portfolioGmv) * 100) : 0}% of portfolio`,
-              trailing: formatCompactInr(brand.gmv_mtd),
+              trailing: formatMetricValue('sales', brand.gmv_mtd),
             })),
           },
           {
             id: 'brands_losing_sales',
             kind: 'risk',
-            eyebrow: 'Brands losing meaningful sales',
+            eyebrow: 'Brands losing sales',
             // Derived from already-fetched brand rows, not a tenant-wide backend
             // aggregate — honest about undercounting until every page is loaded.
-            hint: hasNextPage ? `${decliningBrands.length}+ brands` : `${decliningBrands.length} brands`,
+            hint: hasNextPage ? `${decliningBrands.length}+` : `${decliningBrands.length}`,
             getHref: (row) => `/brands/${row.id}`,
             rows: decliningBrands.map((brand, index) => ({
               id: String(brand.id),
@@ -492,7 +492,7 @@ function BrandLandingContent({
               </div>
             </td>
             <td className="px-5 py-3.5 text-right text-base text-cream-900">
-              <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatCompactInr(brand.gmv)}</span>
+              <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatMetricValue('sales', brand.gmv)}</span>
             </td>
             <td className="px-5 py-3.5 text-right text-base text-cream-900">
               <GrowthPill value={brand.growth} />
@@ -504,7 +504,7 @@ function BrandLandingContent({
                   style={{ width: `${Math.max(0, Math.min(100, brand.share))}%` }}
                 />
               </div>
-              <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatCompactInr(portfolioGmv)}</p>
+              <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatMetricValue('sales', portfolioGmv)}</p>
             </td>
             <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>

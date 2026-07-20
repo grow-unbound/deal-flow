@@ -4,8 +4,10 @@ import type { ReactNode } from 'react';
 
 const usePriceListDetailMock = vi.fn();
 
+const useParamsMock = vi.fn(() => ({ id: 'pl-1' }));
+
 vi.mock('next/navigation', () => ({
-  useParams: () => ({ id: 'pl-1' }),
+  useParams: () => useParamsMock(),
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/price-lists/pl-1',
 }));
@@ -21,6 +23,7 @@ import PriceListDetailPage from '../../app/(seller)/price-lists/[id]/page';
 
 describe('price-list-detail-page', () => {
   beforeEach(() => {
+    useParamsMock.mockReturnValue({ id: 'pl-1' });
     usePriceListDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -80,5 +83,12 @@ describe('price-list-detail-page', () => {
     // The one mocked item (price 1200) is priced above its base_selling_price (1000),
     // i.e. no discounted/below-floor items, so both derived tiles read 0.
     expect(screen.getByText('0%')).toBeInTheDocument();
+  });
+
+  it('shows the skeleton while the route param is not ready yet', () => {
+    useParamsMock.mockReturnValue({});
+    render(<PriceListDetailPage />);
+
+    expect(screen.queryByText('Price list not found.')).not.toBeInTheDocument();
   });
 });

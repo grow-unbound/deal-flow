@@ -8,6 +8,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam } from '@/lib/landing-filter-params';
 
+type CustomerCalloutId = 'needs_call' | 'win_back';
+
 function decodeCursor(cursor: string | null): { business_name: string; id: string } | null {
   if (!cursor) return null;
 
@@ -25,6 +27,11 @@ function encodeCursor(cursor: unknown): string | null {
   const parsed = cursor as { n?: unknown; i?: unknown };
   if (typeof parsed.n !== 'string' || typeof parsed.i !== 'string') return null;
   return Buffer.from(JSON.stringify({ n: parsed.n, i: parsed.i })).toString('base64url');
+}
+
+function readCalloutParam(callout: string | null): CustomerCalloutId | null {
+  if (callout === 'needs_call' || callout === 'win_back') return callout;
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -62,6 +69,7 @@ export async function GET(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search')?.trim() || null;
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const dueParams = readArrayParam(req.nextUrl.searchParams, 'due');
+    const fullCalloutId = readCalloutParam(req.nextUrl.searchParams.get('callout')?.trim() || null);
 
     const { data, error } = await db
       .schema('app')
@@ -74,6 +82,7 @@ export async function GET(req: NextRequest) {
         p_limit: limit,
         p_cursor_name: decodedCursor?.business_name ?? null,
         p_cursor_id: decodedCursor?.id ?? null,
+        p_full_callout: fullCalloutId,
       });
 
     if (error) {

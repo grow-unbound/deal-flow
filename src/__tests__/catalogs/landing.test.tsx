@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import type { CatalogLandingRow } from '@/hooks/useCatalogs';
 
@@ -83,8 +83,7 @@ describe('catalogs landing page', () => {
 
     render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
 
-    expect(screen.getByText('Live campaigns')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText(/3 live/i)).toBeInTheDocument();
   });
 
   it('renders updated table columns and audience secondary text', () => {
@@ -126,9 +125,9 @@ describe('catalogs landing page', () => {
     const table = screen.getByRole('table');
 
     expect(screen.getByText('Orders · 90D')).toBeInTheDocument();
-    expect(screen.getByText('Estimates · 90D')).toBeInTheDocument();
-    expect(screen.getByText('Buyers · Viewed')).toBeInTheDocument();
-    expect(screen.getByText('Buyers · Ordered')).toBeInTheDocument();
+    expect(screen.getByText('Enquiries · 90D')).toBeInTheDocument();
+    expect(screen.getByText('Customers opened')).toBeInTheDocument();
+    expect(screen.getByText('Customers with demand')).toBeInTheDocument();
     expect(within(table).getByText('24 buyers')).toBeInTheDocument();
     expect(within(table).getByText('Selected buyers')).toBeInTheDocument();
     expect(within(table).getByText('12 buyers')).toBeInTheDocument();
@@ -136,7 +135,7 @@ describe('catalogs landing page', () => {
     expect(within(table).getByText('41.7% conversion')).toBeInTheDocument();
   });
 
-  it('filters campaigns by status dropdown options', () => {
+  it('filters campaigns by status dropdown options', async () => {
     useTenantCatalogsMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -182,8 +181,11 @@ describe('catalogs landing page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Draft' }));
 
-    expect(screen.getByText('Draft Campaign')).toBeInTheDocument();
-    expect(screen.queryByText('Live Campaign')).not.toBeInTheDocument();
+    const table = screen.getByRole('table');
+    await waitFor(() => {
+      expect(within(table).getByText('Draft Campaign')).toBeInTheDocument();
+      expect(within(table).queryByText('Live Campaign')).not.toBeInTheDocument();
+    });
   });
 
   it('renders expiring soon row in Needs attention callout', () => {
@@ -227,7 +229,7 @@ describe('catalogs landing page', () => {
 
     render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
 
-    expect(screen.getByText('Needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Expiring with engaged non-buyers')).toBeInTheDocument();
     expect(screen.getByText('Weekend Push')).toBeInTheDocument();
   });
 });

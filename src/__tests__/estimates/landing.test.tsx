@@ -90,8 +90,8 @@ function mockEstimatesData() {
         buyer_hue: 'teal' as const,
         source: 'buyer_app' as const,
         source_kind: 'buyer_app' as const,
-        source_label: 'Buyer App',
-        source_detail: 'Submitted via Buyer App',
+        source_label: 'BUYER APP',
+        source_detail: '',
         catalog_name: 'Summer 2026 Retail',
         created_by_label: null,
         items_count: 2,
@@ -116,8 +116,8 @@ function mockEstimatesData() {
         buyer_hue: 'ember' as const,
         source: 'seller' as const,
         source_kind: 'seller' as const,
-        source_label: 'created by Priya Shah',
-        source_detail: 'Manual seller entry',
+        source_label: '',
+        source_detail: '',
         catalog_name: 'Clearance Push',
         created_by_label: 'Priya Shah',
         items_count: 1,
@@ -142,8 +142,8 @@ function mockEstimatesData() {
         buyer_hue: 'ember' as const,
         source: 'buyer_app' as const,
         source_kind: 'buyer_app' as const,
-        source_label: 'Buyer App',
-        source_detail: 'Submitted via Buyer App',
+        source_label: 'BUYER APP',
+        source_detail: '',
         catalog_name: null,
         created_by_label: null,
         items_count: 1,
@@ -208,10 +208,10 @@ describe('estimates landing page', () => {
     expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
     expect(screen.queryByText('Showing')).not.toBeInTheDocument();
     const kpiArticles = screen.getAllByRole('article').slice(0, 4);
-    expect(kpiArticles[0]).toHaveTextContent('Estimate value created');
-    expect(kpiArticles[0]).toHaveTextContent('3 estimates month');
+    expect(kpiArticles[0]).toHaveTextContent('Estimate value · MTD');
+    expect(kpiArticles[0]).toHaveTextContent('3 estimates');
     expect(kpiArticles[1]).toHaveTextContent('Open estimates');
-    expect(kpiArticles[1]).toHaveTextContent('1 open estimates month');
+    expect(kpiArticles[1]).toHaveTextContent('1 open estimates');
     expect(kpiArticles[2]).toHaveTextContent('Awaiting action 3+ days');
     expect(kpiArticles[3]).toHaveTextContent('Expiring in 7 days');
   });
@@ -224,19 +224,17 @@ describe('estimates landing page', () => {
     expect(screen.getByText('Invoiced')).toBeInTheDocument();
   });
 
-  it('shows a Source column on every estimate row, not just Buyer App ones', () => {
+  it('shows source as supporting text beneath the estimate number on every row', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getAllByText('Buyer App').length).toBeGreaterThanOrEqual(2);
-    // Seller-sourced rows now show their own Source column value too (a real
-    // per-doc table column, not conditionally hidden).
-    expect(screen.getByText('created by Priya Shah')).toBeInTheDocument();
+    expect(screen.getAllByText('BUYER APP').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('created by Priya Shah')).not.toBeInTheDocument();
   });
 
   it('renders place of supply, catalog and buyer-app source labels in the landing table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getByText('Maharashtra')).toBeInTheDocument();
     expect(screen.getByText('Summer 2026 Retail')).toBeInTheDocument();
-    expect(screen.getAllByText('Buyer App').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('BUYER APP').length).toBeGreaterThan(0);
   });
 
   it('navigates to estimate detail on row click', () => {

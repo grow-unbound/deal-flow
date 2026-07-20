@@ -270,10 +270,23 @@ describe('GET /api/tenant/catalogs', () => {
     getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_admin' });
   });
 
-  it('uses SQL row metrics for product, brand, and audience counts without hydration fanout', async () => {
+  it('hydrates unique opener and demand-customer metrics for landing rows and KPIs', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/catalogs?period=month'));
     const body = (await response.json()) as {
-      catalogs?: Array<{ id: string; products_count: number; brands_count: number; cohort_name: string; audience_count: number }>;
+      catalogs?: Array<{
+        id: string;
+        products_count: number;
+        brands_count: number;
+        cohort_name: string;
+        audience_count: number;
+        demand_customers: number;
+        conversion_pct: number;
+      }>;
+      kpis?: {
+        opened_customers_mtd: number;
+        conversions_mtd: number;
+        avg_conversion_pct: number;
+      };
       error?: string;
     };
 
@@ -285,8 +298,23 @@ describe('GET /api/tenant/catalogs', () => {
       brands_count: 2,
       cohort_name: 'All buyers',
       audience_count: 12,
+      demand_customers: 1,
+      conversion_pct: 100,
     });
-    expect(queriedTables).toEqual(['app.campaigns']);
+    expect(body.kpis).toMatchObject({
+      opened_customers_mtd: 2,
+      conversions_mtd: 2,
+      avg_conversion_pct: 100,
+    });
+    expect(queriedTables).toEqual([
+      'app.campaigns',
+      'app.campaign_items',
+      'app.orders',
+      'app.estimates',
+      'app.campaign_views',
+      'app.order_items',
+      'app.estimate_items',
+    ]);
     expect(brandInFilters).toHaveLength(0);
   });
 
@@ -320,7 +348,7 @@ describe('GET /api/tenant/catalogs', () => {
     expect(response.status).toBe(200);
     expect(body.catalogs.map((row) => row.id)).toEqual(['campaign-2']);
     expect(body.kpis).toBeUndefined();
-    expect(metricsRpcCalls[0]).toMatchObject({
+    expect(metricsRpcCalls.find((call) => Array.isArray(call.p_campaign_ids))).toMatchObject({
       p_campaign_ids: ['campaign-2'],
       p_include_summary: false,
     });

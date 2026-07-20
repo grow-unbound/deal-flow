@@ -25,7 +25,7 @@ vi.mock('@/hooks/useEstimates', () => ({
   useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
   useVoidEstimate: (...args: unknown[]) => useVoidMock(...args),
   useDuplicateEstimate: (...args: unknown[]) => useDupMock(...args),
-  useSendEstimate: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSendEstimateDetailWhatsApp: () => ({ mutate: vi.fn(), isPending: false }),
   seedEstimateComposerCache: (...args: unknown[]) => seedEstimateComposerCacheMock(...args),
 }));
 
@@ -154,6 +154,17 @@ function basePayload(overrides: Partial<TenantEstimateDetailResponse> = {}): Ten
       credit_available: 80_000,
       active_pricelist: null,
       sales_agent_name: null,
+    },
+    whatsapp_send: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'request_update_buyer',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
     },
     ...overrides,
   };
@@ -301,6 +312,6 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: new Error('forbidden'),
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    expect(screen.getByRole('heading', { name: /access restricted/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no access/i })).toBeInTheDocument();
   });
 });

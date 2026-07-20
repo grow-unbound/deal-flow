@@ -16,6 +16,7 @@ export interface TransactionTableRow {
   document_number: string;
   source_kind: TransactionSourceKind;
   source_label: string | null;
+  source_detail?: string | null;
   buyer_name: string;
   buyer_place_of_supply: string | null;
   buyer_initials?: string | null;
@@ -55,19 +56,14 @@ function deriveInitials(name: string) {
     .toUpperCase();
 }
 
-function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_kind' | 'source_label'>): string {
-  if (row.source_label) return row.source_label;
-  if (row.source_kind === 'buyer_app') return 'Buyer App';
-  if (row.source_kind === 'converted') return 'Converted';
-  if (row.source_kind === 'seller') return 'Direct';
-  return 'Direct';
+function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_label'>): string {
+  return row.source_label ?? '';
 }
 
 function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   const base = {
-    document: { width: 180, minWidth: 160, maxWidth: 200 },
+    document: { width: 220, minWidth: 200, maxWidth: 240 },
     buyer: { width: 270, minWidth: 240, maxWidth: 300 },
-    source: { width: 110, minWidth: 96, maxWidth: 130 },
     location: { width: 150, minWidth: 130, maxWidth: 170 },
     campaign: { width: 200, minWidth: 180, maxWidth: 260 },
     items: { width: 60, minWidth: 40, maxWidth: 80 },
@@ -81,7 +77,6 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   if (kind === 'estimate') {
     return [
       { label: 'Estimate Number', ...base.document },
-      { label: 'Source', ...base.source },
       { label: 'Buyer Name', ...base.buyer },
       { label: 'Location', ...base.location },
       ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
@@ -96,7 +91,6 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   if (kind === 'order') {
     return [
       { label: 'Order Number', ...base.document },
-      { label: 'Source', ...base.source },
       { label: 'Buyer Name', ...base.buyer },
       { label: 'Location', ...base.location },
       ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
@@ -109,7 +103,6 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
 
   return [
     { label: 'Invoice Number', ...base.document },
-    { label: 'Source', ...base.source },
     { label: 'Buyer Name', ...base.buyer },
     { label: 'Place of Supply', ...base.location },
     { label: 'Location', ...base.location },
@@ -154,14 +147,18 @@ export function TransactionTable({
             onClick={() => click(row)}
           >
             <td className="px-5 py-3.5">
-              <div className="flex items-center gap-2">
-                <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
-                {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
+                  {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
+                </div>
+                {sourceDisplayLabel(row) ? (
+                  <p className="mt-0.5 truncate text-xs text-cream-600">{sourceDisplayLabel(row)}</p>
+                ) : null}
+                {row.source_detail ? (
+                  <p className="mt-0.5 truncate text-xs font-medium uppercase tracking-[0.08em] text-cream-500">{row.source_detail}</p>
+                ) : null}
               </div>
-            </td>
-
-            <td className="px-5 py-3.5 text-xs font-medium uppercase tracking-[0.08em] text-cream-600">
-              {sourceDisplayLabel(row)}
             </td>
 
             <td className="px-5 py-3.5">

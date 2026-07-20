@@ -9,14 +9,13 @@ import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail
 import { PageWrap } from '@/components/seller/layout';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { WarehouseDetailsTab } from './WarehouseDetailsTab';
-import { WarehousePerformanceTab } from './WarehousePerformanceTab';
 import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useWarehouseDetail, useWarehouseReference } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
 import { WarehouseDetailSkeleton as SharedWarehouseDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-type TabId = 'details' | 'performance' | 'stock';
+type TabId = 'details' | 'stock';
 
 function WarehouseDetailSkeleton() {
   return (
@@ -53,11 +52,12 @@ function WarehouseDetailSkeleton() {
 
 export function WarehouseDetailPage({ id }: { id: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+  const { state: rawTab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-warehouse-detail',
     scopeKey: id,
     initialState: 'details',
   });
+  const tab: TabId = rawTab === 'stock' ? 'stock' : 'details';
   const { data, isLoading, isError, refetch } = useWarehouseDetail(id);
   const { data: editingWarehouse } = useWarehouseReference(id);
 
@@ -149,7 +149,6 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       <DetailTabs
         tabs={[
           { id: 'details', label: 'Details' },
-          { id: 'performance', label: 'Performance' },
           { id: 'stock', label: 'Stock', badge: data.tracked_skus_count || undefined },
         ]}
         active={tab}
@@ -157,12 +156,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       />
 
       {tab === 'details' ? <WarehouseDetailsTab data={data} /> : null}
-      {tab === 'performance' ? (
-        <WarehousePerformanceTab data={data.performance} performanceCards={data.performance_cards} />
-      ) : null}
-      {tab === 'stock' ? (
-        <WarehouseStockTab warehouseId={id} />
-      ) : null}
+      {tab === 'stock' ? <WarehouseStockTab warehouseId={id} /> : null}
 
       <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={warehouseForEdit} />
     </PageWrap>

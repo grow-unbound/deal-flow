@@ -200,7 +200,7 @@ export interface WarehouseDetailResponse {
     reorder_triggered_skus: number;
     last_inventory_update: string | null;
   };
-  performance: {
+  performance?: {
     inventory_health: {
       active_skus: number;
       low_stock_skus: number;

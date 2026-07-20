@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -63,7 +63,9 @@ export interface CustomersLandingResponse {
   };
   callouts: {
     needs_call: Array<CustomersLandingBuyer & { last_order_label: string; invoice_count: number; days_overdue: number | null }>;
+    needs_call_total?: number;
     win_back: Array<CustomersLandingBuyer & { last_order_label: string; prior_value: number; days_inactive: number | null }>;
+    win_back_total?: number;
   };
   buyers: CustomersLandingBuyer[];
   filters?: LandingFilterMeta;
@@ -83,17 +85,29 @@ export interface TenantCustomerDetailResponse {
     buyer_since: string | null;
     years_label: string;
     net_terms_days: number;
+    subtitle_meta: {
+      buyer_app_status_label: string;
+      city: string | null;
+      phone: string | null;
+      last_activity_at: string | null;
+      last_activity_kind: string | null;
+      last_activity_days_ago: number | null;
+      last_activity_date_label: string;
+    };
   };
   meta_strip_4: {
-    spend_mtd: number;
-    growth_pct: number;
-    orders_mtd: number;
-    aov_mtd: number;
-    last_order_label: string;
-    last_order_primary_product_qty: string;
+    invoiced_sales_90d: number;
+    invoice_count_90d: number;
+    primary_demand_kind: 'orders' | 'estimates' | 'none';
+    demand_90d: number;
+    demand_order_count_90d: number;
+    demand_estimate_count_90d: number;
     credit_used: number;
+    credit_available: number;
     credit_limit: number;
     credit_used_pct: number;
+    last_invoice_value: number;
+    last_invoice_date: string | null;
   };
   details: {
     business_name: string;
@@ -177,54 +191,11 @@ export interface TenantCustomerDetailResponse {
   };
   performance_cards?: unknown[];
   detail_v2?: unknown;
-  orders: {
-    badge_count_mtd: number;
-    rows: Array<{
-      id: string;
-      order_number: string | null;
-      location_name: string | null;
-      place_of_supply: string | null;
-      source_kind: 'buyer_app' | 'converted' | 'direct';
-      source_label: string | null;
-      campaign_name: string | null;
-      placed_at: string | null;
-      items: number;
-      gmv: number;
-      status: string;
-    }>;
-  };
-  estimates: {
-    rows: Array<{
-      id: string;
-      number: string | null;
-      location_name: string | null;
-      place_of_supply: string | null;
-      source_kind: 'buyer_app' | 'seller';
-      source_label: string | null;
-      campaign_name: string | null;
-      issued_at: string | null;
-      expires_at: string | null;
-      items_count: number;
-      total_amount: number;
-      status: string;
-    }>;
-  };
-  invoices: {
-    rows: Array<{
-      id: string;
-      number: string | null;
-      location_name: string | null;
-      place_of_supply: string | null;
-      source_kind: 'buyer_app' | 'converted' | 'direct';
-      source_label: string | null;
-      campaign_name: string | null;
-      issued_at: string | null;
-      due_date: string | null;
-      items_count: number;
-      outstanding_amount: number;
-      total_amount: number;
-      status: string;
-    }>;
+  tab_badges: {
+    orders_90d: number;
+    estimates_90d: number;
+    invoices_90d: number;
+    price_lists_assigned: number;
   };
   cohorts_summary: {
     rows: Array<{
@@ -234,32 +205,9 @@ export interface TenantCustomerDetailResponse {
     }>;
   };
   price_lists: {
-    assigned: Array<{
-      id: string;
-      name: string;
-      target_type: 'buyer' | 'cohort' | 'all_buyers';
-      target_label: string;
-      valid_from: string | null;
-      valid_to: string | null;
-      status: 'active' | 'draft' | 'expired';
-    }>;
-    lookup_products: Array<{
-      tenant_product_id: string;
-      name: string;
-      sku: string;
-    }>;
+    assigned_count: number;
   };
-  activity: Array<{
-    id: string;
-    at: string;
-    kind: 'invoice' | 'payment' | 'credit_adjustment' | 'catalog_view' | 'order' | 'audit';
-    title: string;
-    subtitle: string;
-    amount: number | null;
-  }>;
-  computed: {
-    last_order_date_human: string;
-  };
+  role: string | null;
 }
 
 export interface CustomerDocumentRow {
@@ -285,6 +233,35 @@ export interface CustomerDocumentPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface CustomerPriceListRow {
+  id: string;
+  name: string;
+  priority: number | null;
+  target_type: 'buyer' | 'cohort' | 'all_buyers';
+  target_label: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  status: 'active' | 'draft' | 'expired';
+}
+
+export interface CustomerPriceListPage {
+  assigned: CustomerPriceListRow[];
+  total: number;
+}
+
+export interface CustomerOutstandingInvoiceRow {
+  id: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  due_date: string | null;
+  total_amount: number;
+  outstanding_amount: number;
+  location_id: string | null;
+  location_name: string | null;
+  place_of_supply: string | null;
+  status: 'sent' | 'overdue';
 }
 
 export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
@@ -359,22 +336,104 @@ export function useTenantCustomerDetail(id: string) {
   });
 }
 
+export function useCustomerOutstandingInvoices(id: string, enabled = true) {
+  return useQuery<{ invoices: CustomerOutstandingInvoiceRow[] }>({
+    queryKey: ['tenant-customer-outstanding-invoices', id],
+    enabled: Boolean(id) && enabled,
+    queryFn: async ({ signal }) => {
+      const res = await apiFetch(`/api/tenant/customers/${id}/outstanding-invoices`, { signal });
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Forbidden');
+        if (res.status === 404) throw new Error('Not found');
+        throw new Error('Failed to fetch outstanding invoices');
+      }
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useCollectCustomerInvoicePayment(customerId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      invoiceId: string;
+      amount: number;
+      payment_method: string;
+      payment_reference?: string | null;
+      paid_at?: string;
+    }) => {
+      const res = await apiPatch(`/api/tenant/invoices/${payload.invoiceId}/pay`, {
+        amount: payload.amount,
+        payment_method: payload.payment_method,
+        payment_reference: payload.payment_reference,
+        paid_at: payload.paid_at,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((json as { error?: string }).error ?? 'Failed to record payment');
+      }
+      return json;
+    },
+    onSuccess: () => {
+      toast.success('Payment recorded');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to record payment');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-outstanding-invoices', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    },
+  });
+}
+
 export function useCustomerDocuments(
   buyerId: string,
-  filters: { kind: 'order' | 'estimate' | 'invoice'; query?: string; status?: string; sort?: string; page?: number },
+  filters: {
+    kind: 'order' | 'estimate' | 'invoice';
+    period?: SellerLandingPeriod;
+    query?: string;
+    status?: string[];
+    sort?: string;
+  },
   enabled = true,
 ) {
   return useQuery<CustomerDocumentPage>({
     queryKey: ['tenant-customer-documents', buyerId, filters],
     enabled: Boolean(buyerId) && enabled,
     queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ kind: filters.kind, limit: '50' });
-      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      const params = new URLSearchParams({ kind: filters.kind, limit: '200' });
+      params.set('period', filters.period ?? 'month');
       if (filters.query?.trim()) params.set('q', filters.query.trim());
-      if (filters.status) params.set('status', filters.status);
+      appendArrayParam(params, 'status', filters.status);
       if (filters.sort) params.set('sort', filters.sort);
       const res = await apiFetch(`/api/tenant/customers/${buyerId}/documents?${params}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch customer documents');
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useCustomerPriceLists(
+  buyerId: string,
+  page = 0,
+  enabled = true,
+) {
+  return useQuery<CustomerPriceListPage>({
+    queryKey: ['tenant-customer-price-lists', buyerId, page],
+    enabled: Boolean(buyerId) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({
+        limit: '50',
+        offset: String(Math.max(0, page) * 50),
+      });
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/price-lists?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch customer price lists');
       return res.json();
     },
     placeholderData: keepPreviousData,

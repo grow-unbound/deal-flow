@@ -22,16 +22,6 @@ import {
 } from '@/components/seller/document-composer';
 import { InvoicePaymentsCard } from '@/components/seller/invoices/detail/InvoicePaymentsCard';
 import { ModalMarkInvoicePaid, ModalSendInvoice, ModalVoidInvoice } from '@/components/seller/invoices/modals';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -40,7 +30,7 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useInvoiceDetail,
   useMarkInvoicePaid,
-  useSendInvoice,
+  useSendInvoiceDetailWhatsApp,
   useSendInvoiceReminder,
   useVoidInvoice,
 } from '@/hooks/useInvoiceDetail';
@@ -49,6 +39,7 @@ import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 
 const noop = () => {};
 
@@ -69,7 +60,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const payMut = useMarkInvoicePaid(id);
   const voidMut = useVoidInvoice(id);
   const remindMut = useSendInvoiceReminder(id);
-  const sendInvoiceMut = useSendInvoice(id);
+  const sendInvoiceMut = useSendInvoiceDetailWhatsApp(id);
 
   const [payOpen, setPayOpen] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
@@ -390,12 +381,11 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       <ModalSendInvoice
         open={remindOpen}
         onOpenChange={setRemindOpen}
-        docNumber={data.doc_number}
-        grandTotal={data.totals.grand_total}
-        dueDateYmd={data.due_date}
+        buyerName={data.buyer.name}
+        reminderState={data.whatsapp_reminder}
         isPending={remindMut.isPending}
-        onConfirm={async (payload) => {
-          await remindMut.mutateAsync(payload);
+        onConfirm={async () => {
+          await remindMut.mutateAsync();
         }}
       />
 
@@ -409,32 +399,27 @@ export function InvoiceDetailPage({ id }: { id: string }) {
         }}
       />
 
-      <AlertDialog open={sendOpen} onOpenChange={setSendOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send this invoice?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The buyer will see invoice {data.doc_number} as sent. You can still edit later if needed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={sendInvoiceMut.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={sendInvoiceMut.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                sendInvoiceMut.mutate(undefined, {
-                  onSuccess: () => {
-                    setSendOpen(false);
-                  },
-                });
-              }}
-            >
-              {sendInvoiceMut.isPending ? 'Sending…' : 'Send invoice'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SendDocumentWhatsAppDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        title="Send invoice"
+        confirmLabel="Send invoice"
+        isPending={sendInvoiceMut.isPending}
+        sendState={data.whatsapp_send}
+        buyerName={data.buyer.name}
+        phoneNumber={data.whatsapp_send.recipient_phone}
+        documentNumberLabel="Invoice Number"
+        documentNumber={data.doc_number}
+        amount={data.totals.grand_total}
+        itemCount={diffLines.length}
+        onConfirm={() => {
+          sendInvoiceMut.mutate(undefined, {
+            onSuccess: () => {
+              setSendOpen(false);
+            },
+          });
+        }}
+      />
     </>
   );
 }

@@ -53,7 +53,7 @@ export default function HomeLoading() {
         <div className="flex gap-3 overflow-hidden px-4">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-100">
-                <div className="aspect-[19/10] w-full animate-pulse bg-cream-100" />
+                <div className="aspect-[15/8] w-full animate-pulse bg-cream-100" />
                 <div className="space-y-2 bg-white px-5 py-4">
                   <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
                   <div className="h-4 w-full animate-pulse rounded bg-cream-200" />

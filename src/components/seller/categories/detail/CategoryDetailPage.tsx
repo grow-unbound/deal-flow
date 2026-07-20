@@ -14,18 +14,17 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCategoryDetail } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
-import { formatCompactInr } from '@/lib/utils';
+import { formatCompactInr, formatMetricValue } from '@/lib/utils';
 import type { TenantCategory } from '@/types/tenant-categories';
 import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
-import { CategoryActivityTab } from './CategoryActivityTab';
 
 const CategoryPerformanceTab = dynamic(
   () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'performance' | 'products' | 'brands' | 'activity';
+type TabId = 'performance' | 'products' | 'brands';
 
 interface CategoryDetailPageProps {
   id: string;
@@ -82,22 +81,22 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
         // supporting value (product count) instead — see doc line 962.
         label: 'Invoiced sales 90D',
-        value: formatCompactInr(m.gmv_mtd),
+        value: formatMetricValue('value', m.gmv_mtd),
         sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
         label: 'Units sold',
-        value: `${m.units_90d}`,
+        value: formatMetricValue('count', m.units_90d),
         sub: `${m.sold_sku_count} products that sold`,
       },
       {
         label: 'Recent sellers low/out of stock',
-        value: `${m.oos_sku_count}`,
+        value: formatMetricValue('count', m.oos_sku_count),
         sub: `${m.low_stock_sku_count} more low-stock`,
       },
       {
         label: 'Products in category',
-        value: `${m.active_sku_count}`,
+        value: formatMetricValue('count', m.active_sku_count),
         sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
       },
     ];
@@ -167,7 +166,6 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
           { id: 'performance', label: 'Performance' },
           { id: 'products', label: 'Products', badge: h.active_sku_count },
           { id: 'brands', label: 'Brands', badge: h.brand_count },
-          { id: 'activity', label: 'Activity' },
         ]}
         active={tab}
         onChange={(value) => setTab(value as TabId)}
@@ -178,7 +176,6 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       ) : null}
       {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
       {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
-      {tab === 'activity' ? <CategoryActivityTab activity={data.activity} /> : null}
 
       <CategoryFormSheet
         open={editOpen}

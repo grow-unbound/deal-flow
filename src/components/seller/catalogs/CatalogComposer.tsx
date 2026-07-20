@@ -50,7 +50,13 @@ import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
-import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerPriceSource, type CatalogComposerTag } from '@/lib/zod';
+import {
+  CatalogComposerPayloadSchema,
+  type CatalogComposerAvailability,
+  type CatalogComposerPriceSource,
+  type CatalogComposerPricingMode,
+  type CatalogComposerTag,
+} from '@/lib/zod';
 import { toast } from 'sonner';
 
 type ComposerMode = 'create' | 'edit';
@@ -90,8 +96,7 @@ const UNCATEGORIZED_FILTER_LABEL = 'Uncategorized';
 const ALL_BUYERS_SCOPE_VALUE = '__all_buyers__';
 const SELECT_BUYERS_SCOPE_VALUE = '__select_buyers__';
 const SETUP_CAMPAIGN_PRICES_VALUE = '__setup_campaign_prices__';
-
-type PricingMode = 'edit_each' | 'percent_off_base' | 'flat_off_base';
+type PricingMode = CatalogComposerPricingMode;
 
 function normalizeFilterLabel(value: string | null | undefined) {
   const trimmed = value?.trim();
@@ -216,22 +221,20 @@ export function CatalogComposer({
   const priceListItems = bootstrap?.price_list_items ?? [];
   const buyerCount = bootstrap?.buyer_count ?? 0;
   const detailComposer = detail?.composer;
-  const bootstrapProducts = bootstrap?.products ?? [];
-
   // Server-provided facets: accurate counts over full product dataset, not just display page
   const brandOptions = useMemo<FilterOption[]>(
     () =>
       bootstrap?.product_filters?.brands
         ? bootstrap.product_filters.brands.map((f: { id: string; label: string; count: number }) => ({ name: f.label, count: f.count }))
-        : buildFilterOptions(bootstrapProducts.map((p) => p.brand_name)),
-    [bootstrap?.product_filters?.brands, bootstrapProducts],
+        : buildFilterOptions((bootstrap?.products ?? []).map((p) => p.brand_name)),
+    [bootstrap?.product_filters?.brands, bootstrap?.products],
   );
   const categoryOptions = useMemo<FilterOption[]>(
     () =>
       bootstrap?.product_filters?.categories
         ? bootstrap.product_filters.categories.map((f: { id: string; label: string; count: number }) => ({ name: f.label, count: f.count }))
-        : buildFilterOptions(bootstrapProducts.map((p) => p.category_name)),
-    [bootstrap?.product_filters?.categories, bootstrapProducts],
+        : buildFilterOptions((bootstrap?.products ?? []).map((p) => p.category_name)),
+    [bootstrap?.product_filters?.categories, bootstrap?.products],
   );
   const allBrandNames = useMemo(() => brandOptions.map((option) => option.name), [brandOptions]);
   const allCategoryNames = useMemo(() => categoryOptions.map((option) => option.name), [categoryOptions]);
@@ -285,7 +288,7 @@ export function CatalogComposer({
   const isError = bootstrapError || productsQuery.isError || (mode === 'edit' && detailError);
 
   useEffect(() => {
-    if (didInit || products.length === 0) return;
+    if (didInit) return;
     if (mode === 'edit') {
       if (!detailComposer) return;
 
@@ -306,6 +309,8 @@ export function CatalogComposer({
       setValidTo(detailComposer.valid_to ? detailComposer.valid_to.slice(0, 10) : '');
       setPriceSource(detailComposer.price_source ?? 'manual');
       setPriceListId(detailComposer.price_list_id ?? null);
+      setPricingMode(detailComposer.pricing_strategy?.mode ?? 'edit_each');
+      setPricingValue(detailComposer.pricing_strategy?.value ?? '');
       setCampaignPrices(Object.fromEntries(detailComposer.items.map((item) => [item.tenant_product_id, item.price_override ?? null])));
       setSelectedBrands(nextBrands);
       setSelectedCategories(nextCategories);
@@ -320,6 +325,8 @@ export function CatalogComposer({
       setDidInit(true);
       return;
     }
+
+    if (products.length === 0) return;
 
     const nextSelectedIds = new Set(products.map((product) => product.id));
     setName('');
@@ -435,7 +442,7 @@ export function CatalogComposer({
     { label: 'Validity', value: validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : '—' },
   ];
 
-  const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status === 'published';
+  const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status !== 'draft';
   const composerScopeType = isAllBuyersScope ? 'all' : isSelectedBuyersScope ? 'buyer' : 'cohort';
   const selectedPriceListName = priceLists.find((list) => list.id === priceListId)?.name ?? null;
 
@@ -467,9 +474,11 @@ export function CatalogComposer({
         estimated_credits: 0,
         estimated_inr: 0,
         credits_balance: 0,
+        credit_price_inr: 0,
         template_approved: false,
         tenant_phone_configured: false,
         broadcast_sending_paused: false,
+        quality_rating_blocked: false,
       },
       template: {
         seller_name: 'Your business',
@@ -670,6 +679,9 @@ export function CatalogComposer({
       valid_to: validTo ? `${validTo}T23:59:59` : undefined,
       price_source: priceSource,
       price_list_id: priceSource === 'price_list' ? priceListId : null,
+      pricing_strategy: priceSource === 'manual'
+        ? { mode: pricingMode, value: pricingValue.trim() }
+        : undefined,
       is_dynamic: isDynamic,
       filters: {
         brand_names: selectedBrands,
@@ -790,7 +802,7 @@ export function CatalogComposer({
     }
   }
 
-  if (isError || (mode === 'edit' && !detail?.composer)) {
+  if (isError || (mode === 'edit' && detail && !detail.composer)) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
         <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
@@ -854,8 +866,20 @@ export function CatalogComposer({
             title={mode === 'edit' ? 'Edit campaign' : 'Add a campaign'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}
             status={{
-              label: mode === 'edit' && detail?.composer?.status === 'published' ? 'Live' : 'Draft',
-              tone: mode === 'edit' && detail?.composer?.status === 'published' ? 'live' : 'draft',
+              label: mode === 'edit'
+                ? detail?.composer?.status === 'published_dirty'
+                  ? 'Live · Unpublished Changes'
+                  : detail?.composer?.status === 'scheduled'
+                    ? 'Scheduled'
+                    : detail?.composer?.status === 'expired'
+                      ? 'Expired'
+                      : detail?.composer?.status === 'archived'
+                        ? 'Archived'
+                        : detail?.composer?.status === 'published'
+                          ? 'Live'
+                          : 'Draft'
+                : 'Draft',
+              tone: mode === 'edit' && detail?.composer?.status !== 'draft' ? 'live' : 'draft',
             }}
             actions={
               <>

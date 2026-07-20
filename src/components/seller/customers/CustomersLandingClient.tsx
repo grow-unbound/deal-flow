@@ -21,7 +21,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn, formatCompactInr } from '@/lib/utils';
+import { cn, formatCompactInr, formatMetricValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
@@ -34,9 +34,10 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { loadCalloutRows } from '@/lib/callout-loader';
 
-type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Trend (high → low)' | 'Recent activity';
-const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Trend (high → low)', 'Recent activity'];
+type SortOption = 'Recent activity' | 'Sales (high → low)' | 'Outstanding (high → low)';
+const SORT_OPTIONS: SortOption[] = ['Recent activity', 'Sales (high → low)', 'Outstanding (high → low)'];
 
 function formatDate(value: string | null) {
   if (!value) return 'Never';
@@ -50,6 +51,38 @@ function formatOverdueDays(value: number | null | undefined) {
 
 function tabularInline(value: string): ReactNode {
   return <span className="tabular-inline">{value}</span>;
+}
+
+function mapNeedsCallRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
+  return (callouts?.needs_call ?? []).map((buyer) => ({
+    id: buyer.id,
+    initials: buyer.avatar.initials,
+    hue: buyer.avatar.hue,
+    name: buyer.business_name,
+    reason: (
+      <>
+        {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
+        {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
+      </>
+    ),
+    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
+  }));
+}
+
+function mapWinBackRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
+  return (callouts?.win_back ?? []).map((buyer) => ({
+    id: buyer.id,
+    initials: buyer.avatar.initials,
+    hue: buyer.avatar.hue,
+    name: buyer.business_name,
+    reason: (
+      <>
+        {buyer.phone ?? '—'}
+        {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
+      </>
+    ),
+    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
+  }));
 }
 
 function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolean {
@@ -186,7 +219,7 @@ function CustomersLandingContent({
         status: [] as string[],
         due: [] as string[],
       },
-      sortBy: 'Sales (high → low)' as SortOption,
+      sortBy: 'Recent activity' as SortOption,
       search: '',
     },
   });
@@ -231,8 +264,7 @@ function CustomersLandingContent({
 
     return [...locallyFiltered].sort((a, b) => {
         if (sortBy === 'Sales (high → low)') return b.spend_mtd - a.spend_mtd;
-        if (sortBy === 'Sales (low → high)') return a.spend_mtd - b.spend_mtd;
-        if (sortBy === 'Trend (high → low)') return b.growth_pct - a.growth_pct;
+        if (sortBy === 'Outstanding (high → low)') return b.dues - a.dues;
         const aDate = a.last_order_at ? Date.parse(a.last_order_at) : 0;
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
@@ -291,26 +323,26 @@ function CustomersLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customers who purchased',
+            label: 'Active Customers · Last 90 Days',
             value: `${kpis?.active ?? 0}`,
-            sub: `${kpis?.active_pct ?? 0}% of active customers`,
+            sub: `${kpis?.active_pct ?? 0}% purchased at least once`,
           },
           {
             label: `Invoiced sales · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.spend_mtd ?? 0),
+            value: formatMetricValue('sales', kpis?.spend_mtd ?? 0),
             sub: `${kpis?.invoiced_customer_count ?? 0} customers`,
             tone: 'accent',
           },
           {
-            label: 'Inactive 90D w/ prior-year sales',
+            label: 'Inactive customers last 90 days',
             value: String(kpis?.dormant_over_30d ?? 0),
-            sub: `${formatCompactInr(kpis?.dormant_prior_year_value ?? 0)} prior-year value`,
+            sub: `${formatMetricValue('sales', kpis?.dormant_prior_year_value ?? 0)} previous sales`,
             tone: 'warn',
           },
           {
             label: 'Overdue amount',
-            value: formatCompactInr(kpis?.overdue_sum ?? 0),
-            sub: `across ${kpis?.overdue_customer_count ?? 0} customers`,
+            value: formatMetricValue('sales', kpis?.overdue_sum ?? 0),
+            sub: `${kpis?.overdue_customer_count ?? 0} customers`,
           },
         ]}
       />
@@ -321,41 +353,25 @@ function CustomersLandingContent({
             id: 'collect_overdue_balances',
             kind: 'risk',
             eyebrow: 'Collect overdue balances',
-            hint: `${callouts?.needs_call?.length ?? 0}`,
+            hint: `${callouts?.needs_call_total ?? callouts?.needs_call?.length ?? 0}`,
             getHref: (row) => `/customers/${row.id}`,
-            rows: (callouts?.needs_call ?? []).map((buyer) => ({
-              id: buyer.id,
-              initials: buyer.avatar.initials,
-              hue: buyer.avatar.hue,
-              name: buyer.business_name,
-              reason: (
-                <>
-                  {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
-                  {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
-                </>
-              ),
-              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
-            })),
+            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapNeedsCallRows>[number]>(
+              '/api/tenant/customers?callout=needs_call',
+              async (payload) => mapNeedsCallRows(payload.callouts),
+            ),
+            rows: mapNeedsCallRows(callouts),
           },
           {
             id: 'win_back_inactive_customers',
             kind: 'opportunity',
             eyebrow: 'Win back inactive customers',
-            hint: `${callouts?.win_back?.length ?? 0}`,
+            hint: `${callouts?.win_back_total ?? callouts?.win_back?.length ?? 0}`,
             getHref: (row) => `/customers/${row.id}`,
-            rows: (callouts?.win_back ?? []).map((buyer) => ({
-              id: buyer.id,
-              initials: buyer.avatar.initials,
-              hue: buyer.avatar.hue,
-              name: buyer.business_name,
-              reason: (
-                <>
-                  {buyer.phone ?? '—'}
-                  {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
-                </>
-              ),
-              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
-            })),
+            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapWinBackRows>[number]>(
+              '/api/tenant/customers?callout=win_back',
+              async (payload) => mapWinBackRows(payload.callouts),
+            ),
+            rows: mapWinBackRows(callouts),
           },
         ]}
       />
@@ -395,8 +411,8 @@ function CustomersLandingContent({
         columns={[
           { label: 'Customer', width: '360px', minWidth: 340, maxWidth: 420, className: 'px-5' },
           { label: 'Customer Group', minWidth: 180, maxWidth: 240, className: 'px-5' },
-          { label: 'Pricing setup', minWidth: 220, maxWidth: 280, className: 'px-5' },
-          { label: `Invoiced sales · ${metricSuffix}`, align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+          { label: 'Price List', minWidth: 220, maxWidth: 280, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
           { label: 'Outstanding Due', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
           { label: 'Overdue', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Last sale', minWidth: 130, maxWidth: 150, className: 'px-5' },
@@ -423,7 +439,7 @@ function CustomersLandingContent({
             >
               <td className="px-5 py-3.5">
                 <div className="ent flex items-center gap-3">
-                  <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} />
+                  {/* <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} /> */}
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
                     <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
@@ -444,15 +460,15 @@ function CustomersLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatMetricValue('sales', buyer.spend_mtd)}</span>
               </td>
-              <td className="px-5 py-3.5 text-right text-sm text-cream-800">
-                <span className="tabular-inline">{formatCompactInr(buyer.dues)}</span>
+              <td className="px-5 py-3.5 text-right text-md font-medium tabular-nums text-cream-800">
+                <span className="tabular-inline">{formatMetricValue('sales', buyer.dues)}</span>
               </td>
               <td className="px-5 py-3.5 text-right text-sm text-cream-800">
                 <div className="flex flex-col items-end">
                   <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
-                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatCompactInr(buyer.overdue_amount) : '-'}
+                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatMetricValue('sales', buyer.overdue_amount) : '-'}
                   </span>
                   {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
                 </div>

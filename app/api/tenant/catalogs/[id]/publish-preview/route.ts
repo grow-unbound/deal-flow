@@ -4,8 +4,13 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { campaignAudienceLabel, campaignScopeToBroadcastTarget } from '@/lib/server/campaign-broadcast';
+import { campaignScopeToBroadcastTarget } from '@/lib/server/campaign-broadcast';
 import { buildCampaignPublishPreview } from '@/lib/server/campaign-publish-preview';
+import {
+  resolveCampaignNotifyRecipientSegments,
+  selectCampaignNotifyRecipientBuyerIds,
+} from '@/lib/server/campaign-publish-notify';
+import { resolveCampaignWorkflowStatus } from '@/lib/campaign-workflow-status';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -13,6 +18,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const claims = await getVerifiedClaims(request);
   const notifyWhatsapp = request.nextUrl.searchParams.get('notify_whatsapp') === 'true';
+  const mode = request.nextUrl.searchParams.get('mode') === 'notify_buyers' ? 'notify_buyers' : 'first_publish';
 
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -34,11 +40,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   if (error) return NextResponse.json({ error: 'Failed to load campaign' }, { status: 500 });
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
-  if (campaign.status !== 'draft') {
+  const scopeValue = (campaign.scope_value ?? {}) as Record<string, unknown>;
+  const workflowStatus = resolveCampaignWorkflowStatus({
+    rawStatus: campaign.status,
+    validFrom: campaign.valid_from,
+    validTo: campaign.valid_to,
+    hasUnpublishedChanges: Boolean((scopeValue.composer_draft ?? null) && typeof scopeValue.composer_draft === 'object'),
+  });
+
+  if (mode === 'first_publish' && campaign.status !== 'draft') {
     return NextResponse.json({ error: 'Only draft campaigns have a publish preview' }, { status: 400 });
   }
+  if (mode === 'notify_buyers' && workflowStatus.value !== 'published') {
+    return NextResponse.json({ error: 'Only live published campaigns can notify buyers' }, { status: 400 });
+  }
 
-  const scopeValue = (campaign.scope_value ?? {}) as Record<string, unknown>;
   const composer = (scopeValue.composer ?? {}) as Record<string, unknown>;
   const priceSource = composer.price_source === 'price_list' ? 'price_list' : 'manual';
   const priceListId = typeof composer.price_list_id === 'string' ? composer.price_list_id : null;
@@ -84,12 +100,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     memberCount = Array.isArray(audienceRows) ? audienceRows.length : null;
   }
 
-  const audienceLabel = campaignAudienceLabel({
-    scopeType: campaign.scope_type,
-    scopeValue,
-    cohortName,
-    memberCount,
-  });
+  const recipientSegments = mode === 'notify_buyers'
+    ? await resolveCampaignNotifyRecipientSegments(db, {
+        tenantId: claims.tenant_id,
+        campaignId: campaign.id,
+        scopeType: campaign.scope_type,
+        scopeValue,
+      })
+    : null;
 
   const preview = await buildCampaignPublishPreview(db, {
     tenantId: claims.tenant_id,
@@ -97,6 +115,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     whatsappFeatureEnabled: flagEnabled,
     cohortName,
     memberCount,
+    recipientBuyerIds: recipientSegments
+      ? selectCampaignNotifyRecipientBuyerIds(recipientSegments, 'all_eligible')
+      : undefined,
+    recipientSegments: recipientSegments
+      ? {
+          all_eligible: recipientSegments.allEligibleBuyerIds.length,
+          not_viewed: recipientSegments.notViewedBuyerIds.length,
+          viewed_not_ordered: recipientSegments.viewedNotOrderedBuyerIds.length,
+        }
+      : undefined,
     campaign: {
       id: campaign.id,
       name: campaign.name,

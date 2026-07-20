@@ -15,6 +15,69 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
+vi.mock('@/lib/server/whatsapp-document-send', () => ({
+  getBuyerDocumentSendState: vi.fn().mockResolvedValue({
+    can_send: true,
+    block_reason: null,
+    block_message: null,
+    credits_balance: 10,
+    required_credits: 1,
+    recipient_phone: '9876543210',
+    template_name: 'invoice_update_buyer',
+    seller_name: 'Yukti Seller',
+    seller_phone_display: '+91 98765 43210',
+  }),
+  getInvoiceReminderSendState: vi.fn().mockResolvedValue({
+    can_send: true,
+    block_reason: null,
+    block_message: null,
+    credits_balance: 10,
+    required_credits: 1,
+    recipient_phone: '9876543210',
+    template_name: 'buyer_payment_reminder',
+    seller_name: 'Yukti Seller',
+    seller_phone_display: '+91 98765 43210',
+    due_invoice_count: '1',
+    outstanding_amount: '1180',
+    due_status: 'due in 5 days',
+    preview_message: 'Hi Acme,\n\nThis is a payment reminder from Yukti Seller on 1 invoices.',
+  }),
+  sendBuyerDocumentWhatsApp: vi.fn().mockResolvedValue({
+    ok: true,
+    recipientPhone: '9876543210',
+    state: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'invoice_update_buyer',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+    },
+  }),
+  sendInvoiceReminderWhatsApp: vi.fn().mockResolvedValue({
+    ok: true,
+    recipientPhone: '9876543210',
+    state: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'buyer_payment_reminder',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+      due_invoice_count: '1',
+      outstanding_amount: '1180',
+      due_status: 'due in 5 days',
+      preview_message: 'Hi Acme,\n\nThis is a payment reminder from Yukti Seller on 1 invoices.',
+    },
+  }),
+}));
+
 type MaybeSingleResult = { data: unknown; error: unknown };
 
 const invoiceRow: Record<string, unknown> = {
@@ -75,19 +138,10 @@ function chainArray(data: unknown[]) {
 function defaultFromImpl(table: string) {
   if (table === 'invoices') {
     const query = {
-      eq: vi.fn((col: string) => {
-        if (col === 'id') {
-          return {
-            is: vi.fn(() => ({
-              maybeSingle: vi.fn().mockResolvedValue({ data: { ...invoiceRow }, error: null }),
-            })),
-          };
-        }
-        return query;
-      }),
+      eq: vi.fn(() => query),
       neq: vi.fn(() => query),
       in: vi.fn(() => query),
-      is: vi.fn().mockResolvedValue({ data: [], error: null }),
+      is: vi.fn(() => query),
       maybeSingle: vi.fn().mockResolvedValue({ data: { ...invoiceRow }, error: null }),
     };
     return {
@@ -202,12 +256,18 @@ function defaultFromImpl(table: string) {
     };
   }
   if (table === 'tenant_inventory') {
+    const query = {
+      eq: vi.fn(() => query),
+      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({
+        data: [{ tenant_product_id: '33333333-3333-3333-3333-333333333333', qty_available: 12 }],
+        error: null,
+      }),
+    };
     return {
       select: vi.fn(() => ({
-        in: vi.fn().mockResolvedValue({
-          data: [{ tenant_product_id: '33333333-3333-3333-3333-333333333333', qty_available: 12 }],
-          error: null,
-        }),
+        in: vi.fn(() => ({
+          is: vi.fn(() => query),
+        })),
       })),
     };
   }
@@ -604,7 +664,7 @@ describe('invoice pay / void / remind API', () => {
     const res = await PATCH(
       new NextRequest('http://localhost/api/tenant/invoices/inv-1/remind', {
         method: 'PATCH',
-        body: JSON.stringify({ message: 'Ping' }),
+        body: JSON.stringify({}),
       }),
       { params: Promise.resolve({ id: 'inv-1' }) },
     );

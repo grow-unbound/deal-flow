@@ -478,11 +478,11 @@ describe('invoices landing API route', () => {
     expect(row.buyer_state).toBe('MH');
     expect(row.items_count).toBe(2);
     expect(row.source_label).toBe('ORD-2026-0001');
-    expect(row.source_detail).toBe('Converted by Priya Shah');
+    expect(row.source_detail).toBe('');
 
     const estimateRow = body.invoices.find((r: { id: string }) => r.id === 'i2');
     expect(estimateRow.source_label).toBe('EST-2026-0001');
-    expect(estimateRow.source_detail).toBe('Converted by Ravi Nair');
+    expect(estimateRow.source_detail).toBe('');
 
     expect(body.todays_read.largest_overdue).toHaveLength(3);
     expect(body.todays_read.largest_overdue.map((item: { invoice_number: string }) => item.invoice_number)).toContain('INV-2026-0003');

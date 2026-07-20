@@ -140,7 +140,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     db
       .schema('app')
       .from('cohorts')
-      .select('id, name, description, is_active')
+      .select('id, name, description')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .limit(limit),
@@ -305,7 +305,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
   const cohortItems = ((cohortsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.id),
     label: String(row.name ?? 'Customer group'),
-    sublabel: String(row.description ?? ((row.is_active ?? true) ? 'Active' : 'Inactive')),
+    sublabel: String(row.description ?? 'Active'),
     url_path: `/customer-groups/${row.id}`,
   }));
   if (cohortItems.length > 0) groups.push({ entity_type: 'cohort', items: cohortItems });
@@ -322,7 +322,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     id: String(row.id),
     label: String(row.name ?? 'Price list'),
     sublabel: String(row.description ?? ((row.is_active ?? true) ? 'Active' : 'Inactive')),
-    url_path: `/pricelists/${row.id}`,
+    url_path: `/price-lists/${row.id}`,
   }));
   if (priceListItems.length > 0) groups.push({ entity_type: 'price_list', items: priceListItems });
 

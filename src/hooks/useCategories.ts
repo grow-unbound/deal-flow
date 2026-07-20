@@ -183,6 +183,7 @@ export interface CategoryDetailProduct {
   sku_code: string | null;
   brand_id: string;
   brand_name: string;
+  brand_logo_url: string | null;
   on_hand: number;
   days_cover: number | null;
   units_mtd: number;
@@ -194,8 +195,12 @@ export interface CategoryDetailBrand {
   id: string;
   name: string;
   initials: string;
+  logo_url: string | null;
   sku_count: number;
   gmv_mtd: number;
+  units_90d: number;
+  demand_90d: number;
+  demand_units_90d: number;
   growth_pct: number;
   is_active: boolean;
 }

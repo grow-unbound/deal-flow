@@ -21,6 +21,7 @@ function VerifyOtpForm() {
   const searchParams = useSearchParams();
   const ref_id = searchParams.get('ref_id') ?? '';
   const phone = searchParams.get('phone') ?? '';
+  const next = searchParams.get('next') ?? '';
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +88,14 @@ function VerifyOtpForm() {
       } catch { /* sessionStorage may be unavailable */ }
 
       shouldResetLoading = false;
-      router.replace(data.redirect ?? '/dashboard');
+      const serverRedirect = data.redirect ?? '/dashboard';
+      // Honor `next` only for buyers landing on /buy/home.
+      // Sellers (/dashboard) and first-time buyers (/consent) always follow their server-assigned path.
+      const destination =
+        serverRedirect === '/buy/home' && next
+          ? decodeURIComponent(next)
+          : serverRedirect;
+      router.replace(destination);
       router.refresh();
     } catch {
       setError('Network error. Please check your connection and try again.');
