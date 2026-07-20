@@ -58,6 +58,150 @@ const useCustomerPriceListsMock = vi.fn(() => ({
     ],
   },
 }));
+const useCustomerOutstandingInvoicesMock = vi.fn(() => ({
+  isLoading: false,
+  isFetching: false,
+  data: {
+    invoices: [
+      {
+        id: 'inv-1',
+        invoice_number: 'INV-001',
+        invoice_date: '2026-07-10T00:00:00Z',
+        due_date: '2026-07-18T00:00:00Z',
+        total_amount: 1000,
+        outstanding_amount: 400,
+        location_id: 'loc-2',
+        location_name: 'Warehouse South',
+        place_of_supply: 'Karnataka',
+        status: 'overdue' as const,
+      },
+    ],
+  },
+}));
+const useCollectCustomerInvoicePaymentMock = vi.fn(() => ({
+  mutateAsync: vi.fn().mockResolvedValue({}),
+  isPending: false,
+}));
+
+function createCustomerDetail() {
+  return {
+  header: {
+    id: 'buyer-1',
+    buyer_name: 'Singh Hospitality',
+    initials: 'SH',
+    hue: 'teal',
+    status_label: 'Active',
+    status_tone: 'success',
+    buyer_app_enabled: true,
+    whatsapp_opted_out: false,
+    city: 'Bengaluru',
+    buyer_since: '2021-05-10T00:00:00Z',
+    years_label: '5 yrs loyal',
+    net_terms_days: 21,
+    subtitle_meta: {
+      buyer_app_status_label: 'Buyer App enabled',
+      city: 'Bengaluru',
+      phone: '9876543210',
+      last_activity_at: '2026-07-16T00:00:00Z',
+      last_activity_kind: 'sale',
+      last_activity_days_ago: 3,
+      last_activity_date_label: '16 Jul 2026',
+    },
+  },
+  meta_strip_4: {
+    invoiced_sales_90d: 250000,
+    invoice_count_90d: 4,
+    primary_demand_kind: 'orders' as const,
+    demand_90d: 188000,
+    demand_order_count_90d: 3,
+    demand_estimate_count_90d: 1,
+    credit_used: 64000,
+    credit_available: 36000,
+    credit_limit: 100000,
+    credit_used_pct: 64,
+    last_invoice_value: 84200,
+    last_invoice_date: '2026-07-16T00:00:00Z',
+  },
+  details: {
+    business_name: 'Singh Hospitality',
+    contact_name: 'R Singh',
+    phone: '9876543210',
+    email: 'ops@singh.co',
+    gstin: '29ABCDE1234F1Z5',
+    gst_treatment: 'regular',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560001',
+    zone: 'South',
+    billing_address: null,
+    shipping_address: null,
+    payment_terms_days: 21,
+    credit_limit: 100000,
+    default_price_list_id: 'pl-1',
+    assigned_price_list: 'North Premium Pricing',
+    buyer_app_enabled: true,
+    cohorts: ['Premium'],
+    is_active: true,
+    buyer_users: [
+      {
+        id: 'user-1',
+        user_id: 'auth-1',
+        first_name: 'Amit',
+        last_name: 'Sharma',
+        full_name: 'Amit Sharma',
+        phone: '9876543210',
+        email: 'amit@example.com',
+        designation: 'Owner',
+        department: null,
+        is_active: true,
+        status: 'Active',
+      },
+    ],
+    contacts: [],
+  },
+  performance: {
+    monthly_spend_trend: [],
+    brand_affinity: [],
+    order_frequency: [],
+  },
+  performance_v2: {
+    headline: {
+      spend_mtd: 250000,
+      growth_pct: 12,
+      orders_mtd: 4,
+      aov_mtd: 62500,
+    },
+    brand_mix: { total_spend: 0, rows: [] },
+    top_skus: [],
+    credit_ops: {
+      last_order_days_ago: '3d ago',
+      last_order_value: 84200,
+      catalog_opens_mtd: 0,
+      credit_used: 64000,
+      credit_limit: 100000,
+      credit_util_pct: 64,
+      payment_behavior_summary: 'Payment behavior - current',
+    },
+  },
+  performance_cards: [],
+  detail_v2: {},
+  tab_badges: {
+    orders_90d: 3,
+    estimates_90d: 1,
+    invoices_90d: 4,
+    price_lists_assigned: 1,
+  },
+  cohorts_summary: {
+    rows: [{ id: 'cohort-1', name: 'Premium', member_count: 1 }],
+  },
+  price_lists: {
+    assigned_count: 1,
+  },
+  role: 'seller_admin',
+  };
+}
+
+let currentCustomerDetail = createCustomerDetail();
 
 vi.mock('@/hooks/useRole', () => ({
   useRole: () => useRoleMock(),
@@ -75,121 +219,7 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
   useTenantCustomerDetail: () => ({
     isLoading: false,
     isError: false,
-    data: {
-      header: {
-        id: 'buyer-1',
-        buyer_name: 'Singh Hospitality',
-        initials: 'SH',
-        hue: 'teal',
-        status_label: 'Active',
-        status_tone: 'success',
-        buyer_app_enabled: true,
-        whatsapp_opted_out: false,
-        city: 'Bengaluru',
-        buyer_since: '2021-05-10T00:00:00Z',
-        years_label: '5 yrs loyal',
-        net_terms_days: 21,
-        subtitle_meta: {
-          buyer_app_status_label: 'Buyer App enabled',
-          city: 'Bengaluru',
-          phone: '9876543210',
-          last_activity_at: '2026-07-16T00:00:00Z',
-          last_activity_kind: 'sale',
-          last_activity_days_ago: 3,
-          last_activity_date_label: '16 Jul 2026',
-        },
-      },
-      meta_strip_4: {
-        invoiced_sales_90d: 250000,
-        invoice_count_90d: 4,
-        primary_demand_kind: 'orders' as const,
-        demand_90d: 188000,
-        demand_order_count_90d: 3,
-        demand_estimate_count_90d: 1,
-        credit_used: 64000,
-        credit_available: 36000,
-        credit_limit: 100000,
-        credit_used_pct: 64,
-        last_invoice_value: 84200,
-        last_invoice_date: '2026-07-16T00:00:00Z',
-      },
-      details: {
-        business_name: 'Singh Hospitality',
-        contact_name: 'R Singh',
-        phone: '9876543210',
-        email: 'ops@singh.co',
-        gstin: '29ABCDE1234F1Z5',
-        gst_treatment: 'regular',
-        city: 'Bengaluru',
-        state: 'Karnataka',
-        pincode: '560001',
-        zone: 'South',
-        billing_address: null,
-        shipping_address: null,
-        payment_terms_days: 21,
-        credit_limit: 100000,
-        default_price_list_id: 'pl-1',
-        assigned_price_list: 'North Premium Pricing',
-        buyer_app_enabled: true,
-        cohorts: ['Premium'],
-        is_active: true,
-        buyer_users: [
-          {
-            id: 'user-1',
-            user_id: 'auth-1',
-            first_name: 'Amit',
-            last_name: 'Sharma',
-            full_name: 'Amit Sharma',
-            phone: '9876543210',
-            email: 'amit@example.com',
-            designation: 'Owner',
-            department: null,
-            is_active: true,
-            status: 'Active',
-          },
-        ],
-        contacts: [],
-      },
-      performance: {
-        monthly_spend_trend: [],
-        brand_affinity: [],
-        order_frequency: [],
-      },
-      performance_v2: {
-        headline: {
-          spend_mtd: 250000,
-          growth_pct: 12,
-          orders_mtd: 4,
-          aov_mtd: 62500,
-        },
-        brand_mix: { total_spend: 0, rows: [] },
-        top_skus: [],
-        credit_ops: {
-          last_order_days_ago: '3d ago',
-          last_order_value: 84200,
-          catalog_opens_mtd: 0,
-          credit_used: 64000,
-          credit_limit: 100000,
-          credit_util_pct: 64,
-          payment_behavior_summary: 'Payment behavior - current',
-        },
-      },
-      performance_cards: [],
-      detail_v2: {},
-      tab_badges: {
-        orders_90d: 3,
-        estimates_90d: 1,
-        invoices_90d: 4,
-        price_lists_assigned: 1,
-      },
-      cohorts_summary: {
-        rows: [{ id: 'cohort-1', name: 'Premium', member_count: 1 }],
-      },
-      price_lists: {
-        assigned_count: 1,
-      },
-      role: 'seller_admin',
-    },
+    data: currentCustomerDetail,
   }),
   useToggleCustomerStatusOptimistic: () => ({
     mutate: vi.fn(),
@@ -200,6 +230,8 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
     isPending: false,
   }),
   useCustomerPriceLists: () => useCustomerPriceListsMock(),
+  useCustomerOutstandingInvoices: () => useCustomerOutstandingInvoicesMock(),
+  useCollectCustomerInvoicePayment: () => useCollectCustomerInvoicePaymentMock(),
   useCustomerDocuments: () => ({
     isLoading: false,
     isFetching: false,
@@ -223,6 +255,7 @@ function renderPage() {
 describe('customers/[id] detail shell', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    currentCustomerDetail = createCustomerDetail();
     useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
     useTenantSettingsMock.mockReturnValue({
       data: {
@@ -314,5 +347,25 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByText('Default pricelist')).toBeInTheDocument();
     expect(screen.getByText('Buyer users')).toBeInTheDocument();
     expect(screen.getByText('Amit Sharma')).toBeInTheDocument();
+  });
+
+  it('shows collect payment when the customer has outstanding dues', () => {
+    renderPage();
+
+    expect(screen.getByRole('button', { name: /Collect payment/i })).toBeInTheDocument();
+  });
+
+  it('hides collect payment when the customer has no outstanding dues', () => {
+    currentCustomerDetail = {
+      ...currentCustomerDetail,
+      meta_strip_4: {
+        ...currentCustomerDetail.meta_strip_4,
+        credit_used: 0,
+      },
+    };
+
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: /Collect payment/i })).not.toBeInTheDocument();
   });
 });

@@ -110,7 +110,7 @@ describe('buyer home page', () => {
     expect(await screen.findByRole('heading', { name: 'Your shelf, this month.' })).toHaveStyle({ fontSize: 'var(--b-text-page-sm)' });
     expect(await screen.findByText(/Good (morning|afternoon|evening), Rajan/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /notifications/i })).toHaveClass('h-12', 'w-12');
-    expect(screen.getByText('Latest promotions')).toBeInTheDocument();
+    expect(screen.getByText('Promotions')).toBeInTheDocument();
     expect(screen.getByText('₹32,50,000')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /browse all/i })).toHaveAttribute('href', '/buy/buy-again');
     const seeAllLinks = screen.getAllByRole('link', { name: /see all/i });

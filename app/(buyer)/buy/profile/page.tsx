@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 interface BuyerInvoice {
   id: string;
@@ -26,14 +27,6 @@ interface BuyerInvoice {
 
 interface BuyerInvoicesResponse {
   invoices: BuyerInvoice[];
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 function formatShortDate(value: string | null): string {
@@ -381,7 +374,7 @@ function CreditLimitSheet({
                 </div>
                 <div className="text-right">
                   <p className="text-base font-semibold text-cream-900">
-                    {formatCurrency(invoice.outstanding_balance ?? 0)}
+                    {formatBuyerCurrency(invoice.outstanding_balance ?? 0)}
                   </p>
                   <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-500">{invoice.status}</p>
                 </div>
@@ -554,7 +547,7 @@ export default function ProfilePage() {
               icon={<Wallet className="h-5 w-5" />}
               tone="accent"
               title="Credit limit"
-              subtitle={`${formatCurrency(data.credit_used)} used of ${formatCurrency(data.credit_limit)}`}
+              subtitle={`${formatBuyerCurrency(data.credit_used)} used of ${formatBuyerCurrency(data.credit_limit)}`}
               onClick={() => setCreditSheetOpen(true)}
               action={<ChevronRight className="h-5 w-5 text-cream-500" />}
             />

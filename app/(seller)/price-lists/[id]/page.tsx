@@ -42,20 +42,22 @@ function formatDate(value: string | null | undefined) {
 
 export default function PriceListDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const priceListId = typeof id === 'string' ? id : '';
   const router = useRouter();
   const { isSellerAdmin } = useRole();
 
   const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
     storageKey: 'seller-price-list-detail-tab',
-    scopeKey: id,
+    scopeKey: priceListId,
     initialState: 'performance',
   });
   const [archiveOpen, setArchiveOpen] = useState(false);
 
-  const { data, isLoading, isError } = usePriceListDetail(id);
-  const priceListAction = usePriceListAction(id);
+  const { data, isLoading, isError } = usePriceListDetail(priceListId);
+  const priceListAction = usePriceListAction(priceListId);
 
   const priceList = data?.price_list;
+  const isBootstrapping = !priceListId || isLoading;
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
@@ -93,7 +95,7 @@ export default function PriceListDetailPage() {
     <FeatureGate flag="PRICING_ENGINE">
       <RoleGuard roles={[ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT]}>
         <PageWrap className="pt-7 pb-10">
-          {isLoading ? (
+          {isBootstrapping ? (
             <SharedPriceListDetailSkeleton />
           ) : isError || !priceList ? (
             <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
@@ -117,12 +119,12 @@ export default function PriceListDetailPage() {
                       <Archive size={14} aria-hidden />
                       Archive pricelist
                     </Button>
-                      <Button variant="outline" size="sm" className="gap-2" asChild>
-                        <Link href={`/price-lists/${id}/edit`}>
+                    <Button variant="outline" size="sm" className="gap-2" asChild>
+                        <Link href={`/price-lists/${priceListId}/edit`}>
                           <PencilIcon size={14} aria-hidden />
                           Edit pricelist
                         </Link>
-                      </Button>
+                    </Button>
                     </div>
                   ) : null
                 }
@@ -163,7 +165,7 @@ export default function PriceListDetailPage() {
 
               {tabActive === 'products' ? (
                 <PriceListProductsTab
-                  priceListId={id}
+                  priceListId={priceListId}
                   filters={priceList.filters}
                   items={priceList.items}
                   brandsCovered={priceList.stats?.brands_covered ?? 0}

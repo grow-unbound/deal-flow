@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { MailPlus, PencilIcon, Trash2 } from 'lucide-react';
+import { CircleDollarSign, MailPlus, PencilIcon, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,6 +10,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
+import { CollectCustomerPaymentDialog } from '@/components/seller/customers/detail';
 import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
 import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
 import { CustomerPriceListsTab } from '@/components/seller/customers/detail/CustomerPriceListsTab';
@@ -94,6 +95,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const deleteMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
+  const [collectPaymentOpen, setCollectPaymentOpen] = useState(false);
 
   const featureVisibility = useMemo(() => ({
     estimates: settings?.modules.orders.features.enquiries !== false,
@@ -159,6 +161,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     return <ErrorState heading="Couldn't load customer" description={error?.message ?? 'There was a problem fetching this customer detail page.'} />;
   }
 
+  const hasOutstandingDues = data.meta_strip_4.credit_used > 0;
+
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
       <PageWrap className="pt-7">
@@ -178,6 +182,17 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           ]}
           actions={
             <div className="flex items-center gap-2 pt-1">
+              {hasOutstandingDues ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setCollectPaymentOpen(true)}
+                >
+                  <CircleDollarSign size={16} />
+                  Collect payment
+                </Button>
+              ) : null}
               {isSellerAdmin ? (
                 <>
                   {data.details.is_active ? (
@@ -315,6 +330,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               zone: data.details.zone ?? '',
             },
           }}
+        />
+        <CollectCustomerPaymentDialog
+          buyerId={id}
+          buyerName={data.header.buyer_name}
+          open={collectPaymentOpen}
+          onOpenChange={setCollectPaymentOpen}
         />
       </PageWrap>
     </FeatureGate>

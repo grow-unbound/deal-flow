@@ -664,3 +664,25 @@ export const CatalogPublishActionSchema = z.object({
   hero_image_url: z.string().url().optional(),
 });
 export type CatalogPublishActionInput = z.infer<typeof CatalogPublishActionSchema>;
+
+export const CatalogNotifyRecipientFilterSchema = z.enum([
+  'all_eligible',
+  'not_viewed',
+  'viewed_not_ordered',
+]);
+export type CatalogNotifyRecipientFilter = z.infer<typeof CatalogNotifyRecipientFilterSchema>;
+
+export const CatalogPublishUpdatesActionSchema = z.object({
+  action: z.literal('publish_catalog_updates'),
+  buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+  hero_image_url: z.string().url().optional(),
+});
+export type CatalogPublishUpdatesActionInput = z.infer<typeof CatalogPublishUpdatesActionSchema>;
+
+export const CatalogNotifyBuyersActionSchema = z.object({
+  action: z.literal('notify_catalog_buyers'),
+  recipient_filter: CatalogNotifyRecipientFilterSchema,
+  buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+  notify_scheduled_for: z.string().datetime().optional(),
+});
+export type CatalogNotifyBuyersActionInput = z.infer<typeof CatalogNotifyBuyersActionSchema>;

@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import {
   isBuyerCartPillRoute,
@@ -9,14 +10,16 @@ import {
   isBuyerDeepRoute,
   isBuyerLandingRoute,
 } from '@/lib/buyer-routes';
+import { isActiveBuyerRefreshQuery } from '@/lib/buyer-refresh';
 import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
 import { BuyerScrollChromeProvider, useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
-import { BuyerRealtimeProvider } from '@/contexts/BuyerRealtimeContext';
+import { BuyerRealtimeProvider, useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { BuyerPreviewBootstrap } from './BuyerPreviewBootstrap';
 import { BuyerTabBar } from './BuyerTabBar';
 import { CartBar } from '@/components/buyer/cart/CartBar';
 import { BuyerSearchOverlay } from '@/components/buyer/layout/BuyerSearchOverlay';
+import { BuyerPullToRefresh } from '@/components/buyer/layout/BuyerPullToRefresh';
 
 interface BuyerShellProps {
   children: ReactNode;
@@ -30,16 +33,40 @@ function BuyerShellMain({
   scrollRootRef: React.RefCallback<HTMLDivElement>;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const isDeep = isBuyerDeepRoute(pathname);
   const isLanding = isBuyerLandingRoute(pathname);
   const isChromeless = isDeep || isBuyerChromelessRoute(pathname);
   const { tabBarVisible } = useBuyerScrollChromeState();
+  const { triggerRefresh } = useBuyerRealtimeContext();
   const showTabBarPadding = !isChromeless && (!isLanding || tabBarVisible);
+  const canPullToRefresh = !isBuyerChromelessRoute(pathname);
+
+  const handleRefresh = useCallback(async () => {
+    if (triggerRefresh) {
+      await triggerRefresh();
+      return;
+    }
+
+    const activeQueries = queryClient.getQueryCache().getAll().filter(isActiveBuyerRefreshQuery);
+    if (activeQueries.length === 0) {
+      router.refresh();
+      return;
+    }
+
+    await queryClient.refetchQueries({
+      type: 'active',
+      predicate: (query) => isActiveBuyerRefreshQuery(query),
+    });
+  }, [queryClient, router, triggerRefresh]);
 
   return (
-    <main
-      ref={scrollRootRef}
-      className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+    <BuyerPullToRefresh
+      viewportRef={scrollRootRef}
+      pullEnabled={canPullToRefresh}
+      onRefresh={handleRefresh}
+      className="min-h-0 flex-1"
       style={{
         paddingBottom: showTabBarPadding
           ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))'
@@ -47,7 +74,7 @@ function BuyerShellMain({
       }}
     >
       {children}
-    </main>
+    </BuyerPullToRefresh>
   );
 }
 

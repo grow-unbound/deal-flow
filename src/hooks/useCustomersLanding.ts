@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -251,6 +251,19 @@ export interface CustomerPriceListPage {
   total: number;
 }
 
+export interface CustomerOutstandingInvoiceRow {
+  id: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  due_date: string | null;
+  total_amount: number;
+  outstanding_amount: number;
+  location_id: string | null;
+  location_name: string | null;
+  place_of_supply: string | null;
+  status: 'sent' | 'overdue';
+}
+
 export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
   return useQuery({
     queryKey: ['tenant-customers'],
@@ -320,6 +333,60 @@ export function useTenantCustomerDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCustomerOutstandingInvoices(id: string, enabled = true) {
+  return useQuery<{ invoices: CustomerOutstandingInvoiceRow[] }>({
+    queryKey: ['tenant-customer-outstanding-invoices', id],
+    enabled: Boolean(id) && enabled,
+    queryFn: async ({ signal }) => {
+      const res = await apiFetch(`/api/tenant/customers/${id}/outstanding-invoices`, { signal });
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Forbidden');
+        if (res.status === 404) throw new Error('Not found');
+        throw new Error('Failed to fetch outstanding invoices');
+      }
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useCollectCustomerInvoicePayment(customerId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      invoiceId: string;
+      amount: number;
+      payment_method: string;
+      payment_reference?: string | null;
+      paid_at?: string;
+    }) => {
+      const res = await apiPatch(`/api/tenant/invoices/${payload.invoiceId}/pay`, {
+        amount: payload.amount,
+        payment_method: payload.payment_method,
+        payment_reference: payload.payment_reference,
+        paid_at: payload.paid_at,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((json as { error?: string }).error ?? 'Failed to record payment');
+      }
+      return json;
+    },
+    onSuccess: () => {
+      toast.success('Payment recorded');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to record payment');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-outstanding-invoices', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    },
   });
 }
 

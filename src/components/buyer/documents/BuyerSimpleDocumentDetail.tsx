@@ -5,14 +5,7 @@ import * as React from 'react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
 import { apiFetch } from '@/lib/api-fetch';
-import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
-}
+import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -106,7 +99,7 @@ export function BuyerDocumentStat({ label, value, sub }: { label: string; value:
 }
 
 export function BuyerAmount(value: number): string {
-  return inr(value);
+  return formatBuyerCurrency(value);
 }
 
 export function BuyerDate(value: string | null | undefined): string {

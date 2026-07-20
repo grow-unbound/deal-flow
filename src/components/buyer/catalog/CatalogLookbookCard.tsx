@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
-import { BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@/lib/buyer-lookbook';
+import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@/lib/buyer-lookbook';
 import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
@@ -60,13 +60,13 @@ export function CatalogLookbookCard({
       )}
       style={isList ? undefined : { width: BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX }}
     >
-      <div className="buyer-lookbook-preview">
+      <div className={cn('buyer-lookbook-preview bg-[var(--bg-base)]', BUYER_LOOKBOOK_ASPECT_CLASS)}>
         {showImage ? (
           <Image
             src={heroImageUrl!}
             alt={name}
             fill
-            className="object-cover"
+            className="object-cover object-center"
             sizes={isList ? '100vw' : `${BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX}px`}
             onError={() => setImgError(true)}
             unoptimized

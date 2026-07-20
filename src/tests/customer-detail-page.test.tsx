@@ -33,6 +33,7 @@ function createQuery(key: string) {
     eq: vi.fn(),
     is: vi.fn(),
     in: vi.fn(),
+    gt: vi.fn(),
     or: vi.fn(),
     not: vi.fn(),
     order: vi.fn(),
@@ -49,6 +50,7 @@ function createQuery(key: string) {
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
+  query.gt.mockReturnValue(query);
   query.or.mockReturnValue(query);
   query.not.mockReturnValue(query);
   query.order.mockReturnValue(query);
@@ -87,6 +89,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import { GET as getCustomerDetail } from '../../app/api/tenant/customers/[id]/route';
 import { GET as getCustomerDocuments } from '../../app/api/tenant/customers/[id]/documents/route';
+import { GET as getOutstandingInvoices } from '../../app/api/tenant/customers/[id]/outstanding-invoices/route';
 
 function setBootstrapDefaults() {
   dbResponses['app.buyers'] = [
@@ -228,7 +231,7 @@ describe('customer documents route', () => {
     );
 
     expect(queryInstances.get('app.orders')?.or).toHaveBeenCalledWith(
-      'order_date.gte.2026-04-21T00:00:00.000Z,order_date.lt.2026-07-20T00:00:00.000Z,and(order_date.is.null,created_at.gte.2026-04-21T00:00:00.000Z,created_at.lt.2026-07-20T00:00:00.000Z)',
+      'order_date.gte.2026-04-22T00:00:00.000Z,order_date.lt.2026-07-21T00:00:00.000Z,and(order_date.is.null,created_at.gte.2026-04-22T00:00:00.000Z,created_at.lt.2026-07-21T00:00:00.000Z)',
     );
     expect(queryInstances.get('app.orders')?.order).toHaveBeenCalledWith('order_date', {
       ascending: false,
@@ -246,7 +249,60 @@ describe('customer documents route', () => {
     );
 
     expect(queryInstances.get('app.invoices')?.or).toHaveBeenCalledWith(
-      'invoice_date.gte.2026-04-21T00:00:00.000Z,invoice_date.lt.2026-07-20T00:00:00.000Z,and(invoice_date.is.null,created_at.gte.2026-04-21T00:00:00.000Z,created_at.lt.2026-07-20T00:00:00.000Z)',
+      'invoice_date.gte.2026-04-22T00:00:00.000Z,invoice_date.lt.2026-07-21T00:00:00.000Z,and(invoice_date.is.null,created_at.gte.2026-04-22T00:00:00.000Z,created_at.lt.2026-07-21T00:00:00.000Z)',
     );
+  });
+});
+
+describe('customer outstanding invoices route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    for (const key of Object.keys(dbResponses)) delete dbResponses[key];
+    queryInstances.clear();
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: ['loc-1'],
+    });
+    getFlagMock.mockResolvedValue(true);
+    dbResponses['app.buyers'] = [{ data: { id: 'buyer-1' } }];
+    dbResponses['app.invoices'] = [{
+      data: [
+        {
+          id: 'inv-1',
+          invoice_number: 'INV-001',
+          invoice_date: '2026-07-10',
+          due_date: '2026-07-18',
+          total_amount: 1000,
+          outstanding_balance: 400,
+          location_id: 'loc-2',
+          status: 'sent',
+          place_of_supply: 'Karnataka',
+        },
+      ],
+    }];
+    dbResponses['app.locations'] = [{ data: [{ id: 'loc-2', name: 'Warehouse South' }] }];
+  });
+
+  it('returns outstanding invoices across customer locations for assistants', async () => {
+    const response = await getOutstandingInvoices(
+      new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/outstanding-invoices'),
+      { params: Promise.resolve({ id: 'buyer-1' }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(queryInstances.get('app.invoices')?.in).not.toHaveBeenCalled();
+    expect(queryInstances.get('app.invoices')?.eq).toHaveBeenCalledWith('buyer_id', 'buyer-1');
+    expect(body.invoices).toEqual([
+      expect.objectContaining({
+        id: 'inv-1',
+        location_id: 'loc-2',
+        location_name: 'Warehouse South',
+        outstanding_amount: 400,
+        status: 'overdue',
+      }),
+    ]);
   });
 });

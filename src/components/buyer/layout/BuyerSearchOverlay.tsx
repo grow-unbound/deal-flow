@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import { X, Search, Package, Receipt, FileText, ClipboardList } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 interface BuyerSearchItem {
   id: string;
@@ -38,15 +39,6 @@ const ENTITY_LABEL: Record<string, string> = {
   invoice:  'Invoice',
   estimate: 'Estimate',
 };
-
-function inr(n: number) {
-  if (!n) return '';
-  const s = Math.round(n).toString();
-  if (s.length <= 3) return '₹' + s;
-  const last3 = s.slice(-3);
-  const rest  = s.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
-  return '₹' + rest + ',' + last3;
-}
 
 export function BuyerSearchOverlay() {
   const router = useRouter();
@@ -313,7 +305,7 @@ export function BuyerSearchOverlay() {
                 </div>
                 {item.meta && (
                   <span style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-700)', flexShrink: 0 }}>
-                    {inr(Number(item.meta))}
+                    {formatBuyerCurrency(Number(item.meta))}
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-400)', background: 'var(--cream-100)', padding: '2px 8px', borderRadius: 100, flexShrink: 0 }}>
