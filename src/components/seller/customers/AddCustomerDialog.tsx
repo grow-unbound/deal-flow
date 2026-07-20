@@ -65,12 +65,14 @@ export function AddCustomerDialog({
   mode = 'create',
   customerId,
   defaultValues,
+  assignedPriceListName,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode?: 'create' | 'edit';
   customerId?: string;
   defaultValues?: Partial<BuyerCreateInput>;
+  assignedPriceListName?: string | null;
 }) {
   const createMutation = useCreateCustomerOptimistic();
   const queryClient = useQueryClient();
@@ -421,7 +423,11 @@ export function AddCustomerDialog({
                             title="Pick a pricelist"
                             eyebrow="Pricing"
                             description="Set the buyer-specific default pricelist assignment."
-                            triggerTitle={selectedPriceList?.name ?? 'Select pricelist'}
+                            triggerTitle={
+                              selectedPriceList?.name
+                              ?? assignedPriceListName
+                              ?? (selectedPriceListId ? 'Assigned pricelist' : 'Select pricelist')
+                            }
                             triggerDescription={
                               selectedPriceList
                                 ? formatPriceListValidity(selectedPriceList.valid_from, selectedPriceList.valid_to)

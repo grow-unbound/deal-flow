@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { patchInvoiceSentOptimistic } from '@/lib/documents/document-detail-cache-patches';
 import { roundMoney } from '@/lib/currency-input';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { InvoiceDetailResponse } from '@/types/tenant-invoices';
@@ -14,7 +15,7 @@ export function useInvoiceDetail(id: string, initialData?: InvoiceDetailApiRespo
   return useQuery({
     queryKey: ['tenant-invoice', id],
     queryFn: async (): Promise<InvoiceDetailApiResponse> => {
-      const res = await apiFetch(`/api/tenant/invoices/${id}`);
+      const res = await apiFetch(`/api/tenant/invoices/${id}`, { fresh: true });
       if (res.status === 404) throw new Error('Not found');
       if (res.status === 403) throw new Error('forbidden');
       if (!res.ok) throw new Error('Failed to load invoice');
@@ -45,12 +46,10 @@ export function useSendInvoice(id: string) {
       await qc.cancelQueries({ queryKey: ['tenant-invoice', id] });
       const prev = qc.getQueryData<InvoiceDetailResponse>(['tenant-invoice', id]);
       if (prev) {
-        qc.setQueryData<InvoiceDetailResponse>(['tenant-invoice', id], {
-          ...prev,
-          db_status: 'sent',
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-        });
+        qc.setQueryData<InvoiceDetailResponse>(
+          ['tenant-invoice', id],
+          patchInvoiceSentOptimistic(prev),
+        );
       }
       return { prev };
     },
@@ -62,9 +61,7 @@ export function useSendInvoice(id: string) {
       toast.success('Invoice sent');
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
       void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
-      void qc.invalidateQueries({ queryKey: ['tenant-invoice-composer', id] });
     },
   });
 }
@@ -84,13 +81,23 @@ export function useSendInvoiceDetailWhatsApp(id: string) {
       }
       return (await res.json()) as { ok: boolean };
     },
-    onError: (e) => {
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['tenant-invoice', id] });
+      const prev = qc.getQueryData<InvoiceDetailResponse>(['tenant-invoice', id]);
+      if (prev) {
+        qc.setQueryData<InvoiceDetailResponse>(
+          ['tenant-invoice', id],
+          patchInvoiceSentOptimistic(prev),
+        );
+      }
+      return { prev };
+    },
+    onError: (e, _p, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['tenant-invoice', id], ctx.prev);
       toast.error(e instanceof Error ? e.message : 'Failed to send invoice');
     },
     onSuccess: () => {
       toast.success('Invoice sent');
-      void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
-      void qc.invalidateQueries({ queryKey: ['tenant-invoice-composer', id] });
       void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
     },
   });

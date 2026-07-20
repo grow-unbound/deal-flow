@@ -17,7 +17,7 @@ export function useSalesOrderDetail(orderId: string | undefined) {
     queryKey: ['tenant-sales-order', orderId],
     queryFn: async (): Promise<SalesOrderDetail> => {
       if (!orderId) throw new Error('Missing order id');
-      const res = await apiFetch(`/api/tenant/orders/${orderId}`);
+      const res = await apiFetch(`/api/tenant/orders/${orderId}`, { fresh: true });
       if (res.status === 404) throw new Error('Order not found');
       if (res.status === 403) throw new Error('Forbidden');
       if (!res.ok) throw new Error('Failed to load order');
@@ -175,9 +175,7 @@ export function useSendSalesOrder(orderId: string) {
       toast.success('Sales order sent');
     },
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['tenant-orders'] });
-      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order-composer', orderId] });
     },
   });
 }

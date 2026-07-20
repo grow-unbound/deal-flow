@@ -121,6 +121,7 @@ function setBootstrapDefaults() {
   dbResponses['app.cohort_members'] = [
     { data: [{ cohort_id: 'cohort-1', cohorts: { name: 'Premium', deleted_at: null } }] },
   ];
+  dbResponses['app.price_list_assignments'] = [{ data: { price_list_id: 'pl-1' } }];
   dbResponses['app.price_lists'] = [{ data: { id: 'pl-1', name: 'North Premium Pricing' } }];
   dbResponses['rpc.get_seller_customer_detail_v2'] = [
     {
@@ -192,6 +193,8 @@ describe('customer detail bootstrap route', () => {
     expect(body.meta_strip_4.last_invoice_value).toBe(84200);
     expect(body.price_lists).toEqual({ assigned_count: 2 });
     expect(body.header.subtitle_meta.last_activity_kind).toBe('sale');
+    expect(body.details.default_price_list_id).toBe('pl-1');
+    expect(body.details.assigned_price_list).toBe('North Premium Pricing');
     expect(body.orders).toBeUndefined();
     expect(body.estimates).toBeUndefined();
     expect(body.invoices).toBeUndefined();

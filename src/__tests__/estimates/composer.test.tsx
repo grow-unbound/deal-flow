@@ -9,7 +9,6 @@ const pushMock = vi.fn();
 const useFlagStateMock = vi.fn();
 const useEstimateComposerMock = vi.fn();
 const useSaveEstimateComposerMock = vi.fn();
-const useSendEstimateMock = vi.fn();
 const useBuyerEstimateContextMock = vi.fn();
 const useEstimatePriceListOptionsMock = vi.fn();
 const useEstimateProductPricingMock = vi.fn();
@@ -45,8 +44,21 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/hooks/useEstimates', () => ({
   useEstimateComposer: (...args: unknown[]) => useEstimateComposerMock(...args),
   useSaveEstimateComposer: (...args: unknown[]) => useSaveEstimateComposerMock(...args),
-  useSendEstimate: (...args: unknown[]) => useSendEstimateMock(...args),
   useBuyerEstimateContext: (...args: unknown[]) => useBuyerEstimateContextMock(...args),
+  useBuyerDocumentSendState: () => ({
+    data: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9999999999',
+      template_name: 'request_update_buyer',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+    },
+    isLoading: false,
+  }),
   useEstimatePriceListOptions: (...args: unknown[]) => useEstimatePriceListOptionsMock(...args),
   useEstimateProductPricing: (...args: unknown[]) => useEstimateProductPricingMock(...args),
   useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
@@ -214,7 +226,6 @@ describe('DocComposerEstimate', () => {
     apiPostMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
     useFlagStateMock.mockReturnValue(true);
     useSaveEstimateComposerMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
-    useSendEstimateMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useEstimatePriceListOptionsMock.mockReturnValue({
       data: [{ id: 'pl-1', name: 'North Delhi A-class' }],
       isLoading: false,

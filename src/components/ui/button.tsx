@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { triggerHaptic, type HapticStyle } from '@/lib/haptics';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-sans font-medium touch-manipulation border border-transparent transition-all duration-base ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-40 select-none active:scale-[var(--yk-press-scale)]',

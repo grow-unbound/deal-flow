@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Loader2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB

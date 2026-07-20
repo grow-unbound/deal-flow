@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { triggerHaptic, type HapticStyle } from '@/lib/haptics';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 export interface PressableProps extends React.HTMLAttributes<HTMLElement> {
   asChild?: boolean;
