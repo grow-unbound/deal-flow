@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CohortsLandingSkeleton as SharedCohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
@@ -239,7 +239,7 @@ function CohortsLandingContent({
           },
           {
             label: 'Grouped customers who purchased',
-            value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
+            value: `${formatNumberValue((kpis?.avg_conversion_pct ?? 0), 'PERCENTAGE')}`,
             sub: 'Average purchase rate across groups',
           },
         ]}
@@ -256,8 +256,8 @@ function CohortsLandingContent({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.conversion_pct.toFixed(1)}% response · ${row.active_members} of ${row.total_members} purchased`,
-              trailing: `${row.conversion_pct.toFixed(1)}%`,
+              reason: `${formatNumberValue(row.conversion_pct, 'PERCENTAGE')} response · ${row.active_members} of ${row.total_members} purchased`,
+              trailing: `${formatNumberValue(row.conversion_pct, 'PERCENTAGE')}`,
             })),
           },
           {
@@ -269,8 +269,8 @@ function CohortsLandingContent({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.total_members} customers · avg ticket ${formatCompactInr(row.aov)}`,
-              trailing: formatCompactInr(row.gmv_mtd),
+              reason: `${row.total_members} customers · avg ticket ${formatNumberValue(row.aov, 'CURRENCY_THRESHOLD')}`,
+              trailing: formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD'),
             })),
           },
           {
@@ -353,7 +353,7 @@ function CohortsLandingContent({
                 {cohort.active_members}/{cohort.total_members}
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {formatCompactInr(cohort.gmv_mtd)}
+                {formatNumberValue(cohort.gmv_mtd, 'CURRENCY_THRESHOLD')}
               </td>
               <td className="px-5 py-3.5 text-right">
                 <GrowthPill value={cohort.growth_pct} />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { cn, formatCompactInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { FeatureGate } from '@/components/FeatureGate';
 import {
   PageWrap,
@@ -425,9 +425,9 @@ function AccessTable({
                   <td className="px-5 py-3.5 text-right">
                     {buyer.total_spend_90d > 0 ? (
                       <span className="font-display text-md font-medium tabular-nums text-cream-900">
-                        {formatCompactInr(buyer.offline_spend_90d)}
+                        {formatNumberValue(buyer.offline_spend_90d, 'CURRENCY_THRESHOLD')}
                         <span className="font-sans font-normal text-cream-400"> / </span>
-                        {formatCompactInr(buyer.total_spend_90d)}
+                        {formatNumberValue(buyer.total_spend_90d, 'CURRENCY_THRESHOLD')}
                       </span>
                     ) : (
                       <span className="text-sm text-cream-400">—</span>
@@ -436,7 +436,7 @@ function AccessTable({
                   <td className="px-5 py-3.5 text-right">
                     <span className="font-display text-sm font-medium tabular-nums text-cream-900">
                       {buyer.buyer_app_enabled && buyer.app_gmv_90d > 0
-                        ? formatCompactInr(buyer.app_gmv_90d)
+                        ? formatNumberValue(buyer.app_gmv_90d, 'CURRENCY_THRESHOLD')
                         : '—'}
                     </span>
                   </td>

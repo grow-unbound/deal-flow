@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import type { SalesOrderLine } from '@/types/tenant-sales-orders';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 function lineTotal(line: SalesOrderLine, qtyOverride?: number) {
   const qty = qtyOverride ?? line.qty;
@@ -137,7 +137,7 @@ export function ModalConfirmSalesOrder({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {formatCompactInr(lineTotal(line, effectiveQty))}
+                    {formatNumberValue(lineTotal(line, effectiveQty), 'CURRENCY_EXACT')}
                   </p>
                 </div>
               );
@@ -146,7 +146,7 @@ export function ModalConfirmSalesOrder({
 
           <div className="flex items-baseline justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2.5 text-base">
             <span className="text-cream-700">{lines.length} line{lines.length === 1 ? '' : 's'}</span>
-            <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+            <span className="font-mono font-medium tabular-nums text-cream-900">{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
           </div>
         </DialogBody>
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DetailCardRenderer, DistributionList, MetricGrid, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
-import { formatCompactInr, formatCurrency } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
 
 type TrendPeriod = '12m' | 'ytd' | '3m';
@@ -97,9 +97,9 @@ export function ProductPerformanceTab({ performance, performanceCards }: Product
                 <p className="pb-1 text-base text-cream-700">
                   <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
                     {trendGrowth >= 0 ? '↑ +' : '↓ '}
-                    {Math.abs(trendGrowth).toFixed(1)}%
+                    {formatNumberValue(Math.abs(trendGrowth), 'PERCENTAGE')}
                   </span>{' '}
-                  · {formatCompactInr(performance.units_snapshot.revenue_last_30d)} in revenue
+                  · {formatNumberValue(performance.units_snapshot.revenue_last_30d, 'CURRENCY_THRESHOLD')} in revenue
                 </p>
               </div>
             )}
@@ -171,7 +171,7 @@ export function ProductPerformanceTab({ performance, performanceCards }: Product
             items={performance.price_by_cohort.map((item) => ({
               id: item.cohort,
               label: item.cohort,
-              value: formatCurrency(item.price, 'INR'),
+              value: formatNumberValue(item.price, 'CURRENCY_EXACT'),
               supporting: item.has_override ? 'Override' : 'Base price',
             }))}
             emptyTitle="No customer group pricing configured"

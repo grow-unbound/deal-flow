@@ -4,14 +4,14 @@ import * as React from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -174,11 +174,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : null}
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <p className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
-              {formatBuyerCurrency(item.price)}
+              {formatNumberValue(item.price, 'CURRENCY_EXACT')}
             </p>
             {showCampaignPrice ? (
               <span className="text-sm line-through text-[var(--fg-3)]">
-                {formatBuyerCurrency(item.resolved_price)}
+                {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
               </span>
             ) : null}
           </div>
@@ -262,11 +262,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col items-end">
             <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
-              {formatBuyerCurrency(item.price)}
+              {formatNumberValue(item.price, 'CURRENCY_EXACT')}
             </span>
             {showCampaignPrice ? (
               <span className="text-sm line-through text-[var(--fg-3)]">
-                {formatBuyerCurrency(item.resolved_price)}
+                {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
               </span>
             ) : null}
           </div>

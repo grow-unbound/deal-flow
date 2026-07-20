@@ -26,7 +26,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatCompactInr, formatDate, formatMetricValue } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -277,24 +277,24 @@ function InvoicesLandingContent({
             tiles={[
               {
                 label: 'Invoiced sales',
-                value: formatMetricValue('value', kpis?.gmv_this_period ?? 0),
+                value: formatNumberValue(kpis?.gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
                 sub: `${kpis?.invoices_this_period ?? 0} invoices this period`,
               },
               {
                 label: 'Outstanding amount',
-                value: formatMetricValue('value', kpis?.outstanding_sum ?? 0),
+                value: formatNumberValue(kpis?.outstanding_sum ?? 0, 'CURRENCY_THRESHOLD'),
                 sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
                 tone: 'accent',
               },
               {
                 label: 'Overdue amount',
-                value: formatMetricValue('value', kpis?.overdue_sum ?? 0),
+                value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
                 sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
                 tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Due in 7 days',
-                value: formatMetricValue('value', pulseAggregates?.due_soon_sum ?? 0),
+                value: formatNumberValue(pulseAggregates?.due_soon_sum ?? 0, 'CURRENCY_THRESHOLD'),
                 sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
               },
             ]}
@@ -311,7 +311,7 @@ function InvoicesLandingContent({
                 rows: (summaryData?.todays_read?.largest_overdue ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: invoiceSupportText(row),
-                  trailing: formatMetricValue('value', row.outstanding_amount),
+                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
                 })),
               },
               {
@@ -323,7 +323,7 @@ function InvoicesLandingContent({
                 rows: (summaryData?.todays_read?.due_soon ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: invoiceSupportText(row),
-                  trailing: formatMetricValue('value', row.outstanding_amount),
+                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
                 })),
               },
               {
@@ -335,7 +335,7 @@ function InvoicesLandingContent({
                 rows: (summaryData?.todays_read?.newly_overdue ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: invoiceSupportText(row),
-                  trailing: formatMetricValue('value', row.outstanding_amount),
+                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
                 })),
               },
             ]}

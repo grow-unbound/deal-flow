@@ -79,6 +79,7 @@ describe('price-list-detail-page', () => {
     expect(screen.getByText('Customers reached')).toBeInTheDocument();
     expect(screen.getByText('Typical discount')).toBeInTheDocument();
     expect(screen.getByText('Items below cost/floor')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
 
     // The one mocked item (price 1200) is priced above its base_selling_price (1000),
     // i.e. no discounted/below-floor items, so both derived tiles read 0.

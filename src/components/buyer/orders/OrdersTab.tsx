@@ -29,7 +29,7 @@ function EmptyState({ search }: { search: string }) {
     <div className="px-4 pt-3">
       <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
         <ClipboardList size={40} strokeWidth={1.5} className="mx-auto mb-3 text-[var(--cream-500)]" />
-        <p className="text-[var(--b-text-body)] font-medium text-[var(--cream-600)]">
+        <p className=" font-medium text-[var(--cream-600)]">
           {search ? `No orders matching "${search}"` : 'No orders yet.'}
         </p>
       </div>

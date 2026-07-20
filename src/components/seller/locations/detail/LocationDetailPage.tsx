@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
@@ -12,19 +12,17 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useLocationDetail } from '@/hooks/useLocations';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { LocationDetailSkeleton as SharedLocationDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
-import { LocationActivityTab } from './LocationActivityTab';
-
 const LocationPerformanceTab = dynamic(
   () => import('./LocationPerformanceTab').then((m) => m.LocationPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'performance' | 'orders' | 'estimates' | 'invoices' | 'activity';
+type TabId = 'performance' | 'orders' | 'estimates' | 'invoices';
 
 interface LocationDetailPageProps {
   id: string;
@@ -146,8 +144,14 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     { id: 'orders', label: 'Orders', badge: data.tab_badges.orders_mtd },
     { id: 'estimates', label: 'Estimates', badge: data.tab_badges.estimates_mtd },
     { id: 'invoices', label: 'Invoices', badge: data.tab_badges.invoices_mtd },
-    { id: 'activity', label: 'Activity' },
   ];
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'performance';
+
+  useEffect(() => {
+    if (activeTab !== tab) {
+      setTab(activeTab as TabId);
+    }
+  }, [activeTab, setTab, tab]);
 
   const demandKindLabel =
     meta.open_primary_demand_kind === 'orders'
@@ -159,7 +163,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
   const tiles = [
     {
       label: 'Invoiced sales 90D',
-      value: formatCompactInr(meta.gmv_mtd),
+      value: formatNumberValue(meta.gmv_mtd, 'CURRENCY_THRESHOLD'),
       sub: (
         <span className={meta.growth_pct >= 0 ? 'up' : 'down'}>
           {meta.growth_pct >= 0 ? '↑ +' : '↓ '}
@@ -169,7 +173,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     },
     {
       label: 'Overdue amount',
-      value: formatCompactInr(meta.overdue_amount),
+      value: formatNumberValue(meta.overdue_amount, 'CURRENCY_THRESHOLD'),
       sub:
         meta.overdue_amount > 0 ? (
           <span className="text-danger-600">across {meta.unpaid_invoice_count} invoices</span>
@@ -182,7 +186,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     },
     {
       label: demandKindLabel,
-      value: meta.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(meta.open_primary_demand_value),
+      value: meta.open_primary_demand_kind === 'none' ? '—' : formatNumberValue(meta.open_primary_demand_value, 'CURRENCY_THRESHOLD'),
       sub:
         meta.open_primary_demand_kind === 'none'
           ? 'Enable Estimates or Sales Orders'
@@ -224,17 +228,16 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
       <DetailTabs
         tabs={tabs}
-        active={tab}
+        active={activeTab}
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'performance' ? (
+      {activeTab === 'performance' ? (
         <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} />
       ) : null}
-      {tab === 'orders' ? <LocationOrdersTab locationId={id} /> : null}
-      {tab === 'estimates' ? <LocationEstimatesTab locationId={id} /> : null}
-      {tab === 'invoices' ? <LocationInvoicesTab locationId={id} /> : null}
-      {tab === 'activity' ? <LocationActivityTab activity={data.activity} /> : null}
+      {activeTab === 'orders' ? <LocationOrdersTab locationId={id} /> : null}
+      {activeTab === 'estimates' ? <LocationEstimatesTab locationId={id} /> : null}
+      {activeTab === 'invoices' ? <LocationInvoicesTab locationId={id} /> : null}
 
       <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={editingLocation} />
     </PageWrap>

@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCurrency } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface CustomerActivityTabProps {
   activity: Array<{
@@ -37,7 +37,7 @@ export function CustomerActivityTab({ activity }: CustomerActivityTabProps) {
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-base font-medium text-cream-900">{item.title}</p>
                       {item.amount != null ? (
-                        <p className="font-mono text-sm text-cream-700">{formatCurrency(item.amount)}</p>
+                        <p className="font-mono text-sm text-cream-700">{formatNumberValue(item.amount, 'CURRENCY_EXACT')}</p>
                       ) : null}
                     </div>
                     <p className="text-xs text-cream-600">

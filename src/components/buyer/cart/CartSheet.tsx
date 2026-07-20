@@ -1,12 +1,13 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import Link from 'next/link';
 import { ShoppingCart, Trash2, Minus, Plus, Package } from 'lucide-react';
 import { useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
-import { formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { Button } from '@/components/ui/button';
 import { Pressable } from '@/components/ui/pressable';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -102,13 +103,13 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
                 className="text-base font-semibold"
                 style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
               >
-                {formatBuyerCurrency(totals.subtotal)}
+                {formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
               <span>GST</span>
               <span className="font-mono" style={{ color: 'var(--fg-1, var(--cream-900))' }}>
-                {gstInclusive ? 'Included in Prices' : formatBuyerCurrency(totals.tax_amount)}
+                {gstInclusive ? 'Included in Prices' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
@@ -118,7 +119,7 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
             <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
               <span className="text-sm font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))' }}>Total</span>
               <span className="text-base font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
-                {formatBuyerCurrency(totals.total)}
+                {formatNumberValue(totals.total, 'CURRENCY_EXACT')}
               </span>
             </div>
             {availableItems.length > 0 ? (
@@ -196,11 +197,11 @@ function CartItemRow({
         )}
         <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
           <p className="text-xs">
-            <span className="tabular-inline">{formatBuyerCurrency(item.unit_price)}</span>{item.unit ? ` / ${item.unit}` : ''}
+            <span className="tabular-inline">{formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}</span>{item.unit ? ` / ${item.unit}` : ''}
           </p>
           {showCampaignPrice ? (
             <span className="text-[11px] line-through">
-              {formatBuyerCurrency(item.resolved_price)}
+              {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
             </span>
           ) : null}
         </div>
@@ -245,7 +246,7 @@ function CartItemRow({
         </div>
 
         <p className="text-xs font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
-          {formatBuyerCurrency(item.line_total)}
+          {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
         </p>
       </div>
     </div>

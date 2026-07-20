@@ -27,7 +27,7 @@ import {
   type BroadcastsPageResponse,
   type ManageBroadcastRow,
 } from '@/hooks/useWhatsAppBroadcasts';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 
 const PAGE_LIMIT = 50;
 
@@ -90,13 +90,13 @@ function formatDeliveryStatus(row: ManageBroadcastRow): string {
 
 function buildInsightTiles(kpis: BroadcastKpis) {
   return [
-    { label: 'Total broadcasts', value: kpis.total_broadcasts.toLocaleString('en-IN') },
+    { label: 'Total broadcasts', value: formatNumberValue(kpis.total_broadcasts, 'COUNT') },
     {
       label: 'Delivered this month',
-      value: kpis.delivered_this_month.toLocaleString('en-IN'),
-      sub: `${kpis.sent_this_month.toLocaleString('en-IN')} sent this month`,
+      value: formatNumberValue(kpis.delivered_this_month, 'COUNT'),
+      sub: `${formatNumberValue(kpis.sent_this_month, 'COUNT')} sent this month`,
     },
-    { label: 'Scheduled', value: kpis.scheduled_count.toLocaleString('en-IN') },
+    { label: 'Scheduled', value: formatNumberValue(kpis.scheduled_count, 'COUNT') },
     {
       label: 'Success rate',
       value: `${kpis.success_rate_pct}%`,

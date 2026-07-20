@@ -99,7 +99,7 @@ export function EnquiriesTab({
       <div className="px-4 pt-3">
         {search ? (
           <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
-            <p className="text-[var(--b-text-body)] font-medium text-[var(--cream-600)]">
+            <p className="text-[var(--b-text-body)] font-medium">
               {`No enquiries matching "${search}"`}
             </p>
           </div>

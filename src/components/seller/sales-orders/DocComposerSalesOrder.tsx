@@ -72,7 +72,7 @@ import {
 } from '@/lib/documents/composer-staged-changes';
 import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type {
   EstimateComposerBuyerContext,
   EstimateComposerProductSearchRow,

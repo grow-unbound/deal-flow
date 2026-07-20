@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { Package, Minus, Plus } from 'lucide-react';
 import { triggerHaptic } from '@/lib/haptics';
-import { cn } from '@/lib/utils';
-import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 
 export interface ProductTileData {
   id: string;
@@ -71,7 +71,7 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
           {product.name}
         </p>
         <p className="text-body font-semibold font-mono text-cream-900 mt-1">
-          {formatBuyerCurrency(product.price)}
+          {formatNumberValue(product.price, 'CURRENCY_EXACT')}
           {product.unit && <span className="text-caption font-sans text-cream-500 font-normal"> / {product.unit}</span>}
         </p>
 

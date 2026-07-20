@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { AppNotification } from './useNotificationStore';
@@ -179,7 +180,7 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
             id: `${entityId}_invoice_${isInsert ? 'new' : 'updated'}_${record.updated_at as string}`,
             kind: 'invoice_updated',
             title: `Invoice ${isInsert ? 'issued' : 'updated'} · ${invoiceNumber}`,
-            body: `₹${total.toLocaleString('en-IN')}`,
+            body: formatNumberValue(total, 'CURRENCY_EXACT'),
             entityType: 'invoice',
             entityId,
             href: `/buy/orders?tab=invoices&highlight=${entityId}`,

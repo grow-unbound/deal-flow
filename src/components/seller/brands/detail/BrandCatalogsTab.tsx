@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useBrandCatalogsDetail } from '@/hooks/useDetailTabSearch';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface BrandCatalogsTabProps {
   brandId: string;
@@ -73,7 +73,7 @@ export function BrandCatalogsTab({ brandId }: BrandCatalogsTabProps) {
           <tr key={catalog.campaign_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
             <td className="px-5 py-3.5 text-base font-medium text-cream-900">{catalog.campaign_name}</td>
             <td className="px-5 py-3.5 text-cream-900">{catalog.cohort_name}</td>
-            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatCompactInr(catalog.gmv)}</td>
+            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD')}</td>
             <td className="px-5 py-3.5 text-cream-900">{catalog.orders}</td>
             <td className="px-5 py-3.5 text-cream-900">
               <StatusTag

@@ -1,3 +1,4 @@
+import { formatNumberValue } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
@@ -31,7 +32,7 @@ function applyQuery<T extends { or: (filters: string) => T }>(query: T, q: strin
 }
 
 function formatAmount(amount: number | null | undefined) {
-  return `₹${Math.round(Number(amount ?? 0)).toLocaleString('en-IN')}`;
+  return formatNumberValue(Math.round(Number(amount ?? 0)), 'CURRENCY_EXACT');
 }
 
 function cityFromAddress(address: unknown) {

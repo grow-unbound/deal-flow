@@ -197,6 +197,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
   it('received: title shows Received chip', () => {
     const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(container.querySelector('.doc-status-chip')).toHaveTextContent(/Received/i);
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
   it('confirmed: title shows Confirmed chip and Dispatch CTA', () => {

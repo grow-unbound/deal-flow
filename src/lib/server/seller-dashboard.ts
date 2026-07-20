@@ -14,7 +14,7 @@ import {
 import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type {
   SellerDashboardResponse,
   SellerDashboardMetric,
@@ -525,7 +525,7 @@ async function fetchSellerDashboardData(
             hue: hueByIndex(index),
             name: buyerNameFor(row, buyersById),
             reason: `${row.estimate_number ?? 'Draft estimate'} · ${estimateStatusLabel(row.status)}`,
-            trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+            trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
             href: `/estimates/${row.id}`,
           }))
       : orders
@@ -537,7 +537,7 @@ async function fetchSellerDashboardData(
             hue: hueByIndex(index),
             name: buyerNameFor(row, buyersById),
             reason: `${row.order_number} · ${orderStatusLabel(row.status)}`,
-            trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+            trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
             href: `/sales-orders/${row.id}`,
           }));
 
@@ -567,8 +567,8 @@ async function fetchSellerDashboardData(
           initials: formatInitials(buyerName === 'Unknown buyer' ? 'Buyer' : buyerName),
           hue: hueByIndex(index),
           name: buyerName,
-          reason: `${formatNumber(agg.count)} invoice${agg.count === 1 ? '' : 's'}${daysOverdue != null ? ` · ${daysOverdue}d overdue` : ''}`,
-          trailing: formatCurrency(agg.amount, { compactFractionDigits: 2 }),
+          reason: `${formatNumberValue(agg.count, 'COUNT')} invoice${agg.count === 1 ? '' : 's'}${daysOverdue != null ? ` · ${daysOverdue}d overdue` : ''}`,
+          trailing: formatNumberValue(agg.amount, 'CURRENCY_THRESHOLD'),
           href: `/customers/${buyerId}`,
         };
       });
@@ -594,8 +594,8 @@ async function fetchSellerDashboardData(
         initials: formatInitials(row.buyer.business_name),
         hue: hueByIndex(index),
         name: row.buyer.business_name,
-        reason: `${row.buyer.buyer_app_enabled ? 'App enabled, unused' : 'Not on Buyer App'} · ${formatNumber(row.invoiceCount90d)} invoices 90d`,
-        trailing: formatCurrency(row.invoiceValue90d, { compactFractionDigits: 2 }),
+        reason: `${row.buyer.buyer_app_enabled ? 'App enabled, unused' : 'Not on Buyer App'} · ${formatNumberValue(row.invoiceCount90d, 'COUNT')} invoices 90d`,
+        trailing: formatNumberValue(row.invoiceValue90d, 'CURRENCY_THRESHOLD'),
         href: `/customers/${row.buyer.id}`,
       }));
 
@@ -604,21 +604,21 @@ async function fetchSellerDashboardData(
         id: primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution',
         kind: 'info',
         eyebrow: primaryKind === 'estimates' ? 'Estimate follow-up' : 'Order execution',
-        hint: formatNumber(primaryDemandRowsAll.length),
+        hint: formatNumberValue(primaryDemandRowsAll.length, 'COUNT'),
         rows: previewRows(primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution', primaryDemandRowsAll),
       },
       {
         id: 'collections',
         kind: 'risk',
         eyebrow: 'Collections',
-        hint: `${formatNumber(overdueByBuyer.size)}`,
+        hint: `${formatNumberValue(overdueByBuyer.size, 'COUNT')}`,
         rows: previewRows('collections', collectionsRowsAll),
       },
       {
         id: 'buyer_app_activation',
         kind: 'opportunity',
         eyebrow: 'Buyer App activation',
-        hint: formatNumber(buyerAppRowsAll.length),
+        hint: formatNumberValue(buyerAppRowsAll.length, 'COUNT'),
         rows: previewRows('buyer_app_activation', buyerAppRowsAll),
       },
     ];
@@ -792,7 +792,7 @@ async function fetchSellerDashboardData(
       hue: hueByIndex(index),
       name: row.buyer.business_name,
       reason: row.dues > 0
-        ? `Overdue ${formatCurrency(row.dues, { compactFractionDigits: 2 })} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
+        ? `Overdue ${formatNumberValue(row.dues, 'CURRENCY_THRESHOLD')} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
         : `Credit usage ${row.utilization}% · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`,
       trailing: row.utilization > 0 ? `${row.utilization}% used` : 'Needs follow-up',
       href: '/customers',
@@ -808,7 +808,7 @@ async function fetchSellerDashboardData(
         hue: hueByIndex(index),
         name: row.order_number,
         reason: `${buyerNameFor(row, buyersById)} · ${orderStatusLabel(row.status)}`,
-        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
         href: `/sales-orders/${row.id}`,
       })),
     ...allEstimatesSorted
@@ -820,7 +820,7 @@ async function fetchSellerDashboardData(
         hue: hueByIndex(index + 1),
         name: row.estimate_number ?? 'Draft estimate',
         reason: `${buyerNameFor(row, buyersById)} · ${estimateStatusLabel(row.status)}`,
-        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
         href: `/estimates/${row.id}`,
       })),
     ...allInvoicesSorted
@@ -832,7 +832,7 @@ async function fetchSellerDashboardData(
         hue: hueByIndex(index + 2),
         name: row.invoice_number,
         reason: `${buyerNameFor(row, buyersById)} · ${invoicePresentation(row).label}`,
-        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
         href: `/invoices/${row.id}`,
       })),
   ]
@@ -853,7 +853,7 @@ async function fetchSellerDashboardData(
         hue: hueByIndex(index),
         name: row.buyer.business_name,
         reason: `Last order ${new Date(orderEventAt(row.lastOrder!)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
-        trailing: formatCurrency(Number(row.lastOrder?.total_amount ?? 0), { compactFractionDigits: 2 }),
+        trailing: formatNumberValue(Number(row.lastOrder?.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
         href: '/customers',
       }));
 

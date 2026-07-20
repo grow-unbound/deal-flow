@@ -65,7 +65,7 @@ import {
 } from '@/lib/documents/composer-staged-changes';
 import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type SendChannel = 'whatsapp' | 'email' | 'download';
 
@@ -579,7 +579,7 @@ export function DocComposerInvoice({
   const primaryDisabled = !documentState.buyer_id || activeLines.length === 0;
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
-    ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+    ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.`
     : null;
   const isInterState = Boolean(
     buyer?.seller_state
@@ -951,7 +951,7 @@ export function DocComposerInvoice({
                 />
               </div>
               <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
-                Buyer sees {activeLines.length} lines totaling {formatCompactInr(totals.grand_total)}.
+                Buyer sees {activeLines.length} lines totaling {formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')}.
               </div>
             </div>
           </DialogBody>

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 
 import { EntityAvatar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
-import { cn, formatCompactInr, formatDate, formatMetricValue } from '@/lib/utils';
+import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 
 export type TransactionTableKind = 'estimate' | 'order' | 'invoice';
 export type TransactionSourceKind = 'buyer_app' | 'converted' | 'direct' | 'seller';
@@ -181,7 +181,7 @@ export function TransactionTable({
             ) : null}
 
             <td className="px-5 py-3.5 text-right">
-              <p className="font-display text-md text-cream-950">{formatMetricValue('value', row.total_amount)}</p>
+              <p className="font-display text-md text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
               {kind === 'invoice' && row.amount_subtext ? (
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
               ) : null}
@@ -189,7 +189,7 @@ export function TransactionTable({
 
             {kind === 'invoice' ? (
               <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                {row.outstanding_amount ? formatMetricValue('value', row.outstanding_amount) : '—'}
+                {row.outstanding_amount ? formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD') : '—'}
               </td>
             ) : null}
 

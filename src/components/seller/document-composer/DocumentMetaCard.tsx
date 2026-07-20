@@ -1,7 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/input';
-import { formatNumberForInput, parseCurrencyDigits } from '@/lib/currency-input';
+import { formatNumberInput, parseNumberInput } from '@/lib/number-format';
 import { cn } from '@/lib/utils';
 
 export function DocumentMetaCard({
@@ -58,8 +58,8 @@ export function DocumentMetaCard({
           <Input
             className={cn('h-10 pl-8 font-mono tabular-nums', readOnly && 'bg-cream-50')}
             inputMode="numeric"
-            value={freightValue > 0 ? formatNumberForInput(freightValue) : ''}
-            onChange={(event) => onFreightChange(parseCurrencyDigits(event.target.value))}
+            value={freightValue > 0 ? formatNumberInput(freightValue, 'CURRENCY_EXACT') : ''}
+            onChange={(event) => onFreightChange(parseNumberInput(event.target.value, 'CURRENCY_EXACT') ?? 0)}
             placeholder="0"
             readOnly={readOnly}
             disabled={readOnly}

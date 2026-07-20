@@ -10,7 +10,7 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CohortDetailSkeleton as SharedCohortDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
@@ -97,12 +97,12 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
     return [
       {
         label: 'Invoiced sales 90D',
-        value: formatCompactInr(data.meta_strip_4.gmv_mtd),
+        value: formatNumberValue(data.meta_strip_4.gmv_mtd, 'CURRENCY_THRESHOLD'),
         sub: (
           <span>
             <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
               {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct).toFixed(1)}%
+              {formatNumberValue(Math.abs(data.meta_strip_4.growth_pct), 'PERCENTAGE')}
             </span>{' '}
             vs last month
           </span>
@@ -115,12 +115,12 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       },
       {
         label: 'Avg invoice value',
-        value: formatCompactInr(data.meta_strip_4.aov),
+        value: formatNumberValue(data.meta_strip_4.aov, 'CURRENCY_THRESHOLD'),
         sub: 'across current members',
       },
       {
         label: 'Response rate',
-        value: `${data.meta_strip_4.conversion_pct.toFixed(1)}%`,
+        value: `${formatNumberValue(data.meta_strip_4.conversion_pct, 'PERCENTAGE')}`,
         sub: 'campaign to submitted demand',
       },
     ];

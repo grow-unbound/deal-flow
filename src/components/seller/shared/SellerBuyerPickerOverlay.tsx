@@ -11,7 +11,7 @@ import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } 
 import { useCatalogComposerBuyerPicker, type CatalogComposerBuyerPickerRow } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { cn, formatInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 
 type BuyerPickerFilters = {
   city: string[];
@@ -29,7 +29,7 @@ function formatBuyerLastOrderedLabel(value: string | null) {
 }
 
 function formatBuyerSecondaryText(buyer: CatalogComposerBuyerPickerRow) {
-  return `${formatInr(buyer.spend_mtd)} spend MTD · ${formatInr(buyer.outstanding_due)} due · Last ordered ${formatBuyerLastOrderedLabel(buyer.last_order_at)}`;
+  return `${formatNumberValue(buyer.spend_mtd, 'CURRENCY_EXACT')} spend MTD · ${formatNumberValue(buyer.outstanding_due, 'CURRENCY_EXACT')} due · Last ordered ${formatBuyerLastOrderedLabel(buyer.last_order_at)}`;
 }
 
 function describeBuyerFilterValues(

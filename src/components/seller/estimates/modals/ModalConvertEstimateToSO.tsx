@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { computeLineGrossAmount, computeLineTaxableAmount } from '@/lib/gst';
 import type { EstimateComposerLineInput } from '@/types/estimate-composer';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 function lineAmount(line: Pick<EstimateComposerLineInput, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>, gstInclusive: boolean) {
   return computeLineGrossAmount(line, gstInclusive);
@@ -124,7 +124,7 @@ export function ModalConvertEstimateToSO({
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
                   </div>
                   <p className="text-right text-base tabular-nums text-cream-800">{line.qty}</p>
-                  <p className="text-right font-mono text-base tabular-nums text-cream-900">{formatCompactInr(lineAmount(line, gstInclusive))}</p>
+                  <p className="text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(lineAmount(line, gstInclusive), 'CURRENCY_EXACT')}</p>
                 </div>
               );
             })}
@@ -151,18 +151,18 @@ export function ModalConvertEstimateToSO({
               <span className="text-cream-700">
                 {included.length} of {lines.length} lines
               </span>
-              <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+              <span className="font-mono font-medium tabular-nums text-cream-900">{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
             </div>
             <div className="mt-3 space-y-2 text-sm">
-              <SummaryRow label="Subtotal" value={formatCompactInr(subtotal)} />
+              <SummaryRow label="Subtotal" value={formatNumberValue(subtotal, 'CURRENCY_EXACT')} />
               {gstInclusive ? (
                 <SummaryRow label="GST" value="Included in prices" />
               ) : (
-                <SummaryRow label="Tax total" value={formatCompactInr(taxTotal)} />
+                <SummaryRow label="Tax total" value={formatNumberValue(taxTotal, 'CURRENCY_EXACT')} />
               )}
               <div className="flex items-center justify-between border-t border-cream-200 pt-2 text-base">
                 <span className="font-medium text-cream-900">Total</span>
-                <span className="font-mono font-semibold text-cream-950">{formatCompactInr(total)}</span>
+                <span className="font-mono font-semibold text-cream-950">{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
               </div>
             </div>
           </div>

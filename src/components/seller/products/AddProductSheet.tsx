@@ -55,7 +55,7 @@ import { useRole } from '@/hooks/useRole';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { MasterProduct } from '@/hooks/useProducts';
 import { UNITS_OF_MEASURE } from '@/constants';
-import { cn, formatInrInput, parseInrInput } from '@/lib/utils';
+import { cn, formatNumberInput, parseNumberInput } from '@/lib/utils';
 import { apiPost } from '@/lib/api-fetch';
 import { uploadEntityFile } from '@/lib/upload-client';
 
@@ -140,7 +140,7 @@ function InrInput({
       <Input
         id={id}
         value={value}
-        onChange={(e) => onChange(formatInrInput(e.target.value))}
+        onChange={(e) => onChange(formatNumberInput(e.target.value, 'CURRENCY_EXACT'))}
         placeholder={placeholder}
         className={cn('rounded-l-none font-mono tabular-nums tracking-wide', className)}
       />
@@ -340,10 +340,10 @@ export function AddProductSheet({
       pack_size: product.pack_size != null ? String(product.pack_size) : '',
       image_urls: product.image_urls ?? [],
       description: product.description ?? '',
-      mrp: product.mrp != null ? formatInrInput(String(product.mrp)) : '',
+      mrp: product.mrp != null ? formatNumberInput(String(product.mrp), 'CURRENCY_EXACT') : '',
       base_selling_price:
-        product.base_selling_price != null ? formatInrInput(String(product.base_selling_price)) : '',
-      cost_price: product.cost_price != null ? formatInrInput(String(product.cost_price)) : '',
+        product.base_selling_price != null ? formatNumberInput(String(product.base_selling_price), 'CURRENCY_EXACT') : '',
+      cost_price: product.cost_price != null ? formatNumberInput(String(product.cost_price), 'CURRENCY_EXACT') : '',
       attributes: attributesToRows(product.attributes_override),
     });
   }, [form, isEditMode, open, product]);
@@ -463,9 +463,9 @@ export function AddProductSheet({
       return;
     }
 
-    const mrp = parseInrInput(values.mrp);
-    const bsp = parseInrInput(values.base_selling_price);
-    const costPrice = values.cost_price ? parseInrInput(values.cost_price) : null;
+    const mrp = parseNumberInput(values.mrp, 'CURRENCY_EXACT');
+    const bsp = parseNumberInput(values.base_selling_price, 'CURRENCY_EXACT');
+    const costPrice = values.cost_price ? parseNumberInput(values.cost_price, 'CURRENCY_EXACT') : null;
 
     if (!mrp || !bsp) {
       toast.error('Please enter valid MRP and base selling price.');
@@ -524,7 +524,7 @@ export function AddProductSheet({
       if (!isEditMode && priceListEntries.length > 0) {
         const results = await Promise.allSettled(
           priceListEntries.map(([plId, amtStr]) => {
-            const price = parseInrInput(amtStr);
+            const price = parseNumberInput(amtStr, 'CURRENCY_EXACT');
             if (!price) return Promise.resolve();
             return apiPost(`/api/price-lists/${plId}/items`, {
               tenant_product_id: productId,

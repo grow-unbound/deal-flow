@@ -50,7 +50,7 @@ import {
   useSaveCohortComposer,
 } from '@/hooks/useCohorts';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
-import { cn, formatCompactInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { CohortCreateSchema, type CohortRules } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -864,8 +864,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                               {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                             </td>
                             <td className="px-4 py-3 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.mtd_spend)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.credit_used)}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
                             <td className="px-4 py-3 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
                           </ComposerSelectableRow>
                         );
@@ -918,11 +918,11 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">MTD spend</span>
-                    <span className="font-mono font-medium text-cream-900">{formatCompactInr(summary.mtdSpend)}</span>
+                    <span className="font-mono font-medium text-cream-900">{formatNumberValue(summary.mtdSpend, 'CURRENCY_THRESHOLD')}</span>
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg AOV</span>
-                    <span className="font-mono font-medium text-cream-900">{summary.avgAov > 0 ? formatCompactInr(summary.avgAov) : '—'}</span>
+                    <span className="font-mono font-medium text-cream-900">{summary.avgAov > 0 ? formatNumberValue(summary.avgAov, 'CURRENCY_THRESHOLD') : '—'}</span>
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Active · 30d</span>

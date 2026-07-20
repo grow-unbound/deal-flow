@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -445,16 +446,16 @@ export default function CartPage() {
         {/* Totals card */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
-            <TotalsRow label="Subtotal" value={formatBuyerCurrency(totals.subtotal)} />
-            <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatBuyerCurrency(totals.tax_amount)} isText={gstInclusive} />
-            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatBuyerCurrency(deliveryFee)} isText />
+            <TotalsRow label="Subtotal" value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} />
+            <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')} isText={gstInclusive} />
+            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatNumberValue(deliveryFee, 'CURRENCY_EXACT')} isText />
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-1)' }}>
             <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
               Total
             </span>
             <span style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg-1, var(--cream-900))' }}>
-              {formatBuyerCurrency(total)}
+              {formatNumberValue(total, 'CURRENCY_EXACT')}
             </span>
           </div>
         </div>
@@ -627,12 +628,12 @@ function CartPageItem({
             {!unavailable ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
                 <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                  {formatBuyerCurrency(item.unit_price)}
+                  {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
                   {item.unit ? ` / ${item.unit}` : ''}
                 </span>
                 {showCampaignPrice ? (
                   <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
-                    {formatBuyerCurrency(item.resolved_price)}
+                    {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                   </span>
                 ) : null}
               </div>
@@ -692,7 +693,7 @@ function CartPageItem({
               className="tabular-nums font-semibold"
               style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
             >
-              {formatBuyerCurrency(item.line_total)}
+              {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
             </span>
           )}
         </div>

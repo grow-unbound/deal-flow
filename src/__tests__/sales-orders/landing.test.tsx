@@ -216,7 +216,7 @@ describe('sales orders landing page', () => {
     expect(screen.getByText('Buyer One')).toBeInTheDocument();
     expect(screen.getAllByText('Bengaluru Hub').length).toBeGreaterThan(0);
     expect(screen.getByText('Monsoon Promo')).toBeInTheDocument();
-    expect(screen.getAllByText('₹22K').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹22.00K').length).toBeGreaterThan(0);
   });
 
   it('shows place_of_supply below the buyer name', () => {

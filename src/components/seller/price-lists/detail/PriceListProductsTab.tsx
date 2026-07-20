@@ -6,7 +6,7 @@ import type { PriceListItem } from '@/hooks/usePriceLists';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, usePriceListProductsDetail } from '@/hooks/useDetailTabSearch';
 import type { PriceListFilterState } from '@/lib/zod';
-import { cn, formatInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 
 type ActiveChip = 'All products' | 'Discounted' | 'Above base';
 
@@ -171,10 +171,10 @@ export function PriceListProductsTab({ priceListId, filters, items, brandsCovere
                   </div>
                 </td>
                 <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
-                  {row.mrp != null ? formatInr(row.mrp) : '—'}
+                  {row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-sm text-cream-700">{formatInr(row.base)}</td>
-                <td className="px-5 py-3 text-right font-mono font-semibold text-cream-950">{formatInr(row.list)}</td>
+                <td className="px-5 py-3 text-right font-mono text-sm text-cream-700">{formatNumberValue(row.base, 'CURRENCY_EXACT')}</td>
+                <td className="px-5 py-3 text-right font-mono font-semibold text-cream-950">{formatNumberValue(row.list, 'CURRENCY_EXACT')}</td>
                 <td
                   className={cn(
                     'px-5 py-3 text-right font-mono text-sm',
@@ -183,15 +183,15 @@ export function PriceListProductsTab({ priceListId, filters, items, brandsCovere
                 >
                   {d == null
                     ? '—'
-                    : `${d >= 0 ? '-' : '+'}${Math.abs(d).toFixed(1)}%`}
+                    : `${d >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(d), 'PERCENTAGE')}`}
                 </td>
                 {canViewFinancials ? (
                   <>
                     <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
-                      {row.cost != null && row.cost > 0 ? formatInr(row.cost) : '—'}
+                      {row.cost != null && row.cost > 0 ? formatNumberValue(row.cost, 'CURRENCY_EXACT') : '—'}
                     </td>
                     <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
-                      {m == null ? '—' : `${m.toFixed(1)}%`}
+                      {m == null ? '—' : `${formatNumberValue(m, 'PERCENTAGE')}`}
                     </td>
                   </>
                 ) : null}
