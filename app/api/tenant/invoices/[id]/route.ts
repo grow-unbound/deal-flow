@@ -10,6 +10,11 @@ import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import {
+  getBuyerDocumentSendState,
+  getInvoiceReminderSendState,
+  sendBuyerDocumentWhatsApp,
+} from '@/lib/server/whatsapp-document-send';
+import {
   canAccessDocumentLocation,
   isSellerLocationSelectionAllowed,
   loadAccessibleSellerLocations,
@@ -402,6 +407,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     payment_reference: (row.external_ref as string | null | undefined) ?? null,
   }));
 
+  const whatsappSend = await getBuyerDocumentSendState(db, {
+    kind: 'invoice',
+    tenantId: claims.tenant_id,
+    buyerId,
+  });
+  const whatsappReminder = await getInvoiceReminderSendState(db, {
+    tenantId: claims.tenant_id,
+    buyerId,
+  });
+
   const payload: InvoiceDetailResponse = {
     id: String(inv.id),
     doc_number: String(inv.invoice_number ?? '—'),
@@ -438,6 +453,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     viewer_role: viewerRole,
     seller_note: String(inv.notes ?? ''),
     payments,
+    whatsapp_send: whatsappSend,
+    whatsapp_reminder: whatsappReminder,
   };
 
   return NextResponse.json(payload, { headers: SELLER_CACHE_PERSONAL });
@@ -611,15 +628,69 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    const { data: sendRow } = await db
+      .schema('app')
+      .from('invoices')
+      .select('buyer_id, invoice_number, total_amount')
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (!sendRow) {
+      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    }
+
+    const { count: itemCount } = await db
+      .schema('app')
+      .from('invoice_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('invoice_id', id)
+      .is('deleted_at', null);
+
+    const sendResult = await sendBuyerDocumentWhatsApp(db, {
+      kind: 'invoice',
+      tenantId: claims.tenant_id,
+      buyerId: (sendRow.buyer_id as string | null) ?? null,
+      documentId: id,
+      documentNumber: String(sendRow.invoice_number ?? ''),
+      totalAmount: Number(sendRow.total_amount ?? 0),
+      itemCount: itemCount ?? 0,
+    });
+
+    if (!sendResult.ok) {
+      return NextResponse.json(
+        { error: sendResult.state.block_message ?? 'Failed to send invoice', code: sendResult.state.block_reason },
+        { status: 409 },
+      );
+    }
+
     const { error: upErr } = await db
       .schema('app')
       .from('invoices')
-      .update({ status: 'sent', sent_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        sent_channel: 'whatsapp',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id);
     if (upErr) {
       return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 });
     }
+
+    await db.schema('app').from('audit_log').insert({
+      tenant_id: claims.tenant_id,
+      actor_user_id: claims.sub,
+      entity_type: 'invoice',
+      entity_id: id,
+      action: 'invoice_sent',
+      diff: {
+        channel: 'whatsapp',
+        recipient: sendResult.recipientPhone,
+      },
+      ts: new Date().toISOString(),
+    });
 
     return NextResponse.json({ ok: true });
   }

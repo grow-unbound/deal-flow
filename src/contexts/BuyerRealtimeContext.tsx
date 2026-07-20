@@ -13,8 +13,8 @@ interface BuyerRealtimeContextType {
   markAllRead: () => void;
   updatedEntityIds: Map<string, 'new' | 'updated'>;
   markSeen: (entityId: string) => void;
-  triggerRefresh: (() => void) | null;
-  setRefreshFn: (fn: (() => void) | null) => void;
+  triggerRefresh: (() => Promise<void> | void) | null;
+  setRefreshFn: (fn: (() => Promise<void> | void) | null) => void;
 }
 
 const BuyerRealtimeContext = createContext<BuyerRealtimeContextType | undefined>(undefined);
@@ -25,8 +25,8 @@ export function BuyerRealtimeProvider({ children }: { children: React.ReactNode 
   const tenantId = currentTenantId ?? '';
   const buyerId = currentBuyerId ?? '';
 
-  const [refreshFn, setRefreshFnState] = React.useState<(() => void) | null>(null);
-  const setRefreshFn = useCallback((fn: (() => void) | null) => setRefreshFnState(() => fn), []);
+  const [refreshFn, setRefreshFnState] = React.useState<(() => Promise<void> | void) | null>(null);
+  const setRefreshFn = useCallback((fn: (() => Promise<void> | void) | null) => setRefreshFnState(() => fn), []);
 
   const [buyerCohortIds] = React.useState<string[]>([]);
 

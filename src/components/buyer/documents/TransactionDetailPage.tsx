@@ -18,17 +18,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
-}
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -132,11 +125,11 @@ function LineItemRow({ item }: { item: TransactionLineItem }) {
           </p>
         )}
         <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-          {item.qty} {item.unit ?? 'unit'} × {inr(item.unit_price)}
+          {item.qty} {item.unit ?? 'unit'} × {formatBuyerCurrency(item.unit_price)}
         </p>
       </div>
       <p className="shrink-0 font-mono text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">
-        {inr(item.line_total)}
+        {formatBuyerCurrency(item.line_total)}
       </p>
     </div>
   );
@@ -160,22 +153,22 @@ function TotalsBlock({
     >
       <div className="flex justify-between text-[var(--b-text-body)] text-[var(--cream-700)]">
         <span>Subtotal</span>
-        <span className="font-mono">{inr(subtotal)}</span>
+        <span className="font-mono">{formatBuyerCurrency(subtotal)}</span>
       </div>
       {tax_total > 0 && (
         <div className="mt-2 flex justify-between text-[var(--b-text-body)] text-[var(--cream-600)]">
           <span>GST (18%)</span>
-          <span className="font-mono">{inr(tax_total)}</span>
+          <span className="font-mono">{formatBuyerCurrency(tax_total)}</span>
         </div>
       )}
       <div className="mt-3 flex justify-between border-t border-[var(--border-1)] pt-3">
         <span className="font-semibold text-[var(--cream-900)]">Total</span>
-        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{inr(total_amount)}</span>
+        <span className="font-mono text-lg font-bold text-[var(--cream-900)]">{formatBuyerCurrency(total_amount)}</span>
       </div>
       {outstandingBalance != null && outstandingBalance > 0 && (
         <div className="mt-2 flex justify-between text-[var(--b-text-sub)] text-[var(--danger-500)]">
           <span>Outstanding</span>
-          <span className="font-mono font-semibold">{inr(outstandingBalance)}</span>
+          <span className="font-mono font-semibold">{formatBuyerCurrency(outstandingBalance)}</span>
         </div>
       )}
     </div>
@@ -195,6 +188,8 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
         name: item.product_name,
         internal_sku: item.internal_sku ?? undefined,
         unit_price: item.unit_price,
+        resolved_price: null,
+        has_campaign_price: false,
         unit: item.unit ?? undefined,
         quantity: item.qty,
         line_total: item.line_total,

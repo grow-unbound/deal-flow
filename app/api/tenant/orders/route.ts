@@ -578,12 +578,12 @@ export async function GET(req: NextRequest) {
       const status = order.status as OrderStatus;
       const meta = statusMeta(status);
       const estimateNumber = order.estimate_id ? estimateById.get(order.estimate_id) ?? null : null;
-      const actorLabel = order.placed_by ? placedByMap.get(order.placed_by) ?? 'Team member' : 'Team member';
-      const sourceLinePrimary = estimateNumber && estimateNumber.trim().length > 0 ? estimateNumber : sourceLabel(order.source);
-      const sourceLineSecondary =
-        estimateNumber && estimateNumber.trim().length > 0 ? `Converted by ${actorLabel}` : actorLabel;
+      const isBuyerAppOrder = order.is_buyer_app_order || order.source === 'buyer_app';
+      const hasConvertedEstimate = Boolean(estimateNumber && estimateNumber.trim().length > 0);
+      const sourceLinePrimary = hasConvertedEstimate ? estimateNumber ?? '' : isBuyerAppOrder ? 'BUYER_APP' : '';
+      const sourceLineSecondary = hasConvertedEstimate && isBuyerAppOrder ? 'BUYER_APP' : '';
       const sourceCategory = orderSourceCategory(order);
-      const sourceKind = estimateNumber ? 'converted' : order.is_buyer_app_order ? 'buyer_app' : 'direct';
+      const sourceKind = estimateNumber ? 'converted' : isBuyerAppOrder ? 'buyer_app' : 'direct';
 
       return {
         id: order.id,

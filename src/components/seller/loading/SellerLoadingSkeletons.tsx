@@ -482,14 +482,14 @@ export function CatalogsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading campaigns"
-      titleWidth="h-24 w-full max-w-sm"
-      descriptionWidth="h-24 w-full max-w-sm"
+      titleWidth="h-7 w-44"
+      descriptionWidth="h-4 w-[36rem]"
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
-      topCardHeight="h-[108px] rounded-[12px]"
+      topCardHeight="h-36 rounded-[14px]"
       midGridClassName="grid grid-cols-3 gap-3"
       midCount={3}
-      midCardHeight="h-[190px] rounded-[14px]"
+      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableHeaderCount={6}
       tableRowGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"

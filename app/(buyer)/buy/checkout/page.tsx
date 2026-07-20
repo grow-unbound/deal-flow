@@ -8,16 +8,10 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { computeBuyerCartTotals } from '@/lib/gst';
 import posthog from 'posthog-js';
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
-}
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -46,6 +40,8 @@ export default function CheckoutPage() {
         internal_sku: product.internal_sku,
         image_url: product.image_urls[0],
         unit_price: product.price,
+        resolved_price: product.resolved_price,
+        has_campaign_price: product.has_campaign_price,
         gst_rate: product.gst_rate ?? gstRate,
         unit: product.default_uom ?? undefined,
         quantity,
@@ -207,14 +203,14 @@ export default function CheckoutPage() {
                     className="text-xs mt-0.5"
                     style={{ color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}
                   >
-                    {item.quantity} × {inr(item.unit_price)}
+                    {item.quantity} × {formatBuyerCurrency(item.unit_price)}
                   </p>
                 </div>
                 <span
                   className="text-sm font-semibold shrink-0"
                   style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}
                 >
-                  {inr(item.quantity * item.unit_price)}
+                  {formatBuyerCurrency(item.quantity * item.unit_price)}
                 </span>
               </div>
             ))}
@@ -246,7 +242,7 @@ export default function CheckoutPage() {
               className="text-base font-bold"
               style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}
             >
-              {inr(totals.subtotal)}
+              {formatBuyerCurrency(totals.subtotal)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -257,7 +253,7 @@ export default function CheckoutPage() {
               className="text-base font-semibold"
               style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
             >
-              {gstInclusive ? 'Included' : inr(totals.tax_amount)}
+              {gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -273,7 +269,7 @@ export default function CheckoutPage() {
               Total
             </span>
             <span className="text-base font-bold" style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>
-              {inr(totals.total)}
+              {formatBuyerCurrency(totals.total)}
             </span>
           </div>
         </div>

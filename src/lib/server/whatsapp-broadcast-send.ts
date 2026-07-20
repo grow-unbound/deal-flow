@@ -15,6 +15,7 @@ type TemplateButtonConfig = {
   type?: 'url' | 'quick_reply';
   index?: string;
   variable_source?: string;
+  url_template?: string;
 };
 
 type TemplateRow = {
@@ -115,6 +116,9 @@ function buildButtonParams(
 
   for (const button of configs) {
     if (button.type !== 'url') continue;
+    if (!button.variable_source && !button.url_template?.includes('{{')) {
+      continue;
+    }
     const text = resolveButtonValue(button.variable_source, buyer, campaign, sellerPhone);
     if (!text) {
       throw new Error('Missing required broadcast CTA target');

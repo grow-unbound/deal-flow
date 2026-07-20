@@ -8,7 +8,7 @@ export function WarehousePerformanceTab({
   data,
   performanceCards,
 }: {
-  data: WarehouseDetailResponse['performance'];
+  data: NonNullable<WarehouseDetailResponse['performance']>;
   performanceCards?: unknown[];
 }) {
   // get_seller_warehouse_detail_v2 always returns 3 cards, but ships them all

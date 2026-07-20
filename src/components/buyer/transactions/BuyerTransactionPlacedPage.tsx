@@ -10,6 +10,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 type BuyerTransactionKind = 'estimate' | 'order';
 
@@ -234,7 +235,7 @@ export function BuyerTransactionPlacedPage({
             <div className="space-y-3 px-4 py-4">
               <ReceiptRow label={`${documentLabel} #`} value={documentDisplayValue} mono={Boolean(documentNumber)} />
               <ReceiptRow label="Status" value={<StatusChip label="Received" />} />
-              {total > 0 ? <ReceiptRow label="Total" value={formatCurrency(total)} mono /> : null}
+              {total > 0 ? <ReceiptRow label="Total" value={formatBuyerCurrency(total)} mono /> : null}
               {documentUrl ? (
                 <Button asChild variant="outline" className="mt-1 h-10 gap-2 self-start">
                   <a href={documentUrl} target="_blank" rel="noreferrer">
@@ -294,12 +295,4 @@ function ReceiptRow({
       </span>
     </div>
   );
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }

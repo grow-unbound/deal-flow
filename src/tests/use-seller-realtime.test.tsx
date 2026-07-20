@@ -10,6 +10,7 @@ const {
   estimateUpdateCallbacks,
   orderInsertCallbacks,
   orderUpdateCallbacks,
+  broadcastUpdateCallbacks,
 } = vi.hoisted(() => ({
   invalidateQueriesMock: vi.fn(),
   onNewMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   estimateUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
   orderInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
   orderUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
+  broadcastUpdateCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -42,6 +44,8 @@ vi.mock('@/lib/supabase-browser', () => {
         orderUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
       } else if (config.table === 'orders') {
         orderInsertCallbacks.push(callback);
+      } else if (config.table === 'whatsapp_broadcasts' && config.event === 'UPDATE') {
+        broadcastUpdateCallbacks.push(callback);
       }
       return chain;
     }),
@@ -68,6 +72,7 @@ describe('useSellerRealtime', () => {
     estimateUpdateCallbacks.length = 0;
     orderInsertCallbacks.length = 0;
     orderUpdateCallbacks.length = 0;
+    broadcastUpdateCallbacks.length = 0;
   });
 
   it('skips estimate insert notifications when estimate_number is null', () => {
@@ -173,5 +178,47 @@ describe('useSellerRealtime', () => {
 
     unmount();
     expect(removeChannelMock).toHaveBeenCalled();
+  });
+
+  it('invalidates broadcast queries and patches grouped broadcast progress notifications', () => {
+    renderHook(() =>
+      useSellerRealtime({
+        tenantId: 'tenant-1',
+        locationIds: null,
+        onNew: onNewMock,
+        onPatch: onPatchMock,
+      }),
+    );
+
+    act(() => {
+      broadcastUpdateCallbacks[0]?.({
+        new: {
+          id: 'broadcast-1',
+          tenant_id: 'tenant-1',
+          name: 'July payment reminder',
+          status: 'sending',
+          actual_recipient_count: 3,
+          estimated_recipient_count: 3,
+          sent_count: 2,
+          delivered_count: 0,
+          failed_count: 0,
+          updated_at: '2026-07-18T16:45:00.000Z',
+        },
+      });
+    });
+
+    expect(onPatchMock).toHaveBeenCalledWith('broadcast', 'broadcast-1', {
+      title: 'Broadcast update · July payment reminder',
+      body: '2/3 sent',
+    });
+    expect(onNewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'broadcast:broadcast-1',
+        kind: 'broadcast_updated',
+        entityType: 'broadcast',
+        body: '2/3 sent',
+      }),
+    );
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['whatsapp-broadcasts'] });
   });
 });

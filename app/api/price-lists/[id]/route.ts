@@ -136,7 +136,7 @@ export async function GET(
     db
       .schema('app')
       .from('audit_log')
-      .select('id, ts, action, entity_type, entity_id, actor_user_id, actor_email, payload')
+      .select('id, ts, action, entity_type, entity_id, actor_user_id, diff')
       .eq('tenant_id', claims.tenant_id)
       .eq('entity_type', 'price_list')
       .eq('entity_id', id)
@@ -144,12 +144,19 @@ export async function GET(
       .limit(100),
   ]);
 
-  if (detailV2Res.error || itemsRes.error || assignmentsRes.error || activityRes.error) {
+  if (itemsRes.error || assignmentsRes.error || activityRes.error) {
     console.error(
       '[GET /api/price-lists/[id]] related fetch error:',
-      detailV2Res.error || itemsRes.error || assignmentsRes.error || activityRes.error,
+      itemsRes.error || assignmentsRes.error || activityRes.error,
     );
     return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
+  }
+
+  if (detailV2Res.error) {
+    console.warn(
+      '[GET /api/price-lists/[id]] get_seller_pricelist_detail_v2 unavailable; serving base detail only',
+      detailV2Res.error,
+    );
   }
 
   const items = itemsRes.data ?? [];
@@ -326,7 +333,7 @@ export async function GET(
 
   const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : 0;
   const daysLeft = priceList.valid_to ? Math.max(0, Math.ceil((new Date(priceList.valid_to).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
-  const detailV2 = detailV2Res.data as any;
+  const detailV2 = detailV2Res.error ? null : detailV2Res.data as any;
 
   return NextResponse.json({
     performance_cards: detailV2?.performance_cards ?? [],

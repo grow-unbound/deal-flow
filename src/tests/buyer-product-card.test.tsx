@@ -112,4 +112,45 @@ describe('buyer product card', () => {
     expect(container.firstChild).not.toHaveClass('opacity-60');
     expect(screen.getByRole('button', { name: /add to cart/i })).toBeDisabled();
   });
+
+  it('falls back to the category image when the product has no image', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    render(
+      <ProductCard
+        item={{
+          id: '3',
+          tenant_product_id: 'tp-3',
+          campaign_id: null,
+          catalog_name: null,
+          catalog_valid_until: null,
+          internal_sku: 'CAT-FALLBACK-001',
+          display_name: 'Category Fallback Camera',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          brand_logo_url: null,
+          category_id: 'cat-1',
+          category_name: 'Cameras',
+          category_image_url: 'https://cdn.example.com/category-thumb.webp',
+          mrp: 10000,
+          price: 9000,
+          has_campaign_price: false,
+          resolved_price: null,
+          default_uom: 'box',
+          pack_size: null,
+          campaign_valid_until: null,
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 6,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('presentation')).toHaveAttribute('src', 'https://cdn.example.com/category-thumb.webp');
+  });
 });

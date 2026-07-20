@@ -27,6 +27,7 @@ type TenantProductRow = {
   internal_sku: string | null;
   name_override: string | null;
   tenant_brand_id: string | null;
+  tenant_category_id: string | null;
   master_product_id: string | null;
   mrp: number | null;
   base_selling_price: number | null;
@@ -63,6 +64,14 @@ type CategoryRow = {
   name: string;
   slug?: string | null;
   image_url: string | null;
+};
+
+type TenantCategoryRow = {
+  id: string;
+  name: string;
+  slug: string | null;
+  r2_image_thumb_key: string | null;
+  r2_image_medium_key: string | null;
 };
 
 type InventoryRow = {
@@ -140,6 +149,76 @@ type CatalogScopeResult = {
 
 function uniq<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+export async function resolveVisibleCampaignMap(
+  db: SupabaseClient,
+  params: {
+    tenantId: string;
+    buyerId: string | null;
+    productIds: string[];
+    visibleCampaigns?: BuyerVisibleCatalog[];
+  },
+): Promise<Map<string, {
+  campaign_id: string | null;
+  campaign_name: string | null;
+  campaign_valid_until: string | null;
+  campaign_price: number | null;
+  is_featured?: boolean;
+}>> {
+  const { tenantId, buyerId, productIds } = params;
+  if (!buyerId || productIds.length === 0) return new Map();
+
+  const visibleCampaigns = params.visibleCampaigns ?? await getVisibleBuyerCatalogs(tenantId, buyerId);
+  if (visibleCampaigns.length === 0) return new Map();
+
+  const visibleCampaignIds = visibleCampaigns.map((campaign) => campaign.id);
+  const campaignPriority = new Map(visibleCampaignIds.map((id, index) => [id, index]));
+
+  const { data, error } = await db
+    .schema('app')
+    .from('campaign_items')
+    .select('campaign_id, tenant_product_id, price_override, display_order, is_featured')
+    .in('campaign_id', visibleCampaignIds)
+    .in('tenant_product_id', productIds)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message);
+
+  const campaignsById = new Map(visibleCampaigns.map((campaign) => [campaign.id, campaign]));
+  const rows = (data ?? []) as Array<CampaignItemRow & { campaign_id: string }>;
+  rows.sort((a, b) => {
+    const aHasOverride = a.price_override != null ? 0 : 1;
+    const bHasOverride = b.price_override != null ? 0 : 1;
+    if (aHasOverride !== bHasOverride) return aHasOverride - bHasOverride;
+
+    const campaignRank = (campaignPriority.get(a.campaign_id) ?? Number.MAX_SAFE_INTEGER)
+      - (campaignPriority.get(b.campaign_id) ?? Number.MAX_SAFE_INTEGER);
+    if (campaignRank !== 0) return campaignRank;
+    return (a.display_order ?? Number.MAX_SAFE_INTEGER) - (b.display_order ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  const campaignByProductId = new Map<string, {
+    campaign_id: string | null;
+    campaign_name: string | null;
+    campaign_valid_until: string | null;
+    campaign_price: number | null;
+    is_featured?: boolean;
+  }>();
+
+  for (const row of rows) {
+    if (campaignByProductId.has(row.tenant_product_id)) continue;
+    const campaign = campaignsById.get(row.campaign_id);
+    if (!campaign) continue;
+    campaignByProductId.set(row.tenant_product_id, {
+      campaign_id: campaign.id,
+      campaign_name: campaign.name,
+      campaign_valid_until: campaign.valid_to,
+      campaign_price: row.price_override,
+      is_featured: Boolean(row.is_featured),
+    });
+  }
+
+  return campaignByProductId;
 }
 
 function tenantCategoryImageUrl(
@@ -291,7 +370,7 @@ export async function enrichBuyerProducts(
   let tenantProductsQuery = db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls')
+    .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls')
     .eq('tenant_id', tenantId)
     .in('id', orderedIds)
     .is('deleted_at', null)
@@ -312,17 +391,28 @@ export async function enrichBuyerProducts(
   const tenantBrandIds = uniq(
     tenantProducts.map((product) => product.tenant_brand_id).filter((value): value is string => Boolean(value)),
   );
+  const tenantCategoryIds = uniq(
+    tenantProducts.map((product) => product.tenant_category_id).filter((value): value is string => Boolean(value)),
+  );
   const masterProductIds = uniq(
     tenantProducts.map((product) => product.master_product_id).filter((value): value is string => Boolean(value)),
   );
 
-  const [tenantBrandsRes, masterProductsRes, inventoryRes] = await Promise.all([
+  const [tenantBrandsRes, tenantCategoriesRes, masterProductsRes, inventoryRes] = await Promise.all([
     tenantBrandIds.length > 0
       ? db
           .schema('app')
           .from('tenant_brands')
           .select('id, display_name_override, master_brand_id, logo_url')
           .in('id', tenantBrandIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    tenantCategoryIds.length > 0
+      ? db
+          .schema('app')
+          .from('tenant_categories')
+          .select('id, name, slug, r2_image_thumb_key, r2_image_medium_key')
+          .in('id', tenantCategoryIds)
           .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
     masterProductIds.length > 0
@@ -346,10 +436,11 @@ export async function enrichBuyerProducts(
     })(),
   ]);
 
-  const secondError = tenantBrandsRes.error ?? masterProductsRes.error ?? inventoryRes.error;
+  const secondError = tenantBrandsRes.error ?? tenantCategoriesRes.error ?? masterProductsRes.error ?? inventoryRes.error;
   if (secondError) throw new Error(secondError.message);
 
   const tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
+  const tenantCategories = (tenantCategoriesRes.data ?? []) as TenantCategoryRow[];
   const masterProducts = (masterProductsRes.data ?? []) as MasterProductRow[];
   const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
 
@@ -381,6 +472,7 @@ export async function enrichBuyerProducts(
   if (thirdError) throw new Error(thirdError.message);
 
   const tenantBrandMap = new Map(tenantBrands.map((brand) => [brand.id, brand]));
+  const tenantCategoryMap = new Map(tenantCategories.map((category) => [category.id, category]));
   const masterProductMap = new Map(masterProducts.map((product) => [product.id, product]));
   const masterBrandMap = new Map(
     ((masterBrandsRes.data ?? []) as MasterBrandRow[]).map((brand) => [brand.id, brand]),
@@ -432,6 +524,7 @@ export async function enrichBuyerProducts(
     if (!product) continue;
 
     const tenantBrand = product.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id) ?? null : null;
+    const tenantCategory = product.tenant_category_id ? tenantCategoryMap.get(product.tenant_category_id) ?? null : null;
     const masterBrand = tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null;
     const masterProduct = product.master_product_id ? masterProductMap.get(product.master_product_id) ?? null : null;
     const category = masterProduct?.category_id ? categoryMap.get(masterProduct.category_id) ?? null : null;
@@ -450,8 +543,8 @@ export async function enrichBuyerProducts(
       display_name: product.name_override ?? masterProduct?.name ?? product.internal_sku ?? product.id,
       brand_id: tenantBrand?.master_brand_id ?? null,
       brand_name: tenantBrand?.display_name_override ?? masterBrand?.name ?? null,
-      category_id: category?.id ?? null,
-      category_name: category?.name ?? null,
+      category_id: tenantCategory?.id ?? category?.id ?? null,
+      category_name: tenantCategory?.name ?? category?.name ?? null,
       mrp: Number(product.mrp ?? 0),
       price: campaignPrice ?? resolvedPrice,
       resolved_price: resolvedPrice,
@@ -462,7 +555,7 @@ export async function enrichBuyerProducts(
       pack_size: product.pack_size,
       image_urls: (product.image_urls?.length ? product.image_urls : (masterProduct?.image_urls ?? [])) as string[],
       brand_logo_url: tenantBrand?.logo_url ?? masterBrand?.logo_url ?? null,
-      category_image_url: category?.image_url ?? null,
+      category_image_url: r2Url(tenantCategory?.r2_image_thumb_key ?? tenantCategory?.r2_image_medium_key) ?? category?.image_url ?? null,
       stock_status: onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available',
       on_hand: onHand,
       is_featured: campaign?.is_featured ?? false,
@@ -596,11 +689,19 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
     sort: trimmedSearch ? 'relevance' : 'created_desc',
   });
 
+  const orderedProductIds = rows.map((row) => row.tenant_product_id);
+  const campaignByProductId = await resolveVisibleCampaignMap(db, {
+    tenantId,
+    buyerId: params.buyerId,
+    productIds: orderedProductIds,
+    visibleCampaigns,
+  });
+
   return {
-    orderedProductIds: rows.map((row) => row.tenant_product_id),
+    orderedProductIds,
     total,
     selectedCampaign: null,
-    campaignByProductId: new Map(),
+    campaignByProductId,
   };
 }
 

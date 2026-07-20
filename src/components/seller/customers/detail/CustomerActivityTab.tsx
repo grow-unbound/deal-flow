@@ -1,14 +1,19 @@
 'use client';
 
-import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
 import { formatCurrency } from '@/lib/utils';
 
 interface CustomerActivityTabProps {
-  activity: TenantCustomerDetailResponse['activity'];
+  activity: Array<{
+    id: string;
+    at: string;
+    title: string;
+    subtitle: string;
+    amount: number | null;
+  }>;
 }
 
 export function CustomerActivityTab({ activity }: CustomerActivityTabProps) {
-  const groups = activity.reduce<Record<string, TenantCustomerDetailResponse['activity']>>((acc, item) => {
+  const groups = activity.reduce<Record<string, CustomerActivityTabProps['activity']>>((acc, item) => {
     const key = new Date(item.at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);

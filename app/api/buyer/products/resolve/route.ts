@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
-import { enrichBuyerProducts, resolveBuyerProductScopeContext } from '@/lib/server/buyer-product-data';
+import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { enrichBuyerProducts, resolveBuyerProductScopeContext, resolveVisibleCampaignMap } from '@/lib/server/buyer-product-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerResolvedProductsResponse } from '@/types/buyer';
 
@@ -29,6 +29,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const qtyByProductId = new Map(
       rows.map((row) => [row.tenant_product_id, Math.max(1, Number(row.qty ?? 1))]),
     );
+    const visibleCampaigns = context.buyerId
+      ? await getVisibleBuyerCatalogs(context.tenantId, context.buyerId)
+      : [];
+    const campaignByProductId = await resolveVisibleCampaignMap(supabaseAdmin as any, {
+      tenantId: context.tenantId,
+      buyerId: context.buyerId,
+      productIds: orderedIds,
+      visibleCampaigns,
+    });
 
     const itemMap = await enrichBuyerProducts(supabaseAdmin as any, {
       tenantId: context.tenantId,
@@ -36,6 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       tenantProductIds: orderedIds,
       allowedTenantBrandIds: context.allowedTenantBrandIds,
       inventoryWarehouseId: context.inventoryWarehouseId,
+      campaignByProductId,
       qtyByProductId,
     });
 

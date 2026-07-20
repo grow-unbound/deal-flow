@@ -36,6 +36,9 @@ interface RawBroadcastRow {
   scheduled_for: string | null;
   estimated_recipient_count: number | null;
   actual_recipient_count: number | null;
+  sent_count: number | null;
+  delivered_count: number | null;
+  failed_count: number | null;
   created_at: string;
   target_cohort_id: string | null;
   target_buyer_ids: string[] | null;
@@ -44,9 +47,12 @@ interface RawBroadcastRow {
   cohorts: { name: string } | null;
 }
 
-interface DeliveryAggregate {
-  delivered_count: number;
-  total_count: number;
+interface BroadcastKpis {
+  total_broadcasts: number;
+  delivered_this_month: number;
+  scheduled_count: number;
+  success_rate_pct: number;
+  sent_this_month: number;
 }
 
 function parseBroadcastListParams(searchParams: URLSearchParams) {
@@ -128,53 +134,66 @@ function applyBroadcastSearchToQuery(
   return query.ilike('name', `%${escaped}%`);
 }
 
-async function fetchDeliveryAggregates(
+async function fetchBroadcastKpis(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   tenantId: string,
-  broadcastIds: string[],
-): Promise<Map<string, DeliveryAggregate>> {
-  const aggregates = new Map<string, DeliveryAggregate>();
-  if (broadcastIds.length === 0) {
-    return aggregates;
-  }
+): Promise<BroadcastKpis> {
+  const [broadcastsResult, scheduledResult, monthlyMessagesResult, allMessagesResult] = await Promise.all([
+    db
+      .schema('app')
+      .from('whatsapp_broadcasts')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('whatsapp_broadcasts')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'scheduled')
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('whatsapp_messages')
+      .select('status')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_source', 'broadcast')
+      .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('whatsapp_messages')
+      .select('status')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_source', 'broadcast')
+      .is('deleted_at', null),
+  ]);
 
-  const { data: messages, error } = await db
-    .schema('app')
-    .from('whatsapp_messages')
-    .select('whatsapp_broadcast_id, status')
-    .eq('tenant_id', tenantId)
-    .in('whatsapp_broadcast_id', broadcastIds)
-    .is('deleted_at', null);
+  const monthlyMessages = (monthlyMessagesResult.data ?? []) as Array<{ status: string | null }>;
+  const allMessages = (allMessagesResult.data ?? []) as Array<{ status: string | null }>;
 
-  if (error) {
-    console.error('[GET /api/whatsapp/broadcasts] message aggregate error:', error.code, error.message);
-    return aggregates;
-  }
+  const deliveredThisMonth = monthlyMessages.filter((row) => row.status === 'delivered' || row.status === 'read').length;
+  const sentThisMonth = monthlyMessages.filter((row) => row.status === 'sent' || row.status === 'delivered' || row.status === 'read').length;
+  const successfulAllTime = allMessages.filter((row) => row.status === 'delivered' || row.status === 'read').length;
+  const terminalAllTime = allMessages.filter(
+    (row) => row.status === 'delivered' || row.status === 'read' || row.status === 'failed' || row.status === 'blocked_by_recipient' || row.status === 'opted_out',
+  ).length;
 
-  for (const message of messages ?? []) {
-    const broadcastId = message.whatsapp_broadcast_id as string | null;
-    if (!broadcastId) continue;
-
-    const current = aggregates.get(broadcastId) ?? { delivered_count: 0, total_count: 0 };
-    current.total_count += 1;
-    if (message.status === 'delivered' || message.status === 'read') {
-      current.delivered_count += 1;
-    }
-    aggregates.set(broadcastId, current);
-  }
-
-  return aggregates;
+  return {
+    total_broadcasts: broadcastsResult.count ?? 0,
+    delivered_this_month: deliveredThisMonth,
+    scheduled_count: scheduledResult.count ?? 0,
+    success_rate_pct: terminalAllTime > 0 ? Math.round((successfulAllTime / terminalAllTime) * 100) : 0,
+    sent_this_month: sentThisMonth,
+  };
 }
 
-function enrichBroadcastRow(row: RawBroadcastRow, delivery: DeliveryAggregate | undefined) {
+function enrichBroadcastRow(row: RawBroadcastRow) {
   const fallbackTotal = row.actual_recipient_count
     ?? row.estimated_recipient_count
     ?? (Array.isArray(row.target_buyer_ids) ? row.target_buyer_ids.length : 0);
-  const totalCount = delivery?.total_count && delivery.total_count > 0
-    ? delivery.total_count
-    : fallbackTotal;
-  const deliveredCount = delivery?.delivered_count ?? 0;
+  const totalCount = fallbackTotal;
   const displayAt = row.scheduled_for ?? row.created_at;
 
   return {
@@ -190,7 +209,9 @@ function enrichBroadcastRow(row: RawBroadcastRow, delivery: DeliveryAggregate | 
     display_at: displayAt,
     template_name: row.whatsapp_templates?.meta_template_name ?? null,
     target_label: formatBroadcastTargetLabel(row),
-    delivered_count: deliveredCount,
+    sent_count: row.sent_count ?? 0,
+    delivered_count: row.delivered_count ?? 0,
+    failed_count: row.failed_count ?? 0,
     total_count: totalCount,
   };
 }
@@ -251,6 +272,9 @@ export async function GET(request: NextRequest) {
         scheduled_for,
         estimated_recipient_count,
         actual_recipient_count,
+        sent_count,
+        delivered_count,
+        failed_count,
         created_at,
         target_cohort_id,
         target_buyer_ids,
@@ -283,14 +307,14 @@ export async function GET(request: NextRequest) {
   }
 
   const rawRows = (rows ?? []) as RawBroadcastRow[];
-  const broadcastIds = rawRows.map((row) => row.id);
-  const deliveryAggregates = await fetchDeliveryAggregates(db, claims.tenant_id, broadcastIds);
-  const broadcasts = rawRows.map((row) => enrichBroadcastRow(row, deliveryAggregates.get(row.id)));
+  const kpis = await fetchBroadcastKpis(db, claims.tenant_id);
+  const broadcasts = rawRows.map((row) => enrichBroadcastRow(row));
   const total = count ?? broadcasts.length;
   const nextOffset = offset + broadcasts.length < total ? offset + broadcasts.length : null;
 
   return NextResponse.json(
     {
+      kpis,
       broadcasts,
       total,
       next_offset: nextOffset,

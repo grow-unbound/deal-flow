@@ -74,6 +74,7 @@ const schemaMock = vi.fn((schemaName: string) => ({
   from: vi.fn((tableName: string) => ({
     select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
   })),
+  rpc: vi.fn((fnName: string) => Promise.resolve(nextResult(`${schemaName}.rpc.${fnName}`))),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -226,6 +227,7 @@ describe('catalog detail api', () => {
         data: [],
       },
     ];
+    dbResponses['app.rpc.get_seller_campaign_detail_v2'] = [{ data: null }];
   });
 
   it('uses canonical order and estimate dates in daily performance rollups', async () => {

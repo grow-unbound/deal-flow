@@ -41,7 +41,7 @@ vi.mock('@/hooks/useInvoiceDetail', () => ({
   useMarkInvoicePaid: () => ({ mutateAsync: payMutateAsync, isPending: false }),
   useVoidInvoice: () => ({ mutateAsync: voidMutateAsync, isPending: false }),
   useSendInvoiceReminder: () => ({ mutateAsync: remindMutateAsync, isPending: false }),
-  useSendInvoice: () => ({ mutate: sendInvoiceMutate, isPending: false }),
+  useSendInvoiceDetailWhatsApp: () => ({ mutate: sendInvoiceMutate, isPending: false }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -151,6 +151,32 @@ function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDet
     viewer_role: 'seller_admin',
     seller_note: '',
     payments: [],
+    whatsapp_send: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'invoice_update_buyer',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+    },
+    whatsapp_reminder: {
+      can_send: true,
+      block_reason: null,
+      block_message: null,
+      credits_balance: 10,
+      required_credits: 1,
+      recipient_phone: '9876543210',
+      template_name: 'buyer_payment_reminder',
+      seller_name: 'Yukti Seller',
+      seller_phone_display: '+91 98765 43210',
+      due_invoice_count: '1',
+      outstanding_amount: '11800',
+      due_status: 'due in 5 days',
+      preview_message: 'Hi Acme Stores,\n\nThis is a payment reminder from Yukti Seller on 1 invoices.',
+    },
     ...overrides,
   };
 }
@@ -194,7 +220,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Sent/i);
-    expect(screen.getByRole('button', { name: /mark as paid/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /collect payment/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send reminder/i })).toBeInTheDocument();
   });
 
@@ -213,7 +239,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Overdue/i);
-    expect(screen.getByRole('button', { name: /mark as paid/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /collect payment/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit (before send|invoice)/i })).toBeInTheDocument();
   });
 
@@ -342,7 +368,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }));
+    fireEvent.click(screen.getByRole('button', { name: /collect payment/i }));
     const dialog = await screen.findByRole('dialog');
     const amt = within(dialog).getByLabelText(/^amount$/i);
     fireEvent.change(amt, { target: { value: '15,000' } });
@@ -358,7 +384,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }));
+    fireEvent.click(screen.getByRole('button', { name: /collect payment/i }));
     const dialog = await screen.findByRole('dialog', {}, { timeout: 10_000 });
     const amt = within(dialog).getByDisplayValue('11,800');
     expect((amt as HTMLInputElement).value).toBe('11,800');
@@ -366,7 +392,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     expect((amt as HTMLInputElement).value).toBe('11,800');
   }, 15_000);
 
-  it('send reminder modal pre-fills message', async () => {
+  it('send reminder modal shows the filled WhatsApp template preview', async () => {
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'sent', status: 'sent', sent_at: '2026-06-05T10:00:00.000Z' }),
       isLoading: false,
@@ -376,8 +402,9 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
     const dialog = await screen.findByRole('dialog');
-    const ta = within(dialog).getByRole('textbox');
-    expect((ta as HTMLTextAreaElement).value).toContain('INV-100');
+    expect(within(dialog).getByText(/buyer_payment_reminder/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/template preview/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/payment reminder from Yukti Seller on 1 invoices/i)).toBeInTheDocument();
   });
 
   it('hides void for seller_assistant', () => {

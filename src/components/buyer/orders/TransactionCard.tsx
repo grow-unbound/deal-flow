@@ -2,6 +2,7 @@
 
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
+import { formatBuyerCurrency } from '@/lib/buyer-ui';
 
 export interface OrderSummary {
   id: string;
@@ -16,13 +17,6 @@ export interface OrderSummary {
 interface TransactionCardProps {
   order: OrderSummary;
   href?: string;
-}
-
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
 }
 
 function formatDate(iso: string): string {
@@ -64,7 +58,7 @@ export function TransactionCard({ order, href }: TransactionCardProps) {
       statusTone={badge.tone}
       middleLeft={order.description || '—'}
       middleRight={<span className="tabular-inline">{itemsAndDate}</span>}
-      amount={<span className="tabular-inline">{inr(order.total_amount)}</span>}
+      amount={<span className="tabular-inline">{formatBuyerCurrency(order.total_amount)}</span>}
     />
   );
 }

@@ -1,66 +1,56 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { FilterBar } from '@/components/seller/layout';
-import { formatCompactInr } from '@/lib/utils';
+import { useMemo } from 'react';
+import { FileText, Package, Receipt } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
+import { FilterBar, type FilterBarGroup } from '@/components/seller/layout';
+import { TransactionTable, type TransactionTableKind, type TransactionTableRow } from '@/components/seller/transactional';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { TransactionTable, type TransactionTableKind } from '@/components/seller/transactional';
-import { Button } from '@/components/ui/button';
-import { useDebounce } from '@/hooks/useDebounce';
 import { useCustomerDocuments } from '@/hooks/useCustomersLanding';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import type { CustomerDocumentRow } from '@/hooks/useCustomersLanding';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 interface CustomerOrdersTabProps {
   buyerId: string;
+  buyerName: string;
   kind?: TransactionTableKind;
-  orders: Array<{
-    id: string;
-    order_number?: string | null;
-    number?: string | null;
-    estimate_number?: string | null;
-    invoice_number?: string | null;
-    buyer_name?: string | null;
-    placed_at?: string | null;
-    issued_at?: string | null;
-    created_at?: string | null;
-    expires_at?: string | null;
-    due_date?: string | null;
-    location_name?: string | null;
-    place_of_supply?: string | null;
-    source_kind?: 'buyer_app' | 'converted' | 'direct' | 'seller';
-    source_label?: string | null;
-    campaign_name?: string | null;
-    items?: number;
-    items_count?: number;
-    gmv?: number;
-    total_amount?: number;
-    outstanding_amount?: number;
-    status: string;
-  }>;
   title?: string;
-  description?: string;
   routeBase?: string;
 }
 
-type SortOption = 'Newest first' | 'Oldest first' | 'Amount (high → low)' | 'Amount (low → high)' | 'Status (A → Z)';
+type SortOption =
+  | 'Recent first'
+  | 'Value (high → low)'
+  | 'Status (workflow order)'
+  | 'Expiry (soonest first)'
+  | 'Order value (high → low)'
+  | 'Items (high → low)'
+  | 'Outstanding (high → low)';
 
-function getChips(kind: TransactionTableKind) {
-  if (kind === 'estimate') {
-    return ['All estimates', 'Draft', 'Sent', 'Accepted', 'Converted', 'Declined', 'Expired'];
-  }
-  if (kind === 'invoice') {
-    return ['All invoices', 'Draft', 'Sent', 'Paid', 'Overdue', 'Void'];
-  }
-  return ['All orders', 'Received', 'Confirmed', 'In transit', 'Delivered', 'Cancelled'];
-}
+const ESTIMATE_SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
+const ORDER_SORT_OPTIONS: SortOption[] = ['Recent first', 'Order value (high → low)', 'Items (high → low)'];
+const INVOICE_SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
 
-function getSortOptions(kind: TransactionTableKind): SortOption[] {
-  if (kind === 'estimate') {
-    return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
-  }
-  if (kind === 'invoice') {
-    return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
-  }
-  return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
+const ESTIMATE_STATUS_RANK: Record<string, number> = {
+  draft: 0,
+  sent: 1,
+  accepted: 2,
+  declined: 3,
+  expired: 4,
+  converted: 5,
+  invoiced: 6,
+  void: 7,
+  pending: 8,
+};
+
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function statusTone(kind: TransactionTableKind, status: string): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -72,183 +62,369 @@ function statusTone(kind: TransactionTableKind, status: string): 'success' | 'wa
   }
   if (kind === 'estimate') {
     if (['accepted', 'converted', 'invoiced'].includes(status)) return 'success';
-    if (status === 'declined' || status === 'expired' || status === 'void') return 'danger';
+    if (['declined', 'expired', 'void'].includes(status)) return 'danger';
     if (status === 'draft') return 'neutral';
     return 'warning';
   }
   if (status === 'paid') return 'success';
   if (status === 'overdue') return 'danger';
-  if (status === 'void') return 'neutral';
-  if (status === 'draft') return 'neutral';
+  if (status === 'void' || status === 'draft') return 'neutral';
   return 'warning';
 }
 
-function titleCase(status: string): string {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+function estimateStatusChip(status: string) {
+  if (status === 'draft') return 'Draft';
+  if (status === 'sent') return 'Sent';
+  if (status === 'accepted') return 'Accepted';
+  if (status === 'declined') return 'Declined';
+  if (status === 'expired') return 'Expired';
+  if (status === 'converted') return 'Converted';
+  return titleCase(status);
+}
+
+function orderStatusChip(status: string) {
+  if (status === 'received') return 'Received';
+  if (status === 'confirmed') return 'Confirmed';
+  if (status === 'dispatched' || status === 'partially_dispatched') return 'In transit';
+  if (status === 'invoiced' || status === 'partially_invoiced') return 'Invoiced';
+  if (status === 'delivered') return 'Delivered';
+  if (status === 'cancelled') return 'Cancelled';
+  return titleCase(status);
+}
+
+function invoiceStatusChip(status: string) {
+  if (status === 'draft') return 'Draft';
+  if (status === 'sent') return 'Sent';
+  if (status === 'paid') return 'Paid';
+  if (status === 'overdue') return 'Overdue';
+  if (status === 'void') return 'Void';
+  return titleCase(status);
+}
+
+function sourceLabel(kind: TransactionTableKind, row: CustomerDocumentRow) {
+  if (kind === 'estimate') {
+    return row.source_kind === 'buyer_app' ? 'Buyer App' : 'Direct';
+  }
+  if (kind === 'order') {
+    if (row.source_kind === 'converted') return 'Converted Estimate';
+    if (row.source_kind === 'buyer_app') return 'Buyer App';
+    return 'Direct';
+  }
+  if (row.source_kind === 'converted') return 'Converted';
+  if (row.source_kind === 'buyer_app') return 'Buyer App';
+  return 'Direct';
+}
+
+function searchPlaceholder(kind: TransactionTableKind) {
+  if (kind === 'estimate') return 'Search estimate number…';
+  if (kind === 'invoice') return 'Search invoice number…';
+  return 'Search order number…';
+}
+
+function sortOptions(kind: TransactionTableKind) {
+  if (kind === 'estimate') return ESTIMATE_SORT_OPTIONS;
+  if (kind === 'invoice') return INVOICE_SORT_OPTIONS;
+  return ORDER_SORT_OPTIONS;
+}
+
+function sourceDetailLabel(row: CustomerDocumentRow) {
+  return row.source_label ?? null;
+}
+
+function matchesSearch(kind: TransactionTableKind, buyerName: string, row: CustomerDocumentRow, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    row.number,
+    buyerName,
+    row.location_name,
+    sourceLabel(kind, row),
+    row.source_label,
+    row.campaign_name,
+    row.place_of_supply,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
+function toMappedRow(kind: TransactionTableKind, buyerName: string, routeBase: string, row: CustomerDocumentRow): TransactionTableRow {
+  return {
+    id: row.id,
+    href: `${routeBase}/${row.id}`,
+    document_number: row.number ?? row.id.slice(0, 8),
+    source_kind: row.source_kind,
+    source_label: sourceLabel(kind, row),
+    source_detail: sourceDetailLabel(row),
+    buyer_name: buyerName,
+    buyer_place_of_supply: row.place_of_supply ?? null,
+    location_name: row.location_name ?? null,
+    campaign_name: row.campaign_name ?? null,
+    items_count: row.items_count,
+    total_amount: row.total_amount,
+    outstanding_amount: kind === 'invoice' ? row.outstanding_amount : null,
+    amount_subtext: kind === 'invoice' && row.outstanding_amount > 0 ? 'Outstanding balance' : null,
+    status_label: titleCase(row.status),
+    status_tone: statusTone(kind, row.status),
+    created_at: row.placed_at ?? row.created_at ?? null,
+    expires_at: row.expires_at ?? null,
+    due_at: row.due_date ?? null,
+  };
 }
 
 export function CustomerOrdersTab({
   buyerId,
+  buyerName,
   kind = 'order',
-  orders,
-  title = 'Orders',
-  description = 'All orders placed by this buyer',
   routeBase = '/sales-orders',
 }: CustomerOrdersTabProps) {
+  const router = useRouter();
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
-  const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState(getChips(kind)[0]);
-  const [sortBy, setSortBy] = useState<SortOption>('Newest first');
-  const [page, setPage] = useState(0);
-
-  const chips = useMemo(() => getChips(kind), [kind]);
-  const sortOptions = useMemo(() => getSortOptions(kind), [kind]);
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: `seller-customer-detail-${kind}-tab`,
+    scopeKey: buyerId,
+    version: 1,
+    initialState: {
+      period: 'last90' as SellerLandingPeriod,
+      search: '',
+      filters: {
+        source: [] as string[],
+        status: [] as string[],
+        due: [] as string[],
+        location_name: [] as string[],
+      },
+      sortBy: sortOptions(kind)[0] as SortOption,
+    },
+  });
+  const { period, setPeriod, options } = useSellerLandingPeriod(routeState.period);
+  const search = routeState.search;
+  const filters = routeState.filters;
+  const sortBy = routeState.sortBy;
   const debouncedSearch = useDebounce(search, 300);
-  const status = activeChip === chips[0] ? undefined : activeChip === 'In transit' ? 'in_transit' : activeChip.toLowerCase();
-  const sortValues: Record<SortOption, string> = {
-    'Newest first': 'newest',
-    'Oldest first': 'oldest',
-    'Amount (high → low)': 'amount_desc',
-    'Amount (low → high)': 'amount_asc',
-    'Status (A → Z)': 'status_asc',
-  };
-  const documentsQuery = useCustomerDocuments(buyerId, { kind, query: debouncedSearch, status, sort: sortValues[sortBy], page });
+  const isInterim = search !== debouncedSearch;
 
-  useEffect(() => {
-    setActiveChip(chips[0]);
-    setSortBy('Newest first');
-  }, [chips, kind]);
-  useEffect(() => setPage(0), [debouncedSearch, sortBy, status]);
+  const querySort =
+    kind === 'estimate'
+      ? sortBy === 'Value (high → low)'
+        ? 'amount_desc'
+        : sortBy === 'Status (workflow order)'
+          ? 'status_asc'
+          : sortBy === 'Expiry (soonest first)'
+            ? 'expiry_asc'
+            : 'newest'
+      : kind === 'invoice'
+        ? sortBy === 'Value (high → low)'
+          ? 'amount_desc'
+          : sortBy === 'Outstanding (high → low)'
+            ? 'outstanding_desc'
+            : 'newest'
+        : sortBy === 'Order value (high → low)'
+          ? 'amount_desc'
+          : sortBy === 'Items (high → low)'
+            ? 'items_desc'
+            : 'newest';
 
-  const authoritativeOrders: CustomerOrdersTabProps['orders'] = documentsQuery.data
-    ? documentsQuery.data.rows.map((row) => ({
-        ...row,
-        issued_at: row.placed_at,
-        items: row.items_count,
-        gmv: row.total_amount,
-      }))
-    : orders;
-  const isTransitioning = documentsQuery.isFetching || search !== debouncedSearch;
-
-  const filteredOrders = useMemo(() => {
-    if (!isTransitioning) return authoritativeOrders;
-    const query = search.trim().toLowerCase();
-    const rowTime = (row: (typeof authoritativeOrders)[number]) =>
-      new Date(row.created_at ?? row.issued_at ?? row.placed_at ?? 0).getTime();
-    const documentNumber = (row: (typeof authoritativeOrders)[number]) =>
-      row.order_number ?? row.number ?? row.estimate_number ?? row.invoice_number ?? row.id.slice(0, 8);
-
-    return authoritativeOrders
-      .filter((row) => {
-        const label = titleCase(row.status);
-        if (activeChip === chips[0]) return true;
-        if (kind === 'order') {
-          if (activeChip === 'In transit') return ['dispatched', 'partially_dispatched'].includes(row.status);
-          if (activeChip === 'Cancelled') return row.status === 'cancelled';
-          return label === activeChip || row.status === activeChip.toLowerCase();
-        }
-        if (kind === 'estimate') {
-          if (activeChip === 'Draft') return row.status === 'draft';
-          if (activeChip === 'Sent') return row.status === 'sent';
-          if (activeChip === 'Accepted') return row.status === 'accepted';
-          if (activeChip === 'Converted') return row.status === 'converted';
-          if (activeChip === 'Declined') return row.status === 'declined';
-          if (activeChip === 'Expired') return row.status === 'expired';
-          return true;
-        }
-        if (activeChip === 'Draft') return row.status === 'draft';
-        if (activeChip === 'Sent') return row.status === 'sent';
-        if (activeChip === 'Paid') return row.status === 'paid';
-        if (activeChip === 'Overdue') return row.status === 'overdue';
-        if (activeChip === 'Void') return row.status === 'void';
-        return true;
-      })
-      .filter((row) => {
-        if (!query) return true;
-        return [
-          documentNumber(row),
-          row.buyer_name,
-          row.location_name,
-          row.campaign_name,
-          row.source_label,
-          titleCase(row.status),
-        ]
-          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-          .some((value) => value.toLowerCase().includes(query));
-      })
-      .sort((a, b) => {
-        if (sortBy === 'Newest first') return rowTime(b) - rowTime(a);
-        if (sortBy === 'Oldest first') return rowTime(a) - rowTime(b);
-        if (sortBy === 'Amount (high → low)') return Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0);
-        if (sortBy === 'Amount (low → high)') return Number(a.total_amount ?? 0) - Number(b.total_amount ?? 0);
-        return titleCase(a.status).localeCompare(titleCase(b.status)) || documentNumber(a).localeCompare(documentNumber(b));
+  const queryStatuses = useMemo(() => {
+    if (filters.status.length === 0) return [];
+    if (kind === 'estimate') {
+      return filters.status.map((value) => value.toLowerCase());
+    }
+    if (kind === 'order') {
+      return filters.status.flatMap((value) => {
+        if (value === 'In transit') return ['dispatched', 'partially_dispatched'];
+        if (value === 'Invoiced') return ['invoiced', 'partially_invoiced'];
+        return [value.toLowerCase()];
       });
-  }, [activeChip, authoritativeOrders, chips, isTransitioning, kind, search, sortBy]);
-  const total = documentsQuery.data?.total ?? orders.length;
+    }
+    return filters.status.map((value) => value.toLowerCase());
+  }, [filters.status, kind]);
+
+  const documentsQuery = useCustomerDocuments(
+    buyerId,
+    {
+      kind,
+      period: period as SellerLandingPeriod,
+      query: debouncedSearch,
+      status: queryStatuses,
+      sort: querySort,
+    },
+  );
+
+  const allRows = useMemo(() => documentsQuery.data?.rows ?? [], [documentsQuery.data?.rows]);
+
+  const rows = useMemo(() => {
+    let nextRows = allRows.filter((row) => {
+      if (!matchesSearch(kind, buyerName, row, search)) {
+        return false;
+      }
+      if (filters.source.length > 0 && !filters.source.includes(sourceLabel(kind, row))) {
+        return false;
+      }
+      const chip =
+        kind === 'estimate'
+          ? estimateStatusChip(row.status)
+          : kind === 'order'
+            ? orderStatusChip(row.status)
+            : invoiceStatusChip(row.status);
+      if (filters.status.length > 0 && !filters.status.includes(chip)) {
+        return false;
+      }
+      if (filters.location_name.length > 0 && !filters.location_name.includes(row.location_name ?? '—')) {
+        return false;
+      }
+      if (kind === 'invoice' && filters.due.length > 0) {
+        const matchesDue = filters.due.some((value) => {
+          if (value === 'Overdue') return row.status === 'overdue';
+          if (value === 'Due') return row.outstanding_amount > 0 && row.status !== 'overdue';
+          return false;
+        });
+        if (!matchesDue) return false;
+      }
+      return true;
+    });
+
+    nextRows = [...nextRows].sort((a, b) => {
+      const aCreated = new Date(a.placed_at ?? a.created_at ?? 0).getTime();
+      const bCreated = new Date(b.placed_at ?? b.created_at ?? 0).getTime();
+      if (kind === 'estimate') {
+        if (sortBy === 'Value (high → low)') return b.total_amount - a.total_amount;
+        if (sortBy === 'Status (workflow order)') {
+          const rankDelta = (ESTIMATE_STATUS_RANK[a.status] ?? 999) - (ESTIMATE_STATUS_RANK[b.status] ?? 999);
+          if (rankDelta !== 0) return rankDelta;
+        }
+        if (sortBy === 'Expiry (soonest first)') {
+          const aExpiry = a.expires_at ? new Date(a.expires_at).getTime() : Number.POSITIVE_INFINITY;
+          const bExpiry = b.expires_at ? new Date(b.expires_at).getTime() : Number.POSITIVE_INFINITY;
+          if (aExpiry !== bExpiry) return aExpiry - bExpiry;
+        }
+        return bCreated - aCreated;
+      }
+      if (kind === 'order') {
+        if (sortBy === 'Order value (high → low)') return b.total_amount - a.total_amount;
+        if (sortBy === 'Items (high → low)') return b.items_count - a.items_count;
+        return bCreated - aCreated;
+      }
+      if (sortBy === 'Value (high → low)') return b.total_amount - a.total_amount;
+      if (sortBy === 'Outstanding (high → low)') return b.outstanding_amount - a.outstanding_amount;
+      return bCreated - aCreated;
+    });
+
+    return nextRows;
+  }, [allRows, buyerName, filters.due, filters.location_name, filters.source, filters.status, kind, search, sortBy]);
+
+  const groups = useMemo<FilterBarGroup[]>(() => {
+    const sourceOptions = Array.from(new Set(allRows.map((row) => sourceLabel(kind, row)))).map((value) => ({ value, label: value }));
+    const statusOptions = Array.from(
+      new Set(
+        allRows.map((row) =>
+          kind === 'estimate'
+            ? estimateStatusChip(row.status)
+            : kind === 'order'
+              ? orderStatusChip(row.status)
+              : invoiceStatusChip(row.status),
+        ),
+      ),
+    ).map((value) => ({ value, label: value }));
+    const locationOptions = Array.from(new Set(allRows.map((row) => row.location_name ?? '—'))).map((value) => ({ value, label: value }));
+
+    const nextGroups: FilterBarGroup[] = [
+      {
+        key: 'period',
+        label: 'Period',
+        options,
+        values: [period],
+        onChange: (values) => {
+          const nextPeriod = (values[0] as SellerLandingPeriod | undefined) ?? 'last90';
+          setPeriod(nextPeriod);
+          setRouteState((current) => ({ ...current, period: nextPeriod }));
+        },
+      },
+      {
+        key: 'source',
+        label: 'Source',
+        options: sourceOptions,
+        values: filters.source,
+        onChange: (values) => setRouteState((current) => ({ ...current, filters: { ...current.filters, source: values } })),
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        options: statusOptions,
+        values: filters.status,
+        onChange: (values) => setRouteState((current) => ({ ...current, filters: { ...current.filters, status: values } })),
+      },
+      {
+        key: 'location_name',
+        label: 'Location',
+        options: locationOptions,
+        values: filters.location_name,
+        onChange: (values) => setRouteState((current) => ({ ...current, filters: { ...current.filters, location_name: values } })),
+      },
+    ];
+
+    if (kind === 'invoice') {
+      nextGroups.splice(3, 0, {
+        key: 'due',
+        label: 'Due',
+        options: [
+          { value: 'Due', label: 'Due' },
+          { value: 'Overdue', label: 'Overdue' },
+        ],
+        values: filters.due,
+        onChange: (values) => setRouteState((current) => ({ ...current, filters: { ...current.filters, due: values } })),
+      });
+    }
+
+    return nextGroups.filter((group) => group.key === 'period' || group.options.length > 0);
+  }, [allRows, filters.due, filters.location_name, filters.source, filters.status, kind, options, period, setPeriod, setRouteState]);
+
+  const tableRows = useMemo(
+    () => rows.map((row) => toMappedRow(kind, buyerName, routeBase, row)),
+    [rows, kind, buyerName, routeBase],
+  );
+
+  const loading = documentsQuery.isLoading && !documentsQuery.data;
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="mt-5">
       <FilterBar
-        count={`${filteredOrders.length} of ${total} ${title.toLowerCase()}${isTransitioning ? ' · Updating' : ''}`}
-        searchPlaceholder={`Search ${title.toLowerCase().slice(0, -1)} number…`}
-        chips={chips}
-        activeChip={activeChip}
+        count={`Showing ${tableRows.length} of ${documentsQuery.data?.total ?? 0}${(documentsQuery.isFetching || isInterim) ? ' · Updating' : ''}`}
+        searchPlaceholder={searchPlaceholder(kind)}
+        chips={[]}
+        activeChip=""
         sortBy={sortBy}
         hideViewToggle
+        groups={groups}
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={setActiveChip}
-        sortOptions={sortOptions}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        sortOptions={sortOptions(kind)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
-      {filteredOrders.length === 0 ? (
-        <div className="rounded-[14px] border border-cream-300 bg-white py-12 text-center text-sm text-cream-500">
-          No {title.toLowerCase()} found for this buyer.
-        </div>
-      ) : (
-        <TransactionTable
-          kind={kind}
-          showCampaignColumn={showCampaignColumn}
-          className="rounded-none border-0"
-          tableMinWidth={showCampaignColumn ? (kind === 'invoice' ? 1480 : kind === 'estimate' ? 1450 : 1380) : kind === 'invoice' ? 1260 : kind === 'estimate' ? 1230 : 1180}
-          rows={filteredOrders.map((row) => {
-            const documentNumber =
-              row.order_number ?? row.number ?? row.estimate_number ?? row.invoice_number ?? row.id.slice(0, 8);
-            const itemsCount = row.items_count ?? row.items ?? 0;
-            const totalAmount = Number(row.total_amount ?? row.gmv ?? 0);
-            const createdAt = row.created_at ?? row.issued_at ?? row.placed_at ?? null;
-            return {
-              id: row.id,
-              href: `${routeBase}/${row.id}`,
-              document_number: documentNumber,
-              source_kind: row.source_kind ?? (kind === 'estimate' ? 'seller' : 'direct'),
-              source_label: row.source_label ?? null,
-              buyer_name: row.buyer_name ?? 'Buyer',
-              buyer_place_of_supply: row.place_of_supply ?? null,
-              buyer_initials: null,
-              buyer_hue: null,
-              location_name: row.location_name ?? null,
-              campaign_name: row.campaign_name ?? null,
-              items_count: itemsCount,
-              total_amount: totalAmount,
-              amount_subtext:
-                kind === 'invoice' && Number(row.outstanding_amount ?? 0) > 0
-                  ? `${formatCompactInr(Number(row.outstanding_amount))} due`
-                  : null,
-              status_label: titleCase(row.status),
-              status_tone: statusTone(kind, row.status),
-              created_at: createdAt,
-              expires_at: row.expires_at ?? null,
-              due_at: row.due_date ?? null,
-            };
-          })}
-        />
-      )}
-      {total > 50 ? (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" disabled={page === 0 || documentsQuery.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</Button>
-          <Button variant="outline" size="sm" disabled={(page + 1) * 50 >= total || documentsQuery.isFetching} onClick={() => setPage((value) => value + 1)}>Next</Button>
+      <div className="overflow-x-auto">
+        {loading ? (
+          <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
+            <div className="h-[420px] animate-pulse bg-cream-50" />
+          </div>
+        ) : tableRows.length === 0 ? (
+          <EmptyState
+            icon={kind === 'estimate' ? <FileText size={28} strokeWidth={1.5} /> : kind === 'invoice' ? <Receipt size={28} strokeWidth={1.5} /> : <Package size={28} strokeWidth={1.5} />}
+            heading={`No matching ${kind === 'order' ? 'sales orders' : `${kind}s`}`}
+            description="Try a different search or filter combination."
+          />
+        ) : (
+          <TransactionTable
+            kind={kind}
+            showCampaignColumn={showCampaignColumn}
+            tableMinWidth={showCampaignColumn ? (kind === 'invoice' ? 1480 : kind === 'estimate' ? 1450 : 1380) : kind === 'invoice' ? 1260 : kind === 'estimate' ? 1230 : 1180}
+            rows={tableRows}
+            onRowClick={(row) => router.push(row.href)}
+          />
+        )}
+      </div>
+
+      {documentsQuery.isFetching && documentsQuery.data ? (
+        <div className="mt-4 flex justify-center">
+          <Skeleton className="h-8 w-40 rounded-full" />
         </div>
       ) : null}
     </section>

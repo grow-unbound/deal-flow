@@ -45,9 +45,16 @@ export interface CampaignPublishPreviewResult {
     estimated_credits: number;
     estimated_inr: number;
     credits_balance: number;
+    credit_price_inr: number;
     template_approved: boolean;
     tenant_phone_configured: boolean;
     broadcast_sending_paused: boolean;
+    quality_rating_blocked: boolean;
+    recipient_segments?: {
+      all_eligible: number;
+      not_viewed: number;
+      viewed_not_ordered: number;
+    };
   };
   template: {
     seller_name: string;
@@ -78,6 +85,12 @@ export async function buildCampaignPublishPreview(
     campaign: CampaignPublishPreviewCampaignInput;
     cohortName?: string | null;
     memberCount?: number | null;
+    recipientBuyerIds?: string[];
+    recipientSegments?: {
+      all_eligible: number;
+      not_viewed: number;
+      viewed_not_ordered: number;
+    };
   },
 ): Promise<CampaignPublishPreviewResult> {
   const scopeValue =
@@ -118,6 +131,7 @@ export async function buildCampaignPublishPreview(
         scopeType: input.campaign.scope_type,
         scopeValue,
         notifyWhatsapp: input.notifyWhatsapp,
+        recipientBuyerIds: input.recipientBuyerIds,
       })
     : {
         can_notify: false,
@@ -127,9 +141,11 @@ export async function buildCampaignPublishPreview(
         estimated_credits: 0,
         estimated_inr: 0,
         credits_balance: 0,
+        credit_price_inr: 0.25,
         template_approved: false,
         tenant_phone_configured: false,
         broadcast_sending_paused: false,
+        quality_rating_blocked: false,
       };
 
   return {
@@ -150,6 +166,7 @@ export async function buildCampaignPublishPreview(
       feature_enabled: input.whatsappFeatureEnabled,
       notify_available: input.whatsappFeatureEnabled && preflight.template_approved,
       ...preflight,
+      recipient_segments: input.recipientSegments,
     },
     template: {
       seller_name: sellerContext.sellerName,

@@ -4,6 +4,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import {
+  resolveCampaignWorkflowStatus,
+  type CampaignWorkflowStatusLabel,
+  type CampaignWorkflowStatusTone,
+  type RawCampaignStatus,
+} from '@/lib/campaign-workflow-status';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
@@ -20,15 +26,27 @@ import {
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
+import {
+  queueCampaignFollowupNotify,
+  queueCampaignPublishNotify,
+} from '@/lib/server/campaign-publish-notify';
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
-import { CatalogComposerPayloadSchema, CatalogPublishActionSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
+import {
+  CatalogNotifyBuyersActionSchema,
+  CatalogPublishUpdatesActionSchema,
+  CatalogComposerPayloadSchema,
+  CatalogPublishActionSchema,
+  type CatalogNotifyRecipientFilter,
+  type CatalogComposerFilterState,
+  type CatalogComposerPricingStrategy,
+  type CatalogComposerTag,
+} from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
-type CatalogStatus = 'draft' | 'published' | 'archived';
+type CatalogStatus = RawCampaignStatus;
 
 type ScopeType = 'cohort' | 'buyer' | 'geography' | 'all';
 type ComposerScopeType = 'cohort' | 'buyer' | 'all';
@@ -43,6 +61,7 @@ type CatalogDraftSnapshot = {
   message: string | null;
   price_source: 'price_list' | 'manual';
   price_list_id: string | null;
+  pricing_strategy?: CatalogComposerPricingStrategy;
   filters: CatalogComposerFilterState;
   tag_overrides: Record<string, CatalogComposerTag | null>;
   items: Array<{
@@ -58,6 +77,8 @@ const PatchSchema = z.discriminatedUnion('action', [
     valid_until: z.string().datetime(),
   }),
   CatalogPublishActionSchema,
+  CatalogPublishUpdatesActionSchema,
+  CatalogNotifyBuyersActionSchema,
   z.object({
     action: z.literal('ensure_share_link'),
   }),
@@ -88,6 +109,7 @@ function buildCatalogScopeValue(input: {
   tagOverrides?: Record<string, CatalogComposerTag | null>;
   priceSource?: 'price_list' | 'manual';
   priceListId?: string | null;
+  pricingStrategy?: CatalogComposerPricingStrategy;
   draft?: CatalogDraftSnapshot | null;
 }) {
   return {
@@ -98,6 +120,7 @@ function buildCatalogScopeValue(input: {
       tag_overrides: input.tagOverrides ?? {},
       price_source: input.priceSource ?? 'manual',
       price_list_id: input.priceListId ?? null,
+      pricing_strategy: input.pricingStrategy,
     },
     ...(input.draft ? { composer_draft: input.draft } : {}),
   };
@@ -122,10 +145,46 @@ function buildCatalogDraftSnapshot(payload: z.infer<typeof CatalogComposerPayloa
     message: payload.message?.trim() || null,
     price_source: payload.price_source,
     price_list_id: payload.price_source === 'price_list' ? (payload.price_list_id ?? null) : null,
+    pricing_strategy: payload.pricing_strategy,
     filters: payload.filters,
     tag_overrides: payload.tag_overrides,
     items: payload.items,
   };
+}
+
+function readComposerDraft(scopeValue: Record<string, unknown> | null): CatalogDraftSnapshot | null {
+  const value = (scopeValue ?? {}) as { composer_draft?: CatalogDraftSnapshot | null };
+  return value.composer_draft ?? null;
+}
+
+function resolveDetailWorkflowStatus(input: {
+  rawStatus: CatalogStatus;
+  validFrom: string | null;
+  validTo: string | null;
+  scopeValue: Record<string, unknown> | null;
+}) {
+  return resolveCampaignWorkflowStatus({
+    rawStatus: input.rawStatus,
+    validFrom: input.validFrom,
+    validTo: input.validTo,
+    hasUnpublishedChanges: Boolean(readComposerDraft(input.scopeValue)),
+  });
+}
+
+function buildScopeValueFromDraft(
+  draft: CatalogDraftSnapshot,
+) {
+  return buildCatalogScopeValue({
+    scopeType: draft.scope_type,
+    cohortId: draft.cohort_id,
+    buyerIds: draft.buyer_ids,
+    filters: draft.filters,
+    tagOverrides: draft.tag_overrides,
+    priceSource: draft.price_source,
+    priceListId: draft.price_list_id,
+    pricingStrategy: draft.pricing_strategy,
+    draft: null,
+  });
 }
 
 async function ensureTenantProducts(
@@ -182,13 +241,6 @@ async function ensureTenantPriceList(db: DbClient, tenantId: string, priceListId
 
   if (error) throw new Error('Failed to validate price list');
   return Boolean(data);
-}
-
-function getDisplayStatus(status: CatalogStatus, validTo: string | null): { label: 'Live' | 'Draft' | 'Ended'; tone: 'success' | 'warning' | 'neutral' } {
-  if (status === 'draft') return { label: 'Draft', tone: 'warning' };
-  if (status === 'archived') return { label: 'Ended', tone: 'neutral' };
-  if (validTo && new Date(validTo).getTime() < Date.now()) return { label: 'Ended', tone: 'neutral' };
-  return { label: 'Live', tone: 'success' };
 }
 
 function getInitials(name: string): string {
@@ -339,6 +391,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tag_overrides?: Record<string, CatalogComposerTag | null>;
       price_source?: 'price_list' | 'manual';
       price_list_id?: string | null;
+      pricing_strategy?: CatalogComposerPricingStrategy;
     };
     composer_draft?: CatalogDraftSnapshot;
   };
@@ -626,7 +679,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const growthPct = previousGmv > 0 ? Number((((gmv - previousGmv) / previousGmv) * 100).toFixed(1)) : gmv > 0 ? 100 : 0;
-  const conversionRate = uniqueViewers > 0 ? Number(((conversionCount / uniqueViewers) * 100).toFixed(1)) : 0;
+  const demandCustomers = convertingBuyerIds.size;
+  const conversionRate = uniqueViewers > 0 ? Number(((demandCustomers / uniqueViewers) * 100).toFixed(1)) : 0;
   const abandoners = Math.max(0, uniqueViewers - convertingBuyerIds.size);
   const aov = conversionCount > 0 ? gmv / conversionCount : 0;
   const today = Date.now();
@@ -737,15 +791,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
   const publishedBy = catalog.created_by ? `User ${catalog.created_by.slice(0, 8)}` : 'System';
-  const status = getDisplayStatus(catalog.status, catalog.valid_to);
+  const workflowStatus = resolveCampaignWorkflowStatus({
+    rawStatus: catalog.status,
+    validFrom: catalog.valid_from,
+    validTo: catalog.valid_to,
+    hasUnpublishedChanges: Boolean(composerDraft),
+  });
   const currentCatalogViewMetrics = viewMetricsByCampaign.get(catalog.id) ?? viewMetrics;
 
   return NextResponse.json({
     header: {
       id: catalog.id,
       name: catalog.name,
-      status_label: status.label,
-      status_tone: status.tone,
+      status_label: workflowStatus.label,
+      status_tone: workflowStatus.tone,
       initials: getInitials(catalog.name),
       products_count: products.length,
       brands_covered: brandsCovered,
@@ -757,7 +816,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       share_token: catalog.share_token,
       share_url: catalog.share_token ? buildBuyerCatalogUrl(request.nextUrl.origin, catalog.share_token) : null,
       scope_type: catalog.scope_type,
-      status_value: catalog.status,
+      status_value: workflowStatus.value,
+      status_raw_value: catalog.status,
       selected_cohort: {
         id: selectedCohortId,
         name: selectedCohortName,
@@ -771,6 +831,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       growth_pct: growthPct,
       orders: conversionCount,
       conversions: conversionCount,
+      demand_customers: demandCustomers,
       order_count: orderCount,
       estimate_count: estimateCount,
       conversion_rate: conversionRate,
@@ -796,6 +857,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       summary: {
         orders: conversionCount,
         conversions: conversionCount,
+        demand_customers: demandCustomers,
         order_count: orderCount,
         estimate_count: estimateCount,
         gmv,
@@ -811,6 +873,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       funnel: {
         unique_viewers: uniqueViewers,
         conversions: conversionCount,
+        demand_customers: demandCustomers,
         orders: orderCount,
         estimates: estimateCount,
         gmv,
@@ -838,14 +901,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     composer: {
       name: composerDraft?.name ?? catalog.name,
-      status: composerDraft ? 'draft' : catalog.status,
-      live_status: catalog.status,
+      status: workflowStatus.value,
+      live_status: resolveCampaignWorkflowStatus({
+        rawStatus: catalog.status,
+        validFrom: catalog.valid_from,
+        validTo: catalog.valid_to,
+        hasUnpublishedChanges: false,
+      }).value,
       has_unpublished_changes: Boolean(composerDraft),
       valid_from: composerDraft?.valid_from ?? catalog.valid_from,
       valid_to: composerDraft?.valid_to ?? catalog.valid_to,
       message: composerDraft?.message ?? catalog.message ?? '',
       price_source: composerDraft?.price_source ?? composerScopeValue.composer?.price_source ?? 'manual',
       price_list_id: composerDraft?.price_list_id ?? composerScopeValue.composer?.price_list_id ?? null,
+      pricing_strategy: composerDraft?.pricing_strategy ?? composerScopeValue.composer?.pricing_strategy,
       scope_type: composerDraft?.scope_type ?? (catalog.scope_type === 'all' ? 'all' : catalog.scope_type === 'buyer' ? 'buyer' : 'cohort'),
       cohort_id: composerDraft?.cohort_id ?? composerScopeValue.cohort_id ?? null,
       buyer_ids: composerDraft?.buyer_ids ?? composerScopeValue.buyer_ids ?? (scopeValue.buyer_id ? [scopeValue.buyer_id] : []),
@@ -880,7 +949,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
     .from('campaigns')
-    .select('id, tenant_id, status, share_token, scope_type, scope_value')
+    .select('id, tenant_id, name, status, share_token, scope_type, scope_value, valid_from, valid_to, message, hero_image_url')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -888,6 +957,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (globalCatalogError) return NextResponse.json({ error: 'Failed to fetch catalog' }, { status: 500 });
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const globalWorkflowStatus = resolveDetailWorkflowStatus({
+    rawStatus: globalCatalog.status as CatalogStatus,
+    validFrom: globalCatalog.valid_from as string | null,
+    validTo: globalCatalog.valid_to as string | null,
+    scopeValue: (globalCatalog.scope_value ?? {}) as Record<string, unknown> | null,
+  });
+  const globalComposerDraft = readComposerDraft((globalCatalog.scope_value ?? {}) as Record<string, unknown>);
 
   if (actionParsed.success && actionParsed.data.action === 'extend_validity') {
     if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -1030,6 +1107,118 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
   }
 
+  if (actionParsed.success && actionParsed.data.action === 'publish_catalog_updates') {
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (globalWorkflowStatus.value !== 'published_dirty' || !globalComposerDraft) {
+      return NextResponse.json({ error: 'Only live campaigns with unpublished changes can publish updates' }, { status: 400 });
+    }
+
+    const buyerNote = actionParsed.data.buyer_note?.trim() ?? globalComposerDraft.message ?? globalCatalog.message ?? null;
+    const nextScopeValue = buildScopeValueFromDraft(globalComposerDraft);
+
+    const { data: updatedCatalog, error: updateCatalogError } = await db
+      .schema('app')
+      .from('campaigns')
+      .update({
+        name: globalComposerDraft.name,
+        scope_type: globalComposerDraft.scope_type,
+        scope_value: nextScopeValue,
+        valid_from: globalComposerDraft.valid_from,
+        valid_to: globalComposerDraft.valid_to,
+        message: buyerNote || null,
+        ...(actionParsed.data.hero_image_url ? { hero_image_url: actionParsed.data.hero_image_url } : {}),
+        updated_by: claims.sub,
+      })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .select('id, status')
+      .single();
+
+    if (updateCatalogError || !updatedCatalog) {
+      return NextResponse.json({ error: 'Failed to publish campaign updates' }, { status: 500 });
+    }
+
+    const deletedAt = new Date().toISOString();
+    const { error: deleteItemsError } = await db
+      .schema('app')
+      .from('campaign_items')
+      .update({ deleted_at: deletedAt, updated_by: claims.sub })
+      .eq('campaign_id', id)
+      .is('deleted_at', null);
+
+    if (deleteItemsError) {
+      return NextResponse.json({ error: 'Failed to refresh campaign items' }, { status: 500 });
+    }
+
+    if (globalComposerDraft.items.length > 0) {
+      const { error: insertItemsError } = await db
+        .schema('app')
+        .from('campaign_items')
+        .upsert(
+          globalComposerDraft.items.map((item) => ({
+            campaign_id: id,
+            tenant_product_id: item.tenant_product_id,
+            display_order: item.display_order,
+            price_override: item.price_override ?? null,
+            deleted_at: null,
+            created_by: claims.sub,
+            updated_by: claims.sub,
+          })),
+          { onConflict: 'campaign_id,tenant_product_id' },
+        );
+
+      if (insertItemsError) {
+        return NextResponse.json({ error: 'Failed to save campaign items' }, { status: 500 });
+      }
+    }
+
+    revalidateSellerDashboardCache(claims.tenant_id);
+    return NextResponse.json({ ok: true, catalog: updatedCatalog });
+  }
+
+  if (actionParsed.success && actionParsed.data.action === 'notify_catalog_buyers') {
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (globalWorkflowStatus.value !== 'published') {
+      return NextResponse.json({ error: 'Only live published campaigns can notify buyers' }, { status: 400 });
+    }
+
+    const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
+    if (!flagEnabled) {
+      return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
+    }
+    if (actionParsed.data.notify_scheduled_for && new Date(actionParsed.data.notify_scheduled_for).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+    }
+
+    try {
+      const whatsappNotify = await queueCampaignFollowupNotify(db, {
+        tenantId: claims.tenant_id,
+        actorId: claims.sub ?? claims.tenant_id,
+        campaignId: id,
+        campaignName: (globalCatalog.name as string) ?? 'Campaign',
+        scopeType: globalCatalog.scope_type as ScopeType,
+        scopeValue: (globalCatalog.scope_value ?? {}) as Record<string, unknown>,
+        buyerNote: actionParsed.data.buyer_note?.trim() ?? (globalCatalog.message as string | null) ?? null,
+        scheduledFor: actionParsed.data.notify_scheduled_for ?? null,
+        heroImageUrl: (globalCatalog.hero_image_url as string | null) ?? null,
+        recipientFilter: actionParsed.data.recipient_filter as CatalogNotifyRecipientFilter,
+      });
+
+      revalidateSellerDashboardCache(claims.tenant_id);
+      return NextResponse.json({ ok: true, whatsapp_notify: whatsappNotify });
+    } catch (notifyError) {
+      return NextResponse.json(
+        { error: notifyError instanceof Error ? notifyError.message : 'Failed to notify buyers' },
+        { status: 500 },
+      );
+    }
+  }
+
   if (actionParsed.success && actionParsed.data.action === 'ensure_share_link') {
     if (globalCatalog.status !== 'published') {
       return NextResponse.json({ error: 'Share links are only available for published catalogs' }, { status: 400 });
@@ -1144,6 +1333,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         tag_overrides?: Record<string, CatalogComposerTag | null>;
         price_source?: 'price_list' | 'manual';
         price_list_id?: string | null;
+        pricing_strategy?: CatalogComposerPricingStrategy;
       };
     };
 
@@ -1165,6 +1355,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           tagOverrides: liveScopeValue.composer?.tag_overrides ?? {},
           priceSource: liveScopeValue.composer?.price_source ?? 'manual',
           priceListId: liveScopeValue.composer?.price_list_id ?? null,
+          pricingStrategy: liveScopeValue.composer?.pricing_strategy,
           draft: buildCatalogDraftSnapshot(payload),
         }),
         updated_by: claims.sub,
@@ -1196,6 +1387,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     tagOverrides: payload.tag_overrides,
     priceSource: payload.price_source,
     priceListId: payload.price_list_id,
+    pricingStrategy: payload.pricing_strategy,
     draft: null,
   });
 

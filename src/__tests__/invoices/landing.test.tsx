@@ -131,7 +131,7 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
         estimate_id: null,
         source_kind: 'converted' as const,
         source_label: 'SO-2026-0042',
-        source_detail: 'Converted by Priya Shah',
+        source_detail: '',
         campaign_name: 'Monsoon Promo',
         created_by_label: 'Priya Shah',
         items_count: 2,
@@ -159,8 +159,8 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
         order_id: null,
         estimate_id: null,
         source_kind: 'direct' as const,
-        source_label: 'seller_app',
-        source_detail: 'Created by Ravi Nair',
+        source_label: '',
+        source_detail: '',
         campaign_name: null,
         created_by_label: 'Ravi Nair',
         items_count: 4,
@@ -227,8 +227,8 @@ describe('invoices landing page', () => {
                 order_id: null,
                 estimate_id: null,
                 source_kind: 'direct' as const,
-                source_label: 'seller_app',
-                source_detail: 'Created by Ravi Nair',
+                source_label: '',
+                source_detail: '',
                 campaign_name: null,
                 created_by_label: 'Ravi Nair',
                 items_count: 4,
@@ -312,12 +312,13 @@ describe('invoices landing page', () => {
     expect(screen.queryByText('INV-2026-0001')).not.toBeInTheDocument();
   });
 
-  it('renders place of supply, source, and outstanding amount in the table', () => {
+  it('renders place of supply, source support text, and outstanding amount in the table', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
     expect(screen.getByText('Place of Supply')).toBeInTheDocument();
     expect(screen.getByText('Outstanding')).toBeInTheDocument();
     expect(screen.getAllByText('MH').length).toBeGreaterThan(0);
     expect(screen.getByText('SO-2026-0042')).toBeInTheDocument();
+    expect(screen.queryByText('seller_app')).not.toBeInTheDocument();
     expect(screen.getAllByText('₹5,000').length).toBeGreaterThanOrEqual(2);
   });
 

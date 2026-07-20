@@ -35,9 +35,9 @@ const AddProductSheet = dynamic(
   { ssr: false },
 );
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'On hand (low → high)';
+type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Stock on hand (low → high)';
 
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'On hand (low → high)'];
+const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Stock on hand (low → high)'];
 
 function getBrandHue(index: number): 'teal' | 'ember' | 'cream' {
   return (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream';
@@ -153,7 +153,7 @@ function ProductsLandingContent({
     version: 3,
     initialState: {
       search: '',
-      sortBy: 'GMV (high → low)' as SortOption,
+      sortBy: 'Sales (high → low)' as SortOption,
       filters: {
         brand: [] as string[],
         category: [] as string[],
@@ -237,9 +237,8 @@ function ProductsLandingContent({
     });
 
     return [...locallyFiltered].sort((a, b) => {
-        if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
-        if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
-        if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
+        if (!isSellerAssistant && sortBy === 'Sales (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
+        if (!isSellerAssistant && sortBy === 'Sales (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
   }, [allProducts, filters.brand, filters.category, filters.status, filters.stock, isSellerAssistant, search, sortBy]);
@@ -314,20 +313,20 @@ function ProductsLandingContent({
             tone: 'accent',
           },
           {
-            label: 'Recently sold products now out of stock',
+            label: 'Products that sold · 90D',
+            value: `${productsSold}`,
+            sub: `${Math.round((productsSold/summaryTotal)*100)}% of all products`,
+          },
+          {
+            label: 'Recently sold products out of stock',
             value: `${recentlySoldOutOfStock}`,
-            sub: 'sold in the last 90 days',
+            sub: `${Math.round((recentlySoldOutOfStock/productsSold)*100)}% of products that sold`,
             tone: recentlySoldOutOfStock > 0 ? 'warn' : undefined,
           },
           {
             label: 'Products running low',
             value: `${lowStock}`,
-            sub: '< 14 days of cover',
-          },
-          {
-            label: 'Products that sold',
-            value: `${productsSold}`,
-            sub: 'in the last 90 days',
+            sub: `${Math.round((lowStock/summaryTotal)*100)}% of all products`,
           },
         ]}
       />
@@ -429,7 +428,7 @@ function ProductsLandingContent({
           { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
           { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: `Invoiced sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}

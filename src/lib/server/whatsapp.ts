@@ -1,4 +1,5 @@
 import { formatWhatsappDestination } from '@/lib/phone';
+import { formatSellerPhoneDisplay } from '@/lib/server/whatsapp-seller-context';
 import {
   enqueueWhatsAppMessage,
   getPlatformTenantId,
@@ -44,7 +45,7 @@ interface EnqueueTemplateContext {
   buyerId?: string;
   metaCategory: 'marketing' | 'utility' | 'authentication' | 'service';
   triggerSource: WhatsAppTriggerSource;
-  relatedEntityType?: 'estimates' | 'orders';
+  relatedEntityType?: 'estimates' | 'orders' | 'invoices';
   relatedEntityId?: string;
 }
 
@@ -52,7 +53,7 @@ function buildSendPayload(
   templateName: string,
   locale: string,
   bodyParams: WhatsappTemplateBodyParam[],
-  buttonParam: string,
+  buttonParam?: string,
 ): WhatsAppSendPayload {
   return {
     meta_template_name: templateName,
@@ -61,7 +62,7 @@ function buildSendPayload(
       text: p.text,
       ...(p.parameterName ? { parameter_name: p.parameterName } : {}),
     })),
-    button_params: [{ type: 'url', index: '0', text: buttonParam }],
+    ...(buttonParam ? { button_params: [{ type: 'url', index: '0', text: buttonParam }] } : {}),
   };
 }
 
@@ -70,7 +71,7 @@ async function enqueueWhatsappTemplate(
   templateName: string,
   locale: string,
   bodyParams: WhatsappTemplateBodyParam[],
-  buttonParam: string,
+  buttonParam: string | undefined,
   ctx: EnqueueTemplateContext,
 ): Promise<boolean> {
   const destination = formatWhatsappDestination(to);
@@ -227,6 +228,105 @@ export async function sendRequestReceivedBuyer(
       triggerSource: 'enquiry_received',
       relatedEntityType: 'estimates',
       relatedEntityId: estimateId,
+    },
+  );
+}
+
+export async function sendRequestUpdateBuyer(
+  ctx: WhatsappNotificationContext,
+  estimateId: string,
+  requestNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
+  const locale = await resolveTemplateLocale('request_update_buyer');
+  return enqueueWhatsappTemplate(
+    ctx.buyerPhone,
+    'request_update_buyer',
+    locale,
+    [
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: requestNumber, parameterName: 'request_number' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
+      { text: formatSellerPhoneDisplay(ctx.sellerPhone), parameterName: 'seller_phone_number' },
+    ],
+    estimateId,
+    {
+      tenantId: ctx.tenantId,
+      buyerId: ctx.buyerId,
+      metaCategory: 'utility',
+      triggerSource: 'estimate_update',
+      relatedEntityType: 'estimates',
+      relatedEntityId: estimateId,
+    },
+  );
+}
+
+export async function sendInvoiceUpdateBuyer(
+  ctx: WhatsappNotificationContext,
+  invoiceId: string,
+  invoiceNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
+  const locale = await resolveTemplateLocale('invoice_update_buyer');
+  return enqueueWhatsappTemplate(
+    ctx.buyerPhone,
+    'invoice_update_buyer',
+    locale,
+    [
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: invoiceNumber, parameterName: 'invoice_number' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
+      { text: formatSellerPhoneDisplay(ctx.sellerPhone), parameterName: 'seller_phone_number' },
+    ],
+    invoiceId,
+    {
+      tenantId: ctx.tenantId,
+      buyerId: ctx.buyerId,
+      metaCategory: 'utility',
+      triggerSource: 'invoice_update',
+      relatedEntityType: 'invoices',
+      relatedEntityId: invoiceId,
+    },
+  );
+}
+
+export async function sendBuyerPaymentReminder(
+  ctx: WhatsappNotificationContext,
+  invoiceId: string,
+  dueInvoiceCount: string,
+  outstandingAmount: string,
+  dueStatus: string,
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
+  const locale = await resolveTemplateLocale('buyer_payment_reminder');
+  return enqueueWhatsappTemplate(
+    ctx.buyerPhone,
+    'buyer_payment_reminder',
+    locale,
+    [
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
+      { text: dueInvoiceCount, parameterName: 'due_invoice_count' },
+      { text: outstandingAmount, parameterName: 'outstanding_amount' },
+      { text: dueStatus, parameterName: 'due_status' },
+      { text: formatSellerPhoneDisplay(ctx.sellerPhone), parameterName: 'seller_phone_number' },
+    ],
+    undefined,
+    {
+      tenantId: ctx.tenantId,
+      buyerId: ctx.buyerId,
+      metaCategory: 'utility',
+      triggerSource: 'payment_reminder',
+      relatedEntityType: 'invoices',
+      relatedEntityId: invoiceId,
     },
   );
 }

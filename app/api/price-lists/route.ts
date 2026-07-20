@@ -270,6 +270,9 @@ export async function GET(request: NextRequest) {
         cohorts_covered: Number(summaryKpis.cohorts_covered ?? 0),
         cohorts_total: Number(summaryKpis.cohorts_total ?? 0),
         products_with_overrides: Number(summaryKpis.products_with_overrides ?? 0),
+        products_with_custom_prices: Number(summaryKpis.products_with_custom_prices ?? summaryKpis.products_with_overrides ?? 0),
+        customers_with_custom_prices: Number(summaryKpis.customers_with_custom_prices ?? 0),
+        products_below_base_rate: Number(summaryKpis.products_below_base_rate ?? 0),
       },
       todays_read: {
         expiring_soon: (summaryRead.expiring_soon ?? []).map((row) => ({

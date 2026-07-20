@@ -2,7 +2,7 @@
 
 import { Package, Plus, Sparkles } from 'lucide-react';
 import posthog from 'posthog-js';
-import { formatCurrency } from '@/lib/utils';
+import { formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import type { BuyerCartItem } from '@/contexts/BuyerCartContext';
 import type { CartBundle, CartBundleSlot } from '@/hooks/useCartBundles';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -79,6 +79,7 @@ export function CartGapWidget({ bundles, items, tenantId, onAddToCart }: CartGap
           const product = slot.top_product!;
           const label = slot.slot_label ?? product.display_name;
           const imageUrl = product.image_urls[0] ?? null;
+          const showCampaignPrice = hasBuyerCampaignPrice(product);
 
           return (
             <div key={slot.tenant_category_id} className="flex items-center gap-3 px-4 py-3">
@@ -105,9 +106,16 @@ export function CartGapWidget({ bundles, items, tenantId, onAddToCart }: CartGap
                 <p className="font-medium leading-snug truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--teal-900, #042f2e)' }}>
                   {product.display_name}
                 </p>
-                <p style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', color: 'var(--teal-700, #0f766e)' }}>
-                  {formatCurrency(product.price)}
-                </p>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--teal-700, #0f766e)' }}>
+                  <p style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
+                    {formatBuyerCurrency(product.price)}
+                  </p>
+                  {showCampaignPrice ? (
+                    <span className="text-[11px] line-through opacity-80">
+                      {formatBuyerCurrency(product.resolved_price)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               {/* Add button */}

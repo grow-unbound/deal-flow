@@ -33,7 +33,7 @@ describe('middleware auth redirects', () => {
     const response = await middleware(new NextRequest('http://localhost/dashboard'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/login');
+    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fdashboard');
   });
 
   it('redirects to /login when the session token is malformed or expired', async () => {

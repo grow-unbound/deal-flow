@@ -527,13 +527,13 @@ describe('estimates landing API route', () => {
     expect(body.kpis.open_total).toBe(3);
 
     const buyerAppRow = body.estimates.find((r: { id: string }) => r.id === 'e1');
-    expect(buyerAppRow.source_label).toBe('Buyer App');
+    expect(buyerAppRow.source_label).toBe('BUYER APP');
     expect(buyerAppRow.catalog_name).toBe('Summer 2026 Retail');
     expect(buyerAppRow.buyer_city).toBe('Mumbai');
     expect(buyerAppRow.buyer_state).toBe('MH');
     const sellerRow = body.estimates.find((r: { id: string }) => r.id === 'e3');
-    expect(sellerRow.source_label).toBe('created by Priya Shah');
-    expect(sellerRow.source_detail).toBe('Manual seller entry');
+    expect(sellerRow.source_label).toBe('');
+    expect(sellerRow.source_detail).toBe('');
 
     expect(body.todays_read.needs_follow_up.length).toBeGreaterThanOrEqual(1);
     expect(body.todays_read.needs_follow_up[0].estimate_number).toBe('EST-2026-0002');

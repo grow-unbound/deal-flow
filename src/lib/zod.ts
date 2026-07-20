@@ -404,6 +404,13 @@ export type CatalogComposerTag = z.infer<typeof CatalogComposerTagSchema>;
 
 export const CatalogComposerPriceSourceSchema = z.enum(['price_list', 'manual']);
 export type CatalogComposerPriceSource = z.infer<typeof CatalogComposerPriceSourceSchema>;
+export const CatalogComposerPricingModeSchema = z.enum(['edit_each', 'percent_off_base', 'flat_off_base']);
+export type CatalogComposerPricingMode = z.infer<typeof CatalogComposerPricingModeSchema>;
+export const CatalogComposerPricingStrategySchema = z.object({
+  mode: CatalogComposerPricingModeSchema,
+  value: z.string().default(''),
+});
+export type CatalogComposerPricingStrategy = z.infer<typeof CatalogComposerPricingStrategySchema>;
 
 export const CatalogComposerFilterStateSchema = z.object({
   brand_names: z.array(z.string()).default([]),
@@ -432,6 +439,7 @@ export const CatalogComposerPayloadSchema = z
     message: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional().or(z.literal('')),
     price_source: CatalogComposerPriceSourceSchema.default('manual'),
     price_list_id: z.string().uuid('Invalid price list').nullable().optional(),
+    pricing_strategy: CatalogComposerPricingStrategySchema.optional(),
     filters: CatalogComposerFilterStateSchema.default({
       brand_names: [],
       category_names: [],
@@ -656,3 +664,25 @@ export const CatalogPublishActionSchema = z.object({
   hero_image_url: z.string().url().optional(),
 });
 export type CatalogPublishActionInput = z.infer<typeof CatalogPublishActionSchema>;
+
+export const CatalogNotifyRecipientFilterSchema = z.enum([
+  'all_eligible',
+  'not_viewed',
+  'viewed_not_ordered',
+]);
+export type CatalogNotifyRecipientFilter = z.infer<typeof CatalogNotifyRecipientFilterSchema>;
+
+export const CatalogPublishUpdatesActionSchema = z.object({
+  action: z.literal('publish_catalog_updates'),
+  buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+  hero_image_url: z.string().url().optional(),
+});
+export type CatalogPublishUpdatesActionInput = z.infer<typeof CatalogPublishUpdatesActionSchema>;
+
+export const CatalogNotifyBuyersActionSchema = z.object({
+  action: z.literal('notify_catalog_buyers'),
+  recipient_filter: CatalogNotifyRecipientFilterSchema,
+  buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+  notify_scheduled_for: z.string().datetime().optional(),
+});
+export type CatalogNotifyBuyersActionInput = z.infer<typeof CatalogNotifyBuyersActionSchema>;
