@@ -60,7 +60,7 @@ export function BuyerSimpleDocumentDetail<TDocument>({
   }, [endpoint, id]);
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell title={title}>
         {loading ? (
           <div className="space-y-3 px-4 py-4">

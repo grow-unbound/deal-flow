@@ -2,7 +2,7 @@ import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 
 export function ProductDetailLoadingSkeleton() {
   return (
-    <div className="flex min-h-screen flex-col bg-cream-100 pb-28" role="status" aria-label="Loading product">
+    <div className="flex min-h-dvh flex-col bg-cream-100 pb-28" role="status" aria-label="Loading product">
       <div className="sticky top-0 z-[15] min-h-14 border-b border-cream-200 bg-cream-100/95 px-3 py-2 backdrop-blur-sm">
         <div className="flex min-h-10 items-center gap-2">
           <div className="h-10 w-10 animate-pulse bg-cream-200" />

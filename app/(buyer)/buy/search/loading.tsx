@@ -1,6 +1,6 @@
 export default function BuyerSearchLoading() {
   return (
-    <div className="flex min-h-[50vh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)]">
       <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 py-2 backdrop-blur-md">
         <div className="h-10 w-10 shrink-0 animate-pulse rounded-lg border border-cream-200 bg-cream-100" />
         <div className="h-10 min-w-0 flex-1 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />

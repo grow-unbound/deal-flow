@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@/lib/buyer-lookbook';
-import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
 const CATALOG_HUES = [
@@ -83,7 +83,7 @@ export function CatalogLookbookCard({
         }
       >
         <p
-          className="m-0 line-clamp-2 font-medium leading-[1.2] text-[var(--cream-900)]"
+          className={cn('m-0 font-medium text-[var(--cream-900)]', BUYER_TWO_LINE_TITLE_CLASS)}
           style={{
             fontFamily: 'var(--font-display)',
             fontSize: isList ? 'var(--b-text-body)' : 'var(--b-text-section)',

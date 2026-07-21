@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { findTenantBuyerPreviewCandidates } from '@/lib/server/buyer-access';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { SELLER_ROLES } from '@/constants';
 
 function isSellerRole(role: string | null): boolean {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         contact_name: candidate.contact_name,
         buyer_app_enabled: candidate.buyer_app_enabled,
       })),
-    });
+    }, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/buyer/preview/candidates]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

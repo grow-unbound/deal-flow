@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,5 +39,5 @@ export async function GET(req: NextRequest): Promise<NextResponse<NearestLocatio
     name: resolved?.locationName ?? null,
     distance_km: resolved?.distanceKm ?? null,
     fallback: resolved?.fallback ?? true,
-  });
+  }, { headers: BUYER_CACHE_PERSONAL });
 }

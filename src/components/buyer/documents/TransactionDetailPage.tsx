@@ -329,7 +329,7 @@ export function TransactionDetailPage({
   const showReorderFooter = Boolean(doc && doc.items.length > 0 && docType !== 'invoice');
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell
         title={title}
         hideSearch
