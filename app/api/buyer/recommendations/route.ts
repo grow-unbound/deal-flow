@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
 
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
       same_category?: string[];
     } | null;
 
-    if (!recoData) return NextResponse.json(EMPTY);
+    if (!recoData) return NextResponse.json(EMPTY, { headers: BUYER_CACHE_CATALOG });
 
     // Deduplicate product IDs across all carousels before enrichment (single DB round-trip)
     const allIds = Array.from(
@@ -80,10 +81,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
       co_order: hydrate(recoData.co_order),
       co_buyer: hydrate(recoData.co_buyer),
       same_category: hydrate(recoData.same_category),
-    });
+    }, { headers: BUYER_CACHE_CATALOG });
   } catch (error) {
     console.error('[GET /api/buyer/recommendations]', error);
     // Recommendations are non-critical — return empty rather than 500
-    return NextResponse.json(EMPTY);
+    return NextResponse.json(EMPTY, { headers: BUYER_CACHE_CATALOG });
   }
 }

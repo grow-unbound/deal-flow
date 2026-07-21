@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
-import { cn, formatInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerTotals } from '@/types/estimate-composer';
 
 export function TotalsCard({
@@ -55,8 +55,8 @@ export function TotalsCard({
       <section className="rounded-[14px] border border-cream-300 bg-white p-4">
         <p className="text-base font-semibold text-cream-950">{title}</p>
         <div className="mt-4 space-y-3 text-sm text-cream-700">
-          <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatInr(totals.subtotal)} previous={previousTotals?.subtotal ?? null} />
-          <TotalRow label="Document discount" value={formatInr(totals.discount_flat)} previous={previousTotals?.discount_flat ?? null} />
+          <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} previous={previousTotals?.subtotal ?? null} />
+          <TotalRow label="Document discount" value={formatNumberValue(totals.discount_flat, 'CURRENCY_EXACT')} previous={previousTotals?.discount_flat ?? null} />
           {showGstInclusive ? (
             <TotalRow
               label="GST"
@@ -69,16 +69,16 @@ export function TotalsCard({
               <TotalRow
                 key={row.label}
                 label={row.label}
-                value={formatInr(row.value)}
+                value={formatNumberValue(row.value, 'CURRENCY_EXACT')}
                 previous={row.previous ?? null}
                 rowClassName={row.rowClassName}
               />
             ))
           )}
-          <TotalRow label="Freight & packing" value={formatInr(totals.freight)} previous={previousTotals?.freight ?? null} />
-          <TotalRow label="Round-off" value={formatInr(totals.round_off)} previous={previousTotals?.round_off ?? null} />
+          <TotalRow label="Freight & packing" value={formatNumberValue(totals.freight, 'CURRENCY_EXACT')} previous={previousTotals?.freight ?? null} />
+          <TotalRow label="Round-off" value={formatNumberValue(totals.round_off, 'CURRENCY_EXACT')} previous={previousTotals?.round_off ?? null} />
           <div className="border-t border-cream-200 pt-3">
-            <TotalRow label="Grand total" value={formatInr(totals.grand_total)} previous={previousTotals?.grand_total ?? null} strong />
+            <TotalRow label="Grand total" value={formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')} previous={previousTotals?.grand_total ?? null} strong />
           </div>
           {stagedChanges && stagedChanges.length > 0 ? (
             <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
@@ -115,7 +115,7 @@ function TotalRow({
     <div className={cn('flex items-center justify-between gap-4', rowClassName)}>
       <span className={cn(strong ? 'font-semibold text-cream-950' : '')}>{label}</span>
       <div className="flex items-center gap-2">
-        {previous != null ? <span className="text-xs text-cream-500 line-through">{formatInr(previous)}</span> : null}
+        {previous != null ? <span className="text-xs text-cream-500 line-through">{formatNumberValue(previous, 'CURRENCY_EXACT')}</span> : null}
         <span className={cn('font-mono text-sm text-cream-900', strong && 'text-base font-semibold')}>{value}</span>
       </div>
     </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Wallet } from 'lucide-react';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 interface BuyerInvoice {
   id: string;
@@ -199,7 +200,7 @@ function BusinessDetailsSheet({
   }, [open, data.business_name, data.contact_name, data.gstin]);
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Edit business details
@@ -280,7 +281,7 @@ function PhoneSheet({
   }, [open, data.phone]);
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Phone number
@@ -340,7 +341,7 @@ function CreditLimitSheet({
   const invoices = invoicesQuery.data?.invoices ?? [];
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Credit used
@@ -374,7 +375,7 @@ function CreditLimitSheet({
                 </div>
                 <div className="text-right">
                   <p className="text-base font-semibold text-cream-900">
-                    {formatBuyerCurrency(invoice.outstanding_balance ?? 0)}
+                    {formatNumberValue(invoice.outstanding_balance ?? 0, 'CURRENCY_EXACT')}
                   </p>
                   <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-500">{invoice.status}</p>
                 </div>
@@ -494,7 +495,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f4ed] pb-8">
+    <div className="min-h-dvh bg-[#f8f4ed] pb-8">
       <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
         <div className="flex items-center gap-4">
           <div
@@ -547,7 +548,7 @@ export default function ProfilePage() {
               icon={<Wallet className="h-5 w-5" />}
               tone="accent"
               title="Credit limit"
-              subtitle={`${formatBuyerCurrency(data.credit_used)} used of ${formatBuyerCurrency(data.credit_limit)}`}
+              subtitle={`${formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} used of ${formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}`}
               onClick={() => setCreditSheetOpen(true)}
               action={<ChevronRight className="h-5 w-5 text-cream-500" />}
             />

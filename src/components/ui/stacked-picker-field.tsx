@@ -6,7 +6,7 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/compo
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useDebounce } from '@/hooks/useDebounce';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 export interface PickerItem {
   id: string;

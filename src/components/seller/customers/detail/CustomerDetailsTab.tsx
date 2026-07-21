@@ -2,7 +2,7 @@
 
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
-import { formatCurrency } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { BuyerUsersSection } from './BuyerUsersSection';
 
 interface CustomerDetailsTabProps {
@@ -74,7 +74,7 @@ export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
             {creditEnabled ? (
               <Row
                 label="Credit limit"
-                value={details.credit_limit != null ? formatCurrency(Number(details.credit_limit)) : '—'}
+                value={details.credit_limit != null ? formatNumberValue(Number(details.credit_limit), 'CURRENCY_EXACT') : '—'}
                 mono
               />
             ) : null}

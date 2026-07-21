@@ -1,8 +1,7 @@
 'use client';
 
 import type { SalesOrderLine } from '@/types/tenant-sales-orders';
-import { formatCurrency } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 
 interface SalesOrderItemsSectionProps {
@@ -38,10 +37,10 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
                 ) : null}
               </div>
               <div className="shrink-0 text-right font-mono text-base text-cream-800">
-                {l.qty} × {formatCurrency(l.unit_price)}
+                {l.qty} × {formatNumberValue(l.unit_price, 'CURRENCY_EXACT')}
               </div>
               <div className="shrink-0 text-right font-display text-base font-semibold text-cream-950">
-                {formatCurrency(l.line_total)}
+                {formatNumberValue(l.line_total, 'CURRENCY_EXACT')}
               </div>
             </div>
           );
@@ -50,7 +49,7 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
       <div className="border-t border-cream-100 px-5 pb-5 pt-4">
         <div className="flex justify-between text-base text-cream-800">
           <span>Taxable value</span>
-          <span className="font-mono">{formatCurrency(taxable)}</span>
+          <span className="font-mono">{formatNumberValue(taxable, 'CURRENCY_EXACT')}</span>
         </div>
         {gstInclusive ? (
           <div className="mt-1 flex justify-between text-base text-cream-800">
@@ -60,12 +59,12 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
         ) : (
           <div className="mt-1 flex justify-between text-base text-cream-800">
             <span>GST</span>
-            <span className="font-mono">{formatCurrency(igst)}</span>
+            <span className="font-mono">{formatNumberValue(igst, 'CURRENCY_EXACT')}</span>
           </div>
         )}
         <div className="mt-2 flex justify-between border-t border-cream-100 pt-2 font-display text-lg font-semibold text-cream-950">
           <span>Order total</span>
-          <span>{formatCurrency(total)}</span>
+          <span>{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
         </div>
       </div>
     </div>

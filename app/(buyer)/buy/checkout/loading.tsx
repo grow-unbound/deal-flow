@@ -1,7 +1,7 @@
 // Mirrors buyer checkout page: sticky header + cart items + notes/summary card + submit button
 export default function CheckoutLoading() {
   return (
-    <div className="flex flex-col min-h-screen" role="status" aria-label="Loading checkout">
+    <div className="flex flex-col min-h-dvh" role="status" aria-label="Loading checkout">
       {/* Sticky header */}
       <div className="flex items-center gap-3 px-4 border-b border-cream-200 bg-cream-50" style={{ height: 'var(--header-h, 52px)' }}>
         <div className="h-8 w-8 animate-pulse rounded-md bg-cream-200" />

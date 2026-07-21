@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { rollbackSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
+import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface AccessKpis {
   enabled_count: number;
@@ -94,8 +94,8 @@ export function useAccessList(
     initialData: initialData?.summary_authoritative && initialData.kpis
       ? initialData.kpis
       : undefined,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 
   const listQuery = useInfiniteQuery<
@@ -128,8 +128,8 @@ export function useAccessList(
       ? { pages: [initialData], pageParams: [0] }
       : undefined,
     placeholderData: keepPreviousData,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 
   return {

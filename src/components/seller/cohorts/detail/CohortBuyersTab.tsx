@@ -6,7 +6,7 @@ import type { CohortDetailBuyer } from '@/hooks/useCohorts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCohortBuyersDetail } from '@/hooks/useDetailTabSearch';
 import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
-import { formatCompactInr, formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 
 type SortOption =
   | 'MTD spend (high → low)'
@@ -74,7 +74,7 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
 
   const rulesTitle = rules_summary.is_static ? 'Manual member list' : 'Filters applied';
   const rulesSub = rules_summary.is_static
-    ? `${rules_summary.matched_of_total_label}. Buyers are explicitly assigned to this cohort.`
+    ? `${rules_summary.matched_of_total_label}. Buyers are explicitly assigned to this customer group.`
     : `${rules_summary.member_count} buyers match · ${rules_summary.matched_of_total_label}.`;
 
   const hasFilters = rules_summary.filters.length > 0;
@@ -95,7 +95,7 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
 
         {rules_summary.is_static ? (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            This is a static cohort. Membership is managed manually; rule filters do not apply.
+            This is a targeted customer group. Membership is managed manually; rule filters do not apply.
           </div>
         ) : hasFilters ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -108,7 +108,7 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
           </div>
         ) : (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No saved filters. This cohort uses its manually curated member list only.
+            No saved filters. This customer group uses its manually curated member list only.
           </div>
         )}
 
@@ -143,7 +143,6 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
           columns={[
             { label: 'Buyer', width: 260, className: 'px-5' },
             { label: 'Geography', className: 'px-5' },
-            { label: 'Tier', className: 'px-5' },
             { label: 'MTD spend', align: 'right', className: 'px-5' },
             { label: 'Orders', align: 'right', className: 'px-5' },
             { label: 'AOV', align: 'right', className: 'px-5' },
@@ -165,17 +164,12 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label}</td>
-                <td className="px-5 py-3.5">
-                  <span className="inline-flex rounded-full border border-ember-200 bg-ember-50 px-2.5 py-1 text-sm font-medium text-ember-700">
-                    {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
-                  </span>
-                </td>
-                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatCompactInr(buyer.mtd_spend, 1)}</td>
+                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_EXACT')}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders_mtd}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                  {buyer.orders_mtd > 0 ? formatCompactInr(buyer.aov, 1) : '—'}
+                  {buyer.orders_mtd > 0 ? formatNumberValue(buyer.aov, 'CURRENCY_EXACT') : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatCompactInr(buyer.credit_used, 1)}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_EXACT')}</td>
                 <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
               </tr>
             );

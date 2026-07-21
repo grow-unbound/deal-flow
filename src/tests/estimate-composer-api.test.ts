@@ -7,6 +7,7 @@ const getFlagMock = vi.fn();
 const state = {
   estimateCount: 4,
   insertedEstimateId: 'est-1',
+  estimateStatus: 'draft',
   updatedRows: [] as Array<Record<string, unknown>>,
 };
 
@@ -26,6 +27,14 @@ vi.mock('@/lib/server/seller-location-access', () => ({
   canAccessDocumentLocation: vi.fn(() => true),
   loadAccessibleSellerLocations: vi.fn(async () => [{ id: 'loc-1', name: 'North Hub' }]),
   resolveDefaultSellerLocationId: vi.fn(() => 'loc-1'),
+}));
+
+vi.mock('@/lib/server/whatsapp-document-send', () => ({
+  sendBuyerDocumentWhatsApp: vi.fn().mockResolvedValue({
+    ok: true,
+    state: { can_send: true },
+    recipientPhone: '9999999999',
+  }),
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -52,7 +61,17 @@ vi.mock('@/lib/supabase', () => {
     }
     maybeSingle() {
       if (this.table === 'estimates') {
-        return Promise.resolve({ data: { id: state.insertedEstimateId, tenant_id: 'tenant-1' }, error: null });
+        return Promise.resolve({
+          data: {
+            id: state.insertedEstimateId,
+            tenant_id: 'tenant-1',
+            status: state.estimateStatus,
+            buyer_id: 'buyer-1',
+            estimate_number: 'EST-2026-00005',
+            total_amount: 1000,
+          },
+          error: null,
+        });
       }
       return Promise.resolve({ data: null, error: null });
     }
@@ -89,6 +108,7 @@ describe('estimate composer API routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.updatedRows = [];
+    state.estimateStatus = 'draft';
     getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', sub: 'user-1', role: 'seller_admin' });
     getFlagMock.mockResolvedValue(true);
     global.fetch = vi.fn().mockResolvedValue({
@@ -131,5 +151,26 @@ describe('estimate composer API routes', () => {
       sent_channel: 'whatsapp',
       updated_by: 'user-1',
     });
+  });
+
+  it('does not downgrade an accepted estimate when re-sent', async () => {
+    state.estimateStatus = 'accepted';
+    const { PATCH } = await import('../../app/api/tenant/estimates/[id]/send/route');
+    const request = new NextRequest('http://localhost/api/tenant/estimates/est-1/send', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        channel: 'email',
+        recipient: 'buyer@example.com',
+        message: 'Please review this estimate.',
+      }),
+    });
+
+    const response = await PATCH(request, { params: Promise.resolve({ id: 'est-1' }) });
+    expect(response.status).toBe(200);
+    expect(state.updatedRows[0]).toMatchObject({
+      sent_channel: 'email',
+      updated_by: 'user-1',
+    });
+    expect(state.updatedRows[0]).not.toHaveProperty('status');
   });
 });

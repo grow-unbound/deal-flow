@@ -6,7 +6,7 @@ import { ChevronRight, Package } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntityAvatar, FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import type { CategoryDetailProduct } from '@/hooks/useCategories';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface CategoryProductsTabProps {
   products: CategoryDetailProduct[];
@@ -123,7 +123,7 @@ export function CategoryProductsTab({ products, categoryId: _categoryId }: Categ
               </td>
               <td className="px-5 py-3.5 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">
-                  {p.gmv_mtd > 0 ? formatCompactInr(p.gmv_mtd) : '—'}
+                  {p.gmv_mtd > 0 ? formatNumberValue(p.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </span>
               </td>
               <td className="px-5 py-3.5">

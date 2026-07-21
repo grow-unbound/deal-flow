@@ -5,7 +5,7 @@ import { Check, IndianRupee, Pencil, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { formatCurrency, formatInrInput, parseInrInput } from '@/lib/utils';
+import { formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
 
 interface ProductDetailsTabProps {
@@ -29,9 +29,9 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     name_override: details.name_override ?? '',
-    mrp: details.mrp != null ? formatInrInput(String(details.mrp)) : '',
-    base_selling_price: details.base_selling_price != null ? formatInrInput(String(details.base_selling_price)) : '',
-    cost_price: details.cost_price != null ? formatInrInput(String(details.cost_price)) : '',
+    mrp: details.mrp != null ? formatNumberInput(String(details.mrp), 'CURRENCY_EXACT') : '',
+    base_selling_price: details.base_selling_price != null ? formatNumberInput(String(details.base_selling_price), 'CURRENCY_EXACT') : '',
+    cost_price: details.cost_price != null ? formatNumberInput(String(details.cost_price), 'CURRENCY_EXACT') : '',
     default_uom: details.default_uom ?? '',
     pack_size: details.pack_size != null ? String(details.pack_size) : '',
     is_active: details.is_active,
@@ -39,8 +39,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
   });
 
   const marginPct = useMemo(() => {
-    const sell = parseInrInput(form.base_selling_price) ?? NaN;
-    const cost = parseInrInput(form.cost_price) ?? NaN;
+    const sell = parseNumberInput(form.base_selling_price, 'CURRENCY_EXACT') ?? NaN;
+    const cost = parseNumberInput(form.cost_price, 'CURRENCY_EXACT') ?? NaN;
     if (!Number.isFinite(sell) || sell <= 0 || !Number.isFinite(cost) || cost < 0) return null;
     return (((sell - cost) / sell) * 100).toFixed(1);
   }, [form.base_selling_price, form.cost_price]);
@@ -112,13 +112,13 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
                     <Input
                       className="border-0 focus-visible:ring-0"
                       value={form.mrp}
-                      onChange={(event) => setForm((prev) => ({ ...prev, mrp: formatInrInput(event.target.value) }))}
+                      onChange={(event) => setForm((prev) => ({ ...prev, mrp: formatNumberInput(event.target.value, 'CURRENCY_EXACT') }))}
                       inputMode="decimal"
                       placeholder="0"
                     />
                   </div>
                 ) : details.mrp != null ? (
-                  formatCurrency(details.mrp, 'INR')
+                  formatNumberValue(details.mrp, 'CURRENCY_EXACT')
                 ) : (
                   '—'
                 )}
@@ -133,13 +133,13 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
                     <Input
                       className="border-0 focus-visible:ring-0"
                       value={form.base_selling_price}
-                      onChange={(event) => setForm((prev) => ({ ...prev, base_selling_price: formatInrInput(event.target.value) }))}
+                      onChange={(event) => setForm((prev) => ({ ...prev, base_selling_price: formatNumberInput(event.target.value, 'CURRENCY_EXACT') }))}
                       inputMode="decimal"
                       placeholder="0"
                     />
                   </div>
                 ) : details.base_selling_price != null ? (
-                  formatCurrency(details.base_selling_price, 'INR')
+                  formatNumberValue(details.base_selling_price, 'CURRENCY_EXACT')
                 ) : (
                   '—'
                 )}
@@ -154,13 +154,13 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
                     <Input
                       className="border-0 focus-visible:ring-0"
                       value={form.cost_price}
-                      onChange={(event) => setForm((prev) => ({ ...prev, cost_price: formatInrInput(event.target.value) }))}
+                      onChange={(event) => setForm((prev) => ({ ...prev, cost_price: formatNumberInput(event.target.value, 'CURRENCY_EXACT') }))}
                       inputMode="decimal"
                       placeholder="0"
                     />
                   </div>
                 ) : details.cost_price != null ? (
-                  formatCurrency(details.cost_price, 'INR')
+                  formatNumberValue(details.cost_price, 'CURRENCY_EXACT')
                 ) : (
                   '—'
                 )}
@@ -228,9 +228,9 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               onClick={() => {
                 onSave({
                   name_override: form.name_override || null,
-                  mrp: parseInrInput(form.mrp),
-                  base_selling_price: parseInrInput(form.base_selling_price),
-                  cost_price: isAdmin ? parseInrInput(form.cost_price) : undefined,
+                  mrp: parseNumberInput(form.mrp, 'CURRENCY_EXACT'),
+                  base_selling_price: parseNumberInput(form.base_selling_price, 'CURRENCY_EXACT'),
+                  cost_price: isAdmin ? parseNumberInput(form.cost_price, 'CURRENCY_EXACT') : undefined,
                   default_uom: form.default_uom || null,
                   pack_size: form.pack_size ? Number(form.pack_size) : null,
                   is_active: form.is_active,

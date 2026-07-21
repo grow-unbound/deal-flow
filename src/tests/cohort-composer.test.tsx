@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useCohortComposerDataMock = vi.fn();
@@ -117,5 +117,109 @@ describe('cohort composer', () => {
     expect(screen.getAllByText('MTD spend').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Credit used').length).toBeGreaterThan(0);
     expect(screen.getByText('Payment terms')).toBeInTheDocument();
+  });
+
+  it('shows cohort member counts in edit mode when paginated buyers do not include selected members', async () => {
+    useCohortDetailMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        details_rules: {
+          name: 'South dealers',
+          description: 'Manual cohort',
+          is_static: true,
+          allowed_tenant_brand_ids: [],
+          rules: { filters: [] },
+        },
+        buyers: [
+          {
+            buyer_id: 'buyer-99',
+            business_name: 'Coastal Traders',
+            contact_name: 'Anita',
+            external_ref: 'B-099',
+            geography_label: 'Chennai, Tamil Nadu',
+            tier: 'A',
+            mtd_spend: 120000,
+            orders_mtd: 4,
+            aov: 30000,
+            credit_used: 10000,
+            last_order_at: '2026-06-10T00:00:00.000Z',
+            initials: 'CT',
+            hue: 'teal',
+          },
+          {
+            buyer_id: 'buyer-100',
+            business_name: 'Harbor Retail',
+            contact_name: 'Vikram',
+            external_ref: 'B-100',
+            geography_label: 'Madurai, Tamil Nadu',
+            tier: 'B',
+            mtd_spend: 80000,
+            orders_mtd: 2,
+            aov: 40000,
+            credit_used: 5000,
+            last_order_at: '2026-06-08T00:00:00.000Z',
+            initials: 'HR',
+            hue: 'ember',
+          },
+        ],
+      },
+    });
+    useCohortMembersMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        members: [
+          { buyer_id: 'buyer-99', buyers: { id: 'buyer-99', business_name: 'Coastal Traders', tier: 'A', is_active: true } },
+          { buyer_id: 'buyer-100', buyers: { id: 'buyer-100', business_name: 'Harbor Retail', tier: 'B', is_active: true } },
+        ],
+      },
+    });
+    useCohortComposerBuyersMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+      data: {
+        pages: [
+          {
+            total: 1,
+            buyers: [
+              {
+                id: 'buyer-1',
+                business_name: 'Bharat Stores',
+                contact_name: 'Ravi Bharat',
+                external_ref: 'B-001',
+                geography_label: 'Delhi, NCR',
+                city: 'Delhi',
+                state: 'NCR',
+                tier: 'A',
+                last_order_at: '2026-06-02T00:00:00.000Z',
+                mtd_spend: 240000,
+                orders_mtd: 6,
+                credit_used: 60000,
+                payment_terms_days: 21,
+                gmv_90d: 480000,
+                initials: 'BS',
+                hue: 'teal',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    render(<CohortComposer mode="edit" cohortId="cohort-1" />);
+
+    await screen.findByText('Customer group profile');
+    const membersRow = screen.getAllByText('Members').find((element) => element.classList.contains('text-cream-700'));
+    expect(membersRow?.parentElement).toHaveTextContent('2');
+    expect(screen.getByText('Areas covered').parentElement).toHaveTextContent('2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('2 buyers across 2 areas will be in this cohort once you confirm.'),
+    ).toBeInTheDocument();
   });
 });

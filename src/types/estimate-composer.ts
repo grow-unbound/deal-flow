@@ -1,3 +1,5 @@
+export type EstimateComposerCreditTone = 'success' | 'warning' | 'danger';
+
 export type EstimateComposerMode = 'create' | 'edit';
 
 export type EstimateComposerKind = 'estimate' | 'so' | 'invoice';
@@ -24,7 +26,7 @@ export interface EstimateComposerBuyerContext {
   place_of_supply: string;
   seller_state: string | null;
   payment_terms_days: number;
-  credit_limit: number;
+  credit_limit: number | null;
   credit_used: number;
   credit_available: number;
   active_pricelist: {
@@ -114,6 +116,64 @@ export interface EstimateComposerTotals {
   round_off: number;
   grand_total: number;
   total_units: number;
+}
+
+export function hasEstimateComposerCreditLimit(
+  creditLimit: number | null | undefined,
+): creditLimit is number {
+  return creditLimit != null && creditLimit > 0;
+}
+
+/** Used-credit fill: % of limit when configured, otherwise a full bar. */
+export function resolveEstimateComposerCreditUsedPct(
+  creditUsed: number,
+  creditLimit: number | null | undefined,
+): number {
+  if (!hasEstimateComposerCreditLimit(creditLimit)) {
+    return 100;
+  }
+
+  const used = Math.max(0, creditUsed);
+  if (used === 0) {
+    return 0;
+  }
+
+  return Math.min(100, (used / creditLimit) * 100);
+}
+
+export function resolveEstimateComposerCreditTone(
+  creditUsed: number,
+  creditLimit: number | null | undefined,
+  previewAmount = 0,
+): EstimateComposerCreditTone {
+  if (!hasEstimateComposerCreditLimit(creditLimit)) {
+    return Math.max(0, creditUsed) + Math.max(0, previewAmount) > 0 ? 'danger' : 'success';
+  }
+
+  const projectedPct =
+    ((Math.max(0, creditUsed) + Math.max(0, previewAmount)) / creditLimit) * 100;
+  if (projectedPct > 100) return 'danger';
+  if (projectedPct >= 80) return 'warning';
+  return 'success';
+}
+
+export function resolveEstimateComposerCreditPreviewPct(
+  creditUsed: number,
+  creditLimit: number | null | undefined,
+  previewAmount: number,
+  usedPct: number,
+): number {
+  if (!hasEstimateComposerCreditLimit(creditLimit) || previewAmount <= 0) {
+    return 0;
+  }
+
+  const projectedPct =
+    ((Math.max(0, creditUsed) + Math.max(0, previewAmount)) / creditLimit) * 100;
+  if (projectedPct >= 100) {
+    return Math.max(0, 100 - usedPct);
+  }
+
+  return Math.max(0, projectedPct - usedPct);
 }
 
 export interface EstimateComposerSavePayload {

@@ -18,18 +18,9 @@ import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { roundMoney } from '@/lib/currency-input';
 import { toDatetimeLocalValue } from '@/lib/date-utils';
-import { formatInrInput, parseInrInput } from '@/lib/utils';
+import { formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 
 const METHODS = ['UPI', 'Bank transfer', 'Cheque', 'Cash', 'Other'] as const;
-
-function formatInrDecimals(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(roundMoney(amount));
-}
 
 export function ModalMarkInvoicePaid({
   open,
@@ -52,26 +43,26 @@ export function ModalMarkInvoicePaid({
   const [paidAtLocal, setPaidAtLocal] = useState('');
   const [reference, setReference] = useState('');
   const roundedOutstanding = roundMoney(amountOutstanding);
-  const [amount, setAmount] = useState(formatInrInput(String(roundedOutstanding)));
+  const [amount, setAmount] = useState(formatNumberInput(String(roundedOutstanding), 'CURRENCY_EXACT'));
   const [method, setMethod] = useState<string>(METHODS[0]);
 
   useEffect(() => {
     if (open) {
       setPaidAtLocal(toDatetimeLocalValue(new Date()));
       setReference('');
-      setAmount(formatInrInput(String(roundMoney(amountOutstanding))));
+      setAmount(formatNumberInput(String(roundMoney(amountOutstanding)), 'CURRENCY_EXACT'));
       setMethod(METHODS[0]);
     }
   }, [open, amountOutstanding]);
 
-  const parsedAmount = useMemo(() => parseInrInput(amount), [amount]);
+  const parsedAmount = useMemo(() => parseNumberInput(amount, 'CURRENCY_EXACT'), [amount]);
   const exceedsDue = parsedAmount != null && parsedAmount > roundedOutstanding + 0.01;
   const canSubmit = Boolean(paidAtLocal) && parsedAmount != null && parsedAmount > 0 && !exceedsDue;
 
   async function handleSubmit() {
     const parsed = new Date(paidAtLocal);
     if (Number.isNaN(parsed.getTime())) return;
-    const amt = parseInrInput(amount);
+    const amt = parseNumberInput(amount, 'CURRENCY_EXACT');
     if (amt == null || amt <= 0) return;
     if (amt > roundedOutstanding + 0.01) return;
     try {
@@ -126,7 +117,7 @@ export function ModalMarkInvoicePaid({
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setAmount(formatInrInput(String(roundedOutstanding)))}
+                onClick={() => setAmount(formatNumberInput(String(roundedOutstanding), 'CURRENCY_EXACT'))}
               >
                 Full amount
               </Button>
@@ -139,7 +130,7 @@ export function ModalMarkInvoicePaid({
                 id="inv-pay-amt"
                 inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(formatInrInput(e.target.value))}
+                onChange={(e) => setAmount(formatNumberInput(e.target.value, 'CURRENCY_EXACT'))}
                 className="rounded-l-none font-mono tabular-nums tracking-wide"
                 aria-invalid={exceedsDue}
                 aria-describedby={exceedsDue ? 'inv-pay-amt-warning' : undefined}
@@ -147,7 +138,7 @@ export function ModalMarkInvoicePaid({
             </div>
             {exceedsDue ? (
               <div id="inv-pay-amt-warning" className="callout callout--warning text-sm leading-[1.5]" role="alert">
-                Payment exceeds amount due ({formatInrDecimals(roundedOutstanding)}). Use &ldquo;Full amount&rdquo; or enter up to the outstanding balance.
+                Payment exceeds amount due ({formatNumberValue(roundMoney(roundedOutstanding), 'CURRENCY_EXACT')}). Use &ldquo;Full amount&rdquo; or enter up to the outstanding balance.
               </div>
             ) : null}
           </div>

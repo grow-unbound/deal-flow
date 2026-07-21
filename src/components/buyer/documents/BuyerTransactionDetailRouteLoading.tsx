@@ -1,7 +1,7 @@
 /** Shared route-level skeleton for order / estimate / invoice detail pages. */
 export function BuyerTransactionDetailRouteLoading({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]" role="status" aria-label={`Loading ${label}`}>
+    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]" role="status" aria-label={`Loading ${label}`}>
       <header
         className="sticky top-0 z-[15]"
         style={{

@@ -2,7 +2,7 @@
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { LocationDetailResponse } from '@/hooks/useLocations';
 
 interface LocationOverviewTabProps {
@@ -39,12 +39,12 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
+                  tickFormatter={(v) => formatNumberValue(v, 'CURRENCY_THRESHOLD')}
                   tick={{ fontSize: 11, fill: '#8A7E74' }}
                   axisLine={false}
                   tickLine={false}
                 />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'GMV']} />
+                <Tooltip formatter={(v: number) => [formatNumberValue(v, 'CURRENCY_THRESHOLD'), 'GMV']} />
                 <Bar dataKey="gmv" fill="#0D9488" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -71,8 +71,8 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
             id: buyer.buyer_id,
             label: buyer.business_name,
             meta: buyer.city,
-            value: formatCompactInr(buyer.spend_mtd),
-            supporting: buyer.outstanding_dues > 0 ? `${formatCompactInr(buyer.outstanding_dues)} overdue` : 'Current',
+            value: formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD'),
+            supporting: buyer.outstanding_dues > 0 ? `${formatNumberValue(buyer.outstanding_dues, 'CURRENCY_THRESHOLD')} overdue` : 'Current',
             initials: buyer.initials,
             hue: 'teal',
           }))}

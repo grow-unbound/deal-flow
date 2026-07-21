@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ChevronRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 interface SearchOverlayPickerProps {
   open: boolean;

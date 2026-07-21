@@ -185,6 +185,7 @@ describe('buyer cart location details', () => {
     expect(screen.getByText('Unavailable at this warehouse')).toBeInTheDocument();
     expect(screen.getByText('Out of stock for selected location')).toBeInTheDocument();
     expect(screen.getByText('Excluded')).toBeInTheDocument();
+    expect(screen.getByText('Included in Prices')).toBeInTheDocument();
     expect(screen.getAllByText('₹5,000').length).toBeGreaterThan(0);
     expect(screen.queryByText('₹12,000')).not.toBeInTheDocument();
   });

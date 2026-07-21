@@ -204,6 +204,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
     expect(screen.getByRole('button', { name: /^send invoice$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit before send/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
   it('sent shows Sent chip and payment actions', () => {

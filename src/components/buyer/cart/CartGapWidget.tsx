@@ -1,8 +1,9 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { Package, Plus, Sparkles } from 'lucide-react';
 import posthog from 'posthog-js';
-import { formatBuyerCurrency, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import type { BuyerCartItem } from '@/contexts/BuyerCartContext';
 import type { CartBundle, CartBundleSlot } from '@/hooks/useCartBundles';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -108,11 +109,11 @@ export function CartGapWidget({ bundles, items, tenantId, onAddToCart }: CartGap
                 </p>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--teal-700, #0f766e)' }}>
                   <p style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                    {formatBuyerCurrency(product.price)}
+                    {formatNumberValue(product.price, 'CURRENCY_EXACT')}
                   </p>
                   {showCampaignPrice ? (
                     <span className="text-[11px] line-through opacity-80">
-                      {formatBuyerCurrency(product.resolved_price)}
+                      {formatNumberValue(product.resolved_price, 'CURRENCY_EXACT')}
                     </span>
                   ) : null}
                 </div>

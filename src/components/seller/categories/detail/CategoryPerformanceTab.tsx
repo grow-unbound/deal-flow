@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { DetailCardRenderer, CardEmptyState, PerformanceCard, type DetailCardPayload } from '@/components/seller/detail';
 import type { DetailRankedListCardBody } from '@/components/seller/detail/detail-card-types';
 
@@ -33,7 +33,7 @@ function enrichRankedCard(card: DetailCardPayload): DetailCardPayload {
       ...body,
       items: body.items.map((item) => {
         const rawValue = Number(item.value ?? 0);
-        const formattedRevenue = rawValue > 0 ? formatMetricValue('value', rawValue) : '—';
+        const formattedRevenue = rawValue > 0 ? formatNumberValue(rawValue, 'CURRENCY_THRESHOLD') : '—';
 
         // brand-contribution: supporting is "N units" from the RPC — show as valueSupporting
         const valueSupporting = isBrandContribution && item.supporting

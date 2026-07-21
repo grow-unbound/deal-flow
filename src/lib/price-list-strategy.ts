@@ -1,3 +1,4 @@
+import { formatNumberValue } from '@/lib/utils';
 import type { PriceListPricingStrategy } from '@/lib/zod';
 
 export interface PriceListStrategyProductLike {
@@ -37,7 +38,7 @@ export function formatStrategySummary(
     return `${v}% off base price`;
   }
   const flat = Number(strategyValue ?? 0);
-  return `Flat ₹${flat.toLocaleString('en-IN')} off base price`;
+  return `Flat ${formatNumberValue(flat, 'CURRENCY_EXACT')} off base price`;
 }
 
 export function strategyLabelShort(value: PriceListPricingStrategy): string {
@@ -63,8 +64,8 @@ export function formatApplyingRuleSummary(
     return `Applying ${pct}% off base price to ${selectedCount} selected products · ${overridePart}`;
   }
   if (strategy === 'flat_off_base') {
-    const amt = Number(strategyValue || 0).toLocaleString('en-IN');
-    return `Applying flat ₹${amt} off base price to ${selectedCount} selected products · ${overridePart}`;
+    const amt = Number(strategyValue || 0);
+    return `Applying flat ${formatNumberValue(amt, 'CURRENCY_EXACT')} off base price to ${selectedCount} selected products · ${overridePart}`;
   }
   return overridePart;
 }

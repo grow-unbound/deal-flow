@@ -1,7 +1,7 @@
 // Mirrors cart page: sticky header + line items + footer CTA
 export default function CartLoading() {
   return (
-    <div className="flex min-h-screen flex-col" role="status" aria-label="Loading cart">
+    <div className="flex min-h-dvh flex-col" role="status" aria-label="Loading cart">
       <div
         className="sticky top-0 z-20 flex items-center gap-2 border-b border-cream-200 px-4"
         style={{ height: 'var(--header-h, 56px)', background: 'rgba(253, 251, 247, 0.92)' }}

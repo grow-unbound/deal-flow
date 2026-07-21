@@ -6,7 +6,7 @@ import { ChevronRight, Layers } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntityAvatar, FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import type { CategoryDetailBrand } from '@/hooks/useCategories';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface CategoryBrandsTabProps {
   brands: CategoryDetailBrand[];
@@ -102,19 +102,19 @@ export function CategoryBrandsTab({ brands }: CategoryBrandsTabProps) {
             </td>
             <td className="px-5 py-3.5 text-right">
               <span className="font-display text-md font-medium tabular-nums text-cream-900">
-                {b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—'}
+                {b.gmv_mtd > 0 ? formatNumberValue(b.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
               </span>
             </td>
             <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-700">
-              {b.units_90d > 0 ? b.units_90d.toLocaleString('en-IN') : '—'}
+              {b.units_90d > 0 ? formatNumberValue(b.units_90d, 'COUNT') : '—'}
             </td>
             <td className="px-5 py-3.5 text-right">
               <span className="font-display text-md font-medium tabular-nums text-cream-900">
-                {b.demand_90d > 0 ? formatCompactInr(b.demand_90d) : '—'}
+                {b.demand_90d > 0 ? formatNumberValue(b.demand_90d, 'CURRENCY_THRESHOLD') : '—'}
               </span>
             </td>
             <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-700">
-              {b.demand_units_90d > 0 ? b.demand_units_90d.toLocaleString('en-IN') : '—'}
+              {b.demand_units_90d > 0 ? formatNumberValue(b.demand_units_90d, 'COUNT') : '—'}
             </td>
             <td className="px-5 py-3.5">
               <StatusTag

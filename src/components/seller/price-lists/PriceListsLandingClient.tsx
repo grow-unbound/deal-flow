@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListsLandingSkeleton as SharedPriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
@@ -345,7 +345,7 @@ function PriceListsLandingContent({
                       )}
                     >
                       {row.avg_discount_pct >= 0 ? '-' : '+'}
-                      {Math.abs(row.avg_discount_pct).toFixed(1)}%
+                      {formatNumberValue(Math.abs(row.avg_discount_pct), 'PERCENTAGE')}
                     </span>
                   ) : (
                     <span className="text-cream-400">—</span>
@@ -355,7 +355,7 @@ function PriceListsLandingContent({
                   <td className="px-5 py-3.5 text-right">
                     {row.avg_margin_pct != null ? (
                       <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
-                        {row.avg_margin_pct.toFixed(1)}%
+                        {formatNumberValue(row.avg_margin_pct, 'PERCENTAGE')}
                       </span>
                     ) : (
                       <span className="text-cream-400">—</span>

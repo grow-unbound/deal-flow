@@ -1,11 +1,16 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { EntityAvatar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
-import { cn, formatCompactInr, formatDate } from '@/lib/utils';
+import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
+import { prefetchEstimateComposer } from '@/hooks/useEstimates';
+import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
+import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
+import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 
 export type TransactionTableKind = 'estimate' | 'order' | 'invoice';
 export type TransactionSourceKind = 'buyer_app' | 'converted' | 'direct' | 'seller';
@@ -65,7 +70,7 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
     document: { width: 220, minWidth: 200, maxWidth: 240 },
     buyer: { width: 270, minWidth: 240, maxWidth: 300 },
     location: { width: 150, minWidth: 130, maxWidth: 170 },
-    campaign: { width: 200, minWidth: 180, maxWidth: 260 },
+    campaign: { width: 150, minWidth: 130, maxWidth: 260 },
     items: { width: 60, minWidth: 40, maxWidth: 80 },
     total: { width: 160, minWidth: 120, maxWidth: 180 },
     status: { width: 140, minWidth: 120, maxWidth: 160 },
@@ -104,7 +109,6 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   return [
     { label: 'Invoice Number', ...base.document },
     { label: 'Buyer Name', ...base.buyer },
-    { label: 'Place of Supply', ...base.location },
     { label: 'Location', ...base.location },
     ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
     { label: 'Total Amount', align: 'right' as const, ...base.total },
@@ -126,7 +130,14 @@ export function TransactionTable({
   onRowClick,
 }: TransactionTableProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const prefetchOnPress = usePointerPrefetch();
   const columns = columnWidths(kind, showCampaignColumn);
+  const composerPrefetchFor = (id: string) => {
+    if (kind === 'estimate') return () => prefetchEstimateComposer(queryClient, id);
+    if (kind === 'order') return () => prefetchSalesOrderComposer(queryClient, id);
+    return () => prefetchInvoiceComposer(queryClient, id);
+  };
 
   return (
     <LandingTable
@@ -145,6 +156,8 @@ export function TransactionTable({
             key={row.id}
             className={cn('cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50', rowClassName)}
             onClick={() => click(row)}
+            onPointerDown={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
+            onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
             <td className="px-5 py-3.5">
               <div className="min-w-0">
@@ -171,10 +184,6 @@ export function TransactionTable({
               </div>
             </td>
 
-            {kind === 'invoice' ? (
-              <td className="px-5 py-3.5 text-sm text-cream-900">{row.buyer_place_of_supply ?? '—'}</td>
-            ) : null}
-
             <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
 
             {showCampaignColumn ? (
@@ -186,7 +195,7 @@ export function TransactionTable({
             ) : null}
 
             <td className="px-5 py-3.5 text-right">
-              <p className="font-display text-md text-cream-950">{formatCompactInr(row.total_amount)}</p>
+              <p className="font-display text-md text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
               {kind === 'invoice' && row.amount_subtext ? (
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
               ) : null}
@@ -194,7 +203,7 @@ export function TransactionTable({
 
             {kind === 'invoice' ? (
               <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                {formatCompactInr(row.outstanding_amount ?? 0)}
+                {row.outstanding_amount ? formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD') : '—'}
               </td>
             ) : null}
 

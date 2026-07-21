@@ -6,7 +6,12 @@ import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import {
+  NAVIGATION_QUERY_GC_TIME,
+  NAVIGATION_QUERY_STALE_TIME,
+  REFERENCE_QUERY_STALE_TIME,
+  REFERENCE_QUERY_GC_TIME,
+} from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
@@ -352,8 +357,8 @@ export function useTenantBrands(
       : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'brands');
@@ -371,8 +376,8 @@ export function useTenantBrandDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }

@@ -20,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding } from '@/hooks/useWarehouses';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { WarehousesLandingResponse, WarehouseStockStatus } from '@/types/tenant-warehouses';
 import { WarehousesLandingSkeleton as SharedWarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -314,7 +314,7 @@ export function WarehousesLandingClient({
                 <StatusTag tone={stockTone(row.stock_status)} label={`${stockLabel(row.stock_status)}`} />
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.sellable_units.toLocaleString('en-IN')}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
               <td className="px-4 py-3.5 text-right text-cream-500">

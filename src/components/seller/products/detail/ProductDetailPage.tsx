@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
@@ -16,7 +17,6 @@ import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
 import { ProductDetailSkeleton as SharedProductDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { ProductDetailsTab } from './ProductDetailsTab';
 import { ProductPricingTab } from './ProductPricingTab';
-import { ProductActivityTimeline } from './ProductActivityTimeline';
 import { AddProductSheet } from '../AddProductSheet';
 
 const ProductPerformanceTab = dynamic(
@@ -24,7 +24,7 @@ const ProductPerformanceTab = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'details' | 'performance' | 'pricing' | 'activity';
+type TabId = 'details' | 'performance' | 'pricing';
 
 interface ProductDetailPageProps {
   id: string;
@@ -95,7 +95,6 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       { id: 'details', label: 'Details' },
       ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
       { id: 'pricing', label: 'Pricing & cohorts' },
-      { id: 'activity', label: 'Activity' },
     ],
     [isSellerAssistant],
   );
@@ -114,7 +113,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       {
         label: 'Units · MTD',
         value: m.units_mtd,
-        sub: <span><span className={m.growth_pct >= 0 ? 'up' : 'down'}>{m.growth_pct >= 0 ? '↑ +' : '↓ '}{Math.abs(m.growth_pct).toFixed(1)}%</span> vs last month</span>,
+        sub: <span><span className={m.growth_pct >= 0 ? 'up' : 'down'}>{m.growth_pct >= 0 ? '↑ +' : '↓ '}{formatNumberValue(Math.abs(m.growth_pct), 'PERCENTAGE')}</span> vs last month</span>,
       },
       {
         label: 'Days of cover',
@@ -153,7 +152,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           data.detail.header.brand,
           data.detail.header.sku,
           data.detail.header.pack,
-          `MRP ₹${Math.round(data.detail.header.mrp).toLocaleString('en-IN')}`,
+          `MRP ${formatNumberValue(data.detail.header.mrp, 'CURRENCY_EXACT')}`,
         ]}
         actions={isSellerAssistant ? null : (
           <div className="flex items-center gap-2 pt-1">
@@ -220,7 +219,6 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           pricing={data.detail.pricing}
         />
       ) : null}
-      {activeTab === 'activity' ? <ProductActivityTimeline activity={data.detail.activity} /> : null}
 
       {!isSellerAssistant ? (
         <AddProductSheet

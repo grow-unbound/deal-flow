@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useResolvedPrice } from '@/hooks/useResolvedPrice';
-import { formatCurrency } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface ProductOption {
   id: string;
@@ -94,7 +94,7 @@ export function ResolvedPriceLookupCard({
               ? '—'
               : priceQuery.isLoading
                 ? 'Loading…'
-                : formatCurrency(priceQuery.data?.price ?? 0, 'INR')}
+                : formatNumberValue(priceQuery.data?.price ?? 0, 'CURRENCY_EXACT')}
           </p>
           <p className="mt-1 text-xs text-cream-600">Informational only. This does not override document pricing.</p>
         </div>

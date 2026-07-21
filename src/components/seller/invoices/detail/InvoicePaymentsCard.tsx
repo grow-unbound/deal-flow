@@ -1,7 +1,7 @@
 'use client';
 
 import { roundMoney } from '@/lib/currency-input';
-import { formatInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { InvoicePaymentRecordDto } from '@/types/tenant-invoices';
 
 import { formatShortDate } from './invoice-detail-dates';
@@ -55,7 +55,7 @@ export function InvoicePaymentsCard({
         {hasDue ? (
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-medium text-cream-700">Amount due</span>
-            <span className="font-mono text-base font-semibold text-amber-800">{formatInr(due)}</span>
+            <span className="font-mono text-base font-semibold text-amber-800">{formatNumberValue(due, 'CURRENCY_EXACT')}</span>
           </div>
         ) : (
           <p className="text-sm font-medium text-teal-700">No dues</p>

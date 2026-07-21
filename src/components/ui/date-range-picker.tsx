@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { CalendarDays, ChevronDown } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn, formatDate } from '@/lib/utils';
+import { cn } from '@/lib/cn';
+import { formatDate } from '@/lib/utils';
 import { isoDateString, parseIsoDate } from '@/lib/date-utils';
 
 export interface DateRangePickerProps {

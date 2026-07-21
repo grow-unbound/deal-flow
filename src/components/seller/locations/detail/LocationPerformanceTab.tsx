@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import { CardEmptyState, DetailCardRenderer, PerformanceCard, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
@@ -43,12 +44,12 @@ export function LocationPerformanceTab({ overview, performanceCards }: LocationP
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
+                  tickFormatter={(v) => formatNumberValue(v, 'CURRENCY_THRESHOLD')}
                   tick={{ fontSize: 11, fill: '#8A7E74' }}
                   axisLine={false}
                   tickLine={false}
                 />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Invoiced sales']} />
+                <Tooltip formatter={(v: number) => [formatNumberValue(v, 'CURRENCY_THRESHOLD'), 'Invoiced sales']} />
                 <Bar dataKey="gmv" fill="#0D9488" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

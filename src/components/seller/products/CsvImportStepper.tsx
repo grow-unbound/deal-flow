@@ -4,7 +4,7 @@ import { useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileCheck, Upload, AlertCircle, CheckCircle2, ChevronLeft, FileText } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -299,10 +299,10 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
                 <TableCell className="max-w-[180px] truncate text-base">{row.raw.name || '—'}</TableCell>
                 <TableCell className="text-base text-cream-700">{row.raw.brand_slug || '—'}</TableCell>
                 <TableCell className="text-right font-mono text-sm tabular-nums">
-                  {row.raw.mrp ? `₹${row.raw.mrp}` : '—'}
+                  {row.raw.mrp ? formatNumberValue(Number(row.raw.mrp), 'CURRENCY_EXACT') : '—'}
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm tabular-nums">
-                  {row.raw.base_selling_price ? `₹${row.raw.base_selling_price}` : '—'}
+                  {row.raw.base_selling_price ? formatNumberValue(Number(row.raw.base_selling_price), 'CURRENCY_EXACT') : '—'}
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm tabular-nums">
                   {row.raw.gst_rate ? `${row.raw.gst_rate}%` : '—'}

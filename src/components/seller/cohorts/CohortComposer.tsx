@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, RotateCcw, Save, Search, TriangleAlert, X } from 'lucide-react';
+import { Check, ChevronRight, RotateCcw, Save, Search, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -18,17 +18,9 @@ import {
   ComposerTitleRow,
 } from '@/components/seller/composer/ComposerLayout';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { SellerBrandPickerOverlay } from '@/components/seller/shared/SellerBrandPickerOverlay';
 import { Button } from '@/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
@@ -43,6 +35,7 @@ import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-o
 import { CohortComposerSkeleton as SharedCohortComposerSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import {
   type CohortComposerBuyer,
+  type CohortDetailBuyer,
   useCohortComposerBuyers,
   useCohortComposerData,
   useCohortDetail,
@@ -50,7 +43,7 @@ import {
   useSaveCohortComposer,
 } from '@/hooks/useCohorts';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
-import { cn, formatCompactInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { CohortCreateSchema, type CohortRules } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -85,6 +78,37 @@ function toRelativeDaysLabel(value: string | null) {
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return '1 day ago';
   return `${diffDays} days ago`;
+}
+
+function composerBuyerCity(geographyLabel: string) {
+  const city = geographyLabel.split(',')[0]?.trim();
+  return city && city !== '—' ? city : null;
+}
+
+function detailBuyerToComposerBuyer(buyer: CohortDetailBuyer): CohortComposerBuyer {
+  const city = composerBuyerCity(buyer.geography_label);
+  const state = buyer.geography_label.includes(',')
+    ? buyer.geography_label.split(',').slice(1).join(',').trim() || null
+    : null;
+
+  return {
+    id: buyer.buyer_id,
+    business_name: buyer.business_name,
+    contact_name: buyer.contact_name,
+    external_ref: buyer.external_ref,
+    geography_label: buyer.geography_label,
+    city,
+    state,
+    tier: buyer.tier,
+    last_order_at: buyer.last_order_at,
+    mtd_spend: buyer.mtd_spend,
+    orders_mtd: buyer.orders_mtd,
+    credit_used: buyer.credit_used,
+    payment_terms_days: 0,
+    gmv_90d: 0,
+    initials: buyer.initials,
+    hue: buyer.hue,
+  };
 }
 
 function deriveLastOrderBucket(value: string | null): LastOrderBucket {
@@ -195,6 +219,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const [fieldErrors, setFieldErrors] = useState<CohortComposerFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [brandSheetOpen, setBrandSheetOpen] = useState(false);
 
   const buyerResultsQuery = useCohortComposerBuyers({
     query: search,
@@ -240,15 +265,16 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     setDidInit(true);
   }, [composerQuery.data, detailQuery.data, didInit, membersQuery.data, mode]);
 
+  const editModeBuyers = useMemo(
+    () => (mode === 'edit' && detailQuery.data?.buyers ? detailQuery.data.buyers.map(detailBuyerToComposerBuyer) : []),
+    [detailQuery.data?.buyers, mode],
+  );
+
   const buyerMap = useMemo(
-    () => new Map([...(composerQuery.data?.buyers ?? []), ...resultRows].map((buyer) => [buyer.id, buyer])),
-    [composerQuery.data?.buyers, resultRows],
+    () => new Map([...(composerQuery.data?.buyers ?? []), ...editModeBuyers, ...resultRows].map((buyer) => [buyer.id, buyer])),
+    [composerQuery.data?.buyers, editModeBuyers, resultRows],
   );
   const brandOptions = composerQuery.data?.brands ?? [];
-  const brandLabelById = useMemo(
-    () => new Map(brandOptions.map((brand) => [brand.id, brand.label])),
-    [brandOptions],
-  );
 
   const visibleRows = resultRows;
 
@@ -271,18 +297,59 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     [buyerMap, effectiveSelectedIds],
   );
 
+  const selectedMemberCount = useMemo(() => {
+    if (selectionMode === 'manual-selection') {
+      return selectedBuyerIds.length;
+    }
+    if (!search.trim()) {
+      return Math.max(0, resultTotal - excludedBuyerIds.length);
+    }
+    return effectiveSelectedIds.length;
+  }, [
+    effectiveSelectedIds.length,
+    excludedBuyerIds.length,
+    resultTotal,
+    search,
+    selectedBuyerIds.length,
+    selectionMode,
+  ]);
+
   const summary = useMemo(() => {
-    const members =
-      selectionMode === 'rule-based' && !search.trim()
-        ? Math.max(0, resultTotal - excludedBuyerIds.length)
-        : selectedRows.length;
-    const areasCovered = new Set(selectedRows.map((buyer) => buyer.city).filter((value) => value && value !== '—')).size;
+    const members = selectedMemberCount;
+    const areasCovered = (() => {
+      const citiesFromRows = selectedRows
+        .map((buyer) => buyer.city)
+        .filter((value): value is string => Boolean(value) && value !== '—');
+      if (citiesFromRows.length > 0) {
+        return new Set(citiesFromRows).size;
+      }
+      if (mode === 'edit' && detailQuery.data?.buyers && members > 0) {
+        const cities = detailQuery.data.buyers
+          .filter((buyer) =>
+            selectionMode === 'manual-selection'
+              ? selectedBuyerIds.includes(buyer.buyer_id)
+              : !excludedBuyerIds.includes(buyer.buyer_id),
+          )
+          .map((buyer) => composerBuyerCity(buyer.geography_label))
+          .filter((value): value is string => Boolean(value));
+        return new Set(cities).size;
+      }
+      return 0;
+    })();
     const mtdSpend = selectedRows.reduce((sum, buyer) => sum + buyer.mtd_spend, 0);
     const ordersMtd = selectedRows.reduce((sum, buyer) => sum + buyer.orders_mtd, 0);
     const avgAov = ordersMtd > 0 ? mtdSpend / ordersMtd : 0;
     const active30d = selectedRows.filter((buyer) => deriveLastOrderBucket(buyer.last_order_at) === 'within_30_days').length;
     return { members, areasCovered, mtdSpend, avgAov, active30d };
-  }, [excludedBuyerIds.length, resultTotal, search, selectedRows, selectionMode]);
+  }, [
+    detailQuery.data?.buyers,
+    excludedBuyerIds,
+    mode,
+    selectedBuyerIds,
+    selectedMemberCount,
+    selectedRows,
+    selectionMode,
+  ]);
 
   const serializedState = useMemo(
     () =>
@@ -385,7 +452,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       }
     }
 
-    if (summary.members === 0) {
+    if (selectedMemberCount === 0) {
       nextErrors.members =
         selectionMode === 'manual-selection'
           ? 'Select at least one buyer to save this cohort.'
@@ -442,12 +509,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     );
     clearFieldError('members');
     setSubmitError(null);
-  }
-
-  function toggleBrand(id: string) {
-    setSelectedBrandIds((current) => (
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    ));
   }
 
   function toggleRuleRow(id: string, checked: boolean) {
@@ -542,62 +603,27 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Allowed brands">
-              <div className="space-y-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-auto w-full justify-between border-cream-300 bg-cream-50 px-3 py-2 text-left font-normal text-cream-900"
-                    >
-                      <span>
-                        {selectedBrandIds.length > 0
-                          ? `${selectedBrandIds.length} brand${selectedBrandIds.length === 1 ? '' : 's'} selected`
-                          : 'All Brands'}
-                      </span>
-                      <ChevronsUpDown size={14} className="text-cream-500" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80 p-0 bg-cream-50" align="start">
-                    <Command>
-                      <CommandInput placeholder="Search brands…" className="bg-cream-50" />
-                      <CommandList>
-                        <CommandEmpty>No brands found.</CommandEmpty>
-                        <CommandGroup>
-                          {brandOptions.map((brand) => {
-                            const isSelected = selectedBrandIds.includes(brand.id);
-                            return (
-                              <CommandItem
-                                key={brand.id}
-                                value={brand.label}
-                                onSelect={() => toggleBrand(brand.id)}
-                                className="flex cursor-pointer items-center justify-between"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className={`flex h-4 w-4 items-center justify-center rounded border ${isSelected ? 'border-teal-500 bg-teal-500' : 'border-cream-400 bg-cream-50'}`}>
-                                    {isSelected ? <Check size={10} className="text-white" /> : null}
-                                  </div>
-                                  <span className="text-sm text-cream-900">{brand.label}</span>
-                                </div>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                <p className="text-xs text-cream-600">
-                  Leave empty to allow all brands. Select one or more brands to restrict this customer group&apos;s assortment.
-                </p>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setBrandSheetOpen(true)}
+                  className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-cream-50 px-3 py-2 text-left transition-colors hover:bg-white"
+                >
+                  <span className="text-base font-medium text-cream-900">
+                    {selectedBrandIds.length > 0
+                      ? `${selectedBrandIds.length} brand${selectedBrandIds.length === 1 ? '' : 's'} selected`
+                      : 'All Brands'}
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-cream-500" />
+                </button>
                 {selectedBrandIds.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedBrandIds.map((brandId) => (
-                      <span key={brandId} className="inline-flex items-center rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
-                        {brandLabelById.get(brandId) ?? 'Brand'}
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBrandSheetOpen(true)}
+                    className="text-sm font-medium text-teal-700 hover:text-teal-800"
+                  >
+                    Change selection
+                  </button>
                 ) : null}
               </div>
             </ComposerBasicsField>
@@ -864,8 +890,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                               {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                             </td>
                             <td className="px-4 py-3 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.mtd_spend)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.credit_used)}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
                             <td className="px-4 py-3 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
                           </ComposerSelectableRow>
                         );
@@ -918,11 +944,11 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">MTD spend</span>
-                    <span className="font-mono font-medium text-cream-900">{formatCompactInr(summary.mtdSpend)}</span>
+                    <span className="font-mono font-medium text-cream-900">{formatNumberValue(summary.mtdSpend, 'CURRENCY_THRESHOLD')}</span>
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg AOV</span>
-                    <span className="font-mono font-medium text-cream-900">{summary.avgAov > 0 ? formatCompactInr(summary.avgAov) : '—'}</span>
+                    <span className="font-mono font-medium text-cream-900">{summary.avgAov > 0 ? formatNumberValue(summary.avgAov, 'CURRENCY_THRESHOLD') : '—'}</span>
                   </div>
                   <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Active · 30d</span>
@@ -1014,6 +1040,15 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
         open={dirtyGuard.discardOpen}
         onOpenChange={dirtyGuard.setDiscardOpen}
         onDiscard={dirtyGuard.confirmDiscard}
+      />
+
+      <SellerBrandPickerOverlay
+        open={brandSheetOpen}
+        onOpenChange={setBrandSheetOpen}
+        title="Select allowed brands"
+        brands={brandOptions}
+        selectedBrandIds={selectedBrandIds}
+        onSelectedBrandIdsChange={setSelectedBrandIds}
       />
 
       <Dialog open={confirmSaveOpen} onOpenChange={setConfirmSaveOpen}>

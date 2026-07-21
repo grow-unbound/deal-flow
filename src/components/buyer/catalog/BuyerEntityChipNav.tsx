@@ -23,13 +23,50 @@ interface BuyerBrandChipNavProps {
 
 export type BuyerEntityChipNavProps = BuyerCategoryChipNavProps | BuyerBrandChipNavProps;
 
-function useChipScrollIntoView(selectedId: string | null): React.RefObject<HTMLDivElement> {
+function storageKeyFor(kind: BuyerEntityChipNavProps['kind'], mode: ChipNavMode): string {
+  return `buyer-chip-scroll:${kind}:${mode}`;
+}
+
+function useChipScrollIntoView(
+  kind: BuyerEntityChipNavProps['kind'],
+  mode: ChipNavMode,
+  selectedId: string | null,
+): React.RefObject<HTMLDivElement | null> {
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const restoredRef = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (restoredRef.current || !containerRef.current || typeof window === 'undefined') return;
+    const raw = window.sessionStorage.getItem(storageKeyFor(kind, mode));
+    if (raw) {
+      const scrollLeft = Number(raw);
+      if (!Number.isNaN(scrollLeft)) {
+        containerRef.current.scrollLeft = scrollLeft;
+      }
+    }
+    restoredRef.current = true;
+  }, [kind, mode]);
+
+  React.useEffect(() => {
+    const node = containerRef.current;
+    if (!node || typeof window === 'undefined') return;
+    const onScroll = () => {
+      window.sessionStorage.setItem(storageKeyFor(kind, mode), String(node.scrollLeft));
+    };
+    node.addEventListener('scroll', onScroll, { passive: true });
+    return () => node.removeEventListener('scroll', onScroll);
+  }, [kind, mode]);
 
   React.useEffect(() => {
     if (!selectedId || !containerRef.current) return;
     const active = containerRef.current.querySelector<HTMLElement>(`[data-chip-id="${selectedId}"]`);
-    if (active && typeof active.scrollIntoView === 'function') {
+    if (!active || typeof active.scrollIntoView !== 'function') return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const fullyVisible =
+      activeRect.left >= containerRect.left + 8
+      && activeRect.right <= containerRect.right - 8;
+    if (!fullyVisible) {
       active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     }
   }, [selectedId]);
@@ -39,7 +76,7 @@ function useChipScrollIntoView(selectedId: string | null): React.RefObject<HTMLD
 
 export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactNode {
   const router = useRouter();
-  const containerRef = useChipScrollIntoView(props.selectedId);
+  const containerRef = useChipScrollIntoView(props.kind, props.mode, props.selectedId);
 
   function navigateTo(path: string, replace: boolean): void {
     markBuyerNavigationForward();

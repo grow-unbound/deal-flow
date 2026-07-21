@@ -37,7 +37,8 @@ type CartAction =
   | { type: 'UPDATE_QTY'; tenant_product_id: string; quantity: number }
   | { type: 'CLEAR_CART' }
   | { type: 'REPLACE_ITEMS'; items: BuyerCartItem[] }
-  | { type: 'SET_CAMPAIGN_ID'; campaignId: string | null };
+  | { type: 'SET_CAMPAIGN_ID'; campaignId: string | null }
+  | { type: 'HYDRATE'; state: CartState };
 
 function readInitialCartState(): CartState {
   if (typeof window === 'undefined') {
@@ -60,6 +61,9 @@ function readInitialCartState(): CartState {
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
+    case 'HYDRATE':
+      return action.state;
+
     case 'SET_CAMPAIGN_ID':
       return { ...state, campaignId: action.campaignId };
 
@@ -129,7 +133,15 @@ export interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(cartReducer, undefined, readInitialCartState);
+  // Always start from an empty, server-matching state — reading localStorage in the
+  // reducer's lazy initializer ran during the client's first render and could disagree
+  // with the server-rendered (always-empty) HTML, causing a hydration mismatch. Hydrating
+  // in an effect instead guarantees the first client render matches the server render.
+  const [state, dispatch] = useReducer(cartReducer, { items: [], campaignId: null });
+
+  useEffect(() => {
+    dispatch({ type: 'HYDRATE', state: readInitialCartState() });
+  }, []);
 
   useEffect(() => {
     try {

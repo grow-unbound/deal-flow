@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { AppNotification } from './useNotificationStore';
@@ -33,14 +34,44 @@ interface UseBuyerRealtimeOptions {
   buyerId: string;
   buyerCohortIds: string[];
   onNew: (n: AppNotification) => void;
+  onPatch?: (entityType: AppNotification['entityType'], entityId: string, patch: Pick<AppNotification, 'title' | 'body'>) => void;
   onRefresh?: () => void;
 }
 
-export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onRefresh }: UseBuyerRealtimeOptions) {
+const RECENT_EVENT_WINDOW_MS = 4000;
+const recentBuyerRealtimeEvents = new Map<string, number>();
+
+function shouldProcessBuyerRealtimeEvent(key: string): boolean {
+  const now = Date.now();
+  const lastSeen = recentBuyerRealtimeEvents.get(key);
+  if (lastSeen != null && now - lastSeen < RECENT_EVENT_WINDOW_MS) {
+    return false;
+  }
+  recentBuyerRealtimeEvents.set(key, now);
+
+  for (const [entryKey, seenAt] of recentBuyerRealtimeEvents.entries()) {
+    if (now - seenAt >= RECENT_EVENT_WINDOW_MS) {
+      recentBuyerRealtimeEvents.delete(entryKey);
+    }
+  }
+  return true;
+}
+
+function didEstimateNotificationFieldsChange(record: Record<string, unknown>, previous: Record<string, unknown> | undefined): boolean {
+  if (!previous) return true;
+  return (
+    (record.status as string | null | undefined) !== (previous.status as string | null | undefined)
+    || (record.estimate_number as string | null | undefined) !== (previous.estimate_number as string | null | undefined)
+  );
+}
+
+export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onPatch, onRefresh }: UseBuyerRealtimeOptions) {
   const [updatedEntityIds, setUpdatedEntityIds] = useState<Map<string, 'new' | 'updated'>>(new Map());
   const onNewRef = useRef(onNew);
+  const onPatchRef = useRef(onPatch);
   const onRefreshRef = useRef(onRefresh);
   onNewRef.current = onNew;
+  onPatchRef.current = onPatch;
   onRefreshRef.current = onRefresh;
 
   const markSeen = useCallback((entityId: string) => {
@@ -108,14 +139,24 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onR
         { event: 'UPDATE', schema: 'app', table: 'estimates', filter: `buyer_id=eq.${buyerId}` },
         (payload) => {
           const record = payload.new as Record<string, unknown>;
+          const previous = payload.old as Record<string, unknown> | undefined;
+          if (!didEstimateNotificationFieldsChange(record, previous)) return;
           const entityId = record.id as string;
           const estimateNumber = (record.estimate_number as string | null) ?? '';
           const status = (record.status as string) ?? '';
+          const eventKey = `estimate:${entityId}:${estimateNumber}:${status}`;
+          if (!shouldProcessBuyerRealtimeEvent(eventKey)) return;
+          const title = `Estimate updated · ${estimateNumber}`;
+          const body = `Status: ${status}`;
+          onPatchRef.current?.('estimate', entityId, {
+            title,
+            body,
+          });
           onNewRef.current({
-            id: `${entityId}_estimate_updated_${record.updated_at as string}`,
+            id: `${entityId}_estimate_updated`,
             kind: 'estimate_updated',
-            title: `Estimate updated · ${estimateNumber}`,
-            body: `Status: ${status}`,
+            title,
+            body,
             entityType: 'estimate',
             entityId,
             href: `/buy/orders?tab=enquiries&highlight=${entityId}`,
@@ -139,7 +180,7 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onR
             id: `${entityId}_invoice_${isInsert ? 'new' : 'updated'}_${record.updated_at as string}`,
             kind: 'invoice_updated',
             title: `Invoice ${isInsert ? 'issued' : 'updated'} · ${invoiceNumber}`,
-            body: `₹${total.toLocaleString('en-IN')}`,
+            body: formatNumberValue(total, 'CURRENCY_EXACT'),
             entityType: 'invoice',
             entityId,
             href: `/buy/orders?tab=invoices&highlight=${entityId}`,

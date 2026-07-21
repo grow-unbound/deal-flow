@@ -4,6 +4,7 @@ import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { PAGE_SIZE } from '@/lib/pagination';
 import type { BuyerAppMode } from '@/types/buyer';
+import { BUYER_QUERY_STALE_TIME, BUYER_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface BuyerOrder {
   id: string;
@@ -22,9 +23,6 @@ export interface BuyerOrdersPage {
   total: number | null;
   seller_preview?: boolean;
 }
-
-const BUYER_QUERY_STALE_TIME = 30_000;
-const BUYER_QUERY_GC_TIME = 2 * 60_000;
 
 export function useBuyerOrdersInfinite() {
   return useInfiniteQuery({

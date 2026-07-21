@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileCheck, AlertCircle, CheckCircle } from 'lucide-react';
@@ -354,7 +355,7 @@ export function CsvImportFlow() {
                     <td className="px-3 py-2 font-mono text-cream-700">{row.raw.phone}</td>
                     <td className="px-3 py-2 text-cream-700">{row.raw.tier || '—'}</td>
                     <td className="px-3 py-2 font-mono text-cream-700">
-                      {row.raw.credit_limit ? `₹${row.raw.credit_limit}` : '—'}
+                      {row.raw.credit_limit ? formatNumberValue(Number(row.raw.credit_limit), 'CURRENCY_EXACT') : '—'}
                     </td>
                   </tr>
                 ))}

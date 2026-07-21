@@ -26,7 +26,7 @@ function BrowseDetailHeaderSkeleton() {
 
 export default function Loading() {
   return (
-    <div className="flex min-h-[50vh] flex-col pb-8" role="status" aria-label="Loading">
+    <div className="flex min-h-[50dvh] flex-col pb-8" role="status" aria-label="Loading">
       <BrowseDetailHeaderSkeleton />
       <div className="px-2 pt-3">
         <LoadingSkeleton count={6} />

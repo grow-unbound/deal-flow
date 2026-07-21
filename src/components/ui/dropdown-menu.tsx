@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 // Lightweight dropdown menu built with native React state.
 // Uses a portal-less popover approach (relative positioning).

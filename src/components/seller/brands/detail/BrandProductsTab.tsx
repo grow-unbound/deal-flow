@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { FilterBar, GrowthPill, LandingTable, StatusTag } from '@/components/seller/layout';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useBrandProductsDetail } from '@/hooks/useDetailTabSearch';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'On hand (low → high)';
 
@@ -120,13 +120,13 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {product.mrp != null ? formatCompactInr(product.mrp) : '—'}
+                {product.mrp != null ? formatNumberValue(product.mrp, 'CURRENCY_EXACT') : '—'}
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {product.base_selling_price != null ? formatCompactInr(product.base_selling_price) : '—'}
+                {product.base_selling_price != null ? formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT') : '—'}
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {product.cost_price != null ? formatCompactInr(product.cost_price) : '—'}
+                {product.cost_price != null ? formatNumberValue(product.cost_price, 'CURRENCY_EXACT') : '—'}
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
@@ -140,7 +140,7 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
               <td className="px-5 py-3.5 text-right text-base text-cream-900">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_EXACT')}</span>
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <GrowthPill value={growthPct} />

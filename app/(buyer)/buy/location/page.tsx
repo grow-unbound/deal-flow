@@ -199,7 +199,7 @@ export default function BuyerLocationPage(): React.ReactNode {
   }
 
   return (
-    <div className="flex min-h-[50vh] flex-col bg-[var(--bg-base)] px-4 py-4 pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] px-4 py-4 pb-[var(--tab-bar)]">
       <header className="mb-4 flex items-center gap-3">
         <button
           type="button"

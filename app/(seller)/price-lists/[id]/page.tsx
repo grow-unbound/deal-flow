@@ -10,7 +10,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ROLES } from '@/constants';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { PriceListDetailSkeleton as SharedPriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,13 +61,11 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
-    const activityCount = priceList?.activity?.length ?? 0;
     return [
       { id: 'performance', label: 'Performance' },
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
-      { id: 'activity', label: 'Activity', badge: activityCount },
     ];
-  }, [isSellerAdmin, priceList?.activity?.length, priceList?.items?.length]);
+  }, [isSellerAdmin, priceList?.items?.length]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -171,23 +169,6 @@ export default function PriceListDetailPage() {
                   brandsCovered={priceList.stats?.brands_covered ?? 0}
                   canViewFinancials={isSellerAdmin}
                 />
-              ) : null}
-
-              {tabActive === 'activity' ? (
-                <section className="mt-5">
-                  <PerformanceCard title="Activity log" subtitle="Operational audit trail for this price list" bodyClassName="p-0">
-                    <RankedList
-                      items={(priceList.activity ?? []).map((entry) => ({
-                        id: String(entry.id),
-                        label: entry.action.replace('_', ' '),
-                        meta: new Date(entry.ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-                        supporting: entry.diff ? JSON.stringify(entry.diff).slice(0, 120) : 'No field diff recorded',
-                      }))}
-                      emptyTitle="No activity yet"
-                      emptyDescription="Changes to this price list will be logged here."
-                    />
-                  </PerformanceCard>
-                </section>
               ) : null}
 
               <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>

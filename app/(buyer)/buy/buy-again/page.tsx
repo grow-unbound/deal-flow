@@ -67,7 +67,7 @@ export default function BuyAgainPage() {
   const items = React.useMemo(() => mergeReorderItems(payload), [payload]);
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell title="Order again" searchHref={buildBuyerSearchHref({ scope: 'buy-again' })}>
         {loading ? (
           <div className="space-y-4 px-4 py-4">

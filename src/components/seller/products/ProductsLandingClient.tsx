@@ -26,7 +26,7 @@ import { useRole } from '@/hooks/useRole';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
@@ -308,7 +308,7 @@ function ProductsLandingContent({
         tiles={[
           {
             label: `Invoiced sales · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.revenue_mtd ?? 0),
+            value: formatNumberValue(kpis?.revenue_mtd ?? 0, 'CURRENCY_THRESHOLD'),
             sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
             tone: 'accent',
           },
@@ -344,7 +344,7 @@ function ProductsLandingContent({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.sku} · ${row.units_mtd} units · ${formatCompactInr(row.gmv_mtd)}`,
+              reason: `${row.sku} · ${row.units_mtd} units · ${formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD')}`,
               trailing: `${row.on_hand} on hand`,
             })),
           },
@@ -498,7 +498,7 @@ function ProductsLandingContent({
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
               <td className="px-5 py-3.5 text-right text-base text-cream-900">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />

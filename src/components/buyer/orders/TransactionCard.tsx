@@ -1,8 +1,9 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { ActivityCardShell } from './ActivityCardShell';
 import type { StatusTone } from '@/components/ui/status-pill';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 export interface OrderSummary {
   id: string;
@@ -58,7 +59,7 @@ export function TransactionCard({ order, href }: TransactionCardProps) {
       statusTone={badge.tone}
       middleLeft={order.description || '—'}
       middleRight={<span className="tabular-inline">{itemsAndDate}</span>}
-      amount={<span className="tabular-inline">{formatBuyerCurrency(order.total_amount)}</span>}
+      amount={<span className="tabular-inline">{formatNumberValue(order.total_amount, 'CURRENCY_EXACT')}</span>}
     />
   );
 }

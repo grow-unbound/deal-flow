@@ -26,6 +26,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useInvoiceDetail,
@@ -36,7 +38,7 @@ import {
 } from '@/hooks/useInvoiceDetail';
 import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
@@ -54,9 +56,16 @@ const INVOICE_CHIP_LABEL: Record<InvoiceViewBandStatus, string> = {
 export function InvoiceDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
   const { data, isLoading, isError, error } = useInvoiceDetail(id);
+  useDocumentWhatsAppRealtime({
+    kind: 'invoice',
+    documentId: id,
+    tenantId: currentTenantId,
+    enabled: Boolean(data),
+  });
   const payMut = useMarkInvoicePaid(id);
   const voidMut = useVoidInvoice(id);
   const remindMut = useSendInvoiceReminder(id);
@@ -166,7 +175,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const overLimitBy = buyerContext ? totals.grand_total - buyerContext.credit_available : 0;
   const creditWarning =
     buyerContext && overLimitBy > 0 && data?.status !== 'paid' && data?.status !== 'void'
-      ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+      ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.`
       : null;
 
   if (orderManagement === false || invoicesFlag === false) {

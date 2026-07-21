@@ -51,6 +51,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
+import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '@/lib/composer-session-draft';
 import type {
   InvoiceComposerDocument,
   InvoiceComposerProductSearchRow,
@@ -65,7 +66,7 @@ import {
 } from '@/lib/documents/composer-staged-changes';
 import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type SendChannel = 'whatsapp' | 'email' | 'download';
 
@@ -266,10 +267,15 @@ export function DocComposerInvoice({
     return data ?? null;
   }, [data, detailFallbackQuery.data, mode]);
 
-  const [documentState, setDocumentState] = useState<InvoiceComposerDocument | null>(() => (
-    mode === 'create' && !invoiceId ? buildNewInvoiceDraft() : null
-  ));
-  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>([]);
+  const [documentState, setDocumentState] = useState<InvoiceComposerDocument | null>(() => {
+    if (mode !== 'create' || invoiceId) return null;
+    return loadComposerDraft<InvoiceComposerDocument, EstimateComposerLineRow>('invoice')?.document
+      ?? buildNewInvoiceDraft();
+  });
+  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>(() => {
+    if (mode !== 'create' || invoiceId) return [];
+    return loadComposerDraft<InvoiceComposerDocument, EstimateComposerLineRow>('invoice')?.lines ?? [];
+  });
   const [buyerQuery, setBuyerQuery] = useState('');
   const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
@@ -482,13 +488,18 @@ export function DocComposerInvoice({
     : ((documentState?.available_locations?.length ?? 0) > 0 ? (documentState?.available_locations ?? []) : createModeLocationOptions);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
-    onConfirmClose: () => router.push(closeTarget),
+    onConfirmClose: () => { clearComposerDraft('invoice'); router.push(closeTarget); },
   });
   useEffect(() => {
     setAutoSaveMeta(dirty
       ? { label: 'Unsaved changes', tone: 'warning' }
       : { label: workingId ? 'Saved changes' : 'Not saved yet', tone: dirty ? 'warning' : 'saved' });
   }, [dirty, workingId]);
+
+  useEffect(() => {
+    if (mode !== 'create' || workingId || !documentState) return;
+    saveComposerDraft('invoice', documentState, lineState);
+  }, [documentState, lineState, mode, workingId]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -512,6 +523,7 @@ export function DocComposerInvoice({
     }
     const json = (await res.json()) as { data: InvoiceComposerDocument };
     qc.setQueryData(['tenant-invoice-composer', json.data.id], json.data);
+    clearComposerDraft('invoice');
     if (!isLeavingRef.current) {
       setWorkingId(json.data.id);
     }
@@ -579,7 +591,7 @@ export function DocComposerInvoice({
   const primaryDisabled = !documentState.buyer_id || activeLines.length === 0;
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
-    ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+    ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.`
     : null;
   const isInterState = Boolean(
     buyer?.seller_state
@@ -951,7 +963,7 @@ export function DocComposerInvoice({
                 />
               </div>
               <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
-                Buyer sees {activeLines.length} lines totaling {formatCompactInr(totals.grand_total)}.
+                Buyer sees {activeLines.length} lines totaling {formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')}.
               </div>
             </div>
           </DialogBody>

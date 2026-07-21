@@ -38,7 +38,7 @@ import { Switch } from '@/components/ui/switch';
 import { BuyerCreateSchema, type BuyerCreateInput } from '@/lib/zod';
 import { INDIAN_STATES } from '@/constants';
 import { apiFetch } from '@/lib/api-fetch';
-import { formatInrInput, parseInrInput } from '@/lib/utils';
+import { formatNumberInput, parseNumberInput } from '@/lib/utils';
 import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { usePriceLists } from '@/hooks/usePriceLists';
@@ -65,12 +65,14 @@ export function AddCustomerDialog({
   mode = 'create',
   customerId,
   defaultValues,
+  assignedPriceListName,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode?: 'create' | 'edit';
   customerId?: string;
   defaultValues?: Partial<BuyerCreateInput>;
+  assignedPriceListName?: string | null;
 }) {
   const createMutation = useCreateCustomerOptimistic();
   const queryClient = useQueryClient();
@@ -421,7 +423,11 @@ export function AddCustomerDialog({
                             title="Pick a pricelist"
                             eyebrow="Pricing"
                             description="Set the buyer-specific default pricelist assignment."
-                            triggerTitle={selectedPriceList?.name ?? 'Select pricelist'}
+                            triggerTitle={
+                              selectedPriceList?.name
+                              ?? assignedPriceListName
+                              ?? (selectedPriceListId ? 'Assigned pricelist' : 'Select pricelist')
+                            }
                             triggerDescription={
                               selectedPriceList
                                 ? formatPriceListValidity(selectedPriceList.valid_from, selectedPriceList.valid_to)
@@ -492,8 +498,8 @@ export function AddCustomerDialog({
                                 ₹
                               </span>
                               <Input
-                                value={field.value ? formatInrInput(String(field.value)) : ''}
-                                onChange={(e) => field.onChange(parseInrInput(formatInrInput(e.target.value)) ?? 0)}
+                                value={field.value ? formatNumberInput(String(field.value), 'CURRENCY_EXACT') : ''}
+                                onChange={(e) => field.onChange(parseNumberInput(formatNumberInput(e.target.value, 'CURRENCY_EXACT'), 'CURRENCY_EXACT') ?? 0)}
                                 placeholder="0"
                                 className="rounded-l-none font-mono tabular-nums tracking-wide"
                               />

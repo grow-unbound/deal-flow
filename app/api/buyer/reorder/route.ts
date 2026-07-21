@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 export interface BuyerReorderOrderSummary {
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
     };
 
     if (!profile.buyer?.id) {
-      return NextResponse.json(empty);
+      return NextResponse.json(empty, { headers: BUYER_CACHE_PERSONAL });
     }
 
     const tenantId = context.tenant_id!;
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
 
     const orders = (ordersRes.data ?? []) as Array<{ id: string; order_number: string; placed_at: string | null }>;
     if (orders.length === 0) {
-      return NextResponse.json(empty);
+      return NextResponse.json(empty, { headers: BUYER_CACHE_PERSONAL });
     }
 
     const orderIds = orders.map((o) => o.id);
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
 
     const itemRows = (itemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>;
     if (itemRows.length === 0) {
-      return NextResponse.json(empty);
+      return NextResponse.json(empty, { headers: BUYER_CACHE_PERSONAL });
     }
 
     const productIdSet = new Set(itemRows.map((r) => r.tenant_product_id));
@@ -153,7 +154,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
       has_history: true,
       recent_orders: recentOrders,
       by_category,
-    });
+    }, { headers: BUYER_CACHE_PERSONAL });
   } catch (err) {
     console.error('[GET /api/buyer/reorder]', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

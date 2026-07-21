@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabaseBrowser } from '@/lib/supabase-browser';
@@ -63,7 +64,7 @@ function buildEstimateNotification(record: Record<string, unknown>): AppNotifica
     id: `${entityId}_new_estimate`,
     kind: 'new_estimate',
     title: `New estimate · ${estimateNumber}`,
-    body: `₹${total.toLocaleString('en-IN')}`,
+    body: formatNumberValue(total, 'CURRENCY_EXACT'),
     entityType: 'estimate',
     entityId,
     href: `/estimates/${entityId}`,
@@ -82,7 +83,7 @@ function buildOrderNotification(record: Record<string, unknown>): AppNotificatio
     id: `${entityId}_new_order`,
     kind: 'new_order',
     title: `New order · ${orderNumber}`,
-    body: `₹${total.toLocaleString('en-IN')}`,
+    body: formatNumberValue(total, 'CURRENCY_EXACT'),
     entityType: 'order',
     entityId,
     href: `/sales-orders/${entityId}`,

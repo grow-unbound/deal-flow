@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DialogBody } from '@/components/ui/dialog';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
 
 interface SendDocumentWhatsAppDialogProps {
@@ -60,7 +60,7 @@ export function SendDocumentWhatsAppDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display text-cream-900">{title}</AlertDialogTitle>
           <AlertDialogDescription className="text-cream-700">
-            This sends a buyer-facing WhatsApp message with a link to view the document.
+            This sends a WhatsApp message to the customer with a link to view the document.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <DialogBody className="space-y-4">
@@ -85,7 +85,7 @@ export function SendDocumentWhatsAppDialog({
             </div>
             <div>
               <span className="text-cream-600">Amount: </span>
-              {formatCompactInr(amount)}
+              {formatNumberValue(amount, 'CURRENCY_EXACT')}
             </div>
             <div>
               <span className="text-cream-600">Item count: </span>

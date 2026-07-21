@@ -3,7 +3,7 @@
 import { Package } from 'lucide-react';
 import { StatusTag } from '@/components/seller/layout';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
-import { formatCurrency } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SalesOrderDetail } from '@/types/tenant-sales-orders';
 
 interface SalesOrderInvoiceSectionProps {
@@ -83,7 +83,7 @@ export function SalesOrderInvoiceSection({
       <div className="border-t border-cream-100 px-5 pb-5 pt-3">
         <div className="flex justify-between text-base text-cream-800">
           <span>Taxable value</span>
-          <span className="font-mono">{formatCurrency(subtotal)}</span>
+          <span className="font-mono">{formatNumberValue(subtotal, 'CURRENCY_EXACT')}</span>
         </div>
         {gstInclusive ? (
           <div className="mt-1 flex justify-between text-base text-cream-800">
@@ -93,12 +93,12 @@ export function SalesOrderInvoiceSection({
         ) : (
           <div className="mt-1 flex justify-between text-base text-cream-800">
             <span>GST</span>
-            <span className="font-mono">{formatCurrency(tax || Math.round(subtotal * (gstRate / 100)))}</span>
+            <span className="font-mono">{formatNumberValue(tax || Math.round(subtotal * (gstRate / 100)), 'CURRENCY_EXACT')}</span>
           </div>
         )}
         <div className="mt-2 flex justify-between font-display text-lg font-semibold text-cream-950">
           <span>Invoice total</span>
-          <span>{formatCurrency(total)}</span>
+          <span>{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
         </div>
       </div>
       {!inv ? (

@@ -117,7 +117,7 @@ describe('cohorts landing page', () => {
     });
 
     render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getByText('12.0%')).toBeInTheDocument();
+    expect(screen.getByText('12.00%')).toBeInTheDocument();
   });
 
   it('filters customer groups by selected brand', () => {

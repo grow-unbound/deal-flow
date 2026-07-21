@@ -34,6 +34,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import {
   useCancelSalesOrder,
   useDeliverSalesOrder,
@@ -47,7 +49,7 @@ import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { mapSalesOrderDetailToComposerLines, formatEstimateChipLabel } from '@/lib/sales-orders/tenant-order-detail';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -80,10 +82,17 @@ function formatPlacedAt(iso: string | null): string {
 export function SalesOrderDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
   const { createInvoices } = useCreateFlags();
   const { data, isLoading, isError, error } = useSalesOrderDetail(id);
+  useDocumentWhatsAppRealtime({
+    kind: 'order',
+    documentId: id,
+    tenantId: currentTenantId,
+    enabled: Boolean(data),
+  });
   const dispatchMut = useDispatchSalesOrder(id);
   const deliverMut = useDeliverSalesOrder(id);
   const cancelMut = useCancelSalesOrder(id);
@@ -204,7 +213,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const showSend = ui === 'received' || ui === 'confirmed' || ui === 'dispatched';
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
-  const creditWarning = buyer && overLimitBy > 0 ? `Over limit by ${formatCompactInr(overLimitBy)}.` : null;
+  const creditWarning = buyer && overLimitBy > 0 ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}.` : null;
   const isInterState = Boolean(
     buyer?.seller_state
     && buyer?.place_of_supply

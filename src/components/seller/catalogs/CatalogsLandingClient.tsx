@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useTenantCatalogs, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
@@ -253,7 +253,7 @@ function CatalogsLandingContent({
           },
           {
             label: `Campaign-linked demand value · ${metricSuffix}`,
-            value: formatCompactInr(landingData.kpis.gmv_mtd),
+            value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
             sub: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd} linked ${primaryDemandNoun}`,
             tone: 'accent',
           },
@@ -293,7 +293,7 @@ function CatalogsLandingContent({
               hue: catalog.hue,
               name: catalog.name,
               reason: `${catalog.views} opened · ${catalog.view_pct}% open rate · 0 ${primaryDemandNoun}`,
-              trailing: formatCompactInr(catalog.gmv),
+              trailing: formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD'),
             })),
             getHref: (row) => `/campaigns/${row.id}`,
           },
@@ -386,7 +386,7 @@ function CatalogsLandingContent({
                 </td>
               ) : null}
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {catalog.gmv > 0 ? formatCompactInr(catalog.gmv) : '—'}
+                {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
               </td>
               <td className="px-5 py-3.5 text-right">
                 <div className="space-y-1">
