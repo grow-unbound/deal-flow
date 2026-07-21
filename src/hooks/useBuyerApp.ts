@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api-fetch';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { REFERENCE_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 import type { MetricsV2DashboardPortfolio } from '@/types/seller-dashboard';
 
@@ -93,7 +93,7 @@ export function useBuyerAppLanding(
       return res.json() as Promise<BuyerAppLandingResponse>;
     },
     initialData: initialData ?? undefined,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 }

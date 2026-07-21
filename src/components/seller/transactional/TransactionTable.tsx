@@ -1,10 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { EntityAvatar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
+import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
+import { prefetchEstimateComposer } from '@/hooks/useEstimates';
+import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
+import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 
 export type TransactionTableKind = 'estimate' | 'order' | 'invoice';
@@ -125,7 +130,14 @@ export function TransactionTable({
   onRowClick,
 }: TransactionTableProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const prefetchOnPress = usePointerPrefetch();
   const columns = columnWidths(kind, showCampaignColumn);
+  const composerPrefetchFor = (id: string) => {
+    if (kind === 'estimate') return () => prefetchEstimateComposer(queryClient, id);
+    if (kind === 'order') return () => prefetchSalesOrderComposer(queryClient, id);
+    return () => prefetchInvoiceComposer(queryClient, id);
+  };
 
   return (
     <LandingTable
@@ -144,6 +156,8 @@ export function TransactionTable({
             key={row.id}
             className={cn('cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50', rowClassName)}
             onClick={() => click(row)}
+            onPointerDown={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
+            onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
             <td className="px-5 py-3.5">
               <div className="min-w-0">

@@ -4,9 +4,7 @@ import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import type { BuyerActivityFeedResponse } from '@/lib/buyer-home-types';
 import { PAGE_SIZE } from '@/lib/pagination';
-
-const BUYER_QUERY_STALE_TIME = 30_000;
-const BUYER_QUERY_GC_TIME = 2 * 60_000;
+import { BUYER_QUERY_STALE_TIME, BUYER_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export function useBuyerActivityInfinite() {
   return useInfiniteQuery({
