@@ -172,7 +172,7 @@ function CatalogSearchResults({
   query: string;
   loadingMore?: boolean;
   sentinelIndex?: number;
-  sentinelRef?: React.RefObject<HTMLDivElement>;
+  sentinelRef?: React.RefObject<HTMLDivElement | null>;
 }): React.ReactNode {
   if (loading) {
     return (

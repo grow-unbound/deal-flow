@@ -31,7 +31,7 @@ function useChipScrollIntoView(
   kind: BuyerEntityChipNavProps['kind'],
   mode: ChipNavMode,
   selectedId: string | null,
-): React.RefObject<HTMLDivElement> {
+): React.RefObject<HTMLDivElement | null> {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const restoredRef = React.useRef(false);
 
