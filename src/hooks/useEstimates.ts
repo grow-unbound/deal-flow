@@ -11,7 +11,12 @@ import {
 } from '@/lib/documents/document-detail-cache-patches';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import {
+  NAVIGATION_QUERY_GC_TIME,
+  NAVIGATION_QUERY_STALE_TIME,
+  BUYER_QUERY_STALE_TIME,
+  BUYER_QUERY_GC_TIME,
+} from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import { useDebounce } from '@/hooks/useDebounce';
 import type {
@@ -593,9 +598,6 @@ export interface BuyerEstimatesPage {
   nextCursor: string | null;
   total: number | null;
 }
-
-const BUYER_QUERY_STALE_TIME = 30_000;
-const BUYER_QUERY_GC_TIME = 2 * 60_000;
 
 export function useBuyerEstimatesInfinite() {
   return useInfiniteQuery({

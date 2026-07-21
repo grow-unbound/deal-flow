@@ -6,7 +6,7 @@ import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
@@ -651,6 +651,7 @@ export function useTenantProductCategories() {
       const data = await res.json() as { categories: string[] };
       return data.categories ?? [];
     },
-    staleTime: 60_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 }
