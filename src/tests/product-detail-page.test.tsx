@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 describe('product-detail-page integration guardrails', () => {
   it('keeps EP-14-003 tab set contract', () => {
-    const tabs = ['Details', 'Performance', 'Pricing & cohorts', 'Activity'];
-    expect(tabs).toHaveLength(4);
+    const tabs = ['Details', 'Performance', 'Pricing & cohorts'];
+    expect(tabs).toHaveLength(3);
     expect(tabs).not.toContain('Stock');
   });
 

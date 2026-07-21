@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
+import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 // ─── Landing types ────────────────────────────────────────────────────────────
 
@@ -117,7 +118,8 @@ export function useCategoryLanding(
     enabled: !!session,
     initialData: initialData ? { pages: [initialData], pageParams: [0] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
-    staleTime: 60_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: keepPreviousData,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'rows');
@@ -236,6 +238,7 @@ export function useCategoryDetail(id: string) {
       return json.data;
     },
     enabled: !!session && !!id,
-    staleTime: 30_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 }

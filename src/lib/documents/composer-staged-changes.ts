@@ -1,4 +1,4 @@
-import { formatInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerDocument, EstimateComposerTotals } from '@/types/estimate-composer';
 import type { InvoiceComposerDocument } from '@/types/invoice-composer';
 import type { SalesOrderComposerDocument } from '@/types/sales-order-composer';
@@ -145,17 +145,17 @@ export function buildComposerStagedChanges(args: {
   }
 
   if (originalDoc.freight !== currentDoc.freight) {
-    rows.push({ label: 'Freight & packing', value: formatInr(currentDoc.freight) });
+    rows.push({ label: 'Freight & packing', value: formatNumberValue(currentDoc.freight, 'CURRENCY_EXACT') });
   }
   if (originalDoc.discountFlat !== currentDoc.discountFlat) {
-    rows.push({ label: 'Document discount', value: formatInr(currentDoc.discountFlat) });
+    rows.push({ label: 'Document discount', value: formatNumberValue(currentDoc.discountFlat, 'CURRENCY_EXACT') });
   }
   if (originalDoc.roundOff !== currentDoc.roundOff) {
-    rows.push({ label: 'Round-off', value: formatInr(currentDoc.roundOff) });
+    rows.push({ label: 'Round-off', value: formatNumberValue(currentDoc.roundOff, 'CURRENCY_EXACT') });
   }
 
   if (Math.abs(originalTotals.grand_total - currentTotals.grand_total) > 0.005) {
-    rows.push({ label: 'Grand total', value: formatInr(currentTotals.grand_total) });
+    rows.push({ label: 'Grand total', value: formatNumberValue(currentTotals.grand_total, 'CURRENCY_EXACT') });
   }
 
   return rows.length > 0 ? rows : undefined;

@@ -21,7 +21,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn, formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
@@ -65,7 +65,7 @@ function mapNeedsCallRows(callouts: CustomersLandingResponse['callouts'] | undef
         {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
       </>
     ),
-    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
+    trailing: <span className="font-mono text-base tabular">{formatNumberValue(buyer.dues, 'CURRENCY_EXACT')}</span>,
   }));
 }
 
@@ -81,7 +81,7 @@ function mapWinBackRows(callouts: CustomersLandingResponse['callouts'] | undefin
         {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
       </>
     ),
-    trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
+    trailing: <span className="font-mono text-base tabular">{formatNumberValue(buyer.prior_value, 'CURRENCY_EXACT')}</span>,
   }));
 }
 
@@ -329,19 +329,19 @@ function CustomersLandingContent({
           },
           {
             label: `Invoiced sales · ${metricSuffix}`,
-            value: formatMetricValue('sales', kpis?.spend_mtd ?? 0),
+            value: formatNumberValue(kpis?.spend_mtd ?? 0, 'CURRENCY_THRESHOLD'),
             sub: `${kpis?.invoiced_customer_count ?? 0} customers`,
             tone: 'accent',
           },
           {
             label: 'Inactive customers last 90 days',
             value: String(kpis?.dormant_over_30d ?? 0),
-            sub: `${formatMetricValue('sales', kpis?.dormant_prior_year_value ?? 0)} previous sales`,
+            sub: `${formatNumberValue(kpis?.dormant_prior_year_value ?? 0, 'CURRENCY_THRESHOLD')} previous sales`,
             tone: 'warn',
           },
           {
             label: 'Overdue amount',
-            value: formatMetricValue('sales', kpis?.overdue_sum ?? 0),
+            value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
             sub: `${kpis?.overdue_customer_count ?? 0} customers`,
           },
         ]}
@@ -460,15 +460,15 @@ function CustomersLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatMetricValue('sales', buyer.spend_mtd)}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
               <td className="px-5 py-3.5 text-right text-md font-medium tabular-nums text-cream-800">
-                <span className="tabular-inline">{formatMetricValue('sales', buyer.dues)}</span>
+                <span className="tabular-inline">{formatNumberValue(buyer.dues, 'CURRENCY_THRESHOLD')}</span>
               </td>
               <td className="px-5 py-3.5 text-right text-sm text-cream-800">
                 <div className="flex flex-col items-end">
                   <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
-                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatMetricValue('sales', buyer.overdue_amount) : '-'}
+                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatNumberValue(buyer.overdue_amount, 'CURRENCY_THRESHOLD') : '-'}
                   </span>
                   {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
                 </div>
@@ -483,7 +483,7 @@ function CustomersLandingContent({
                     />
                   </div>
                   <span className="text-xs text-cream-700">
-                    <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
+                    <span className="tabular-inline">{formatNumberValue(buyer.credit_used, 'CURRENCY_EXACT')}</span> / <span className="tabular-inline">{formatNumberValue(buyer.credit_limit, 'CURRENCY_EXACT')}</span>
                   </span>
                 </div>
               </td>

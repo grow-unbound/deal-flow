@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { REFERENCE_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
 import { buildCohortRulesSummary, type CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
@@ -287,8 +287,8 @@ export function useCohortsLanding(
     initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'cohorts');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
@@ -312,8 +312,8 @@ export function useTenantCohortOptions(enabled = true) {
       }));
     },
     enabled,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: (previous) => previous,
   });
 }
@@ -329,8 +329,8 @@ export function useCohortDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }
@@ -345,8 +345,8 @@ export function useCohortComposerData() {
       }
       return res.json();
     },
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: (previous) => previous,
   });
 }
@@ -380,7 +380,7 @@ export function useCohortComposerBuyers({
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 30_000,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }
@@ -396,8 +396,8 @@ export function useCohortMembers(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }

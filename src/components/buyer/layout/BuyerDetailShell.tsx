@@ -68,7 +68,7 @@ export function BuyerDetailShell({
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--fg-2)] transition-colors active:bg-[var(--cream-100)]"
             aria-label="Back"
           >
             <ChevronLeft className="h-5 w-5" />

@@ -162,7 +162,7 @@ function toMappedRow(kind: TransactionTableKind, buyerName: string, routeBase: s
     items_count: row.items_count,
     total_amount: row.total_amount,
     outstanding_amount: kind === 'invoice' ? row.outstanding_amount : null,
-    amount_subtext: kind === 'invoice' && row.outstanding_amount > 0 ? 'Outstanding balance' : null,
+    amount_subtext: '',
     status_label: titleCase(row.status),
     status_tone: statusTone(kind, row.status),
     created_at: row.placed_at ?? row.created_at ?? null,

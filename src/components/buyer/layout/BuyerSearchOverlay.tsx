@@ -1,10 +1,11 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Search, Package, Receipt, FileText, ClipboardList } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 interface BuyerSearchItem {
   id: string;
@@ -305,7 +306,7 @@ export function BuyerSearchOverlay() {
                 </div>
                 {item.meta && (
                   <span style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-700)', flexShrink: 0 }}>
-                    {formatBuyerCurrency(Number(item.meta))}
+                    {formatNumberValue(Number(item.meta), 'CURRENCY_EXACT')}
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-400)', background: 'var(--cream-100)', padding: '2px 8px', borderRadius: 100, flexShrink: 0 }}>

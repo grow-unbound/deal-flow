@@ -74,6 +74,8 @@ vi.mock('@/lib/supabase', () => {
     invoices: [
       { id: 'invoice-1', location_id: 'loc-1', buyer_id: 'buyer-1', invoice_number: 'INV-1', status: 'sent', total_amount: 400, outstanding_balance: 200, invoice_date: '2026-07-03T00:00:00.000Z', due_date: '2026-07-04T00:00:00.000Z', created_at: '2026-07-03T00:00:00.000Z', updated_at: '2026-07-03T01:00:00.000Z' },
       { id: 'invoice-2', location_id: 'loc-2', buyer_id: 'buyer-2', invoice_number: 'INV-2', status: 'paid', total_amount: 600, outstanding_balance: 0, invoice_date: '2026-07-02T00:00:00.000Z', due_date: '2026-07-03T00:00:00.000Z', created_at: '2026-07-02T00:00:00.000Z', updated_at: '2026-07-02T01:00:00.000Z' },
+      { id: 'invoice-4', location_id: 'loc-2', buyer_id: 'buyer-2', invoice_number: 'INV-4', status: 'partially_paid', total_amount: 300, outstanding_balance: 120, invoice_date: '2026-07-02T00:00:00.000Z', due_date: '2026-07-03T00:00:00.000Z', created_at: '2026-07-02T00:00:00.000Z', updated_at: '2026-07-02T02:00:00.000Z' },
+      { id: 'invoice-3', location_id: 'loc-2', buyer_id: 'buyer-ghost', invoice_number: 'INV-3', status: 'sent', total_amount: 950, outstanding_balance: 950, invoice_date: '2026-07-01T00:00:00.000Z', due_date: '2026-07-02T00:00:00.000Z', created_at: '2026-07-01T00:00:00.000Z', updated_at: '2026-07-01T01:00:00.000Z', buyers: { business_name: 'Ghost Stores' } },
     ],
     currentKpis: [{ orders_count: 9, gmv: 50000 }],
     previousKpis: [{ orders_count: 4, gmv: 20000 }],
@@ -167,7 +169,7 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: {
       schema: vi.fn(() => ({
         from: vi.fn((table: string) => new QueryBuilder(table)),
-        rpc: vi.fn((fnName: string) => {
+        rpc: vi.fn(function (fnName: string, args?: { p_location_ids?: string[] | null }) {
           if (fnName === 'get_metrics_v2_seller_dashboard') {
             return Promise.resolve({
               data: {
@@ -189,6 +191,43 @@ vi.mock('@/lib/supabase', () => {
                 explore: [
                   { id: 'location_comparison', label: 'Location comparison', time_basis: '90D', feasibility: 'REWORK', available: true, meta: { locations: [] } },
                 ],
+              },
+              error: null,
+            });
+          }
+          if (fnName === 'metrics_v2_transaction_landing') {
+            const locationScoped = Array.isArray(args?.p_location_ids) && args.p_location_ids.length > 0;
+            return Promise.resolve({
+              data: {
+                kpis: locationScoped
+                  ? {
+                      invoices_this_period: 1,
+                      invoices_prev_period: 0,
+                      invoices_growth_pct: 100,
+                      gmv_this_period: 400,
+                      gmv_prev_period: 0,
+                      aov: 400,
+                      overdue_count: 1,
+                      overdue_sum: 200,
+                      overdue_customer_count: 1,
+                      outstanding_count: 1,
+                      outstanding_sum: 200,
+                      outstanding_customer_count: 1,
+                    }
+                  : {
+                      invoices_this_period: 3,
+                      invoices_prev_period: 0,
+                      invoices_growth_pct: 100,
+                      gmv_this_period: 1650,
+                      gmv_prev_period: 0,
+                      aov: 550,
+                      overdue_count: 3,
+                      overdue_sum: 1270,
+                      overdue_customer_count: 3,
+                      outstanding_count: 3,
+                      outstanding_sum: 1270,
+                      outstanding_customer_count: 3,
+                    },
               },
               error: null,
             });
@@ -235,7 +274,11 @@ describe('seller dashboard aggregation', () => {
     expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · This month');
     expect(dashboard.admin?.metrics[0]?.value).toBe(1500);
     expect(dashboard.admin?.metrics[1]?.value).toBe(800);
+    expect(dashboard.admin?.metrics[2]?.value).toBe(1270);
+    expect(dashboard.admin?.metrics[2]?.sub).toBe('3 customers');
     expect(dashboard.admin?.callouts[0]?.rows?.[0]?.name).toBe('Legacy Retail');
+    expect(dashboard.admin?.callouts[1]?.rows?.map((row) => row.name)).toContain('B Two Retail');
+    expect(dashboard.admin?.callouts[1]?.rows?.[0]?.name).toBe('Ghost Stores');
     expect(dashboard.portfolio?.metrics.map((metric) => metric.id)).toContain('recently_sold_products_now_out_of_stock');
     expect(dashboard.portfolio?.explore.map((metric) => metric.id)).toContain('location_comparison');
     expect(dashboard.admin?.callouts[0]?.hint).toBe('3');
@@ -246,6 +289,7 @@ describe('seller dashboard aggregation', () => {
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_assistant', sub: 'assistant-1', location_ids: ['loc-1'] }, period);
 
     expect(dashboard.tenant.location_names).toEqual(['North Hub']);
+    expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Overdue invoices')?.value).toBe(1);
     expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Orders to confirm')?.value).toBe(1);
     expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Open estimates')?.value).toBe(1);
     expect(dashboard.assistant?.feeds.find((feed) => feed.id === 'sales_orders')?.rows.map((row) => row.document_number)).toEqual(['SO-1', 'SO-3']);

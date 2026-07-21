@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { EstimateSendChannel } from '@/types/estimate-composer';
 
 export function ModalSendDocument({
@@ -102,7 +102,7 @@ export function ModalSendDocument({
               />
             </div>
             <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
-              Buyer sees {lineCount} lines totaling {formatCompactInr(grandTotal)}.
+              Buyer sees {lineCount} lines totaling {formatNumberValue(grandTotal, 'CURRENCY_EXACT')}.
             </div>
           </div>
         </DialogBody>

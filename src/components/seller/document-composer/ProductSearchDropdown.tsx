@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 
 import { EntityAvatar } from '@/components/seller/layout';
 import { useOverlayPlacement } from '@/hooks/useOverlayPlacement';
-import { cn, formatInr } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 
 export function ProductSearchDropdown({
@@ -165,8 +165,8 @@ export function ProductSearchDropdown({
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-cream-900">{row.product_name}</p>
                   <p className="truncate text-xs text-cream-600">
-                    {row.brand_name} · {row.sku} · MRP {formatInr(row.mrp)} · Base Price {formatInr(row.base_selling_price)}
-                    {row.unit_price !== row.base_selling_price ? ` · Price ${formatInr(row.unit_price)}` : ''}
+                    {row.brand_name} · {row.sku} · MRP {formatNumberValue(row.mrp, 'CURRENCY_EXACT')} · Base Price {formatNumberValue(row.base_selling_price, 'CURRENCY_EXACT')}
+                    {row.unit_price !== row.base_selling_price ? ` · Price ${formatNumberValue(row.unit_price, 'CURRENCY_EXACT')}` : ''}
                   </p>
                 </div>
               </button>

@@ -30,10 +30,11 @@ export function BuyerRealtimeProvider({ children }: { children: React.ReactNode 
 
   const [buyerCohortIds] = React.useState<string[]>([]);
 
-  const { notifications, add, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
+  const { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
 
   const handleNew = useCallback((n: AppNotification) => {
-    add(n);
+    const added = add(n);
+    if (!added) return;
     toast.info(n.title, {
       description: n.body,
       action: { label: 'View', onClick: () => { window.location.href = n.href; } },
@@ -50,6 +51,7 @@ export function BuyerRealtimeProvider({ children }: { children: React.ReactNode 
     buyerId,
     buyerCohortIds,
     onNew: handleNew,
+    onPatch: patchByEntityId,
     onRefresh: handleRefresh,
   });
 

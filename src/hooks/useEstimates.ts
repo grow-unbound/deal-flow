@@ -5,9 +5,18 @@ import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousDa
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import {
+  patchEstimateComposerSentOptimistic,
+  patchEstimateSentOptimistic,
+} from '@/lib/documents/document-detail-cache-patches';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import {
+  NAVIGATION_QUERY_GC_TIME,
+  NAVIGATION_QUERY_STALE_TIME,
+  BUYER_QUERY_STALE_TIME,
+  BUYER_QUERY_GC_TIME,
+} from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import { useDebounce } from '@/hooks/useDebounce';
 import type {
@@ -20,6 +29,33 @@ import type {
 } from '@/types/estimate-composer';
 import type { TenantEstimateDetailResponse } from '@/types/tenant-estimate-detail';
 import type { TenantEstimatesResponse } from '@/types/tenant-estimates';
+import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
+
+function applyEstimateSentOptimistic(
+  qc: QueryClient,
+  estimateId: string,
+  channel: EstimateSendChannel,
+) {
+  const sentAt = new Date().toISOString();
+  const composerPrev = qc.getQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId]);
+  const detailPrev = qc.getQueryData<TenantEstimateDetailResponse>(['tenant-estimate-detail', estimateId]);
+
+  if (composerPrev) {
+    qc.setQueryData<EstimateComposerDocument>(
+      ['tenant-estimate-composer', estimateId],
+      patchEstimateComposerSentOptimistic(composerPrev, channel, sentAt),
+    );
+  }
+
+  if (detailPrev) {
+    qc.setQueryData<TenantEstimateDetailResponse>(
+      ['tenant-estimate-detail', estimateId],
+      patchEstimateSentOptimistic(detailPrev, channel, sentAt),
+    );
+  }
+
+  return { composerPrev, detailPrev };
+}
 
 export type {
   EstimateAvatarHue,
@@ -85,7 +121,7 @@ export function useTenantEstimatesInfinite(
 }
 
 async function fetchTenantEstimateDetail(estimateId: string, view: 'detail' | 'composer' = 'detail'): Promise<TenantEstimateDetailResponse> {
-  const res = await apiFetch(`/api/tenant/estimates/${estimateId}?view=${view}`);
+  const res = await apiFetch(`/api/tenant/estimates/${estimateId}?view=${view}`, { fresh: true });
   if (res.status === 404) throw new Error('not_found');
   if (res.status === 403) throw new Error('forbidden');
   if (!res.ok) throw new Error('Failed to fetch estimate');
@@ -317,31 +353,27 @@ export function useSendEstimate(estimateId: string | null) {
     },
     onMutate: async (payload) => {
       if (!estimateId) return {};
-      await qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
-      const prev = qc.getQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId]);
-      const sentAt = new Date().toISOString();
-      if (prev) {
-        qc.setQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId], {
-          ...prev,
-          status: 'sent',
-          sent_at: sentAt,
-          sent_channel: payload.channel,
-        });
-      }
-      return { prev };
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] }),
+        qc.cancelQueries({ queryKey: ['tenant-estimate-detail', estimateId] }),
+      ]);
+      const { composerPrev, detailPrev } = applyEstimateSentOptimistic(qc, estimateId, payload.channel);
+      return { composerPrev, detailPrev };
     },
     onError: (e, _p, ctx) => {
-      if (estimateId && ctx?.prev) {
-        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prev);
+      if (estimateId && ctx?.composerPrev) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.composerPrev);
+      }
+      if (estimateId && ctx?.detailPrev) {
+        qc.setQueryData(['tenant-estimate-detail', estimateId], ctx.detailPrev);
       }
       toast.error(e instanceof Error ? e.message : 'Failed to send estimate');
     },
     onSuccess: () => {
       toast.success('Estimate sent');
       if (!estimateId) return;
-      void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
-      void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates-infinite'] });
     },
   });
 }
@@ -357,15 +389,49 @@ export function useSendEstimateDetailWhatsApp(estimateId: string) {
       }
       return (await res.json()) as { data: { id: string } };
     },
-    onError: (e) => {
+    onMutate: async () => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['tenant-estimate-detail', estimateId] }),
+        qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] }),
+      ]);
+      return applyEstimateSentOptimistic(qc, estimateId, 'whatsapp');
+    },
+    onError: (e, _p, ctx) => {
+      if (ctx?.composerPrev) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.composerPrev);
+      }
+      if (ctx?.detailPrev) {
+        qc.setQueryData(['tenant-estimate-detail', estimateId], ctx.detailPrev);
+      }
       toast.error(e instanceof Error ? e.message : 'Failed to send estimate');
     },
     onSuccess: () => {
       toast.success('Estimate sent');
-      void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
-      void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates-infinite'] });
     },
+  });
+}
+
+export function useBuyerDocumentSendState(
+  buyerId: string | null,
+  kind: 'estimate' | 'invoice',
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ['buyer-document-send', kind, buyerId],
+    queryFn: async (): Promise<WhatsAppDocumentSendState> => {
+      const res = await apiFetch(`/api/tenant/buyers/${buyerId}/document-send?kind=${kind}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to load WhatsApp send state');
+      }
+      const json = (await res.json()) as { data: WhatsAppDocumentSendState };
+      return json.data;
+    },
+    enabled: Boolean(buyerId) && (options?.enabled ?? true),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 
@@ -532,9 +598,6 @@ export interface BuyerEstimatesPage {
   nextCursor: string | null;
   total: number | null;
 }
-
-const BUYER_QUERY_STALE_TIME = 30_000;
-const BUYER_QUERY_GC_TIME = 2 * 60_000;
 
 export function useBuyerEstimatesInfinite() {
   return useInfiniteQuery({

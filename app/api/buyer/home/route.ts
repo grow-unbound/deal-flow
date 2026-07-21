@@ -8,6 +8,7 @@ import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
+import { hasInvoiceReceivableExposure } from '@/lib/invoice-status';
 
 const RECENT_ORDER_PREVIEW_LIMIT = 20;
 const ORDER_AGAIN_PREVIEW_LIMIT = 5;
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       supabaseAdmin
         .schema('app')
         .from('invoices')
-        .select('id, invoice_date, total_amount, outstanding_balance, due_date')
+        .select('id, invoice_date, total_amount, outstanding_balance, due_date, status')
         .eq('tenant_id', tenantId)
         .eq('buyer_id', buyerId)
         .is('deleted_at', null)
@@ -160,6 +161,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       total_amount: number | null;
       outstanding_balance: number | null;
       due_date: string | null;
+      status: string | null;
     }>;
 
     const gmvMtd = financialInvoices
@@ -194,7 +196,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     // Open invoices within the fetched window are a lower bound only (the window
     // is ~12-13 months); the snapshot's oldest_due_at is the authoritative
     // all-time value and takes priority when present.
-    const openInvoiceRows = financialInvoices.filter((row) => Number(row.outstanding_balance ?? 0) > 0);
+    const openInvoiceRows = financialInvoices.filter((row) => hasInvoiceReceivableExposure({
+      status: String(row.status ?? ''),
+      outstanding_balance: row.outstanding_balance,
+    }));
     const earliestDueDateFromWindow = openInvoiceRows
       .map((row) => row.due_date)
       .filter((value): value is string => Boolean(value))

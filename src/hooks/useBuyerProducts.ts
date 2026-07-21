@@ -13,6 +13,7 @@ import type {
   BuyerResolvedProductsResponse,
 } from '@/types/buyer';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
+import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 type FilterMode = 'category' | 'brand' | 'list';
 
@@ -48,6 +49,8 @@ export function useBuyerCategories() {
       const body = await fetchJson<{ categories?: BuyerCategory[] }>('/api/buyer/categories');
       return body.categories ?? [];
     },
+    staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
+    gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
 }
 
@@ -60,6 +63,8 @@ export function useBuyerBrands() {
       const body = await fetchJson<{ brands?: BuyerBrand[] }>('/api/buyer/brands');
       return body.brands ?? [];
     },
+    staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
+    gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
 }
 
@@ -72,6 +77,8 @@ export function useBuyerCatalogs() {
       const body = await fetchJson<{ catalogs?: BuyerCatalogSummary[] }>('/api/buyer/catalogs');
       return body.catalogs ?? [];
     },
+    staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
+    gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
 }
 

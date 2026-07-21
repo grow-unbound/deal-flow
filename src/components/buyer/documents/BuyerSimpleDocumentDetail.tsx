@@ -1,11 +1,12 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import * as React from 'react';
 
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
 import { apiFetch } from '@/lib/api-fetch';
-import { BUYER_CARD_RADIUS_CLASS, formatBuyerCurrency } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -59,7 +60,7 @@ export function BuyerSimpleDocumentDetail<TDocument>({
   }, [endpoint, id]);
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell title={title}>
         {loading ? (
           <div className="space-y-3 px-4 py-4">
@@ -99,7 +100,7 @@ export function BuyerDocumentStat({ label, value, sub }: { label: string; value:
 }
 
 export function BuyerAmount(value: number): string {
-  return formatBuyerCurrency(value);
+  return formatNumberValue(value, 'CURRENCY_EXACT');
 }
 
 export function BuyerDate(value: string | null | undefined): string {

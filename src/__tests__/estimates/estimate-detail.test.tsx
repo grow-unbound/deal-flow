@@ -194,6 +194,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
     expect(screen.queryByRole('button', { name: /convert to so/i })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
   it('sent shows Sent chip in title row', () => {

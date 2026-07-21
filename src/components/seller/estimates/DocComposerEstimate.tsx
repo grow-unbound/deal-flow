@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, Eye, FileText, Loader2, Mail, MessageCircle, Send, Trash2, X } from 'lucide-react';
+import { FileText, Loader2, Send, Trash2, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,6 +34,7 @@ import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
 import {
+  useBuyerDocumentSendState,
   useBuyerEstimateContext,
   useEstimateComposer,
   useEstimatePriceListOptions,
@@ -41,27 +42,19 @@ import {
   useEstimateProductPricing,
   useEstimateProductSearch,
   useSaveEstimateComposer,
-  useSendEstimate,
 } from '@/hooks/useEstimates';
+import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
-import { Input } from '@/components/ui/input';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
+import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '@/lib/composer-session-draft';
 import type { 
   EstimateComposerBuyerContext,
   EstimateComposerDocument,
   EstimateComposerProductSearchRow,
   EstimateComposerSavePayload,
-  EstimateSendChannel,
 } from '@/types/estimate-composer';
+import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
 import { bumpSecondDateAfterFirst } from '@/lib/date-utils';
 import {
   buildComposerStagedChanges,
@@ -73,9 +66,21 @@ import {
 } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
 import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 const BASE_PRICING_OPTION = '__base__';
+
+const WHATSAPP_SEND_UNAVAILABLE: WhatsAppDocumentSendState = {
+  can_send: false,
+  block_reason: 'unavailable',
+  block_message: null,
+  credits_balance: 0,
+  required_credits: 1,
+  recipient_phone: null,
+  template_name: 'request_update_buyer',
+  seller_name: null,
+  seller_phone_display: null,
+};
 
 function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): EstimateComposerDocument {
   return {
@@ -198,19 +203,21 @@ export function DocComposerEstimate({
   const { data, isLoading, isError, error } = useEstimateComposer(workingId);
   const nextEstimateNumberQuery = useNextEstimateNumber(mode === 'create' && !estimateId);
 
-  const [documentState, setDocumentState] = useState<EstimateComposerDocument | null>(() => (
-    mode === 'create' && !estimateId ? buildNewEstimateDraft() : null
-  ));
-  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>([]);
+  const [documentState, setDocumentState] = useState<EstimateComposerDocument | null>(() => {
+    if (mode !== 'create' || estimateId) return null;
+    return loadComposerDraft<EstimateComposerDocument, EstimateComposerLineRow>('estimate')?.document
+      ?? buildNewEstimateDraft();
+  });
+  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>(() => {
+    if (mode !== 'create' || estimateId) return [];
+    return loadComposerDraft<EstimateComposerDocument, EstimateComposerLineRow>('estimate')?.lines ?? [];
+  });
   const [buyerQuery, setBuyerQuery] = useState('');
   const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [paymentTermsLabel, setPaymentTermsLabel] = useState('Not defined');
   const [sendOpen, setSendOpen] = useState(false);
-  const [sendChannel, setSendChannel] = useState<EstimateSendChannel>('whatsapp');
-  const [sendRecipient, setSendRecipient] = useState('');
-  const [sendMessage, setSendMessage] = useState('Please review this estimate.');
   const [autoSaveMeta, setAutoSaveMeta] = useState<{ label: string; tone: 'draft' | 'saved' | 'warning' }>({
     label: mode === 'create' ? 'Not saved yet' : 'Ready to save',
     tone: 'draft',
@@ -225,8 +232,11 @@ export function DocComposerEstimate({
   const salesAgentPinnedRef = useRef<string | null>(null);
 
   const saveMutation = useSaveEstimateComposer(workingId);
-  const sendMutation = useSendEstimate(workingId);
   const buyerContextQuery = useBuyerEstimateContext(documentState?.buyer_id ?? null);
+  const composerBuyerMatches = data?.buyer_id === documentState?.buyer_id;
+  const buyerSendStateQuery = useBuyerDocumentSendState(documentState?.buyer_id ?? null, 'estimate', {
+    enabled: Boolean(documentState?.buyer_id) && (!composerBuyerMatches || !data?.whatsapp_send),
+  });
   const productSearchQuery = useEstimateProductSearch(productQuery, documentState?.buyer_id ?? null, searchOpen, selectedPriceListId);
   const buyerPickerQuery = useDocumentBuyerPicker(buyerQuery, buyerSearchOpen);
   const priceListOptionsQuery = useEstimatePriceListOptions(Boolean(documentState));
@@ -277,7 +287,6 @@ export function DocComposerEstimate({
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
-    setSendRecipient(data.buyer_context?.phone ?? data.buyer_context?.email ?? '');
     setSelectedPriceListId(data.buyer_context?.active_pricelist?.id ?? null);
     originalDocumentRef.current = data;
     originalLinesRef.current = mappedLines;
@@ -307,18 +316,22 @@ export function DocComposerEstimate({
       return;
     }
 
-    setDocumentState((current) => current ? ({
-      ...current,
-      buyer_context: {
-        ...nextContext,
-        sales_agent_name:
-          mode === 'edit'
-            ? (salesAgentPinnedRef.current ?? nextContext.sales_agent_name)
-            : (user?.displayName ?? nextContext.sales_agent_name),
-      },
-    }) : current);
+    setDocumentState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        // Auto-populate from buyer's state when the field is still blank
+        place_of_supply: current.place_of_supply || nextContext.place_of_supply || '',
+        buyer_context: {
+          ...nextContext,
+          sales_agent_name:
+            mode === 'edit'
+              ? (salesAgentPinnedRef.current ?? nextContext.sales_agent_name)
+              : (user?.displayName ?? nextContext.sales_agent_name),
+        },
+      };
+    });
     setPaymentTermsLabel(defaultPaymentTerms(nextContext.payment_terms_days));
-    setSendRecipient(nextContext.phone ?? nextContext.email ?? '');
     setSelectedPriceListId((current) => current ?? nextContext.active_pricelist?.id ?? null);
   }, [buyerContextQuery.data, documentState, mode, user?.displayName]);
 
@@ -405,8 +418,15 @@ export function DocComposerEstimate({
     : (documentState?.available_locations ?? []);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
-    onConfirmClose: () => router.push(closeTarget),
+    onConfirmClose: () => { clearComposerDraft('estimate'); router.push(closeTarget); },
   });
+
+  // Persist in-progress draft to sessionStorage while no DB record exists yet.
+  // Cleared when the user explicitly saves (which creates the DB record) or discards.
+  useEffect(() => {
+    if (mode !== 'create' || workingId || !documentState) return;
+    saveComposerDraft('estimate', documentState, lineState);
+  }, [documentState, lineState, mode, workingId]);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -424,51 +444,33 @@ export function DocComposerEstimate({
       : { label: workingId ? 'Saved changes' : 'Not saved yet', tone: dirty ? 'warning' : 'saved' });
   }, [dirty, workingId]);
 
-  async function createDraftOnDemand(): Promise<EstimateComposerDocument> {
-    if (workingId && data) {
-      return data;
+async function saveDocumentNow(nextDocument: EstimateComposerDocument, nextLines: EstimateComposerLineRow[]) {
+    if (!workingId) {
+      // New estimate: POST with full payload so the INSERT is complete and the
+      // Zoho webhook fires against a record that already has buyer + line items.
+      const payload = toSavePayload(nextDocument, nextLines);
+      const res = await apiPost('/api/tenant/estimates', payload);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to create estimate');
+      }
+      const json = await res.json() as { data: EstimateComposerDocument };
+      const created = json.data;
+      qc.setQueryData(['tenant-estimate-composer', created.id], created);
+      clearComposerDraft('estimate');
+      if (!isLeavingRef.current) {
+        setWorkingId(created.id);
+      }
+      return created;
     }
 
-    const res = await apiPost('/api/tenant/estimates', {});
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error ?? 'Failed to create draft');
-    }
-    const json = await res.json() as { data: EstimateComposerDocument };
-    qc.setQueryData(['tenant-estimate-composer', json.data.id], json.data);
-    if (!isLeavingRef.current) {
-      setWorkingId(json.data.id);
-    }
-    return json.data;
-  }
-
-  async function saveDocumentNow(nextDocument: EstimateComposerDocument, nextLines: EstimateComposerLineRow[]) {
-    const created = !workingId ? await createDraftOnDemand() : null;
-    const targetId = workingId ?? created?.id ?? null;
-    if (!targetId) throw new Error('Missing estimate id');
-
-    const payload = toSavePayload({
-      ...nextDocument,
-      id: targetId,
-      estimate_number: created?.estimate_number ?? nextDocument.estimate_number,
-    }, nextLines);
-
-    if (workingId) {
-      return new Promise<EstimateComposerDocument>((resolve, reject) => {
-        saveMutation.mutate(payload, {
-          onSuccess: ({ data: saved }) => resolve(saved),
-          onError: (mutationError) => reject(mutationError),
-        });
+    const payload = toSavePayload(nextDocument, nextLines);
+    return new Promise<EstimateComposerDocument>((resolve, reject) => {
+      saveMutation.mutate(payload, {
+        onSuccess: ({ data: saved }) => resolve(saved),
+        onError: (mutationError) => reject(mutationError),
       });
-    }
-
-    const res = await apiPatch(`/api/tenant/estimates/${targetId}`, payload);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error ?? 'Failed to save estimate');
-    }
-    const json = await res.json() as { data: EstimateComposerDocument };
-    return json.data;
+    });
   }
 
   if (orderManagement === false || estimatesFlag === false) {
@@ -501,13 +503,16 @@ export function DocComposerEstimate({
     : !documentState.buyer_id || activeLines.length === 0;
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
-    ? `Over limit by ${formatCompactInr(overLimitBy)}. Estimate can still be sent — converting to SO needs approval.`
+    ? `Over limit by ${formatNumberValue(overLimitBy, 'CURRENCY_EXACT')}. Estimate can still be sent — converting to SO needs approval.`
     : null;
   const isInterState = Boolean(
     buyer?.seller_state
     && buyer?.place_of_supply
     && buyer.seller_state.toLowerCase() !== buyer.place_of_supply.toLowerCase(),
   );
+  const whatsappSend = composerBuyerMatches && data?.whatsapp_send
+    ? data.whatsapp_send
+    : buyerSendStateQuery.data ?? WHATSAPP_SEND_UNAVAILABLE;
 
   function setDocumentPatch(patch: Partial<EstimateComposerDocument>) {
     setDocumentState((current) => current ? { ...current, ...patch } : current);
@@ -614,36 +619,28 @@ export function DocComposerEstimate({
 
   async function handleSend() {
     if (!documentState || isLeavingRef.current) return;
-    const hadWorkingId = Boolean(workingId);
     beginLeaving('send');
     try {
       const saved = await saveDocumentNow(documentState, diffLines);
       const targetId = saved.id;
 
-      const sendPayload = {
-        channel: sendChannel,
-        recipient: sendRecipient,
-        message: sendMessage,
-      };
-
-      if (hadWorkingId) {
-        sendMutation.mutate(sendPayload, {
-          onSuccess: () => {
-            setSendOpen(false);
-            router.push(`/estimates/${targetId}`);
-          },
-          onError: () => {
-            resetLeaving();
-          },
-        });
-        return;
-      }
-
-      const res = await apiPatch(`/api/tenant/estimates/${targetId}/send`, sendPayload);
+      const res = await apiPatch(`/api/tenant/estimates/${targetId}/send`, {});
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error ?? 'Failed to send estimate');
       }
+
+      qc.setQueryData<EstimateComposerDocument>(['tenant-estimate-composer', targetId], {
+        ...saved,
+        status: saved.status === 'draft' ? 'sent' : saved.status,
+        sent_at: new Date().toISOString(),
+        sent_channel: 'whatsapp',
+      });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', targetId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', targetId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates-infinite'] });
+      toast.success('Estimate sent');
 
       setSendOpen(false);
       router.push(`/estimates/${targetId}`);
@@ -671,7 +668,7 @@ export function DocComposerEstimate({
           },
         ]}
         title={mode === 'edit' ? 'Edit estimate' : 'Add an estimate'}
-        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this estimate.'}
+        subtitle={buyer ? `${buyer.business_name}` : 'Pick a buyer to begin composing this estimate.'}
         status={
           mode === 'edit' && documentState.status === 'sent'
             ? { label: 'Editing live draft', tone: 'live' }
@@ -847,62 +844,23 @@ export function DocComposerEstimate({
         onDiscard={dirtyGuard.confirmDiscard}
       />
 
-      <Dialog open={sendOpen} onOpenChange={(open) => {
-        if (isSubmitting) return;
-        setSendOpen(open);
-      }}
-      >
-        <DialogContent className="sm:max-w-[580px]">
-          <DialogHeader>
-            <DialogTitle>Send estimate</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <div className="flex gap-2">
-              {(['whatsapp', 'email', 'download'] as EstimateSendChannel[]).map((channel) => (
-                <Button
-                  key={channel}
-                  type="button"
-                  variant={sendChannel === channel ? 'primary' : 'outline'}
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => setSendChannel(channel)}
-                >
-                  {channel === 'whatsapp' ? <MessageCircle className="h-4 w-4" /> : null}
-                  {channel === 'email' ? <Mail className="h-4 w-4" /> : null}
-                  {channel === 'download' ? <Download className="h-4 w-4" /> : null}
-                  {channel === 'download' ? 'Download only' : channel[0].toUpperCase() + channel.slice(1)}
-                </Button>
-              ))}
-            </div>
-            <div className="mt-4 space-y-4">
-              <div>
-                <p className="mb-2 text-sm font-medium text-cream-800">Recipient</p>
-                <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} />
-              </div>
-              <div>
-                <p className="mb-2 text-sm font-medium text-cream-800">Message</p>
-                <textarea
-                  value={sendMessage}
-                  onChange={(event) => setSendMessage(event.target.value)}
-                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-base outline-none"
-                />
-              </div>
-              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
-                Buyer sees {diffLines.filter((line) => line.diff !== 'removed').length} lines totaling {formatCompactInr(totals.grand_total)}.
-              </div>
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <Button type="button" variant="ghost" disabled={isSubmitting} onClick={() => setSendOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" className="gap-2" disabled={isSubmitting} onClick={() => void handleSend()}>
-              {submitAction === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {submitAction === 'send' ? 'Sending…' : 'Send now'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SendDocumentWhatsAppDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        title="Send estimate"
+        confirmLabel={sendPrimaryLabel}
+        isPending={submitAction === 'send'}
+        sendState={whatsappSend}
+        buyerName={buyer?.business_name ?? '—'}
+        phoneNumber={whatsappSend.recipient_phone}
+        documentNumberLabel="Estimate Number"
+        documentNumber={documentState.estimate_number}
+        amount={totals.grand_total}
+        itemCount={activeLines.length}
+        onConfirm={() => {
+          void handleSend();
+        }}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Package, MoreHorizontal } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ProductStatusPill, type ProductStatus } from '@/components/cockpit/StatusPill';
@@ -86,7 +86,7 @@ function ProductCard({ product, selected, onSelect, onMenuClick, className }: Pr
         <div className="flex items-center justify-between mt-3">
           <div>
             <span className="text-h4 font-mono font-semibold text-cream-900">
-              {formatCurrency(product.basePrice)}
+              {formatNumberValue(product.basePrice, 'CURRENCY_EXACT')}
             </span>
             {product.unit && (
               <span className="text-caption text-cream-500 ml-1">/ {product.unit}</span>

@@ -26,7 +26,7 @@ import {
   type LocationsLandingResponse,
   type LocationsLandingRow,
 } from '@/hooks/useLocations';
-import { formatCompactInr, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { LocationsLandingSkeleton as SharedLocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -260,18 +260,18 @@ function LocationsLandingContent({
             tiles={[
               {
                 label: 'Invoiced sales 90D',
-                value: formatMetricValue('value', filtered.reduce((sum, row) => sum + row.gmv_mtd, 0)),
+                value: formatNumberValue(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
                 sub: `${filtered.length} active locations in view`,
               },
               {
                 label: 'Overdue amount',
-                value: formatMetricValue('value', kpis.outstanding_dues_total),
+                value: formatNumberValue(kpis.outstanding_dues_total, 'CURRENCY_THRESHOLD'),
                 sub: `across ${kpis.dues_location_count} locations`,
                 tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Customers who bought',
-                value: formatMetricValue('count', filtered.reduce((sum, row) => sum + row.active_buyers, 0)),
+                value: formatNumberValue(filtered.reduce((sum, row) => sum + row.active_buyers, 0), 'COUNT'),
                 sub: `across ${kpis.active_locations} locations`,
               },
               {
@@ -281,7 +281,7 @@ function LocationsLandingContent({
                     : kpis.open_primary_demand_kind === 'estimates'
                       ? 'Open estimate value'
                       : 'Open primary demand value',
-                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatMetricValue('value', kpis.open_primary_demand_value),
+                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatNumberValue(kpis.open_primary_demand_value, 'CURRENCY_THRESHOLD'),
                 sub:
                   kpis.open_primary_demand_kind === 'none'
                     ? 'Enable Estimates or Sales Orders'
@@ -303,7 +303,7 @@ function LocationsLandingContent({
                   hue: 'teal' as const,
                   name: row.name,
                   reason: `${row.estimate_number} · exp in ${row.expires_in_days}d`,
-                  trailing: formatMetricValue('value', row.total_amount ?? 0),
+                  trailing: formatNumberValue(row.total_amount ?? 0, 'CURRENCY_THRESHOLD'),
                 })),
               },
               {
@@ -316,7 +316,7 @@ function LocationsLandingContent({
                   hue: 'teal' as const,
                   name: row.name,
                   reason: `${row.orders_count} orders · ${row.buyers_count} buyers`,
-                  trailing: formatMetricValue('value', row.gmv_mtd ?? 0),
+                  trailing: formatNumberValue(row.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
                 })),
               },
               {
@@ -328,7 +328,7 @@ function LocationsLandingContent({
                   initials: row.initials,
                   hue: 'ember' as const,
                   name: row.name,
-                  reason: `${formatMetricValue('value', row.outstanding_dues ?? 0)} · oldest ${row.oldest_unpaid_days}d unpaid`,
+                  reason: `${formatNumberValue(row.outstanding_dues ?? 0, 'CURRENCY_THRESHOLD')} · oldest ${row.oldest_unpaid_days}d unpaid`,
                   trailing: <StatusTag tone="danger" label="Overdue" />,
                 })),
               },
@@ -396,13 +396,13 @@ function LocationsLandingContent({
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {row.gmv_mtd > 0 ? formatMetricValue('value', row.gmv_mtd) : '—'}
+                    {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.invoice_count_90d > 0 ? row.invoice_count_90d : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {kpis.open_primary_demand_kind === 'none' ? '—' : demandValue > 0 ? formatMetricValue('value', demandValue) : '—'}
+                    {kpis.open_primary_demand_kind === 'none' ? '—' : demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : demandCount > 0 ? demandCount : '—'}
@@ -414,7 +414,7 @@ function LocationsLandingContent({
                     {row.active_buyers}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {row.outstanding_dues > 0 ? formatCompactInr(row.outstanding_dues) : '—'}
+                    {row.outstanding_dues > 0 ? formatNumberValue(row.outstanding_dues, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
                   <td className="px-5 py-3.5">
                     <StatusTag tone={stockTone(row.stock_status)} label={stockLabel(row.stock_status)} />

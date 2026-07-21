@@ -9,7 +9,7 @@ import {
   useCustomerOutstandingInvoices,
 } from '@/hooks/useCustomersLanding';
 import { toDatetimeLocalValue } from '@/lib/date-utils';
-import { formatCompactInr, formatCurrency, formatMetricValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import {
@@ -67,13 +67,13 @@ function InvoiceOption({
           </div>
           <div className="text-right">
             <p className="font-mono text-base font-semibold text-cream-950">
-              {formatMetricValue('value', invoice.outstanding_amount)}
+              {formatNumberValue(invoice.outstanding_amount, 'CURRENCY_EXACT')}
             </p>
             <p className="text-xs uppercase tracking-[0.1em] text-cream-600">Outstanding</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-x-4 text-sm text-cream-700">
-          <span>Status {invoice.status === 'overdue' ? 'Overdue' : 'Sent'} · {invoice.location_name ?? 'Unassigned'} · Value {formatCurrency(invoice.total_amount)}</span>
+          <span>Status {invoice.status === 'overdue' ? 'Overdue' : 'Sent'} · {invoice.location_name ?? 'Unassigned'} · Value {formatNumberValue(invoice.total_amount, 'CURRENCY_EXACT')}</span>
         </div>
       </div>
     </label>

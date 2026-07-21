@@ -12,7 +12,7 @@ const SCROLL_DELTA_THRESHOLD = 8;
  */
 export function useBuyerScrollCollapse(): {
   collapsed: boolean;
-  sentinelRef: RefObject<HTMLDivElement>;
+  sentinelRef: RefObject<HTMLDivElement | null>;
 } {
   const pathname = usePathname();
   const scrollContext = useBuyerScrollRoot();

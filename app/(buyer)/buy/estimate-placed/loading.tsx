@@ -1,6 +1,6 @@
 export default function EstimatePlacedLoading() {
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg-base)]">
+    <div className="flex min-h-dvh flex-col bg-[var(--bg-base)]">
       <header
         className="sticky top-0 z-20 flex items-center gap-3 px-4"
         style={{

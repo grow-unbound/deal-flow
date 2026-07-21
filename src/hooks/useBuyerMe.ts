@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
+import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface BuyerMeData {
   mode: 'buyer' | 'preview';
@@ -40,6 +41,7 @@ export function useBuyerMe() {
       if (!res.ok) throw new Error('Failed to fetch buyer profile');
       return res.json() as Promise<BuyerMeData>;
     },
-    staleTime: 60_000,
+    staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
+    gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
 }

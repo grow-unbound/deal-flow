@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, MapPin, ShoppingBag } from 'lucide-react';
@@ -8,7 +9,7 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { computeBuyerCartTotals } from '@/lib/gst';
 import posthog from 'posthog-js';
@@ -152,7 +153,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex flex-col min-h-dvh" style={{ background: 'var(--bg-base)' }}>
       {/* Header */}
       <header
         className="sticky top-0 z-20 flex items-center gap-3 px-4"
@@ -203,14 +204,14 @@ export default function CheckoutPage() {
                     className="text-xs mt-0.5"
                     style={{ color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}
                   >
-                    {item.quantity} × {formatBuyerCurrency(item.unit_price)}
+                    {item.quantity} × {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
                   </p>
                 </div>
                 <span
                   className="text-sm font-semibold shrink-0"
                   style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}
                 >
-                  {formatBuyerCurrency(item.quantity * item.unit_price)}
+                  {formatNumberValue(item.quantity * item.unit_price, 'CURRENCY_EXACT')}
                 </span>
               </div>
             ))}
@@ -242,7 +243,7 @@ export default function CheckoutPage() {
               className="text-base font-bold"
               style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}
             >
-              {formatBuyerCurrency(totals.subtotal)}
+              {formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -253,7 +254,7 @@ export default function CheckoutPage() {
               className="text-base font-semibold"
               style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
             >
-              {gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)}
+              {gstInclusive ? 'Included' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -269,7 +270,7 @@ export default function CheckoutPage() {
               Total
             </span>
             <span className="text-base font-bold" style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>
-              {formatBuyerCurrency(totals.total)}
+              {formatNumberValue(totals.total, 'CURRENCY_EXACT')}
             </span>
           </div>
         </div>

@@ -27,7 +27,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { formatCompactInr, formatDate, formatMetricValue } from '@/lib/utils';
+import { formatDate, formatNumberValue } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -296,23 +296,23 @@ function EstimatesLandingContent({
               tiles={[
                 {
                   label: 'Estimate value · MTD',
-                  value: formatMetricValue('estimate value', kpis?.total_gmv_this_period ?? 0),
+                  value: formatNumberValue(kpis?.total_gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${kpis?.total_estimates_this_period ?? 0} estimates`,
                 },
                 {
                   label: 'Open estimates',
-                  value: formatMetricValue('estimate value', kpis?.open_estimate_value ?? 0),
+                  value: formatNumberValue(kpis?.open_estimate_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${kpis?.open_estimates_this_period ?? 0} open estimates`,
                   tone: 'accent',
                 },
                 {
                   label: 'Awaiting action 3+ days',
-                  value: formatMetricValue('estimate value', pulseAggregates?.sent_awaiting_value ?? 0),
+                  value: formatNumberValue(pulseAggregates?.sent_awaiting_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending conversion`,
                 },
                 {
                   label: 'Expiring in 7 days',
-                  value: formatMetricValue('estimate value', pulseAggregates?.expiring_soon_value ?? 0),
+                  value: formatNumberValue(pulseAggregates?.expiring_soon_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
                 },
               ]}
@@ -329,7 +329,7 @@ function EstimatesLandingContent({
                   rows: (read?.needs_follow_up ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · Sent ${row.sent_at ? formatDate(row.sent_at) : '—'}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
                 {
@@ -341,7 +341,7 @@ function EstimatesLandingContent({
                   rows: (read?.drafts_not_sent ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · ${row.estimate_date ? formatDate(row.estimate_date) : '—'}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
                 {
@@ -353,7 +353,7 @@ function EstimatesLandingContent({
                   rows: (read?.expiring_soon ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · Expires ${row.expires_at ? formatDate(row.expires_at) : '—'}`,
-                    trailing: formatCompactInr(row.total_amount),
+                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
                   })),
                 },
               ]}

@@ -46,7 +46,7 @@ import {
 import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import { PublishCampaignDialog, type PublishCampaignDialogMode } from '@/components/seller/catalogs/detail/PublishCampaignDialog';
 import { CatalogComposerSkeleton as SharedCatalogComposerSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
-import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
+import { cn, formatDate, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
@@ -1284,7 +1284,7 @@ export function CatalogComposer({
                           onChange={(event) => {
                             const next = pricingMode === 'percent_off_base'
                               ? event.target.value.replace(/[^\d.]/g, '')
-                              : formatInrInput(event.target.value);
+                              : formatNumberInput(event.target.value, 'CURRENCY_EXACT');
                             setPricingValue(next);
                           }}
                           placeholder={pricingMode === 'percent_off_base' ? 'Discount' : 'Flat amount'}
@@ -1397,16 +1397,16 @@ export function CatalogComposer({
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.cost_price != null ? formatInr(product.cost_price) : '—'}</td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{base > 0 ? formatInr(base) : '—'}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.cost_price != null ? formatNumberValue(product.cost_price, 'CURRENCY_EXACT') : '—'}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{base > 0 ? formatNumberValue(base, 'CURRENCY_EXACT') : '—'}</td>
                               <td className="px-4 py-3 text-right">
                                 {priceSource === 'manual' ? (
                                   <div className="ml-auto flex w-[140px] items-center rounded-[8px] border border-cream-300 bg-white px-3 py-2">
                                     <span className="shrink-0 font-mono text-sm text-cream-600">₹</span>
                                     <Input
-                                      value={campaignPrice == null ? '' : formatInrInput(String(campaignPrice))}
+                                      value={campaignPrice == null ? '' : formatNumberInput(String(campaignPrice), 'CURRENCY_EXACT')}
                                       onChange={(event) => {
-                                        const next = parseInrInput(formatInrInput(event.target.value));
+                                        const next = parseNumberInput(formatNumberInput(event.target.value, 'CURRENCY_EXACT'), 'CURRENCY_EXACT');
                                         setCampaignPrices((current) => ({
                                           ...current,
                                           [product.id]: next,
@@ -1417,14 +1417,14 @@ export function CatalogComposer({
                                     />
                                   </div>
                                 ) : (
-                                  <span className="font-mono font-semibold text-cream-900">{formatInr(campaignPrice)}</span>
+                                  <span className="font-mono font-semibold text-cream-900">{formatNumberValue(campaignPrice, 'CURRENCY_EXACT')}</span>
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right font-mono text-cream-900">
-                                {discount == null ? '—' : `${Math.max(0, discount).toFixed(1)}%`}
+                                {discount == null ? '—' : `${formatNumberValue(Math.max(0, discount), 'PERCENTAGE')}`}
                               </td>
                               <td className="px-4 py-3 text-right font-mono text-cream-900">
-                                {margin == null ? '—' : `${margin.toFixed(1)}%`}
+                                {margin == null ? '—' : `${formatNumberValue(margin, 'PERCENTAGE')}`}
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Select
@@ -1534,7 +1534,7 @@ export function CatalogComposer({
                     </div>
                     <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Avg. discount</span>
-                      <span className="font-mono font-medium text-cream-900">{avgDiscountPct.toFixed(1)}%</span>
+                      <span className="font-mono font-medium text-cream-900">{formatNumberValue(avgDiscountPct, 'PERCENTAGE')}</span>
                     </div>
                   </div>
 

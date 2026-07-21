@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { InsightStrip4 } from '@/components/seller/layout/InsightStrip4';
 import { V3CalloutPanel } from '@/components/seller/layout/V3CalloutPanel';
 import { StatusTag } from '@/components/seller/layout/StatusTag';
@@ -44,7 +44,7 @@ describe('InsightStrip4', () => {
 
 describe('V3CalloutPanel', () => {
   it('renders collapsed rows with name, reason, and trailing status', () => {
-    render(
+    const { container } = render(
       <V3CalloutPanel
         items={[
           {
@@ -69,6 +69,49 @@ describe('V3CalloutPanel', () => {
     expect(screen.getByText('Asha Buyers')).toBeInTheDocument();
     expect(screen.getByText('₹42K')).toBeInTheDocument();
     expect(screen.getByText('Last order was 45 days ago')).toBeInTheDocument();
+    expect(container.querySelector('div.space-y-\\[10px\\] > div')).toHaveClass('w-full', 'px-2', 'py-1');
+  });
+
+  it('re-fetches sheet rows on reopen instead of reusing stale loaded rows', async () => {
+    const loadRows = vi.fn()
+      .mockResolvedValueOnce([
+        { id: 'buyer-1', initials: 'UB', hue: 'teal', name: 'Unknown buyer', reason: '1 invoice', trailing: '₹10K' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'buyer-1', initials: 'GS', hue: 'teal', name: 'Ghost Stores', reason: '1 invoice', trailing: '₹10K' },
+      ]);
+
+    render(
+      <V3CalloutPanel
+        items={[
+          {
+            id: 'collections',
+            kind: 'risk',
+            eyebrow: 'Collections',
+            hint: '1',
+            loadRows,
+            rows: [
+              {
+                id: 'buyer-1',
+                initials: 'GS',
+                hue: 'teal',
+                name: 'Ghost Stores',
+                reason: '1 invoice',
+                trailing: '₹10K',
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open full Collections list' }));
+    await screen.findByText('Unknown buyer');
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open full Collections list' }));
+    await waitFor(() => expect(screen.getByText('Ghost Stores')).toBeInTheDocument());
+    expect(loadRows).toHaveBeenCalledTimes(2);
   });
 });
 

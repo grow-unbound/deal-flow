@@ -130,6 +130,12 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
                     )}
                     onClick={() => {
                       if (!isClickable) return;
+                      setLoadedRowsByItemId((current) => {
+                        if (!(item.id in current)) return current;
+                        const next = { ...current };
+                        delete next[item.id];
+                        return next;
+                      });
                       setActiveIndex(index);
                     }}
                     disabled={!isClickable}
@@ -152,10 +158,10 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
                             <p className="truncate text-base font-medium leading-[1.25] text-cream-900">{row.name}</p>
                             {row.reason ? <p className="mt-0.5 truncate text-xs leading-5 text-cream-700">{row.reason}</p> : null}
                           </div>
-                          <div className="shrink-0 text-right text-sm font-medium text-cream-800">{row.trailing}</div>
+                          <div className="shrink-0 text-right text-base font-medium text-cream-800">{row.trailing}</div>
                         </>
                       );
-                      const rowClassName = 'flex items-center gap-[10px] rounded-[10px] transition duration-150 focus-within:ring-2 focus-within:ring-ember-300/70 active:scale-[0.97]';
+                      const rowClassName = 'flex w-full items-center gap-[10px] rounded-[10px] px-2 py-1 transition duration-150 focus-within:ring-2 focus-within:ring-ember-300/70 active:scale-[0.97]';
                       return href ? (
                         <Link key={row.id ?? rowIndex} href={href} className={cn(rowClassName, 'hover:bg-cream-100')}>
                           {rowContent}

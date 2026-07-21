@@ -6,13 +6,8 @@ import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Pressable } from '@/components/ui/pressable';
-import { cn } from '@/lib/utils';
-import {
-  BUYER_CARD_RADIUS_CLASS,
-  BUYER_TWO_LINE_TITLE_CLASS,
-  formatBuyerCurrency,
-  hasBuyerCampaignPrice,
-} from '@/lib/buyer-ui';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -21,6 +16,7 @@ import type { BuyerCatalogItem } from '@/types/buyer';
 interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
+  showPromotionBadge?: boolean;
 }
 
 function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
@@ -40,7 +36,22 @@ function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock
   );
 }
 
-export function ProductCard({ item, className }: ProductCardProps): React.ReactNode {
+function ProductPromotionBadge(): React.ReactNode {
+  return (
+    <span
+      className="absolute left-2 top-2 z-[1] rounded-full border border-[#F97316] bg-[#FFF1E8] px-2.5 py-1 font-extrabold uppercase tracking-[0.12em] text-[#C2410C] shadow-[0_6px_14px_rgba(249,115,22,0.22)]"
+      style={{ fontSize: 'var(--b-text-eyebrow)' }}
+    >
+      Special Price
+    </span>
+  );
+}
+
+export function ProductCard({
+  item,
+  className,
+  showPromotionBadge = true,
+}: ProductCardProps): React.ReactNode {
   const { items, addItem, updateQty } = useCart();
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
@@ -128,6 +139,8 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
               <span className="absolute left-2 top-2 z-[1] rounded bg-[var(--teal-500)] px-2 py-0.5 font-bold uppercase tracking-wide text-white" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                 New
               </span>
+            ) : showPromotionBadge && showCampaignPrice ? (
+              <ProductPromotionBadge />
             ) : null}
             {item.stock_status === 'limited' || item.stock_status === 'out_of_stock' ? (
               <ProductStockCornerBadge status={item.stock_status} />
@@ -242,11 +255,11 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                   letterSpacing: '-0.01em',
                 }}
               >
-                {formatBuyerCurrency(item.price)}
+                {formatNumberValue(item.price, 'CURRENCY_EXACT')}
               </span>
               {showCampaignPrice ? (
                 <span className="text-xs line-through text-[var(--fg-3)]">
-                  {formatBuyerCurrency(item.resolved_price)}
+                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                 </span>
               ) : null}
             </div>

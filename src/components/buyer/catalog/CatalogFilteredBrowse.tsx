@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { SearchX } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
@@ -103,7 +104,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     ) : null;
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-8">
+    <div className="flex min-h-[50dvh] flex-col pb-8">
       <BuyerDetailShell
         title={title}
         hideSearch
@@ -134,19 +135,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             {mode === 'list' ? (
               <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
             ) : null}
-            <ProductGrid
-              items={items}
-              loadingMore={loadingMore}
-              sentinelIndex={sentinelIndex}
-              sentinelRef={sentinelRef}
-            />
-            {items.length === 0 ? (
-              <p className="px-2 py-8 text-center text-sm" style={{ color: 'var(--fg-3)' }}>
-                No products found.
-              </p>
-            ) : null}
             {mode === 'category' && (categoryRecos.data?.length ?? 0) > 0 ? (
-              <div className="pt-4">
+              <div className="pt-1">
                 <RecoSection
                   title="Trending in this category"
                   widget="w5_category_trending"
@@ -155,7 +145,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
               </div>
             ) : null}
             {mode === 'brand' && (brandRecos.data?.length ?? 0) > 0 ? (
-              <div className="pt-4">
+              <div className="pt-1">
                 <RecoSection
                   title="Trending in this brand"
                   widget="w6_brand_trending"
@@ -163,9 +153,60 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 />
               </div>
             ) : null}
+            {items.length > 0 ? (
+              <div className="px-4 pb-3 pt-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
+                      Browse
+                    </p>
+                    <h2
+                      className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      All Products
+                    </h2>
+                  </div>
+                  <p className="shrink-0 text-sm text-[var(--fg-3)]">
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            <ProductGrid
+              items={items}
+              loadingMore={loadingMore}
+              sentinelIndex={sentinelIndex}
+              sentinelRef={sentinelRef}
+              showPromotionBadge={mode !== 'list'}
+            />
+            {items.length === 0 ? (
+              <NoProductsFoundState />
+            ) : null}
           </>
         )}
       </BuyerDetailShell>
+    </div>
+  );
+}
+
+function NoProductsFoundState(): React.ReactNode {
+  return (
+    <div className="px-4 py-10">
+      <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[0_1px_3px_rgba(34,30,26,0.04)]">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-[var(--cream-700)]">
+          <SearchX className="h-5 w-5" />
+        </div>
+        <h2
+          className="mt-4 text-lg font-semibold text-[var(--fg-1)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          No products found
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--fg-3)]">
+          Try a different search or switch filters to explore more products.
+        </p>
+      </div>
     </div>
   );
 }

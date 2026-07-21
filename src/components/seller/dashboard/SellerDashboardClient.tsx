@@ -18,8 +18,7 @@ import {
 } from '@/components/seller/layout';
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
-import { formatCurrency, formatMetricValue } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type {
@@ -73,7 +72,7 @@ function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed;
           id: row.id,
           label: row.customer_name,
           meta: row.document_number,
-          value: formatCurrency(row.amount, { compactFractionDigits: 2 }),
+          value: formatNumberValue(row.amount, 'CURRENCY_THRESHOLD'),
           supporting: (
             <span className="inline-flex items-center gap-2">
               <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
@@ -136,7 +135,7 @@ function normalizeMixEntries(entries: SellerDashboardMixEntry[]) {
       id: entry.id,
       label: entry.name,
       pct: total > 0 ? Number(((entry.value / total) * 100).toFixed(1)) : 0,
-      value: formatCurrency(entry.value, { compactFractionDigits: 2 }),
+      value: formatNumberValue(entry.value, 'CURRENCY_THRESHOLD'),
     })),
     total,
   };
@@ -209,17 +208,17 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
   const businessFlowTiles = [
     {
       label: 'Invoiced sales',
-      value: formatCurrency(Number(businessFlow.invoice_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      value: formatNumberValue(Number(businessFlow.invoice_value_this_month ?? 0), 'CURRENCY_THRESHOLD'),
       sub: `${Number(businessFlow.invoice_count_this_month ?? 0)} invoice${Number(businessFlow.invoice_count_this_month ?? 0) === 1 ? '' : 's'}`,
     },
     businessFlow.orders_enabled ? {
       label: 'Order value',
-      value: formatCurrency(Number(businessFlow.order_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      value: formatNumberValue(Number(businessFlow.order_value_this_month ?? 0), 'CURRENCY_THRESHOLD'),
       sub: `${Number(businessFlow.order_count_this_month ?? 0)} orders`,
     } : null,
     businessFlow.estimates_enabled ? {
       label: 'Estimate value',
-      value: formatCurrency(Number(businessFlow.estimate_value_this_month ?? 0), { compactFractionDigits: 2 }),
+      value: formatNumberValue(Number(businessFlow.estimate_value_this_month ?? 0), 'CURRENCY_THRESHOLD'),
       sub: `${Number(businessFlow.estimate_count_this_month ?? 0)} estimates`,
     } : null,
   ].filter((tile): tile is NonNullable<typeof tile> => tile !== null);
@@ -230,11 +229,11 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
     label: location.name,
     meta: (
       <span>
-        Open demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })} · Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}
+        Open demand {formatNumberValue(Number(location.open_primary_demand_value ?? 0), 'CURRENCY_THRESHOLD')} · Overdue {formatNumberValue(Number(location.overdue_amount ?? 0), 'CURRENCY_THRESHOLD')}
       </span>
     ),
     metaClassName: 'text-sm text-cream-600',
-    value: formatCurrency(Number(location.invoiced_sales_90d ?? 0), { compactFractionDigits: 2 }),
+    value: formatNumberValue(Number(location.invoiced_sales_90d ?? 0), 'CURRENCY_THRESHOLD'),
     valueSupporting: 'Invoiced sales',
     initials: location.name.slice(0, 2).toUpperCase(),
     hue: 'teal' as const,
@@ -253,7 +252,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
       </span>
     ),
     metaClassName: 'text-xs text-cream-700',
-    value: formatCurrency(row.amount, { compactFractionDigits: 2 }),
+    value: formatNumberValue(row.amount, 'CURRENCY_THRESHOLD'),
     valueSupporting: newEntityIds.has(row.id) ? <RealtimeBadge type="new" /> : null,
     initials: row.customer_name.slice(0, 2).toUpperCase(),
   }));
@@ -264,7 +263,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
       <InsightStrip4
         tiles={admin.metrics.map((metric) => ({
           label: metric.label,
-          value: formatMetricValue(metric.label, metric.value),
+          value: formatNumberValue(metric.value, metric.label === 'Recently sold products out of stock' || metric.label === 'Low-stock alerts' || metric.label === 'Open estimates' || metric.label === 'Orders to confirm' || metric.label === 'Overdue invoices' ? 'COUNT' : 'CURRENCY_THRESHOLD'),
           sub: metric.sub,
           tone: metric.tone,
         }))}
@@ -329,10 +328,10 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
             subtitle: 'Last 90 days',
             body: {
               tiles: [
-                { label: 'Purchasing Customers', value: formatMetricValue('customers', Number(customerActivity.purchasing_customers_90d ?? 0)) },
-                { label: 'Repeat Customers', value: formatMetricValue('customers', Number(customerActivity.repeat_customers_90d ?? 0)) },
-                { label: 'Inactive Customers', value: formatMetricValue('customers', Number(customerActivity.inactive_customers_90d ?? 0)), tone: Number(customerActivity.inactive_customers_90d ?? 0) > 0 ? 'warn' : undefined },
-                { label: 'Overdue Customers', value: formatMetricValue('customers', Number(customerActivity.overdue_customers_now ?? 0)), tone: Number(customerActivity.overdue_customers_now ?? 0) > 0 ? 'warn' : undefined },
+                { label: 'Purchasing Customers', value: formatNumberValue(Number(customerActivity.purchasing_customers_90d ?? 0), 'COUNT') },
+                { label: 'Repeat Customers', value: formatNumberValue(Number(customerActivity.repeat_customers_90d ?? 0), 'COUNT') },
+                { label: 'Inactive Customers', value: formatNumberValue(Number(customerActivity.inactive_customers_90d ?? 0), 'COUNT'), tone: Number(customerActivity.inactive_customers_90d ?? 0) > 0 ? 'warn' : undefined },
+                { label: 'Overdue Customers', value: formatNumberValue(Number(customerActivity.overdue_customers_now ?? 0), 'COUNT'), tone: Number(customerActivity.overdue_customers_now ?? 0) > 0 ? 'warn' : undefined },
               ],
               columns: 'two-by-two',
             },
@@ -464,9 +463,9 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
           <tr key={location.location_id} className="border-b border-cream-200 last:border-b-0">
             <td className="px-5 py-4 text-sm font-medium text-cream-900">{location.name}</td>
             <td className="px-5 py-4 text-sm text-cream-700">
-              <div>Invoiced {formatCurrency(Number(location.invoiced_sales_90d ?? 0), { compactFractionDigits: 2 })}</div>
-              <div>Open demand {formatCurrency(Number(location.open_primary_demand_value ?? 0), { compactFractionDigits: 2 })}</div>
-              <div>Overdue {formatCurrency(Number(location.overdue_amount ?? 0), { compactFractionDigits: 2 })}</div>
+              <div>Invoiced {formatNumberValue(Number(location.invoiced_sales_90d ?? 0), 'CURRENCY_THRESHOLD')}</div>
+              <div>Open demand {formatNumberValue(Number(location.open_primary_demand_value ?? 0), 'CURRENCY_THRESHOLD')}</div>
+              <div>Overdue {formatNumberValue(Number(location.overdue_amount ?? 0), 'CURRENCY_THRESHOLD')}</div>
             </td>
           </tr>
         )}
@@ -488,7 +487,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
             <td className="px-5 py-4 text-sm font-medium text-cream-900">{row.customer_name}</td>
             <td className="px-5 py-4 text-sm text-cream-700">{row.document_number}</td>
             <td className="px-5 py-4 text-sm text-cream-700">{row.status.label}</td>
-            <td className="px-5 py-4 text-right text-sm text-cream-900">{formatCurrency(row.amount, { compactFractionDigits: 2 })}</td>
+            <td className="px-5 py-4 text-right text-sm text-cream-900">{formatNumberValue(row.amount, 'CURRENCY_THRESHOLD')}</td>
           </tr>
         )}
       />
@@ -505,7 +504,7 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
       <InsightStrip4
         tiles={assistant.metrics.map((metric) => ({
           label: metric.label,
-          value: formatMetricValue(metric.label, metric.value),
+          value: formatNumberValue(metric.value, metric.label === 'Recently sold products out of stock' || metric.label === 'Low-stock alerts' || metric.label === 'Open estimates' || metric.label === 'Orders to confirm' || metric.label === 'Overdue invoices' ? 'COUNT' : 'CURRENCY_THRESHOLD'),
           sub: metric.sub,
           tone: metric.tone,
         }))}
@@ -588,7 +587,7 @@ export function SellerDashboardClient({
   }
 
   const subtitle = dashboard.role === 'seller_admin'
-    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'} · this month’s sales and current operations.`
+    ? `${dashboard.tenant.business_name} across ${dashboard.tenant.location_names.length || 1} location${dashboard.tenant.location_names.length === 1 ? '' : 's'}`
     : `Action centre for ${dashboard.tenant.location_names.length > 0 ? dashboard.tenant.location_names.join(', ') : 'your assigned locations'} · confirmations, collections, and follow-ups right now.`;
 
   return (

@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { Ban, CheckCircle2, Clock3, Info, Minus, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/cn';
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral' | 'accent' | 'info';
 

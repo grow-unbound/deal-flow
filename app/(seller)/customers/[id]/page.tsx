@@ -26,7 +26,7 @@ import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists';
 
@@ -135,22 +135,22 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     return [
       {
         label: 'Invoiced sales · 90D',
-        value: formatCompactInr(data.meta_strip_4.invoiced_sales_90d),
+        value: formatNumberValue(data.meta_strip_4.invoiced_sales_90d, 'CURRENCY_THRESHOLD'),
         sub: `${data.meta_strip_4.invoice_count_90d} invoices`,
       },
       {
         label: 'Demand · 90D',
-        value: formatCompactInr(data.meta_strip_4.demand_90d),
+        value: formatNumberValue(data.meta_strip_4.demand_90d, 'CURRENCY_THRESHOLD'),
         sub: demandCount > 0 ? `${demandCount} ${demandLabel}${demandCount === 1 ? '' : 's'}` : 'No recent primary demand',
       },
       {
         label: 'Credit used / available',
-        value: `${formatCompactInr(data.meta_strip_4.credit_used)} / ${formatCompactInr(data.meta_strip_4.credit_available)}`,
-        sub: `${data.meta_strip_4.credit_used_pct}% of ${formatCompactInr(data.meta_strip_4.credit_limit)}`,
+        value: `${formatNumberValue(data.meta_strip_4.credit_used, 'CURRENCY_THRESHOLD')} / ${formatNumberValue(data.meta_strip_4.credit_available, 'CURRENCY_THRESHOLD')}`,
+        sub: `${data.meta_strip_4.credit_used_pct}% of ${formatNumberValue(data.meta_strip_4.credit_limit, 'CURRENCY_THRESHOLD')}`,
       },
       {
         label: 'Last sale',
-        value: data.meta_strip_4.last_invoice_value > 0 ? formatCompactInr(data.meta_strip_4.last_invoice_value) : '—',
+        value: data.meta_strip_4.last_invoice_value > 0 ? formatNumberValue(data.meta_strip_4.last_invoice_value, 'CURRENCY_THRESHOLD') : '—',
         sub: data.meta_strip_4.last_invoice_date ? `Invoiced on ${new Date(data.meta_strip_4.last_invoice_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'No invoice yet',
       },
     ];
@@ -312,6 +312,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           onOpenChange={setEditOpen}
           mode="edit"
           customerId={id}
+          assignedPriceListName={data.details.assigned_price_list}
           defaultValues={{
             business_name: data.details.business_name,
             contact_name: data.details.contact_name ?? '',

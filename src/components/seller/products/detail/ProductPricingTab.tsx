@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Check, IndianRupee, Pencil, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatInrInput, parseInrInput } from '@/lib/utils';
+import { formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
 import { useUpdateProductPriceOverride } from '@/hooks/useProducts';
 
@@ -31,17 +31,17 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
         <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.mrp != null ? formatCurrency(pricingSummary.mrp, 'INR') : '—'}</p>
+            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.mrp != null ? formatNumberValue(pricingSummary.mrp, 'CURRENCY_EXACT') : '—'}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.base_selling_price != null ? formatCurrency(pricingSummary.base_selling_price, 'INR') : '—'}</p>
+            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.base_selling_price != null ? formatNumberValue(pricingSummary.base_selling_price, 'CURRENCY_EXACT') : '—'}</p>
           </div>
           {isAdmin ? (
             <>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</p>
-                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatCurrency(pricingSummary.cost_price, 'INR') : '—'}</p>
+                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatNumberValue(pricingSummary.cost_price, 'CURRENCY_EXACT') : '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</p>
@@ -82,7 +82,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
             <tbody>
               {pricing.map((row) => {
                 const isEditing = editingRow === row.item_id;
-                const value = draft[row.item_id] ?? formatInrInput(String(row.effective_price));
+                const value = draft[row.item_id] ?? formatNumberInput(String(row.effective_price), 'CURRENCY_EXACT');
                 return (
                   <tr key={row.item_id} className="border-b border-cream-300 align-top last:border-b-0">
                     <td className="px-5 py-3 text-base font-medium text-cream-900">{row.price_list_name}</td>
@@ -96,17 +96,17 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                               <Input
                                 className="h-8 w-36 border-0 focus-visible:ring-0"
                                 value={value}
-                                onChange={(e) => setDraft((prev) => ({ ...prev, [row.item_id]: formatInrInput(e.target.value) }))}
+                                onChange={(e) => setDraft((prev) => ({ ...prev, [row.item_id]: formatNumberInput(e.target.value, 'CURRENCY_EXACT') }))}
                                 inputMode="decimal"
                               />
                             </div>
                           </div>
                           <p className="text-xs text-cream-600">
-                            Base: {formatCurrency(row.base_price, 'INR')}
+                            Base: {formatNumberValue(row.base_price, 'CURRENCY_EXACT')}
                           </p>
                         </div>
                       ) : (
-                        <p className="font-mono text-base text-cream-900">{formatCurrency(row.effective_price, 'INR')}</p>
+                        <p className="font-mono text-base text-cream-900">{formatNumberValue(row.effective_price, 'CURRENCY_EXACT')}</p>
                       )}
                     </td>
                     <td className="px-5 py-3 text-sm text-cream-700">
@@ -124,7 +124,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                               className="h-8 w-8"
                               disabled={updateOverride.isPending}
                               onClick={() => {
-                                const next = parseInrInput(draft[row.item_id] ?? formatInrInput(String(row.effective_price)));
+                                const next = parseNumberInput(draft[row.item_id] ?? formatNumberInput(String(row.effective_price), 'CURRENCY_EXACT'), 'CURRENCY_EXACT');
                                 if (next == null || !Number.isFinite(next) || next <= 0) return;
                                 updateOverride.mutate({
                                   priceListId: row.price_list_id,

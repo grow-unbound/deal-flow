@@ -20,7 +20,7 @@ import { PageWrap } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { CatalogDetailSkeleton as SharedCatalogDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
@@ -109,7 +109,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     return [
       {
         label: 'Campaign-linked demand value',
-        value: formatCompactInr(data.meta_strip_4.gmv),
+        value: formatNumberValue(data.meta_strip_4.gmv, 'CURRENCY_THRESHOLD'),
         sub: (
           <span>
             <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>

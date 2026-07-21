@@ -1,7 +1,7 @@
 'use client';
 
 import type { InvoiceDetailPayload } from '@/types/tenant-invoices';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { formatShortDate } from './invoice-detail-dates';
 
 interface InvoiceDocumentProps {
@@ -12,7 +12,7 @@ export function InvoiceDocument({ data }: InvoiceDocumentProps) {
   const { invoice, buyer, tenant, items, tax_breakdown } = data;
   const rateHalf =
     tax_breakdown.is_intra_state && items.length > 0 && items[0].tax_rate != null
-      ? `${(Number(items[0].tax_rate) / 2).toFixed(1)}%`
+      ? `${formatNumberValue((Number(items[0].tax_rate) / 2), 'PERCENTAGE')}`
       : null;
 
   return (
@@ -77,8 +77,8 @@ export function InvoiceDocument({ data }: InvoiceDocumentProps) {
                   <span className="block truncate">{row.hsn_code ?? '—'}</span>
                 </td>
                 <td className="num py-2.5 pr-3">{row.qty}</td>
-                <td className="num py-2.5 pr-3">{formatCompactInr(row.unit_price)}</td>
-                <td className="num py-2.5 font-medium">{formatCompactInr(row.line_total ?? row.qty * row.unit_price)}</td>
+                <td className="num py-2.5 pr-3">{formatNumberValue(row.unit_price, 'CURRENCY_EXACT')}</td>
+                <td className="num py-2.5 font-medium">{formatNumberValue(row.line_total ?? row.qty * row.unit_price, 'CURRENCY_EXACT')}</td>
               </tr>
             ))}
           </tbody>
@@ -88,28 +88,28 @@ export function InvoiceDocument({ data }: InvoiceDocumentProps) {
       <div className="flex flex-wrap justify-end gap-8 border-t border-cream-200 pt-4 text-base">
         <div className="text-right">
           <div className="text-cream-600">Taxable value</div>
-          <div className="font-mono font-semibold text-cream-900">{formatCompactInr(tax_breakdown.taxable_value)}</div>
+          <div className="font-mono font-semibold text-cream-900">{formatNumberValue(tax_breakdown.taxable_value, 'CURRENCY_EXACT')}</div>
         </div>
         {tax_breakdown.is_intra_state ? (
           <>
             <div className="text-right">
               <div className="text-cream-600">CGST {rateHalf ?? ''}</div>
-              <div className="font-mono font-semibold text-cream-900">{formatCompactInr(tax_breakdown.cgst ?? 0)}</div>
+              <div className="font-mono font-semibold text-cream-900">{formatNumberValue(tax_breakdown.cgst ?? 0, 'CURRENCY_EXACT')}</div>
             </div>
             <div className="text-right">
               <div className="text-cream-600">SGST {rateHalf ?? ''}</div>
-              <div className="font-mono font-semibold text-cream-900">{formatCompactInr(tax_breakdown.sgst ?? 0)}</div>
+              <div className="font-mono font-semibold text-cream-900">{formatNumberValue(tax_breakdown.sgst ?? 0, 'CURRENCY_EXACT')}</div>
             </div>
           </>
         ) : (
           <div className="text-right">
             <div className="text-cream-600">IGST</div>
-            <div className="font-mono font-semibold text-cream-900">{formatCompactInr(tax_breakdown.igst ?? 0)}</div>
+            <div className="font-mono font-semibold text-cream-900">{formatNumberValue(tax_breakdown.igst ?? 0, 'CURRENCY_EXACT')}</div>
           </div>
         )}
         <div className="text-right">
           <div className="text-cream-600">Total</div>
-          <div className="font-mono text-md font-semibold text-cream-950">{formatCompactInr(invoice.total_amount)}</div>
+          <div className="font-mono text-md font-semibold text-cream-950">{formatNumberValue(invoice.total_amount, 'CURRENCY_EXACT')}</div>
         </div>
       </div>
     </div>

@@ -12,7 +12,7 @@ import type {
 } from '@/lib/campaign-workflow-status';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { NAVIGATION_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
   CatalogComposerFilterState,
   CatalogComposerPayload,
@@ -433,8 +433,8 @@ export function useTenantCatalogs(
     initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'catalogs');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
@@ -449,8 +449,8 @@ export function useTenantCatalogDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }
@@ -483,8 +483,8 @@ export function useCatalogComposerBootstrap(enabled = true) {
       return res.json();
     },
     enabled,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: (previous) => previous,
   });
 }
@@ -498,8 +498,8 @@ export function useCatalogComposerDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }

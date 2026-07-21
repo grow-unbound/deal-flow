@@ -85,7 +85,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    const [detailV2Res, buyerUsersRes, cohortMembersRes] = await Promise.all([
+    const [detailV2Res, buyerUsersRes, cohortMembersRes, buyerPriceListAssignmentRes] = await Promise.all([
       db.schema('app').rpc('get_seller_customer_detail_v2', {
         p_tenant_id: tenantId,
         p_buyer_id: id,
@@ -102,12 +102,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .from('cohort_members')
         .select('cohort_id, cohorts(name, deleted_at)')
         .eq('buyer_id', id),
+      db
+        .schema('app')
+        .from('price_list_assignments')
+        .select('price_list_id')
+        .eq('target_type', 'buyer')
+        .eq('target_id', id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    if (detailV2Res.error || buyerUsersRes.error || cohortMembersRes.error) {
+    if (
+      detailV2Res.error ||
+      buyerUsersRes.error ||
+      cohortMembersRes.error ||
+      buyerPriceListAssignmentRes.error
+    ) {
       console.error(
         '[GET /api/tenant/customers/[id]] bootstrap failed',
-        detailV2Res.error ?? buyerUsersRes.error ?? cohortMembersRes.error,
+        detailV2Res.error ??
+          buyerUsersRes.error ??
+          cohortMembersRes.error ??
+          buyerPriceListAssignmentRes.error,
       );
       return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
     }
@@ -179,6 +197,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const demandOrderCount90d = Number(summaryMetrics.primary_demand_order_count_90d ?? 0);
     const demandEstimateCount90d = Number(summaryMetrics.primary_demand_estimate_count_90d ?? 0);
 
+    const defaultPriceListId =
+      (buyerPriceListAssignmentRes.data?.price_list_id as string | undefined) ?? null;
+    let assignedPriceListName: string | null = null;
+    if (defaultPriceListId) {
+      const { data: priceList, error: priceListError } = await db
+        .schema('app')
+        .from('price_lists')
+        .select('id, name')
+        .eq('id', defaultPriceListId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (priceListError) {
+        console.error('[GET /api/tenant/customers/[id]] failed to load assigned pricelist', priceListError);
+        return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+      }
+
+      assignedPriceListName = (priceList?.name as string | undefined) ?? null;
+    }
+
     const response = {
       detail_v2: detailV2,
       performance_cards: detailV2.performance_cards ?? [],
@@ -241,8 +280,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         shipping_address: buyer.shipping_address ?? null,
         payment_terms_days: buyer.payment_terms_days,
         credit_limit: buyer.credit_limit,
-        default_price_list_id: null,
-        assigned_price_list: null,
+        default_price_list_id: defaultPriceListId,
+        assigned_price_list: assignedPriceListName,
         buyer_users: contacts,
         contacts,
         default_cohort_id: buyer.default_cohort_id,

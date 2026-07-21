@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useRef } from 'react';
 import { Package } from 'lucide-react';
 
@@ -202,11 +203,11 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
                 <span className="text-sm text-cream-900">{item.brand_name}</span>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.qty_available.toLocaleString('en-IN')}</td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.qty_reserved.toLocaleString('en-IN')}</td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.sellable_units.toLocaleString('en-IN')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_available, 'COUNT')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_reserved, 'COUNT')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.sellable_units, 'COUNT')}</td>
             <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">
-              {item.reorder_point != null ? item.reorder_point.toLocaleString('en-IN') : '—'}
+              {item.reorder_point != null ? formatNumberValue(item.reorder_point, 'COUNT') : '—'}
             </td>
           </tr>
           ))}
@@ -214,7 +215,7 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <p className="text-sm text-cream-600">
-          Showing {filtered.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')} SKUs
+          Showing {formatNumberValue(filtered.length, 'COUNT')} of {formatNumberValue(total, 'COUNT')} SKUs
         </p>
         {stockQuery.isFetchingNextPage ? (
           <p className="text-sm text-cream-500">Loading…</p>

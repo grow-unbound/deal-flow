@@ -102,11 +102,13 @@
     --border-focus: var(--ember-400);
 
     /* Typography */
-    --font-sans: 'Inter', sans-serif;
+    --font-sans: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --yk-font-ui: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-display: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-body: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* --font-mono is injected by next/font (JetBrains_Mono, app/layout.tsx) on <html> —
+       do not redeclare it here, a same-name :root fallback here would race the
+       next/font-injected value at equal specificity depending on stylesheet order. */
 
     /* Shadows */
     --shadow-xs: 0 1px 2px rgba(34, 30, 26, 0.05);

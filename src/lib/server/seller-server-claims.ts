@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -29,13 +30,13 @@ function claimsFromHeaders(h: Headers): JWTClaims {
  * Seller routes are protected by middleware, which validates the Supabase session
  * and forwards verified claims as x-verified-* headers for Server Components.
  */
-export async function getSellerServerClaims(): Promise<JWTClaims> {
+export const getSellerServerClaims = cache(async (): Promise<JWTClaims> => {
   const h = await headers();
   return claimsFromHeaders(h);
-}
+});
 
 /** Ensures an authenticated seller tenant context; redirects to /login when missing. */
-export async function requireSellerServerTenantId(): Promise<string> {
+export const requireSellerServerTenantId = cache(async (): Promise<string> => {
   const claims = await getSellerServerClaims();
 
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) {
@@ -43,4 +44,4 @@ export async function requireSellerServerTenantId(): Promise<string> {
   }
 
   return claims.tenant_id;
-}
+});

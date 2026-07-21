@@ -16,6 +16,7 @@ import type {
   WarehousesLandingResponse,
 } from '@/types/tenant-warehouses';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
+import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface WarehousesLandingFilters {
   search?: string;
@@ -35,7 +36,8 @@ export function useWarehousesLanding(
   const query = useInfiniteQuery<WarehousesLandingResponse>({
     queryKey: ['warehouses-landing', currentTenantId, period, filters],
     enabled: Boolean(currentTenantId),
-    staleTime: 60_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     initialPageParam: 0,
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
@@ -61,7 +63,8 @@ export function useWarehouseDetail(id: string) {
   return useQuery<WarehouseDetailResponse>({
     queryKey: ['warehouse-detail', currentTenantId, id],
     enabled: Boolean(currentTenantId) && Boolean(id),
-    staleTime: 30_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     queryFn: async () => {
       const res = await apiFetch(`/api/tenant/warehouses/${id}`);
       if (res.status === 404) throw new Error('not_found');

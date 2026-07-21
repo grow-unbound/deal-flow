@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
@@ -8,7 +9,7 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerLandingRoute } from '@/lib/buyer-routes';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 /** Product detail sticky footer: button row + padding + safe-area buffer. */
 const PRODUCT_STICKY_FOOTER_LIFT = 'calc(5.5rem + env(safe-area-inset-bottom, 0px) + 12px)';
@@ -53,7 +54,7 @@ export function CartBar() {
           <span>View cart</span>
           <span className="opacity-60">·</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            {formatBuyerCurrency(subtotal)}
+            {formatNumberValue(subtotal, 'CURRENCY_EXACT')}
           </span>
           <ChevronRight className="h-4 w-4 opacity-85" aria-hidden />
         </Link>

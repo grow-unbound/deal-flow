@@ -1,9 +1,16 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import {
+  patchCustomerDetailAfterPayment,
+  patchCustomerDocumentsAfterPayment,
+  patchCustomerDocumentsWithPaymentResult,
+  patchOutstandingInvoicesAfterPayment,
+  patchOutstandingInvoicesWithPaymentResult,
+} from '@/lib/customers/customer-payment-cache-patches';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -317,7 +324,7 @@ export function useTenantCustomerDetail(id: string) {
   return useQuery({
     queryKey: ['tenant-customer-detail', id],
     queryFn: async (): Promise<TenantCustomerDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/customers/${id}`);
+      const res = await apiFetch(`/api/tenant/customers/${id}`, { fresh: true });
       if (!res.ok) {
         if (res.status === 403) {
           throw new Error('Forbidden');
@@ -341,7 +348,7 @@ export function useCustomerOutstandingInvoices(id: string, enabled = true) {
     queryKey: ['tenant-customer-outstanding-invoices', id],
     enabled: Boolean(id) && enabled,
     queryFn: async ({ signal }) => {
-      const res = await apiFetch(`/api/tenant/customers/${id}/outstanding-invoices`, { signal });
+      const res = await apiFetch(`/api/tenant/customers/${id}/outstanding-invoices`, { signal, fresh: true });
       if (!res.ok) {
         if (res.status === 403) throw new Error('Forbidden');
         if (res.status === 404) throw new Error('Not found');
@@ -353,17 +360,80 @@ export function useCustomerOutstandingInvoices(id: string, enabled = true) {
   });
 }
 
+interface CollectCustomerPaymentResult {
+  data?: {
+    outstanding_balance?: number;
+    status?: string;
+  };
+}
+
+interface CollectCustomerPaymentPayload {
+  invoiceId: string;
+  amount: number;
+  payment_method: string;
+  payment_reference?: string | null;
+  paid_at?: string;
+}
+
+function applyCustomerPaymentDetailCacheUpdate(
+  queryClient: QueryClient,
+  customerId: string,
+  paymentAmount: number,
+) {
+  queryClient.setQueryData<TenantCustomerDetailResponse>(
+    ['tenant-customer-detail', customerId],
+    (old) => (old ? patchCustomerDetailAfterPayment(old, paymentAmount) : old),
+  );
+}
+
+function applyCustomerPaymentInvoiceCacheUpdates(
+  queryClient: QueryClient,
+  customerId: string,
+  payload: CollectCustomerPaymentPayload,
+  paymentResult?: CollectCustomerPaymentResult,
+) {
+  const outstandingBalance = paymentResult?.data?.outstanding_balance;
+  const status = paymentResult?.data?.status;
+
+  if (typeof outstandingBalance === 'number' && typeof status === 'string') {
+    queryClient.setQueryData<{ invoices: CustomerOutstandingInvoiceRow[] }>(
+      ['tenant-customer-outstanding-invoices', customerId],
+      (old) => (old ? patchOutstandingInvoicesWithPaymentResult(old, payload.invoiceId, outstandingBalance) : old),
+    );
+
+    queryClient.setQueriesData<CustomerDocumentPage>(
+      { queryKey: ['tenant-customer-documents', customerId] },
+      (old) => (old ? patchCustomerDocumentsWithPaymentResult(old, payload.invoiceId, outstandingBalance, status) : old),
+    );
+    return;
+  }
+
+  queryClient.setQueryData<{ invoices: CustomerOutstandingInvoiceRow[] }>(
+    ['tenant-customer-outstanding-invoices', customerId],
+    (old) => (old ? patchOutstandingInvoicesAfterPayment(old, payload.invoiceId, payload.amount) : old),
+  );
+
+  queryClient.setQueriesData<CustomerDocumentPage>(
+    { queryKey: ['tenant-customer-documents', customerId] },
+    (old) => (old ? patchCustomerDocumentsAfterPayment(old, payload.invoiceId, payload.amount) : old),
+  );
+}
+
+function applyCustomerPaymentCacheUpdates(
+  queryClient: QueryClient,
+  customerId: string,
+  payload: CollectCustomerPaymentPayload,
+  paymentResult?: CollectCustomerPaymentResult,
+) {
+  applyCustomerPaymentDetailCacheUpdate(queryClient, customerId, payload.amount);
+  applyCustomerPaymentInvoiceCacheUpdates(queryClient, customerId, payload, paymentResult);
+}
+
 export function useCollectCustomerInvoicePayment(customerId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: {
-      invoiceId: string;
-      amount: number;
-      payment_method: string;
-      payment_reference?: string | null;
-      paid_at?: string;
-    }) => {
+    mutationFn: async (payload: CollectCustomerPaymentPayload) => {
       const res = await apiPatch(`/api/tenant/invoices/${payload.invoiceId}/pay`, {
         amount: payload.amount,
         payment_method: payload.payment_method,
@@ -374,18 +444,44 @@ export function useCollectCustomerInvoicePayment(customerId: string) {
       if (!res.ok) {
         throw new Error((json as { error?: string }).error ?? 'Failed to record payment');
       }
-      return json;
+      return json as CollectCustomerPaymentResult;
     },
-    onSuccess: () => {
+    onMutate: async (payload) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['tenant-customer-detail', customerId],
+        ['tenant-customer-outstanding-invoices', customerId],
+      ]);
+
+      await queryClient.cancelQueries({ queryKey: ['tenant-customer-documents', customerId] });
+      const documentSnapshots = queryClient.getQueriesData<CustomerDocumentPage>({
+        queryKey: ['tenant-customer-documents', customerId],
+      });
+
+      applyCustomerPaymentCacheUpdates(queryClient, customerId, payload);
+
+      return { snapshots, documentSnapshots };
+    },
+    onSuccess: (paymentResult, payload) => {
+      applyCustomerPaymentInvoiceCacheUpdates(queryClient, customerId, payload, paymentResult);
       toast.success('Payment recorded');
     },
-    onError: (error) => {
+    onError: (error, _payload, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
+      context?.documentSnapshots?.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
       toast.error(error instanceof Error ? error.message : 'Failed to record payment');
     },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', customerId] });
-      void queryClient.invalidateQueries({ queryKey: ['tenant-customer-outstanding-invoices', customerId] });
-      void queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    onSettled: async (_paymentResult, error, payload) => {
+      if (!payload || error) return;
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tenant-customer-outstanding-invoices', customerId] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-customer-documents', customerId] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-customers'] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-invoice', payload.invoiceId] }),
+      ]);
     },
   });
 }
@@ -410,7 +506,7 @@ export function useCustomerDocuments(
       if (filters.query?.trim()) params.set('q', filters.query.trim());
       appendArrayParam(params, 'status', filters.status);
       if (filters.sort) params.set('sort', filters.sort);
-      const res = await apiFetch(`/api/tenant/customers/${buyerId}/documents?${params}`, { signal });
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/documents?${params}`, { signal, fresh: true });
       if (!res.ok) throw new Error('Failed to fetch customer documents');
       return res.json();
     },

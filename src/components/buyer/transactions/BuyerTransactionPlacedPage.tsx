@@ -1,5 +1,6 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from 'lucide-react';
@@ -10,7 +11,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 
 type BuyerTransactionKind = 'estimate' | 'order';
 
@@ -175,7 +176,7 @@ export function BuyerTransactionPlacedPage({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg-base)]">
+    <div className="flex min-h-dvh flex-col bg-[var(--bg-base)]">
       <header
         className="sticky top-0 z-20 flex items-center gap-3 px-4"
         style={{
@@ -189,7 +190,7 @@ export function BuyerTransactionPlacedPage({
         <button
           type="button"
           onClick={() => window.history.back()}
-          className="flex h-8 w-8 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--cream-800)]"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--cream-800)] transition-colors active:bg-[var(--cream-100)]"
           aria-label="Go back"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -235,7 +236,7 @@ export function BuyerTransactionPlacedPage({
             <div className="space-y-3 px-4 py-4">
               <ReceiptRow label={`${documentLabel} #`} value={documentDisplayValue} mono={Boolean(documentNumber)} />
               <ReceiptRow label="Status" value={<StatusChip label="Received" />} />
-              {total > 0 ? <ReceiptRow label="Total" value={formatBuyerCurrency(total)} mono /> : null}
+              {total > 0 ? <ReceiptRow label="Total" value={formatNumberValue(total, 'CURRENCY_EXACT')} mono /> : null}
               {documentUrl ? (
                 <Button asChild variant="outline" className="mt-1 h-10 gap-2 self-start">
                   <a href={documentUrl} target="_blank" rel="noreferrer">

@@ -13,6 +13,24 @@ const SendSchema = z.object({
   message: z.string().min(1),
 });
 
+function buildEstimateSendUpdate(
+  currentStatus: string,
+  channel: 'whatsapp' | 'email' | 'download',
+  actorUserId: string,
+): Record<string, unknown> {
+  const now = new Date().toISOString();
+  const update: Record<string, unknown> = {
+    sent_at: now,
+    sent_channel: channel,
+    updated_at: now,
+    updated_by: actorUserId,
+  };
+  if (currentStatus === 'draft') {
+    update.status = 'sent';
+  }
+  return update;
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -56,7 +74,7 @@ export async function PATCH(
     const { data: estimate, error: estimateError } = await db
       .schema('app')
       .from('estimates')
-      .select('id, tenant_id')
+      .select('id, tenant_id, status')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -72,13 +90,7 @@ export async function PATCH(
       const { error: updateError } = await db
         .schema('app')
         .from('estimates')
-        .update({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          sent_channel: parsed.data.channel,
-          updated_at: new Date().toISOString(),
-          updated_by: claims.sub,
-        })
+        .update(buildEstimateSendUpdate(String(estimate.status ?? 'draft'), parsed.data.channel, claims.sub))
         .eq('id', id)
         .eq('tenant_id', claims.tenant_id);
 
@@ -106,7 +118,7 @@ export async function PATCH(
     const { data: fullEstimate, error: fullEstimateError } = await db
       .schema('app')
       .from('estimates')
-      .select('id, tenant_id, buyer_id, estimate_number, total_amount')
+      .select('id, tenant_id, buyer_id, estimate_number, total_amount, status')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -142,13 +154,7 @@ export async function PATCH(
     const { error: sentUpdateError } = await db
       .schema('app')
       .from('estimates')
-      .update({
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-        sent_channel: 'whatsapp',
-        updated_at: new Date().toISOString(),
-        updated_by: claims.sub,
-      })
+      .update(buildEstimateSendUpdate(String(fullEstimate.status ?? estimate.status ?? 'draft'), 'whatsapp', claims.sub))
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id);
 

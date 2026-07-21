@@ -1,3 +1,4 @@
+import { formatNumberValue } from '@/lib/utils';
 import type { BuyerActivityFeedResponse, BuyerActivityItem } from '@/lib/buyer-home-types';
 
 type BuyerActivityDbClient = {
@@ -170,7 +171,7 @@ export async function loadBuyerActivityFeed(
       amount: Number(row.amount ?? 0),
       timestamp: row.paid_at ?? new Date(0).toISOString(),
       href: row.invoice_id ? `/buy/invoices/${row.invoice_id}` : '/buy/orders?tab=invoices',
-      secondary_label: `Paid ₹${Math.round(Number(row.amount ?? 0)).toLocaleString('en-IN')}`,
+      secondary_label: `Paid ${formatNumberValue(Math.round(Number(row.amount ?? 0)), 'CURRENCY_EXACT')}`,
       meta: 'Payment',
     })),
   ];

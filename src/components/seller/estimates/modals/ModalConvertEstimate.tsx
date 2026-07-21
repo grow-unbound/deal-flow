@@ -18,7 +18,7 @@ import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { useEstimateProductSearch } from '@/hooks/useEstimates';
 import { computeLineGrossAmount, computeLineTaxableAmount } from '@/lib/gst';
 import type { EstimateComposerLineInput, EstimateComposerProductSearchRow } from '@/types/estimate-composer';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 type Target = 'sales_order' | 'invoice';
 
@@ -338,7 +338,7 @@ export function ModalConvertEstimate({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {on ? formatCompactInr(lineAmount(line.unit_price, effectiveQty, line.disc_pct, line.tax_pct, gstInclusive)) : '—'}
+                    {on ? formatNumberValue(lineAmount(line.unit_price, effectiveQty, line.disc_pct, line.tax_pct, gstInclusive), 'CURRENCY_EXACT') : '—'}
                   </p>
                 </div>
               );
@@ -379,7 +379,7 @@ export function ModalConvertEstimate({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {formatCompactInr(lineAmount(al.product.unit_price, effectiveQty, 0, al.product.tax_pct ?? 0, gstInclusive))}
+                    {formatNumberValue(lineAmount(al.product.unit_price, effectiveQty, 0, al.product.tax_pct ?? 0, gstInclusive), 'CURRENCY_EXACT')}
                   </p>
                 </div>
               );
@@ -422,7 +422,7 @@ export function ModalConvertEstimate({
                         <Plus className="h-3.5 w-3.5 shrink-0 text-teal-600" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-cream-900">{product.product_name}</p>
-                          <p className="truncate font-mono text-xs text-cream-500">{product.sku} · {formatCompactInr(product.unit_price)}</p>
+                          <p className="truncate font-mono text-xs text-cream-500">{product.sku} · {formatNumberValue(product.unit_price, 'CURRENCY_EXACT')}</p>
                         </div>
                       </button>
                     ))
@@ -465,18 +465,18 @@ export function ModalConvertEstimate({
                 {totalLineCount} line{totalLineCount === 1 ? '' : 's'}
                 {addedLines.length > 0 ? <span className="ml-1 text-xs text-teal-600">({addedLines.length} added)</span> : null}
               </span>
-              <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+              <span className="font-mono font-medium tabular-nums text-cream-900">{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
             </div>
             <div className="mt-3 space-y-2 text-sm">
-              <SummaryRow label="Subtotal" value={formatCompactInr(subtotal)} />
+              <SummaryRow label="Subtotal" value={formatNumberValue(subtotal, 'CURRENCY_EXACT')} />
               {gstInclusive ? (
                 <SummaryRow label="GST" value="Included in prices" />
               ) : (
-                <SummaryRow label="Tax total" value={formatCompactInr(taxTotal)} />
+                <SummaryRow label="Tax total" value={formatNumberValue(taxTotal, 'CURRENCY_EXACT')} />
               )}
               <div className="flex items-center justify-between border-t border-cream-200 pt-2 text-base">
                 <span className="font-medium text-cream-900">Total</span>
-                <span className="font-mono font-semibold text-cream-950">{formatCompactInr(total)}</span>
+                <span className="font-mono font-semibold text-cream-950">{formatNumberValue(total, 'CURRENCY_EXACT')}</span>
               </div>
             </div>
           </div>

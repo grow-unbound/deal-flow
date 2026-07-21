@@ -1,10 +1,11 @@
 'use client';
 
+import { formatNumberValue } from '@/lib/utils';
 import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -13,7 +14,7 @@ import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { formatBuyerCurrency } from '@/lib/buyer-ui';
+;
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -56,11 +57,11 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 const BACK_BTN: React.CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: 0,
-  background: 'transparent',
-  border: 'none',
+  width: 44,
+  height: 44,
+  borderRadius: 999,
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border-1)',
   color: 'var(--cream-800)',
 };
 
@@ -77,7 +78,7 @@ export default function CartPage() {
   const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
-  const { data: cartBundlesData } = useCartBundles();
+  const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
   const selectedDelivery = delivery?.selected ?? null;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
@@ -134,10 +135,6 @@ export default function CartPage() {
     () => items.filter((item) => item.stock_status !== 'out_of_stock'),
     [items],
   );
-  const unavailableItems = useMemo(
-    () => items.filter((item) => item.stock_status === 'out_of_stock'),
-    [items],
-  );
   const availableItemCount = availableItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const deliveryFee = 0;
@@ -155,6 +152,7 @@ export default function CartPage() {
     [availableItems, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
+  const ctaCount = (allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0);
   const isBusy = submissionPhase !== 'idle';
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
@@ -309,7 +307,7 @@ export default function CartPage() {
       <>
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
           <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
             Cart
@@ -346,7 +344,7 @@ export default function CartPage() {
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
         <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-5 w-5" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
           Cart
@@ -373,49 +371,37 @@ export default function CartPage() {
           </h2>
         </div>
 
-        {/* All items in one card, separated by dividers */}
+        {/* All items in one card, in cart order, separated by dividers. Out-of-stock
+            items grey out inline (CartPageItem's `unavailable` styling) instead of
+            popping a second conditional card in/out of the layout below. */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
-          {availableItems.map((item, idx) => (
+          {items.map((item, idx) => (
             <CartPageItem
               key={item.tenant_product_id}
               item={item}
               onQtyChange={updateQty}
               onRemove={removeItem}
               showDivider={idx > 0}
+              unavailable={item.stock_status === 'out_of_stock'}
             />
           ))}
-          {availableItems.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[var(--fg-3)]">
-              No deliverable items for this location.
-            </div>
-          ) : null}
         </div>
 
-        {unavailableItems.length > 0 ? (
-          <section className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
-            <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--danger-100, #FECACA)' }}>
-              <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}>
-                Unavailable at this warehouse
-              </p>
-              <p className="mt-0.5" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
-                These items are excluded from totals and cannot be submitted.
-              </p>
-            </div>
-            {unavailableItems.map((item, idx) => (
-              <CartPageItem
-                key={item.tenant_product_id}
-                item={item}
-                onQtyChange={updateQty}
-                onRemove={removeItem}
-                showDivider={idx > 0}
-                unavailable
-              />
-            ))}
-          </section>
-        ) : null}
-
-        {/* W6: Complete Your Cart — gap widget (renders only when bundle matches) */}
-        {cartBundlesData && tenantId && (
+        {/* W6: Complete Your Cart — gap widget. Reserves a stable single-row height
+            while the recommendation query is loading, so the totals/delivery cards
+            below don't jump once it resolves. Still collapses to nothing once we know
+            for certain there's no bundle gap to show — that's a real content absence,
+            not a loading state, so there's no space left to reserve for it. */}
+        {cartBundlesLoading ? (
+          <div
+            className="flex animate-pulse items-center gap-3 rounded-[12px] px-4 py-3"
+            style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
+            aria-hidden
+          >
+            <div className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+            <div className="h-3.5 w-40 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+          </div>
+        ) : cartBundlesData && tenantId ? (
           <CartGapWidget
             bundles={cartBundlesData.bundles}
             items={items}
@@ -440,21 +426,21 @@ export default function CartPage() {
               }, product.campaign_id ?? resolvedCampaignId);
             }}
           />
-        )}
+        ) : null}
 
         {/* Totals card */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
-            <TotalsRow label="Subtotal" value={formatBuyerCurrency(totals.subtotal)} />
-            <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatBuyerCurrency(totals.tax_amount)} isText={gstInclusive} />
-            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatBuyerCurrency(deliveryFee)} isText />
+            <TotalsRow label="Subtotal" value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} />
+            <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')} isText={gstInclusive} />
+            <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatNumberValue(deliveryFee, 'CURRENCY_EXACT')} isText />
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-1)' }}>
             <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
               Total
             </span>
             <span style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg-1, var(--cream-900))' }}>
-              {formatBuyerCurrency(total)}
+              {formatNumberValue(total, 'CURRENCY_EXACT')}
             </span>
           </div>
         </div>
@@ -529,7 +515,37 @@ export default function CartPage() {
           borderTop: '1px solid var(--border-1)',
         }}
       >
-        <div className="flex gap-2">
+        {/* Total is always visible above the CTAs — inline next to the single CTA
+            when only one of estimates/orders is enabled for this tenant, or on its
+            own row above both when both are enabled. `ctaCount` reflects a tenant-level
+            setting (order_features), so this layout doesn't change cart-to-cart. */}
+        {ctaCount === 2 && (
+          <div className="flex items-center justify-between pb-2">
+            <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
+              Total
+            </span>
+            <span
+              className="tabular-nums"
+              style={{ fontSize: 'var(--b-text-label)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}
+            >
+              {formatNumberValue(total, 'CURRENCY_EXACT')}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          {ctaCount === 1 && (
+            <div className="flex shrink-0 flex-col">
+              <span className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.1em', color: 'var(--fg-3, var(--cream-600))' }}>
+                Total
+              </span>
+              <span
+                className="tabular-nums"
+                style={{ fontSize: 'var(--b-text-label)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}
+              >
+                {formatNumberValue(total, 'CURRENCY_EXACT')}
+              </span>
+            </div>
+          )}
           {allowRequestQuote && (
             <button
               onClick={handleRequestQuote}
@@ -538,7 +554,7 @@ export default function CartPage() {
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
               <WhatsAppIcon className="w-4 h-4 shrink-0" />
-              {requestingQuote ? 'Requesting…' : 'Get WhatsApp quote'}
+              {requestingQuote ? 'Requesting...' : 'Get WhatsApp quote'}
             </button>
           )}
           {allowPlaceOrder && (
@@ -555,28 +571,6 @@ export default function CartPage() {
         </div>
       </div>
 
-      {isBusy ? (
-        <div
-          className="fixed inset-0 z-30 flex items-center justify-center"
-          style={{
-            left: '50%',
-            transform: 'translateX(-50%)',
-            maxWidth: BUYER_PREVIEW_MAX_WIDTH,
-            background: 'rgba(250, 247, 242, 0.72)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-          }}
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="flex flex-col items-center gap-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm">
-            <Loader2 className="h-8 w-8 animate-spin text-[var(--teal-500)]" />
-            <p className="font-semibold text-[var(--fg-1)]" style={{ fontSize: 'var(--b-text-label)' }}>
-              {placingOrder ? 'Placing your order…' : 'Requesting your quote…'}
-            </p>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -649,12 +643,12 @@ function CartPageItem({
             {!unavailable ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
                 <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                  {formatBuyerCurrency(item.unit_price)}
+                  {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
                   {item.unit ? ` / ${item.unit}` : ''}
                 </span>
                 {showCampaignPrice ? (
                   <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
-                    {formatBuyerCurrency(item.resolved_price)}
+                    {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                   </span>
                 ) : null}
               </div>
@@ -714,7 +708,7 @@ function CartPageItem({
               className="tabular-nums font-semibold"
               style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
             >
-              {formatBuyerCurrency(item.line_total)}
+              {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
             </span>
           )}
         </div>

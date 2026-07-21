@@ -78,7 +78,7 @@ export function BuyerNotificationDrawer({ open, onClose }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="bottom" className="flex h-[82vh] flex-col rounded-t-[20px] p-0">
+      <SheetContent side="bottom" className="flex h-[82dvh] flex-col rounded-t-[20px] p-0">
         {/* drag handle */}
         <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-cream-300" />
 

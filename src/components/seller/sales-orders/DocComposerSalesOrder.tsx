@@ -65,6 +65,7 @@ import {
   useSaveSalesOrderComposer,
 } from '@/hooks/useSalesOrders';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
+import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '@/lib/composer-session-draft';
 import { bumpSecondDateAfterFirst, isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import {
   buildComposerStagedChanges,
@@ -72,7 +73,7 @@ import {
 } from '@/lib/documents/composer-staged-changes';
 import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { computeLineTaxableAmount } from '@/lib/gst';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type {
   EstimateComposerBuyerContext,
   EstimateComposerProductSearchRow,
@@ -216,10 +217,14 @@ export function DocComposerSalesOrder({
   );
 
   const [documentState, setDocumentState] = useState<SalesOrderComposerDocument | null>(() => {
-    if (mode === 'create' && !orderId && !fromEstimateId) return buildNewSalesOrderDraft();
-    return null;
+    if (mode !== 'create' || orderId || fromEstimateId) return null;
+    return loadComposerDraft<SalesOrderComposerDocument, EstimateComposerLineRow>('order')?.document
+      ?? buildNewSalesOrderDraft();
   });
-  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>([]);
+  const [lineState, setLineState] = useState<EstimateComposerLineRow[]>(() => {
+    if (mode !== 'create' || orderId || fromEstimateId) return [];
+    return loadComposerDraft<SalesOrderComposerDocument, EstimateComposerLineRow>('order')?.lines ?? [];
+  });
   const [buyerQuery, setBuyerQuery] = useState('');
   const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
@@ -379,16 +384,20 @@ export function DocComposerSalesOrder({
       return;
     }
 
-    setDocumentState((current) => current ? ({
-      ...current,
-      buyer_context: {
-        ...nextContext,
-        sales_agent_name:
-          mode === 'edit'
-            ? (salesAgentPinnedRef.current ?? nextContext.sales_agent_name)
-            : (user?.displayName ?? nextContext.sales_agent_name),
-      },
-    }) : current);
+    setDocumentState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        place_of_supply: current.place_of_supply || nextContext.place_of_supply || '',
+        buyer_context: {
+          ...nextContext,
+          sales_agent_name:
+            mode === 'edit'
+              ? (salesAgentPinnedRef.current ?? nextContext.sales_agent_name)
+              : (user?.displayName ?? nextContext.sales_agent_name),
+        },
+      };
+    });
     setPaymentTermsLabel(defaultPaymentTerms(nextContext.payment_terms_days));
     setSelectedPriceListId((current) => current ?? nextContext.active_pricelist?.id ?? null);
   }, [buyerContextQuery.data, documentState, mode, user?.displayName]);
@@ -483,7 +492,7 @@ export function DocComposerSalesOrder({
     : (documentState?.available_locations ?? []);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
-    onConfirmClose: () => router.push(closeTarget),
+    onConfirmClose: () => { clearComposerDraft('order'); router.push(closeTarget); },
   });
 
   useEffect(() => {
@@ -491,6 +500,11 @@ export function DocComposerSalesOrder({
       ? { label: 'Unsaved changes', tone: 'warning' }
       : { label: workingId ? 'Saved changes' : 'Not saved yet', tone: dirty ? 'warning' : 'saved' });
   }, [dirty, workingId]);
+
+  useEffect(() => {
+    if (mode !== 'create' || workingId || !documentState) return;
+    saveComposerDraft('order', documentState, lineState);
+  }, [documentState, lineState, mode, workingId]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -523,6 +537,7 @@ export function DocComposerSalesOrder({
     }
     const json = (await res.json()) as { data: SalesOrderComposerDocument };
     qc.setQueryData(['tenant-sales-order-composer', json.data.id], json.data);
+    clearComposerDraft('order');
     if (!isLeavingRef.current) {
       setWorkingId(json.data.id);
     }

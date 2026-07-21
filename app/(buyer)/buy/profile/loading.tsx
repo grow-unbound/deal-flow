@@ -1,6 +1,6 @@
 export default function ProfileLoading() {
   return (
-    <div className="min-h-screen bg-[#f8f4ed]" role="status" aria-label="Loading profile">
+    <div className="min-h-dvh bg-[#f8f4ed]" role="status" aria-label="Loading profile">
       <div className="bg-[linear-gradient(135deg,#21433B_0%,#17372F_100%)] px-4 pb-8 pt-8">
         <div className="flex items-center gap-4">
           <div className="h-20 w-20 animate-pulse rounded-full border border-cream-200 bg-cream-100" />

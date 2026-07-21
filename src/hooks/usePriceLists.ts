@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { REFERENCE_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import type {
   PriceListAssignmentInput,
@@ -228,8 +228,8 @@ export function usePriceListsLanding(
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
     initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: keepPreviousData,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'price_lists');
@@ -393,8 +393,8 @@ export function usePriceListComposerProducts(filters: PriceListComposerProductFi
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }
@@ -410,8 +410,8 @@ export function usePriceListDetail(id: string) {
       return res.json();
     },
     enabled: !!id,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }
@@ -500,8 +500,8 @@ export function usePriceListItems(priceListId: string) {
       return res.json();
     },
     enabled: !!priceListId,
-    staleTime: NAVIGATION_QUERY_STALE_TIME,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
 }

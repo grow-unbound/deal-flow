@@ -4,6 +4,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
+import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 // ─── Location document types ──────────────────────────────────────────────────
 
@@ -260,7 +261,8 @@ export function useLocationsLanding(
   const query = useInfiniteQuery<LocationsLandingResponse>({
     queryKey: ['locations-landing', currentTenantId, period, filters],
     enabled: Boolean(currentTenantId),
-    staleTime: 60_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     initialPageParam: 0,
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
@@ -289,7 +291,8 @@ export function useLocationDetail(id: string) {
   return useQuery<LocationDetailResponse>({
     queryKey: ['location-detail', currentTenantId, id],
     enabled: Boolean(currentTenantId) && Boolean(id),
-    staleTime: 30_000,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
     queryFn: async () => {
       const res = await fetch(`/api/tenant/locations/${id}/detail`);
       if (res.status === 404) throw new Error('not_found');

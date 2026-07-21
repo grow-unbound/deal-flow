@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -38,7 +39,7 @@ export async function GET(
     if (rpcErr) throw new Error(rpcErr.message);
 
     const rows = (rpcData as { tenant_product_id: string }[] | null) ?? [];
-    if (rows.length === 0) return NextResponse.json([]);
+    if (rows.length === 0) return NextResponse.json([], { headers: BUYER_CACHE_CATALOG });
 
     const productIds = rows.map((r) => r.tenant_product_id);
 
@@ -60,7 +61,7 @@ export async function GET(
     // Return in RPC's weighted_score order
     const items = productIds.map((id) => enriched.get(id)).filter((x): x is BuyerCatalogItem => x != null);
 
-    return NextResponse.json(items);
+    return NextResponse.json(items, { headers: BUYER_CACHE_CATALOG });
   } catch (error) {
     console.error('[GET /api/buyer/reco/category]', error);
     return NextResponse.json([]);

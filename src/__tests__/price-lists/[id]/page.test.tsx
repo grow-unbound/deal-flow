@@ -106,7 +106,7 @@ describe('price-lists/[id] detail page', () => {
     expect(screen.getAllByText('WineYard').length).toBeGreaterThanOrEqual(1);
     const table = screen.getByRole('table');
     expect(table).toBeInTheDocument();
-    const markup = screen.getByText('-10.0%');
+    const markup = screen.getByText('-10.00%');
     expect(markup.className).toContain('text-teal-700');
   });
 });

@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { DetailCardRenderer, MetricGrid, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { CategoryDetailOverview } from '@/hooks/useCategories';
-import { formatCompactInr } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
 interface CategoryOverviewTabProps {
   overview: CategoryDetailOverview;
@@ -51,7 +51,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
                   />
                   <YAxis hide />
                   <Tooltip
-                    formatter={(v: number) => [formatCompactInr(v), 'GMV']}
+                    formatter={(v: number) => [formatNumberValue(v, 'CURRENCY_THRESHOLD'), 'GMV']}
                     contentStyle={{
                       borderRadius: 10,
                       border: '1px solid #E8E3DC',
@@ -81,7 +81,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
                 id: b.id,
                 label: b.name,
                 meta: `${b.units_mtd} units`,
-                value: b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—',
+                value: b.gmv_mtd > 0 ? formatNumberValue(b.gmv_mtd, 'CURRENCY_THRESHOLD') : '—',
                 initials: b.initials,
                 hue: index % 2 === 0 ? 'teal' : 'ember',
               }))}
