@@ -200,7 +200,7 @@ function BusinessDetailsSheet({
   }, [open, data.business_name, data.contact_name, data.gstin]);
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Edit business details
@@ -281,7 +281,7 @@ function PhoneSheet({
   }, [open, data.phone]);
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Phone number
@@ -341,7 +341,7 @@ function CreditLimitSheet({
   const invoices = invoicesQuery.data?.invoices ?? [];
 
   return (
-    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42vh]">
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42dvh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Credit used
@@ -495,7 +495,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f4ed] pb-8">
+    <div className="min-h-dvh bg-[#f8f4ed] pb-8">
       <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
         <div className="flex items-center gap-4">
           <div

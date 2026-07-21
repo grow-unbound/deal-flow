@@ -9,7 +9,7 @@ import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { BuyerCatalogLandingHeader } from '@/components/buyer/layout/BuyerCatalogLandingHeader';
 import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -229,8 +229,12 @@ function LandingBodySkeleton(): React.ReactNode {
           {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200', BUYER_CARD_RADIUS_CLASS)}>
               <div className="buyer-lookbook-preview w-full animate-pulse bg-cream-100" />
+              {/* min-h-[2.4em] matches CatalogLookbookCard's reserved 2-line title height */}
               <div className="space-y-2 bg-white px-5 py-4">
-                <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
+                <div className="flex min-h-[2.4em] flex-col justify-center gap-1">
+                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-3.5 w-1/2 animate-pulse rounded bg-cream-200" />
+                </div>
                 <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
               </div>
             </div>
@@ -246,8 +250,12 @@ function LandingBodySkeleton(): React.ReactNode {
               className={cn('w-[calc((100vw-2.5rem)/3)] max-w-[124px] shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]', BUYER_CARD_RADIUS_CLASS)}
             >
               <div className="aspect-square animate-pulse bg-cream-100" />
+              {/* min-h matches DiscoveryThumbTile's BUYER_TWO_LINE_TITLE_CLASS reserved title height */}
               <div className="bg-cream-50 px-3 pb-3 pt-2.5">
-                <div className="h-3.5 w-16 animate-pulse rounded bg-cream-200" />
+                <div className={cn('flex flex-col justify-center gap-1', BUYER_TWO_LINE_TITLE_CLASS)}>
+                  <div className="h-3.5 w-16 animate-pulse rounded bg-cream-200" />
+                  <div className="h-3.5 w-10 animate-pulse rounded bg-cream-200" />
+                </div>
                 <div className="mt-1.5 h-3 w-12 animate-pulse rounded bg-cream-200" />
               </div>
             </div>
@@ -263,8 +271,12 @@ function LandingBodySkeleton(): React.ReactNode {
               className={cn('overflow-hidden border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]', BUYER_CARD_RADIUS_CLASS)}
             >
               <div className="aspect-square animate-pulse bg-cream-100" />
+              {/* min-h matches DiscoveryThumbTile's BUYER_TWO_LINE_TITLE_CLASS reserved title height */}
               <div className="bg-cream-50 px-3 pb-3 pt-2.5">
-                <div className="h-3.5 w-20 animate-pulse rounded bg-cream-200" />
+                <div className={cn('flex flex-col justify-center gap-1', BUYER_TWO_LINE_TITLE_CLASS)}>
+                  <div className="h-3.5 w-20 animate-pulse rounded bg-cream-200" />
+                  <div className="h-3.5 w-12 animate-pulse rounded bg-cream-200" />
+                </div>
                 <div className="mt-1.5 h-3 w-14 animate-pulse rounded bg-cream-200" />
               </div>
             </div>

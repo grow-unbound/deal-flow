@@ -78,7 +78,7 @@ export default function CartPage() {
   const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
-  const { data: cartBundlesData } = useCartBundles();
+  const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
   const selectedDelivery = delivery?.selected ?? null;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
@@ -135,10 +135,6 @@ export default function CartPage() {
     () => items.filter((item) => item.stock_status !== 'out_of_stock'),
     [items],
   );
-  const unavailableItems = useMemo(
-    () => items.filter((item) => item.stock_status === 'out_of_stock'),
-    [items],
-  );
   const availableItemCount = availableItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const deliveryFee = 0;
@@ -156,6 +152,7 @@ export default function CartPage() {
     [availableItems, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
+  const ctaCount = (allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0);
   const isBusy = submissionPhase !== 'idle';
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
@@ -374,49 +371,37 @@ export default function CartPage() {
           </h2>
         </div>
 
-        {/* All items in one card, separated by dividers */}
+        {/* All items in one card, in cart order, separated by dividers. Out-of-stock
+            items grey out inline (CartPageItem's `unavailable` styling) instead of
+            popping a second conditional card in/out of the layout below. */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
-          {availableItems.map((item, idx) => (
+          {items.map((item, idx) => (
             <CartPageItem
               key={item.tenant_product_id}
               item={item}
               onQtyChange={updateQty}
               onRemove={removeItem}
               showDivider={idx > 0}
+              unavailable={item.stock_status === 'out_of_stock'}
             />
           ))}
-          {availableItems.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[var(--fg-3)]">
-              No deliverable items for this location.
-            </div>
-          ) : null}
         </div>
 
-        {unavailableItems.length > 0 ? (
-          <section className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
-            <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--danger-100, #FECACA)' }}>
-              <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}>
-                Unavailable at this warehouse
-              </p>
-              <p className="mt-0.5" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
-                These items are excluded from totals and cannot be submitted.
-              </p>
-            </div>
-            {unavailableItems.map((item, idx) => (
-              <CartPageItem
-                key={item.tenant_product_id}
-                item={item}
-                onQtyChange={updateQty}
-                onRemove={removeItem}
-                showDivider={idx > 0}
-                unavailable
-              />
-            ))}
-          </section>
-        ) : null}
-
-        {/* W6: Complete Your Cart — gap widget (renders only when bundle matches) */}
-        {cartBundlesData && tenantId && (
+        {/* W6: Complete Your Cart — gap widget. Reserves a stable single-row height
+            while the recommendation query is loading, so the totals/delivery cards
+            below don't jump once it resolves. Still collapses to nothing once we know
+            for certain there's no bundle gap to show — that's a real content absence,
+            not a loading state, so there's no space left to reserve for it. */}
+        {cartBundlesLoading ? (
+          <div
+            className="flex animate-pulse items-center gap-3 rounded-[12px] px-4 py-3"
+            style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
+            aria-hidden
+          >
+            <div className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+            <div className="h-3.5 w-40 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+          </div>
+        ) : cartBundlesData && tenantId ? (
           <CartGapWidget
             bundles={cartBundlesData.bundles}
             items={items}
@@ -441,7 +426,7 @@ export default function CartPage() {
               }, product.campaign_id ?? resolvedCampaignId);
             }}
           />
-        )}
+        ) : null}
 
         {/* Totals card */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
@@ -530,7 +515,37 @@ export default function CartPage() {
           borderTop: '1px solid var(--border-1)',
         }}
       >
-        <div className="flex gap-2">
+        {/* Total is always visible above the CTAs — inline next to the single CTA
+            when only one of estimates/orders is enabled for this tenant, or on its
+            own row above both when both are enabled. `ctaCount` reflects a tenant-level
+            setting (order_features), so this layout doesn't change cart-to-cart. */}
+        {ctaCount === 2 && (
+          <div className="flex items-center justify-between pb-2">
+            <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
+              Total
+            </span>
+            <span
+              className="tabular-nums"
+              style={{ fontSize: 'var(--b-text-label)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}
+            >
+              {formatNumberValue(total, 'CURRENCY_EXACT')}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          {ctaCount === 1 && (
+            <div className="flex shrink-0 flex-col">
+              <span className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.1em', color: 'var(--fg-3, var(--cream-600))' }}>
+                Total
+              </span>
+              <span
+                className="tabular-nums"
+                style={{ fontSize: 'var(--b-text-label)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}
+              >
+                {formatNumberValue(total, 'CURRENCY_EXACT')}
+              </span>
+            </div>
+          )}
           {allowRequestQuote && (
             <button
               onClick={handleRequestQuote}

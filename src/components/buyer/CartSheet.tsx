@@ -36,7 +36,7 @@ function CartSheet({ open, onOpenChange, items, onQuantityChange, onRemove, onCh
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[85vh] flex flex-col rounded-t-2xl">
+      <SheetContent side="bottom" className="h-[85dvh] flex flex-col rounded-t-2xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-teal-500" />

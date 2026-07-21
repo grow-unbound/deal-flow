@@ -134,7 +134,7 @@ export function BuyerSearchPageClient() {
   }
 
   return (
-    <div className="flex min-h-[50vh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)]">
+    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)]">
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 py-2 backdrop-blur-md">
         <button
           type="button"

@@ -79,7 +79,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   if (error || !item) {
     return (
-      <div className="flex min-h-[50vh] flex-col" style={{ background: 'var(--bg-base)' }}>
+      <div className="flex min-h-[50dvh] flex-col" style={{ background: 'var(--bg-base)' }}>
         <BuyerDetailShell title="Product" hideSearch>
           <div className="flex flex-col gap-4 px-4 py-8">
             <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
@@ -113,7 +113,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const showStockOverlay = item.stock_status === 'limited' || item.stock_status === 'out_of_stock';
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex min-h-[50dvh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
       <BuyerDetailShell title="Product" hideSearch>
         {/* Hero image */}
         <div

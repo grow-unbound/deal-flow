@@ -153,7 +153,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex flex-col min-h-dvh" style={{ background: 'var(--bg-base)' }}>
       {/* Header */}
       <header
         className="sticky top-0 z-20 flex items-center gap-3 px-4"

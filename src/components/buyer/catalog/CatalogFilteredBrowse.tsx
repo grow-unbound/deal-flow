@@ -104,7 +104,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     ) : null;
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-8">
+    <div className="flex min-h-[50dvh] flex-col pb-8">
       <BuyerDetailShell
         title={title}
         hideSearch
