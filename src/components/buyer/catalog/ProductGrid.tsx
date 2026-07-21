@@ -11,7 +11,7 @@ interface ProductGridProps {
   loading?: boolean;
   loadingMore?: boolean;
   sentinelIndex?: number;
-  sentinelRef?: RefObject<HTMLDivElement>;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
   showPromotionBadge?: boolean;
 }
 
