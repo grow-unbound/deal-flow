@@ -5,7 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { readArrayParam } from '@/lib/landing-filter-params';
-import { PriceListComposerPayloadSchema, type PriceListFilterState } from '@/lib/zod';
+import { PriceListComposerPayloadSchema, PriceListFormPayloadSchema, type PriceListFilterState } from '@/lib/zod';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
@@ -348,32 +348,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = PriceListComposerPayloadSchema.safeParse(body);
-  if (!parsed.success) {
+  const simpleParsed = PriceListFormPayloadSchema.safeParse(body);
+  const composerParsed = simpleParsed.success ? null : PriceListComposerPayloadSchema.safeParse(body);
+  if (!simpleParsed.success && !composerParsed?.success) {
     return NextResponse.json(
-      { error: parsed.error.errors[0]?.message ?? 'Validation failed' },
+      { error: composerParsed?.error.errors[0]?.message ?? simpleParsed.error.errors[0]?.message ?? 'Validation failed' },
       { status: 422 },
     );
   }
 
-  const data = parsed.data;
-  if (data.save_mode === 'publish' && data.item_prices.length === 0) {
+  const isSimpleForm = simpleParsed.success;
+  const data: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  if (!isSimpleForm && data.save_mode === 'publish' && data.item_prices.length === 0) {
     return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
-  const tenantProductIds = data.item_prices.map((item) => item.tenant_product_id);
+  if (!isSimpleForm) {
+    const tenantProductIds = data.item_prices.map((item: any) => item.tenant_product_id);
 
-  let validProductIds: Set<string>;
-  try {
-    validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
-  }
+    let validProductIds: Set<string>;
+    try {
+      validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+    }
 
-  if (validProductIds.size !== tenantProductIds.length) {
-    return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+    if (validProductIds.size !== tenantProductIds.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+    }
   }
 
   const { data: priceList, error: insertError } = await db
@@ -383,14 +387,14 @@ export async function POST(request: NextRequest) {
       tenant_id: claims.tenant_id,
       name: data.name,
       description: data.description?.trim() ? data.description.trim() : null,
-      currency: data.currency,
+      currency: isSimpleForm ? 'INR' : data.currency,
       valid_from: data.valid_from.toISOString(),
       valid_to: data.valid_to ? data.valid_to.toISOString() : null,
       priority: data.priority,
-      is_active: data.save_mode === 'publish',
-      pricing_strategy: data.pricing_strategy,
-      strategy_value: data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null),
-      filters: data.filters,
+      is_active: isSimpleForm ? false : data.save_mode === 'publish',
+      pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
+      strategy_value: isSimpleForm ? null : (data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null)),
+      filters: isSimpleForm ? { brand_names: [], category_names: [], availability: 'show_all' } : data.filters,
       created_by: claims.sub,
       updated_by: claims.sub,
     })
@@ -405,12 +409,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (data.item_prices.length > 0) {
+  if (!isSimpleForm && data.item_prices.length > 0) {
     const { error: itemsError } = await db
       .schema('app')
       .from('price_list_items')
       .insert(
-        data.item_prices.map((item) => ({
+        data.item_prices.map((item: any) => ({
           price_list_id: priceList.id,
           tenant_product_id: item.tenant_product_id,
           price: item.price,
@@ -433,15 +437,15 @@ export async function POST(request: NextRequest) {
   await db.schema('app').from('audit_log').insert({
     tenant_id: claims.tenant_id,
     actor_user_id: claims.sub,
-    entity_type: 'price_list',
-    entity_id: priceList.id,
-    action: 'create',
-    diff: {
-      event: data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
-      item_count: data.item_prices.length,
-      pricing_strategy: data.pricing_strategy,
-    },
-    ts: new Date().toISOString(),
+      entity_type: 'price_list',
+      entity_id: priceList.id,
+      action: 'create',
+      diff: {
+      event: isSimpleForm ? 'price_list_created_simple' : data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
+      item_count: isSimpleForm ? 0 : data.item_prices.length,
+      pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
+      },
+      ts: new Date().toISOString(),
   });
 
   return NextResponse.json({ price_list: priceList }, { status: 201 });

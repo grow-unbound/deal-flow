@@ -6,7 +6,7 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { resolveCampaignWorkflowStatus, type CampaignWorkflowStatus, type CampaignWorkflowStatusLabel, type CampaignWorkflowStatusTone, type RawCampaignStatus } from '@/lib/campaign-workflow-status';
-import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
+import { CampaignFormPayloadSchema, CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
@@ -156,6 +156,12 @@ function buildCatalogScopeValue(input: {
   }
 
   return scope;
+}
+
+function buildSimpleFormMeta(description?: string | null) {
+  return {
+    description: description?.trim() ? description.trim() : null,
+  };
 }
 
 function generateShareToken() {
@@ -1112,61 +1118,102 @@ export async function POST(request: NextRequest) {
   if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
-  const parsed = CatalogComposerPayloadSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 });
-
   const db = supabaseAdmin as any;
-  const payload = parsed.data;
-
-  if (payload.scope_type === 'cohort') {
-    const { data: cohort, error: cohortError } = await db
-      .schema('app')
-      .from('cohorts')
-      .select('id')
-      .eq('id', payload.cohort_id)
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
-    if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+  const rawBody = await request.json().catch(() => null);
+  const simpleParsed = CampaignFormPayloadSchema.safeParse(rawBody);
+  const composerParsed = simpleParsed.success ? null : CatalogComposerPayloadSchema.safeParse(rawBody);
+  if (!simpleParsed.success && !composerParsed?.success) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  if (payload.scope_type === 'buyer') {
-    const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
-    if (validBuyerIds.size !== payload.buyer_ids.length) {
-      return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+  const isSimpleForm = simpleParsed.success;
+  const payload: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  const composerPayload = isSimpleForm ? null : composerParsed!.data;
+
+  if (isSimpleForm) {
+    if (payload.target_mode === 'customer_group') {
+      const { data: cohort, error: cohortError } = await db
+        .schema('app')
+        .from('cohorts')
+        .select('id')
+        .eq('id', payload.target_cohort_id)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+      if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+    }
+    if (payload.pricing_mode === 'pricelist') {
+      const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
+      if (!priceListOk) {
+        return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+      }
+    }
+  } else {
+    if (payload.scope_type === 'cohort') {
+      const { data: cohort, error: cohortError } = await db
+        .schema('app')
+        .from('cohorts')
+        .select('id')
+        .eq('id', payload.cohort_id)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+      if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+    }
+
+    if (payload.scope_type === 'buyer') {
+      const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
+      if (validBuyerIds.size !== payload.buyer_ids.length) {
+        return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+      }
+    }
+
+    if (payload.price_source === 'price_list') {
+      const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
+      if (!priceListOk) {
+        return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+      }
+    }
+
+    const tenantProductIds = payload.items.map((item: any) => item.tenant_product_id);
+    const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+    if (validProductIds.size !== tenantProductIds.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
     }
   }
 
-  if (payload.price_source === 'price_list') {
-    const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
-    if (!priceListOk) {
-      return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
-    }
-  }
+  const status: CatalogStatus = isSimpleForm ? 'draft' : payload.save_mode === 'publish' ? 'published' : 'draft';
+  const shareToken = !isSimpleForm && payload.save_mode === 'publish' ? generateShareToken() : null;
+  const scopeValue = isSimpleForm
+    ? {
+        ...buildCatalogScopeValue({
+          scopeType: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+          cohortId: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
+          buyerIds: [],
+          filters: { brand_names: [], category_names: [], availability: 'show_everything' },
+          tagOverrides: {},
+          priceSource: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
+          priceListId: payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null,
+        }),
+        simple_form: buildSimpleFormMeta(payload.description),
+      }
+    : buildCatalogScopeValue({
+        scopeType: payload.scope_type,
+        cohortId: payload.cohort_id,
+        buyerIds: payload.buyer_ids,
+        filters: payload.filters,
+        tagOverrides: payload.tag_overrides,
+        priceSource: payload.price_source,
+        priceListId: payload.price_list_id,
+      });
+  const buyerNote = (isSimpleForm ? payload.buyer_note : (payload.buyer_note ?? payload.message))?.trim() || null;
+  const isPublishing = !isSimpleForm && payload.save_mode === 'publish';
 
-  const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
-  const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
-  if (validProductIds.size !== tenantProductIds.length) {
-    return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
-  }
-
-  const status: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
-  const shareToken = payload.save_mode === 'publish' ? generateShareToken() : null;
-  const scopeValue = buildCatalogScopeValue({
-    scopeType: payload.scope_type,
-    cohortId: payload.cohort_id,
-    buyerIds: payload.buyer_ids,
-    filters: payload.filters,
-    tagOverrides: payload.tag_overrides,
-    priceSource: payload.price_source,
-    priceListId: payload.price_list_id,
-  });
-  const buyerNote = (payload.buyer_note ?? payload.message)?.trim() || null;
-  const isPublishing = payload.save_mode === 'publish';
-
-  if (isPublishing && payload.notify_whatsapp) {
+  if (isPublishing && composerPayload?.notify_whatsapp) {
     const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
     if (!flagEnabled) {
       return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
@@ -1174,7 +1221,7 @@ export async function POST(request: NextRequest) {
 
     const preflight = await runCampaignPublishPreflight(db, {
       tenantId: claims.tenant_id,
-      scopeType: payload.scope_type,
+      scopeType: composerPayload.scope_type,
       scopeValue,
       notifyWhatsapp: true,
     });
@@ -1186,7 +1233,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (payload.notify_scheduled_for && new Date(payload.notify_scheduled_for).getTime() <= Date.now()) {
+    if (composerPayload.notify_scheduled_for && new Date(composerPayload.notify_scheduled_for).getTime() <= Date.now()) {
       return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
     }
   }
@@ -1197,12 +1244,14 @@ export async function POST(request: NextRequest) {
     .insert({
       tenant_id: claims.tenant_id,
       name: payload.name,
-      scope_type: payload.scope_type,
+      scope_type: isSimpleForm
+        ? (payload.target_mode === 'customer_group' ? 'cohort' : 'buyer')
+        : payload.scope_type,
       scope_value: scopeValue,
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
-      message: isPublishing ? buyerNote : (payload.message?.trim() || null),
-      hero_image_url: payload.hero_image_url ?? null,
+      message: isSimpleForm ? buyerNote : (isPublishing ? buyerNote : (payload.message?.trim() || null)),
+      hero_image_url: (isSimpleForm ? payload.hero_image_url : payload.hero_image_url) || null,
       status,
       share_token: shareToken,
       created_by: claims.sub,
@@ -1216,12 +1265,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create catalog' }, { status: 500 });
   }
 
-  if (payload.items.length > 0) {
+  if (!isSimpleForm && payload.items.length > 0) {
     const { error: itemsError } = await db
       .schema('app')
       .from('campaign_items')
       .insert(
-        payload.items.map((item) => ({
+        payload.items.map((item: any) => ({
           campaign_id: insertedCatalog.id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
@@ -1241,17 +1290,17 @@ export async function POST(request: NextRequest) {
 
   let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
 
-  if (isPublishing && payload.notify_whatsapp) {
+  if (isPublishing && composerPayload?.notify_whatsapp) {
     try {
       whatsappNotify = await queueCampaignPublishNotify(db, {
         tenantId: claims.tenant_id,
         actorId: claims.sub ?? claims.tenant_id,
         campaignId: insertedCatalog.id,
         campaignName: payload.name,
-        scopeType: payload.scope_type,
+        scopeType: composerPayload.scope_type,
         scopeValue,
         buyerNote,
-        scheduledFor: payload.notify_scheduled_for ?? null,
+        scheduledFor: composerPayload.notify_scheduled_for ?? null,
         heroImageUrl: null,
       });
     } catch (notifyError) {

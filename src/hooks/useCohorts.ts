@@ -1,12 +1,12 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { REFERENCE_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
+import type { CohortCreateInput, CohortRules, CohortUpdateInput, CustomerGroupFormPayload } from '@/lib/zod';
 import { buildCohortRulesSummary, type CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
@@ -193,6 +193,17 @@ export interface CohortDetailResponse {
   detail_v2?: unknown;
   buyers: CohortDetailBuyer[];
   rules_summary: CohortRulesSummary;
+}
+
+function cohortTypeLabel(brandCount: number): CohortType {
+  if (brandCount > 0) return 'Brand affinity';
+  return 'Activity-based';
+}
+
+function allowedBrandsLabel(brandNames: string[]): string {
+  if (brandNames.length === 0) return 'All brands';
+  if (brandNames.length <= 3) return brandNames.join(', ');
+  return `${brandNames.slice(0, 3).join(', ')} + ${brandNames.length - 3} more`;
 }
 
 export interface CohortComposerFilterOption {
@@ -476,6 +487,139 @@ export function useSaveCohortComposer(cohortId?: string) {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not save customer group');
+    },
+  });
+}
+
+export function useSaveSimpleCustomerGroup(cohortId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: CustomerGroupFormPayload) => {
+      const res = await apiFetch(cohortId ? `/api/cohorts/${cohortId}` : '/api/cohorts', {
+        method: cohortId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save customer group');
+      }
+
+      return res.json() as Promise<{ cohort: { id: string; name: string; description: string | null } }>;
+    },
+    onMutate: async (payload) => {
+      const keys: (readonly unknown[])[] = [['cohorts-landing']];
+      if (cohortId) keys.push(['cohort-detail', cohortId]);
+      const snapshots = await takeSnapshots(queryClient, keys);
+      const optimisticId = cohortId ?? `optimistic-${Date.now()}`;
+      const selectedBrandIds = payload.allowed_tenant_brand_ids ?? [];
+
+      if (cohortId) {
+        queryClient.setQueryData<CohortDetailResponse>(['cohort-detail', cohortId], (old) =>
+          old
+            ? {
+                ...old,
+                header: {
+                  ...old.header,
+                  cohort_name: payload.name,
+                  subtitle: {
+                    ...old.header.subtitle,
+                    description_text: payload.description || 'No description',
+                  },
+                },
+                details_rules: {
+                  ...old.details_rules,
+                  name: payload.name,
+                  description: payload.description || '',
+                  allowed_tenant_brand_ids: payload.allowed_tenant_brand_ids ?? null,
+                },
+              }
+            : old,
+        );
+      }
+
+      queryClient.setQueryData<TenantCohortOption[]>(['tenant-cohort-options'], (old) => {
+        const nextOption: TenantCohortOption = {
+          id: optimisticId,
+          name: payload.name,
+          description: payload.description || null,
+          member_count: old?.find((option) => option.id === cohortId)?.member_count ?? 0,
+        };
+
+        if (!old) {
+          return [nextOption];
+        }
+
+        if (cohortId) {
+          return old.map((option) => (option.id === cohortId ? { ...option, ...nextOption, id: cohortId } : option));
+        }
+
+        return [nextOption, ...old];
+      });
+
+      queryClient.setQueriesData<InfiniteData<CohortsLandingResponse, number>>(
+        { queryKey: ['cohorts-landing'] },
+        (old) => {
+          if (!old || old.pages.length === 0) return old;
+
+          const firstPage = old.pages[0];
+          const brandNames = selectedBrandIds
+            .map((brandId) => firstPage.brands.find((brand) => brand.id === brandId)?.name)
+            .filter((name): name is string => Boolean(name));
+          const nextRow: CohortsLandingRow = {
+            id: optimisticId,
+            name: payload.name,
+            description: payload.description || null,
+            is_static: true,
+            type: cohortTypeLabel(selectedBrandIds.length),
+            focus_chips: brandNames.slice(0, 3),
+            allowed_brands_count: selectedBrandIds.length > 0 ? selectedBrandIds.length : null,
+            allowed_brands_label: allowedBrandsLabel(brandNames),
+            allowed_tenant_brand_ids: selectedBrandIds.length > 0 ? selectedBrandIds : null,
+            gmv_mtd: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.gmv_mtd ?? 0,
+            growth_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.growth_pct ?? 0,
+            active_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.active_members ?? 0,
+            total_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.total_members ?? 0,
+            conversion_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.conversion_pct ?? 0,
+            live_catalogs_count: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.live_catalogs_count ?? 0,
+            status_label: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.status_label ?? 'Ready',
+            status_tone: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.status_tone ?? 'neutral',
+          };
+
+          const updatedFirstPage: CohortsLandingResponse = {
+            ...firstPage,
+            total: (firstPage.total ?? firstPage.cohorts.length) + (cohortId ? 0 : 1),
+            kpis: {
+              ...firstPage.kpis,
+              total_cohorts: firstPage.kpis.total_cohorts + (cohortId ? 0 : 1),
+            },
+            cohorts: cohortId
+              ? firstPage.cohorts.map((cohort) => (cohort.id === cohortId ? { ...cohort, ...nextRow, id: cohortId } : cohort))
+              : [nextRow, ...firstPage.cohorts],
+          };
+
+          return {
+            ...old,
+            pages: [updatedFirstPage, ...old.pages.slice(1)],
+          };
+        },
+      );
+
+      return { snapshots };
+    },
+    onError: (error, _payload, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Could not save customer group');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-cohort-options'] });
+      if (cohortId) {
+        queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      }
+      toast.success(cohortId ? 'Customer group updated' : 'Customer group created');
     },
   });
 }

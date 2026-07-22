@@ -103,7 +103,7 @@ describe('cohort detail page integration', () => {
     expect(screen.getAllByText('30.00%').length).toBeGreaterThanOrEqual(1);
     const editLink = screen.getByRole('link', { name: /Edit customer group/i });
     expect(editLink).toBeInTheDocument();
-    expect(editLink).toHaveAttribute('href', '/customer-groups/c1/edit');
+    expect(editLink.tagName.toLowerCase()).toBe('button');
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open buyer app preview' })).not.toBeInTheDocument();
   });

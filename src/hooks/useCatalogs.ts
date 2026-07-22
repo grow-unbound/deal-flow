@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
@@ -14,6 +14,7 @@ import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-p
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
+  CampaignFormPayload,
   CatalogComposerFilterState,
   CatalogComposerPayload,
   CatalogComposerPriceSource,
@@ -243,6 +244,7 @@ export interface CatalogDetailResponse {
   };
   composer?: {
     name: string;
+    description?: string;
     status: CampaignWorkflowStatus;
     live_status: CampaignWorkflowStatus;
     has_unpublished_changes: boolean;
@@ -264,6 +266,16 @@ export interface CatalogDetailResponse {
       price_override?: number | null;
     }>;
   };
+}
+
+function campaignInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export interface CatalogBuyerPage {
@@ -623,6 +635,138 @@ export function useSaveCatalogComposer(catalogId?: string) {
         queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
         queryClient.invalidateQueries({ queryKey: ['catalog-composer-detail', catalogId] });
       }
+    },
+  });
+}
+
+export function useSaveSimpleCatalog(catalogId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: CampaignFormPayload): Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }> => {
+      const url = catalogId ? `/api/tenant/catalogs/${catalogId}` : '/api/tenant/catalogs';
+      const method = catalogId ? 'PATCH' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save campaign');
+      }
+      return res.json();
+    },
+    onMutate: async (payload) => {
+      const keys: (readonly unknown[])[] = [['tenant-catalogs']];
+      if (catalogId) keys.push(['tenant-catalog-detail', catalogId]);
+      const snapshots = await takeSnapshots(queryClient, keys);
+      const optimisticId = catalogId ?? `optimistic-${Date.now()}`;
+      const optimisticCreatedAt = new Date().toISOString();
+
+      if (catalogId) {
+        queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', catalogId], (old) =>
+          old
+            ? {
+                ...old,
+                header: {
+                  ...old.header,
+                  name: payload.name,
+                  scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+                },
+                composer: old.composer
+                  ? {
+                      ...old.composer,
+                      name: payload.name,
+                      description: payload.description ?? '',
+                      valid_from: payload.valid_from.toISOString(),
+                      valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+                      message: payload.buyer_note ?? '',
+                      scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+                      cohort_id: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
+                      price_source: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
+                      price_list_id: payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null,
+                    }
+                  : old.composer,
+              }
+            : old,
+        );
+      }
+
+      queryClient.setQueriesData<InfiniteData<CatalogsLandingResponse, number>>(
+        { queryKey: ['tenant-catalogs'] },
+        (old) => {
+          if (!old || old.pages.length === 0) return old;
+
+          const firstPage = old.pages[0];
+          const matchingExisting = firstPage.catalogs.find((catalog) => catalog.id === catalogId);
+          const cohortOptions = queryClient.getQueryData<Array<{ id: string; name: string }>>(['tenant-cohort-options']) ?? [];
+          const cohortName = payload.target_mode === 'customer_group'
+            ? (cohortOptions.find((cohort) => cohort.id === payload.target_cohort_id)?.name ?? matchingExisting?.cohort_name ?? 'Selected customer group')
+            : 'Individual buyers';
+
+          const nextRow: CatalogLandingRow = {
+            id: optimisticId,
+            name: payload.name,
+            initials: matchingExisting?.initials ?? campaignInitials(payload.name),
+            hue: matchingExisting?.hue ?? 'ember',
+            status: matchingExisting?.status ?? {
+              value: 'draft',
+              label: 'Draft',
+              tone: 'warning',
+            },
+            cohort_name: cohortName,
+            audience_count: matchingExisting?.audience_count ?? (payload.target_mode === 'customer_group' ? null : 0),
+            products_count: matchingExisting?.products_count ?? 0,
+            brands_count: matchingExisting?.brands_count ?? 0,
+            gmv: matchingExisting?.gmv ?? 0,
+            orders: matchingExisting?.orders ?? 0,
+            order_count: matchingExisting?.order_count ?? 0,
+            estimate_count: matchingExisting?.estimate_count ?? 0,
+            conversions: matchingExisting?.conversions ?? 0,
+            demand_customers: matchingExisting?.demand_customers ?? 0,
+            views: matchingExisting?.views ?? 0,
+            view_pct: matchingExisting?.view_pct ?? 0,
+            conversion_pct: matchingExisting?.conversion_pct ?? 0,
+            valid_from: payload.valid_from.toISOString(),
+            valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+            valid_until_label: matchingExisting?.valid_until_label ?? 'Not set',
+            days_left: matchingExisting?.days_left ?? null,
+            created_at: matchingExisting?.created_at ?? optimisticCreatedAt,
+            growth_pct: matchingExisting?.growth_pct ?? 0,
+          };
+
+          const updatedFirstPage: CatalogsLandingResponse = {
+            ...firstPage,
+            total: (firstPage.total ?? firstPage.catalogs.length) + (catalogId ? 0 : 1),
+            kpis: {
+              ...firstPage.kpis,
+              draft_catalogs: firstPage.kpis.draft_catalogs + (catalogId ? 0 : 1),
+            },
+            catalogs: catalogId
+              ? firstPage.catalogs.map((catalog) => (catalog.id === catalogId ? { ...catalog, ...nextRow, id: catalogId } : catalog))
+              : [nextRow, ...firstPage.catalogs],
+          };
+
+          return {
+            ...old,
+            pages: [updatedFirstPage, ...old.pages.slice(1)],
+          };
+        },
+      );
+
+      return { snapshots };
+    },
+    onError: (error, _payload, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Failed to save campaign');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      if (catalogId) {
+        queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      }
+      toast.success(catalogId ? 'Campaign updated' : 'Campaign created');
     },
   });
 }
