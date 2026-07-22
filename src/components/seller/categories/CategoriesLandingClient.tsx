@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import { ChevronRight, Tag } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -339,8 +340,9 @@ function CategoriesLandingContent({
             {filtered.map((row) => (
               <tr
                 key={row.id}
-                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
                 onClick={() => router.push(`/categories/${row.id}`)}
+                onPointerDown={() => triggerHaptic()}
               >
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">

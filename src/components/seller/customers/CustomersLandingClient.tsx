@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import { Users, MessageCircle } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -207,7 +208,7 @@ function CustomersLandingContent({
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
   const horizonLabel = 'Trailing 90 days';
-  const metricSuffix = '90D';
+  const metricSuffix = 'MTD';
   const summaryQuery = useCustomersLanding('last90', initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -434,8 +435,9 @@ function CustomersLandingContent({
           return (
             <tr
               key={buyer.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
               onClick={() => router.push(`/customers/${buyer.id}`)}
+              onPointerDown={() => triggerHaptic()}
             >
               <td className="px-5 py-3.5">
                 <div className="ent flex items-center gap-3">

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -339,8 +340,9 @@ function CohortsLandingContent({
           {filtered.map((cohort) => (
             <tr
               key={cohort.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
               onClick={() => router.push(`/customer-groups/${cohort.id}`)}
+              onPointerDown={() => triggerHaptic()}
             >
               <td className="px-5 py-3.5">
                 <div className="min-w-0">
