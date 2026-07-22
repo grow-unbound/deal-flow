@@ -1,7 +1,7 @@
 'use client';
 
 import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone } from 'lucide-react';
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -45,13 +45,14 @@ function getInitials(value: string | null | undefined) {
 }
 
 interface SellerGlobalHeaderProps {
-  tenantBranding: {
+  tenantBrandingPromise: Promise<{
     tenantName: string;
     tenantLogoUrl: string | null;
-  };
+  }>;
 }
 
-export function SellerGlobalHeader({ tenantBranding }: SellerGlobalHeaderProps) {
+export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeaderProps) {
+  const tenantBranding = use(tenantBrandingPromise);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
   const { user, signOut } = useAuth();

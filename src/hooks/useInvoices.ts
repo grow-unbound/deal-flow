@@ -74,6 +74,21 @@ export function useSaveInvoiceComposer(invoiceId: string | null) {
       }
       return (await res.json()) as { data: InvoiceComposerDocument };
     },
+    onMutate: async (payload) => {
+      if (!invoiceId) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-invoice-composer', invoiceId] });
+      const prev = qc.getQueryData<InvoiceComposerDocument>(['tenant-invoice-composer', invoiceId]);
+      if (prev) {
+        qc.setQueryData(['tenant-invoice-composer', invoiceId], { ...prev, ...payload });
+      }
+      return { prev };
+    },
+    onError: (e, _vars, ctx) => {
+      if (invoiceId && ctx?.prev) {
+        qc.setQueryData(['tenant-invoice-composer', invoiceId], ctx.prev);
+      }
+      toast.error(e instanceof Error ? e.message : 'Failed to save invoice');
+    },
     onSuccess: (payload) => {
       if (!invoiceId) return;
       qc.setQueryData(['tenant-invoice-composer', invoiceId], payload.data);

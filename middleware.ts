@@ -1,6 +1,15 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { decodeJWTPayload } from '@/lib/auth';
+import {
+  TENANT_FLAGS_COOKIE,
+  TENANT_FLAGS_HEADER,
+  TENANT_FLAGS_TTL_SECONDS,
+  createTenantFlagsToken,
+  encodeTenantFlagsHeader,
+  verifyTenantFlagsToken,
+  type TenantCreateFlags,
+} from '@/lib/server/tenant-flags-token';
 import type { Database } from '@/types/database';
 
 // Routes that don't require an authenticated session
@@ -111,6 +120,47 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set('x-buyer-preview', buyerPreviewCookie);
   }
 
+  // Resolve tenant feature flags once per (long) session instead of per navigation.
+  // Cookie is httpOnly + HMAC-signed (df_flags) so a tampered/edited cookie is
+  // rejected and falls back to a fresh resolve — never trusted blindly, since these
+  // flags gate paid-tier features. The fresh resolve calls posthog-node, which is
+  // NOT Edge-Runtime compatible (middleware only runs on Edge) — so instead of
+  // calling resolveTenantFlags() directly, self-fetch a Node-runtime Route Handler
+  // that does, same pattern as fetchSellerPageBootstrap.
+  let freshTenantFlags: { flags: Record<string, boolean>; createFlags: TenantCreateFlags } | null = null;
+  // Skip for the flags-refresh route itself — its self-fetch re-enters this same
+  // middleware, and now that cookies are forwarded to it, resolving flags for that
+  // inner request too would recurse into another self-fetch indefinitely.
+  if (tenantId && role?.startsWith('seller_') && pathname !== '/api/tenant/flags-refresh') {
+    const flagsCookie = request.cookies.get(TENANT_FLAGS_COOKIE)?.value;
+    const verified = flagsCookie ? await verifyTenantFlagsToken(flagsCookie, tenantId) : null;
+    let flagsData: { flags: Record<string, boolean>; createFlags: TenantCreateFlags } | null = verified;
+    if (!flagsData) {
+      try {
+        const proto = hostname.includes('localhost') ? 'http' : 'https';
+        const res = await fetch(`${proto}://${hostname}/api/tenant/flags-refresh`, {
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            // Forward the request's own cookies — fetch() does not attach them
+            // automatically, and the route sits behind this same middleware, which
+            // requires a valid Supabase session cookie to avoid redirecting to /login.
+            cookie: request.headers.get('cookie') ?? '',
+          },
+        });
+        if (res.ok) {
+          freshTenantFlags = (await res.json()) as { flags: Record<string, boolean>; createFlags: TenantCreateFlags };
+          flagsData = freshTenantFlags;
+        }
+      } catch {
+        // Flags refresh unreachable — leave header unset, getFlag()'s own fallback
+        // resolves directly (Node runtime, safe) when a Server Component calls it.
+      }
+    }
+    if (flagsData) {
+      requestHeaders.set(TENANT_FLAGS_HEADER, encodeTenantFlagsHeader(flagsData));
+    }
+  }
+
   // Role-based zone guards
   // Guard 2: buyers must stay in /buy — redirect them away from seller/root pages
   const isBuyerSafeZone =
@@ -129,6 +179,16 @@ export async function middleware(request: NextRequest) {
   finalized.headers.set('x-tenant-subdomain', subdomain ?? '');
   for (const cookie of res.cookies.getAll()) {
     finalized.cookies.set(cookie);
+  }
+  if (freshTenantFlags && tenantId) {
+    const token = await createTenantFlagsToken(tenantId, freshTenantFlags);
+    finalized.cookies.set(TENANT_FLAGS_COOKIE, token, {
+      httpOnly: true,
+      path: '/',
+      maxAge: TENANT_FLAGS_TTL_SECONDS,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
   }
   res = finalized;
 

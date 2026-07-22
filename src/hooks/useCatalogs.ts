@@ -598,6 +598,21 @@ export function useSaveCatalogComposer(catalogId?: string) {
         whatsapp_notify?: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null;
       }>;
     },
+    onMutate: async (payload) => {
+      if (!catalogId) return {};
+      const snapshots = await takeSnapshots(queryClient, [
+        ['tenant-catalog-detail', catalogId],
+        ['catalog-composer-detail', catalogId],
+      ]);
+      queryClient.setQueryData(['catalog-composer-detail', catalogId], (old: unknown) =>
+        old ? { ...(old as object), ...payload } : old,
+      );
+      return { snapshots };
+    },
+    onError: (err, _payload, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(err instanceof Error ? err.message : 'Failed to save catalog');
+    },
     onSuccess: (_data, payload) => {
       if (payload.save_mode !== 'publish') {
         toast.success('Campaign saved');

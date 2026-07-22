@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
@@ -72,25 +72,9 @@ function invoiceSupportText(row: Pick<TenantInvoicesResponse['invoices'][number]
   return `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`;
 }
 
-function InvoicesLoadingSkeleton() {
+function InvoicesTableRowsSkeleton() {
   return (
-    <PageWrap className="max-w-[1920px]">
-      <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
-      </div>
-    </PageWrap>
+    <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
   );
 }
 
@@ -357,7 +341,7 @@ function InvoicesLandingContent({
 
           <div className="overflow-x-auto">
             {showTableSkeleton ? (
-              <InvoicesDataSkeleton />
+              <InvoicesTableRowsSkeleton />
             ) : displayRows.length === 0 ? (
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
