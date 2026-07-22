@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { DocComposerEstimate } from '@/components/seller/estimates/DocComposerEstimate';
 import { FLAGS, getFlag } from '@/lib/flags';
-import { getInAppCreateFlags } from '@/lib/server/seller-features';
+import { getInAppCreateFlagsCached } from '@/lib/server/seller-features';
 
 export default async function NewEstimatePage() {
   const h = await headers();
@@ -16,7 +16,7 @@ export default async function NewEstimatePage() {
   const [orderMgmt, estimates, createFlags] = await Promise.all([
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.ESTIMATES, tenantId),
-    getInAppCreateFlags(tenantId),
+    getInAppCreateFlagsCached(tenantId),
   ]);
 
   if (!orderMgmt || !estimates || !createFlags.create_enquiries) {

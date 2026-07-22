@@ -29,6 +29,7 @@ import { getDiscountBandCounts } from '@/lib/price-list-pricing-checks';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
+import { formatNumberValue } from '@/lib/utils';
 
 const PriceListPerformanceTab = dynamic(
   () => import('@/components/seller/price-lists/detail/PriceListPerformanceTab').then((m) => m.PriceListPerformanceTab),
@@ -83,11 +84,9 @@ export default function PriceListDetailPage() {
   const subtitle = priceList
     ? [
         `${priceList.items.length} products`,
-        `Customer groups: ${priceList.assignments.filter((a) => a.target_type === 'cohort').map((a) => a.label).filter(Boolean).join(', ') || '—'}`,
         `Valid ${formatDate(priceList.valid_from)} → ${formatDate(priceList.valid_to)}`,
-        `Created by ${priceList.created_by_label ?? 'Team member'}`,
       ]
-    : ['—', '—', '—', '—'];
+    : ['—', '—'];
 
   return (
     <FeatureGate flag="PRICING_ENGINE">
@@ -138,19 +137,19 @@ export default function PriceListDetailPage() {
                     sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                   },
                   {
-                    label: 'Customers reached',
+                    label: 'Customers assigned',
                     value: priceList.stats?.assignments_count ?? priceList.assignments.length,
-                    sub: 'direct, group, and all-buyer assignments',
+                    sub: 'customers',
                   },
                   {
-                    label: 'Typical discount',
-                    value: `${discountBands.total > 0 ? Math.round((discountBands.discounted / discountBands.total) * 100) : 0}%`,
-                    sub: 'of priced items below base',
+                    label: 'Average discount',
+                    value: `${formatNumberValue(priceList.stats?.avg_discount_pct ?? 0, 'PERCENTAGE')}`,
+                    sub: 'from base selling price',
                   },
                   {
-                    label: 'Items below cost/floor',
-                    value: discountBands.discounted,
-                    sub: 'priced under base selling price',
+                    label: 'Discounted products',
+                    value: `${formatNumberValue(discountBands.discounted, 'COUNT')}`,
+                    sub: 'priced below base selling price',
                   },
                 ]}
               />

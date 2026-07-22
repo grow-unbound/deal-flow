@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 
 // ─── mock Next.js navigation ─────────────────────────────────────────────────
@@ -95,8 +95,10 @@ describe('SellerSidebar nav gating', () => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_assistant'));
     });
 
-    it('renders non-admin nav items', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('renders non-admin nav items', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Estimates')).toBeInTheDocument();
       expect(screen.getByText('Sales Orders')).toBeInTheDocument();
@@ -107,18 +109,24 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('Exports')).not.toBeInTheDocument();
     });
 
-    it('hides Customer Groups nav item', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('hides Customer Groups nav item', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.queryByText('Customer Groups')).not.toBeInTheDocument();
     });
 
-    it('hides Price Lists nav item', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('hides Price Lists nav item', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
     });
 
-    it('hides strategy modules and section headers', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('hides strategy modules and section headers', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.queryByText('Brands')).not.toBeInTheDocument();
       expect(screen.queryByText('Catalogs')).not.toBeInTheDocument();
       expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
@@ -127,8 +135,10 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('ADMIN')).not.toBeInTheDocument();
     });
 
-    it('hides Settings nav item', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('hides Settings nav item', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     });
 
@@ -139,8 +149,10 @@ describe('SellerSidebar nav gating', () => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_admin'));
     });
 
-    it('renders all nav items including admin-only ones', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    it('renders all nav items including admin-only ones', async () => {
+      await act(async () => {
+        render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+      });
       expect(screen.getByText('Customer Groups')).toBeInTheDocument();
       expect(screen.getByText('Price Lists')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();

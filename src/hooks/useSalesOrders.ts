@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
@@ -73,6 +74,21 @@ export function useSaveSalesOrderComposer(orderId: string | null) {
         throw new Error((err as { error?: string }).error ?? 'Failed to save sales order');
       }
       return (await res.json()) as { data: SalesOrderComposerDocument };
+    },
+    onMutate: async (payload) => {
+      if (!orderId) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-sales-order-composer', orderId] });
+      const prev = qc.getQueryData<SalesOrderComposerDocument>(['tenant-sales-order-composer', orderId]);
+      if (prev) {
+        qc.setQueryData(['tenant-sales-order-composer', orderId], { ...prev, ...payload });
+      }
+      return { prev };
+    },
+    onError: (e, _vars, ctx) => {
+      if (orderId && ctx?.prev) {
+        qc.setQueryData(['tenant-sales-order-composer', orderId], ctx.prev);
+      }
+      toast.error(e instanceof Error ? e.message : 'Failed to save sales order');
     },
     onSuccess: (payload) => {
       if (!orderId) return;

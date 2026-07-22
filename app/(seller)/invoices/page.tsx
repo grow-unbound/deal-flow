@@ -1,9 +1,10 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { InvoicesLandingClient } from '@/components/seller/invoices/InvoicesLandingClient';
+import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import type { TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
-import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 export default async function InvoicesPage({
@@ -15,9 +16,15 @@ export default async function InvoicesPage({
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<TenantInvoicesResponse>(
-    `/api/tenant/invoices?limit=200&period=${period}`,
+
+  return (
+    <SellerBootstrapBoundary<TenantInvoicesResponse>
+      path={`/api/tenant/invoices?limit=200&period=${period}`}
+      fallback={<InvoicesLandingSkeleton />}
+      render={(initialData, status) => {
+        if (status === 403) return <FeatureForbiddenPage />;
+        return <InvoicesLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
+      }}
+    />
   );
-  if (status === 403) return <FeatureForbiddenPage />;
-  return <InvoicesLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
 }
