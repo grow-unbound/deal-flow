@@ -156,6 +156,12 @@ export function useEstimateDetail(estimateId: string) {
   });
 }
 
+const ESTIMATE_ACTION_STATUS: Record<string, string> = {
+  send: 'sent',
+  accept: 'accepted',
+  decline: 'declined',
+};
+
 export function useEstimateAction(estimateId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -168,14 +174,37 @@ export function useEstimateAction(estimateId: string) {
       const json = (await res.json()) as { data: Record<string, unknown> };
       return json.data;
     },
+    onMutate: async (input) => {
+      const nextStatus = ESTIMATE_ACTION_STATUS[input.action];
+      if (!nextStatus) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
+      await qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
+      const prev = qc.getQueryData<TenantEstimateDetailResponse>(['tenant-estimate-detail', estimateId]);
+      const prevComposer = qc.getQueryData<TenantEstimateDetailResponse>(['tenant-estimate-composer', estimateId]);
+      if (prev) {
+        qc.setQueryData(['tenant-estimate-detail', estimateId], { ...prev, status: nextStatus });
+      }
+      if (prevComposer) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], { ...prevComposer, status: nextStatus });
+      }
+      return { prev, prevComposer };
+    },
+    onError: (e, _vars, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(['tenant-estimate-detail', estimateId], ctx.prev);
+      }
+      if (ctx?.prevComposer) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prevComposer);
+      }
+      toast.error(e instanceof Error ? e.message : 'Action failed');
+    },
     onSuccess: () => {
       toast.success('Estimate updated');
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
-    },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Action failed');
     },
   });
 }
@@ -329,6 +358,21 @@ export function useSaveEstimateComposer(estimateId: string | null) {
         throw new Error((err as { error?: string }).error ?? 'Failed to save estimate');
       }
       return (await res.json()) as { data: EstimateComposerDocument };
+    },
+    onMutate: async (payload) => {
+      if (!estimateId) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
+      const prev = qc.getQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId]);
+      if (prev) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], { ...prev, ...payload });
+      }
+      return { prev };
+    },
+    onError: (e, _vars, ctx) => {
+      if (estimateId && ctx?.prev) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prev);
+      }
+      toast.error(e instanceof Error ? e.message : 'Failed to save estimate');
     },
     onSuccess: (payload) => {
       if (!estimateId) return;

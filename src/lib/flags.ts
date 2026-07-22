@@ -1,5 +1,7 @@
-import { PostHog } from 'posthog-node';
+import { headers } from 'next/headers';
 import { FEATURE_FLAGS } from '@/constants';
+import { TENANT_FLAGS_HEADER, decodeTenantFlagsHeader } from '@/lib/server/tenant-flags-token';
+import { resolveTenantFlags } from '@/lib/server/tenant-flags-resolve';
 
 export { FEATURE_FLAGS as FLAGS };
 
@@ -10,23 +12,23 @@ type CachedFlag = {
 
 const FLAG_TTL_MS = 30_000;
 const flagCache = new Map<string, CachedFlag>();
-let posthogClient: PostHog | null = null;
-
-function createClient(): PostHog | null {
-  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  if (!key) return null;
-  if (posthogClient) return posthogClient;
-
-  posthogClient = new PostHog(key, {
-    host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
-    flushAt: 1,
-    flushInterval: 0,
-  });
-
-  return posthogClient;
-}
 
 export async function getFlag(flagName: string, tenantId: string): Promise<boolean> {
+  // Fast path: middleware already resolved + forwarded flags for this request
+  // (from its long-TTL signed cookie, or fresh if the cookie was cold) — no
+  // network call needed at all.
+  try {
+    const h = await headers();
+    const raw = h.get(TENANT_FLAGS_HEADER);
+    const forwarded = raw ? decodeTenantFlagsHeader(raw) : null;
+    if (forwarded && flagName in forwarded.flags) {
+      return forwarded.flags[flagName];
+    }
+  } catch {
+    // headers() unavailable outside a request context (e.g. some test setups) — fall through
+  }
+
+  // Defensive fallback: same-process short cache, then a direct resolve.
   const cacheKey = `${tenantId}:${flagName}`;
   const now = Date.now();
   const cached = flagCache.get(cacheKey);
@@ -34,20 +36,8 @@ export async function getFlag(flagName: string, tenantId: string): Promise<boole
     return cached.value;
   }
 
-  const client = createClient();
-  // PostHog unavailable = not blocking; DB toggles in tenant_settings are the authority.
-  // Only an explicit PostHog `false` acts as a global kill-switch.
-  if (!client) return true;
-
-  try {
-    const flags = await client.evaluateFlags(tenantId);
-    const value = flags.isEnabled(flagName) === true;
-    flagCache.set(cacheKey, {
-      value,
-      expiresAtMs: now + FLAG_TTL_MS,
-    });
-    return value;
-  } catch {
-    return true;
-  }
+  const { flags } = await resolveTenantFlags(tenantId);
+  const value = flags[flagName] ?? true;
+  flagCache.set(cacheKey, { value, expiresAtMs: now + FLAG_TTL_MS });
+  return value;
 }

@@ -9,6 +9,32 @@ function PulseCard({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-[14px] border border-cream-200 bg-cream-100', className)} />;
 }
 
+export function TableRowsSkeleton({
+  gridClassName,
+  rowCount = 6,
+  cellCount,
+  cellHeight = 'h-10 rounded-md',
+}: {
+  gridClassName: string;
+  rowCount?: number;
+  cellCount: number;
+  cellHeight?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
+      <div className="space-y-3 p-4">
+        {Array.from({ length: rowCount }).map((_, row) => (
+          <div key={row} className={cn('grid gap-3', gridClassName)}>
+            {Array.from({ length: cellCount }).map((_, col) => (
+              <PulseCard key={col} className={cellHeight} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LandingSkeleton({
   ariaLabel,
   titleWidth,

@@ -31,6 +31,16 @@ vi.mock('@/lib/server/seller-page-bootstrap', () => ({
   fetchSellerPageBootstrap: (...args: unknown[]) => fetchSellerPageBootstrapMock(...args),
 }));
 
+// See seller-search-param-pages.test.tsx for why this needs mocking: plain
+// ReactDOM can't execute the async Server Component SellerBootstrapBoundary
+// wraps in <Suspense>.
+vi.mock('@/components/seller/layout/SellerBootstrapBoundary', () => ({
+  SellerBootstrapBoundary: ({ path, render }: { path: string; render: (data: unknown, status: number) => unknown }) => {
+    const { data, status } = fetchSellerPageBootstrapMock(path);
+    return render(data, status);
+  },
+}));
+
 import CustomersPage from '../../app/(seller)/customers/page';
 
 describe('customers landing integration', () => {
@@ -40,7 +50,7 @@ describe('customers landing integration', () => {
     requireSellerServerTenantIdMock.mockReset();
     fetchSellerPageBootstrapMock.mockReset();
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
-    fetchSellerPageBootstrapMock.mockResolvedValue({ data: null, status: 200 });
+    fetchSellerPageBootstrapMock.mockReturnValue({ data: null, status: 200 });
   });
 
   it('renders flag-off state and does not fetch landing data', () => {

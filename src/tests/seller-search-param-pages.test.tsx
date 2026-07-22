@@ -55,6 +55,19 @@ vi.mock('@/lib/server/seller-page-bootstrap', () => ({
   fetchSellerPageBootstrap: (...args: unknown[]) => fetchSellerPageBootstrapMock(...args),
 }));
 
+// SellerBootstrapBoundary wraps an async Server Component in <Suspense> — plain
+// ReactDOM (what RTL renders with here) can't execute async components at all,
+// only Next's RSC pipeline can. Mock it as a synchronous passthrough so these
+// tests keep exercising the page → render prop wiring without needing an RSC
+// runtime. fetchSellerPageBootstrapMock is set up with mockReturnValue (not
+// mockResolvedValue) below so its result is available synchronously here.
+vi.mock('@/components/seller/layout/SellerBootstrapBoundary', () => ({
+  SellerBootstrapBoundary: ({ path, render }: { path: string; render: (data: unknown, status: number) => unknown }) => {
+    const { data, status } = fetchSellerPageBootstrapMock(path);
+    return render(data, status);
+  },
+}));
+
 import BrandsPage from '../../app/(seller)/brands/page';
 import CustomerGroupsPage from '../../app/(seller)/customer-groups/page';
 import CampaignsPage from '../../app/(seller)/campaigns/page';
@@ -74,7 +87,7 @@ describe('seller landing pages forward URL search to landing clients', () => {
     getFlagMock.mockResolvedValue(true);
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
     resolveSellerLandingPeriodMock.mockResolvedValue('month');
-    fetchSellerPageBootstrapMock.mockResolvedValue({ data: { ok: true }, status: 200 });
+    fetchSellerPageBootstrapMock.mockReturnValue({ data: { ok: true }, status: 200 });
   });
 
   it('passes search to the brands landing client', async () => {
