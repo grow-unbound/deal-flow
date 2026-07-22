@@ -10,6 +10,15 @@ vi.mock('posthog-node', () => ({
   },
 }));
 
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: null,
+  supabase: {},
+}));
+
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers(),
+}));
+
 import { getFlag } from '@/lib/flags';
 
 beforeEach(() => {
@@ -18,14 +27,14 @@ beforeEach(() => {
 });
 
 describe('getFlag', () => {
-  it('returns false for unknown flag name when PostHog returns undefined', async () => {
+  it('defaults to true for a flag name outside the known FEATURE_FLAGS set (permissive, not blocking)', async () => {
     mockEvaluateFlags.mockResolvedValue({
       isEnabled: vi.fn().mockReturnValue(undefined),
     });
 
     const result = await getFlag('unknown_flag_xyz', 'tenant-123');
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
   it('returns true when PostHog returns true for df_integrations', async () => {
@@ -48,12 +57,12 @@ describe('getFlag', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when POSTHOG_KEY is not set', async () => {
+  it('returns true (not blocking) when POSTHOG_KEY is not set — DB toggles are the authority', async () => {
     delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
     const result = await getFlag('df_tenant_onboarding', 'tenant-123');
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
     expect(mockEvaluateFlags).not.toHaveBeenCalled();
   });
 

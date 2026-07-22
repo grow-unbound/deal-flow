@@ -1,6 +1,6 @@
 'use client';
 
-import type { FC } from 'react';
+import { use, type FC } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -142,15 +142,16 @@ interface SellerSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   canCollapse?: boolean;
-  featureAvailability: SellerShellFeatureAvailability;
+  featureAvailabilityPromise: Promise<SellerShellFeatureAvailability>;
 }
 
 export function SellerSidebar({
   isCollapsed = false,
   onToggleCollapse = () => undefined,
   canCollapse = true,
-  featureAvailability,
+  featureAvailabilityPromise,
 }: SellerSidebarProps) {
+  const featureAvailability = use(featureAvailabilityPromise);
   const pathname = usePathname();
   const { isSellerAssistant, role } = useRole();
   const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;

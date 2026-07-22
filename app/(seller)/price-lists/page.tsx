@@ -1,8 +1,9 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
+import { PriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import type { PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
-import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 export default async function PriceListsPage({
@@ -13,7 +14,15 @@ export default async function PriceListsPage({
   await requireSellerServerTenantId();
 
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<PriceListsLandingResponse>('/api/price-lists?limit=50');
-  if (status === 403) return <FeatureForbiddenPage />;
-  return <PriceListsLandingClient initialData={initialData} initialSearch={initialSearch} />;
+
+  return (
+    <SellerBootstrapBoundary<PriceListsLandingResponse>
+      path="/api/price-lists?limit=50"
+      fallback={<PriceListsLandingSkeleton />}
+      render={(initialData, status) => {
+        if (status === 403) return <FeatureForbiddenPage />;
+        return <PriceListsLandingClient initialData={initialData} initialSearch={initialSearch} />;
+      }}
+    />
+  );
 }

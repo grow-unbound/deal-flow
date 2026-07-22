@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 
 const mockPathname = vi.fn(() => '/dashboard');
@@ -83,36 +83,46 @@ describe('SellerSidebar', () => {
     }
   });
 
-  it('renders three section headers in expanded mode', () => {
-    render(<SellerSidebar isCollapsed={false} featureAvailability={makeFeatures()} />);
+  it('renders three section headers in expanded mode', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed={false} featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
     expect(screen.getByText('GROWTH')).toBeInTheDocument();
     expect(screen.getByText('SETUP')).toBeInTheDocument();
   });
 
-  it('hides section headers when collapsed', () => {
-    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
+  it('hides section headers when collapsed', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
     expect(screen.queryByText('GROWTH')).not.toBeInTheDocument();
     expect(screen.queryByText('SETUP')).not.toBeInTheDocument();
   });
 
-  it('hides Estimates when df_estimates flag is off', () => {
-    render(<SellerSidebar featureAvailability={makeFeatures({ estimates: false })} />);
+  it('hides Estimates when df_estimates flag is off', async () => {
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures({ estimates: false }))} />);
+    });
     expect(screen.queryByText('Estimates')).not.toBeInTheDocument();
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
-  it('does not render the account footer in the sidebar', () => {
-    render(<SellerSidebar featureAvailability={makeFeatures()} />);
+  it('does not render the account footer in the sidebar', async () => {
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(screen.queryByRole('button', { name: /log out/i })).not.toBeInTheDocument();
     expect(screen.queryByText('seller@example.com')).not.toBeInTheDocument();
     expect(screen.queryByText('Acme Dist')).not.toBeInTheDocument();
   });
 
-  it('derives idle prefetch hrefs from navGroups for admin with flags on', () => {
-    render(<SellerSidebar featureAvailability={makeFeatures()} />);
+  it('derives idle prefetch hrefs from navGroups for admin with flags on', async () => {
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(prefetchSpy).toHaveBeenCalled();
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).toContain('/dashboard');
@@ -126,21 +136,27 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/settings/billing');
   });
 
-  it('hides Integrations when df_integrations is off', () => {
-    render(<SellerSidebar featureAvailability={makeFeatures({ integrations: false })} />);
+  it('hides Integrations when df_integrations is off', async () => {
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures({ integrations: false }))} />);
+    });
     expect(screen.queryByRole('link', { name: 'Integrations' })).not.toBeInTheDocument();
   });
 
-  it('shows settings children when pathname is under /settings', () => {
+  it('shows settings children when pathname is under /settings', async () => {
     mockPathname.mockReturnValue('/settings/team');
-    render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Billing & Plan' })).toBeInTheDocument();
   });
 
-  it('excludes admin-only and flag-off routes from prefetch for assistant', () => {
+  it('excludes admin-only and flag-off routes from prefetch for assistant', async () => {
     mockUseAuth.mockReturnValue(makeAuth('seller_assistant'));
-    render(<SellerSidebar featureAvailability={makeFeatures({ estimates: false })} />);
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures({ estimates: false }))} />);
+    });
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).not.toContain('/cohorts');
     expect(paths).not.toContain('/exports');
@@ -152,9 +168,11 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/dashboard');
   });
 
-  it('renders assistant nav as a flat ordered list with no section headings', () => {
+  it('renders assistant nav as a flat ordered list with no section headings', async () => {
     mockUseAuth.mockReturnValue(makeAuth('seller_assistant'));
-    render(<SellerSidebar featureAvailability={makeFeatures()} />);
+    await act(async () => {
+      render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
 
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
     expect(screen.queryByText('GROWTH')).not.toBeInTheDocument();
@@ -169,26 +187,34 @@ describe('SellerSidebar', () => {
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
-  it('renders collapse toggle in footer when canCollapse is true', () => {
-    render(<SellerSidebar isCollapsed={false} canCollapse featureAvailability={makeFeatures()} />);
+  it('renders collapse toggle in footer when canCollapse is true', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed={false} canCollapse featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
     expect(toggle).toBeInTheDocument();
     expect(toggle.closest('footer')).not.toBeNull();
   });
 
-  it('hides collapse toggle when canCollapse is false', () => {
-    render(<SellerSidebar isCollapsed={false} canCollapse={false} featureAvailability={makeFeatures()} />);
+  it('hides collapse toggle when canCollapse is false', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed={false} canCollapse={false} featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     expect(screen.queryByRole('button', { name: /sidebar/i })).not.toBeInTheDocument();
   });
 
-  it('renders copper mark logo in collapsed mode (not charcoal app-icon)', () => {
-    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
+  it('renders copper mark logo in collapsed mode (not charcoal app-icon)', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     const logo = screen.getByRole('img', { name: 'Yukti' });
     expect(logo).toHaveAttribute('src', expect.stringContaining('mark-copper.svg'));
   });
 
-  it('keeps collapsed nav links left-aligned without justify-center', () => {
-    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
+  it('keeps collapsed nav links left-aligned without justify-center', async () => {
+    await act(async () => {
+      render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
+    });
     const dashboardLink = screen.getByRole('link', { name: 'Dashboard' });
     expect(dashboardLink.className).not.toContain('justify-center');
     expect(dashboardLink.className).toContain('gap-3');

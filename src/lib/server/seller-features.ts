@@ -1,7 +1,9 @@
 import { cache } from 'react';
+import { headers } from 'next/headers';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { TENANT_FLAGS_HEADER, decodeTenantFlagsHeader } from '@/lib/server/tenant-flags-token';
 
 export const SELLER_SHELL_FLAGS = {
   brandProductMaster: FEATURE_FLAGS.BRAND_PRODUCT_MASTER,
@@ -115,6 +117,23 @@ export async function getInAppCreateFlags(tenantId: string): Promise<{
     create_sales_orders: features.create_sales_orders !== false,
     create_invoices: features.create_invoices !== false,
   };
+}
+
+/** Same data as getInAppCreateFlags, but reads middleware's forwarded flags header first — no Supabase call on a warm cache. */
+export async function getInAppCreateFlagsCached(tenantId: string): Promise<{
+  create_enquiries: boolean;
+  create_sales_orders: boolean;
+  create_invoices: boolean;
+}> {
+  try {
+    const h = await headers();
+    const raw = h.get(TENANT_FLAGS_HEADER);
+    const forwarded = raw ? decodeTenantFlagsHeader(raw) : null;
+    if (forwarded) return forwarded.createFlags;
+  } catch {
+    // headers() unavailable outside a request context — fall through
+  }
+  return getInAppCreateFlags(tenantId);
 }
 
 export function hasSellerShellFeature(

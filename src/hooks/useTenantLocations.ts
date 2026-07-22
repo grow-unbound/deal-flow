@@ -24,8 +24,10 @@ export function useTenantLocations() {
   const { currentTenantId } = useAuth();
   const { isSellerAdmin } = useRole();
 
+  const locationsQueryKey = ['tenant-locations', currentTenantId, isSellerAdmin ? 'all' : 'active'] as const;
+
   const query = useQuery({
-    queryKey: ['tenant-locations', currentTenantId, isSellerAdmin ? 'all' : 'active'],
+    queryKey: locationsQueryKey,
     enabled: Boolean(currentTenantId),
     queryFn: async () => {
       const url = isSellerAdmin ? '/api/tenant/locations?include_deleted=1' : '/api/tenant/locations';
@@ -49,8 +51,8 @@ export function useTenantLocations() {
       return json.data.location;
     },
     onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ['tenant-locations', currentTenantId] });
-      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(['tenant-locations', currentTenantId]);
+      await queryClient.cancelQueries({ queryKey: locationsQueryKey });
+      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(locationsQueryKey);
       const optimistic: TenantLocation = {
         id: `temp-${Date.now()}`,
         tenant_id: currentTenantId ?? '',
@@ -80,17 +82,17 @@ export function useTenantLocations() {
         }
       }
       nextLocs.push(optimistic);
-      queryClient.setQueryData(['tenant-locations', currentTenantId], { locations: nextLocs });
+      queryClient.setQueryData(locationsQueryKey, { locations: nextLocs });
       return { prev };
     },
     onError: (err, _input, ctx) => {
       if (ctx?.prev) {
-        queryClient.setQueryData(['tenant-locations', currentTenantId], ctx.prev);
+        queryClient.setQueryData(locationsQueryKey, ctx.prev);
       }
       toast.error(err instanceof Error ? err.message : 'Failed to create location');
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tenant-locations', currentTenantId] });
+      void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
     },
     onSuccess: () => {
@@ -109,8 +111,8 @@ export function useTenantLocations() {
       return json.data.location;
     },
     onMutate: async ({ id, patch }) => {
-      await queryClient.cancelQueries({ queryKey: ['tenant-locations', currentTenantId] });
-      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(['tenant-locations', currentTenantId]);
+      await queryClient.cancelQueries({ queryKey: locationsQueryKey });
+      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(locationsQueryKey);
       const locs = [...(prev?.locations ?? [])];
       const idx = locs.findIndex((l) => l.id === id);
       if (idx >= 0) {
@@ -138,18 +140,18 @@ export function useTenantLocations() {
           cur.status = 'active';
         }
         locs[idx] = cur;
-        queryClient.setQueryData(['tenant-locations', currentTenantId], { locations: locs });
+        queryClient.setQueryData(locationsQueryKey, { locations: locs });
       }
       return { prev };
     },
     onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
-        queryClient.setQueryData(['tenant-locations', currentTenantId], ctx.prev);
+        queryClient.setQueryData(locationsQueryKey, ctx.prev);
       }
       toast.error(err instanceof Error ? err.message : 'Failed to update location');
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tenant-locations', currentTenantId] });
+      void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
     },
     onSuccess: (_data, vars) => {
@@ -170,20 +172,20 @@ export function useTenantLocations() {
       }
     },
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['tenant-locations', currentTenantId] });
-      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(['tenant-locations', currentTenantId]);
+      await queryClient.cancelQueries({ queryKey: locationsQueryKey });
+      const prev = queryClient.getQueryData<{ locations: TenantLocation[] }>(locationsQueryKey);
       const locs = (prev?.locations ?? []).filter((l) => l.id !== id);
-      queryClient.setQueryData(['tenant-locations', currentTenantId], { locations: locs });
+      queryClient.setQueryData(locationsQueryKey, { locations: locs });
       return { prev };
     },
     onError: (err, _id, ctx) => {
       if (ctx?.prev) {
-        queryClient.setQueryData(['tenant-locations', currentTenantId], ctx.prev);
+        queryClient.setQueryData(locationsQueryKey, ctx.prev);
       }
       toast.error(err instanceof Error ? err.message : 'Failed to deactivate location');
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tenant-locations', currentTenantId] });
+      void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
     },
     onSuccess: () => {

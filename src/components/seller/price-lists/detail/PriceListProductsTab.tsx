@@ -109,7 +109,7 @@ export function PriceListProductsTab({ priceListId, filters, items, brandsCovere
           </div>
         ) : (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No saved filters. This price list was built from its saved line items only.
+            No product filters applied. This price list is for specific products only.
           </div>
         )}
       </article>

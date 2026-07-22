@@ -175,6 +175,7 @@ export function useSendSalesOrder(orderId: string) {
       toast.success('Sales order sent');
     },
     onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['tenant-orders'] });
     },
   });

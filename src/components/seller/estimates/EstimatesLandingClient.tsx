@@ -29,7 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumberValue } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
-import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
@@ -84,25 +84,9 @@ function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean 
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function EstimatesLoadingSkeleton() {
+function EstimatesTableRowsSkeleton() {
   return (
-    <PageWrap className="max-w-[1920px]">
-      <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
-      </div>
-    </PageWrap>
+    <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
   );
 }
 
@@ -375,7 +359,7 @@ function EstimatesLandingContent({
 
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
-                <EstimatesDataSkeleton />
+                <EstimatesTableRowsSkeleton />
               ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={28} strokeWidth={1.5} />}

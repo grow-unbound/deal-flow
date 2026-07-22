@@ -34,27 +34,6 @@ import type {
 type SalesMixDimension = 'brand' | 'category' | 'location';
 const DASHBOARD_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
-function DashboardDataSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[210px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="h-[320px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        <div className="h-[320px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-      </div>
-    </div>
-  );
-}
-
 function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   return (
     <PerformanceCard
@@ -599,7 +578,7 @@ export function SellerDashboardClient({
         horizon={horizonLabel}
       />
 
-      {isLoading && !data ? <DashboardSkeleton /> : (
+      {isLoading && !dashboard ? <DashboardSkeleton /> : (
         <>
           {dashboard.role === 'seller_admin' ? <AdminSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} /> : <AssistantSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} />}
         </>

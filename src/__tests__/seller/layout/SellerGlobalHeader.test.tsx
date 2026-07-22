@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { SellerGlobalHeader } from '@/components/layout/SellerGlobalHeader';
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -57,8 +57,10 @@ describe('SellerGlobalHeader', () => {
     mockPush.mockClear();
   });
 
-  it('renders the inline search field and right-side actions', () => {
-    render(<SellerGlobalHeader tenantBranding={{ tenantName: 'Acme Dist', tenantLogoUrl: null }} />);
+  it('renders the inline search field and right-side actions', async () => {
+    await act(async () => {
+      render(<SellerGlobalHeader tenantBrandingPromise={Promise.resolve({ tenantName: 'Acme Dist', tenantLogoUrl: null })} />);
+    });
 
     expect(screen.getByRole('searchbox', { name: /Search seller entities/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open Buyer App/i })).toHaveAttribute('href', '/api/buyer/preview/launch');
@@ -66,8 +68,10 @@ describe('SellerGlobalHeader', () => {
     expect(screen.getByRole('button', { name: /Open account menu for Priya Shah/i })).toBeInTheDocument();
   });
 
-  it('opens the inline search dropdown from the search field', () => {
-    render(<SellerGlobalHeader tenantBranding={{ tenantName: 'Acme Dist', tenantLogoUrl: null }} />);
+  it('opens the inline search dropdown from the search field', async () => {
+    await act(async () => {
+      render(<SellerGlobalHeader tenantBrandingPromise={Promise.resolve({ tenantName: 'Acme Dist', tenantLogoUrl: null })} />);
+    });
 
     fireEvent.focus(screen.getByRole('searchbox', { name: /Search seller entities/i }));
 
@@ -77,7 +81,9 @@ describe('SellerGlobalHeader', () => {
   });
 
   it('shows account details and logout actions in the avatar popover', async () => {
-    render(<SellerGlobalHeader tenantBranding={{ tenantName: 'Acme Dist', tenantLogoUrl: null }} />);
+    await act(async () => {
+      render(<SellerGlobalHeader tenantBrandingPromise={Promise.resolve({ tenantName: 'Acme Dist', tenantLogoUrl: null })} />);
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /Open account menu for Priya Shah/i }));
 
