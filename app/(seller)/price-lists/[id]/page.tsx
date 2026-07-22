@@ -30,6 +30,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
 import { formatNumberValue } from '@/lib/utils';
+import { PriceListFormSheet } from '@/components/seller/price-lists/PriceListFormSheet';
 
 const PriceListPerformanceTab = dynamic(
   () => import('@/components/seller/price-lists/detail/PriceListPerformanceTab').then((m) => m.PriceListPerformanceTab),
@@ -53,6 +54,7 @@ export default function PriceListDetailPage() {
     initialState: 'performance',
   });
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, isError } = usePriceListDetail(priceListId);
   const priceListAction = usePriceListAction(priceListId);
@@ -116,11 +118,9 @@ export default function PriceListDetailPage() {
                       <Archive size={14} aria-hidden />
                       Archive pricelist
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2" asChild>
-                        <Link href={`/price-lists/${priceListId}/edit`}>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
                           <PencilIcon size={14} aria-hidden />
                           Edit pricelist
-                        </Link>
                     </Button>
                     </div>
                   ) : null
@@ -187,6 +187,20 @@ export default function PriceListDetailPage() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              <PriceListFormSheet
+                open={editOpen}
+                onOpenChange={setEditOpen}
+                mode="edit"
+                priceListId={priceListId}
+                defaultValues={{
+                  form_mode: 'simple',
+                  name: priceList.name,
+                  description: priceList.description ?? '',
+                  valid_from: priceList.valid_from ? new Date(priceList.valid_from) : new Date(),
+                  valid_to: priceList.valid_to ? new Date(priceList.valid_to) : undefined,
+                  priority: priceList.priority,
+                }}
+              />
             </>
           )}
         </PageWrap>

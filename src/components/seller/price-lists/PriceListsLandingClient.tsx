@@ -28,6 +28,7 @@ import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListsLandingSkeleton as SharedPriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { PriceListFormSheet } from './PriceListFormSheet';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
@@ -94,6 +95,7 @@ function PriceListsLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
+  const [formOpen, setFormOpen] = useState(false);
   const { isSellerAssistant } = useRole();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
@@ -185,9 +187,10 @@ function PriceListsLandingContent({
           horizon="Now"
           {...(isSellerAssistant ? {} : {
             primary: 'Add a price list',
-            onPrimaryClick: () => router.push('/price-lists/new'),
+            onPrimaryClick: () => setFormOpen(true),
           })}
         />
+        <PriceListFormSheet open={formOpen} onOpenChange={setFormOpen} mode="create" />
 
         <InsightStrip4
           tiles={[
@@ -280,11 +283,9 @@ function PriceListsLandingContent({
                     : 'Create a price list to set cohort pricing.'
               }
               action={!isSellerAssistant ? (
-                <Button variant="accent" asChild>
-                  <Link href="/price-lists/new" className="inline-flex items-center gap-1.5">
+                <Button variant="accent" onClick={() => setFormOpen(true)}>
                     <Plus size={13} />
                     Add a price list
-                  </Link>
                 </Button>
               ) : undefined}
             />

@@ -14,6 +14,7 @@ Follow the repo `AGENTS.md` as the source of truth for product, UI, and workflow
 - Every critical view must render a skeleton/pending state first; do not allow blank transition states.
 - For CTA-driven mutations, default to optimistic UI with React Query (`onMutate` + rollback in `onError` + revalidate in `onSettled`).
 - Avoid unnecessary `router.refresh()` calls; prefer targeted query updates and invalidation.
+- CLS budget < 0.05: skeletons must reserve the same height as real content (2-line titles use `min-h-[2.4em]`/`BUYER_TWO_LINE_TITLE_CLASS` on both sides), async conditional widgets show a same-footprint skeleton not nothing-then-pop-in, `dvh` not `vh` for full-height mobile shells, and in-place refetches never swap in a full-page skeleton over already-rendered sections.
 
 ## Backend & Data-Fetching Performance Standard
 (full rationale - read only when required: `specs/performance-upgrade-2026-07.md`)
@@ -25,3 +26,4 @@ Follow the repo `AGENTS.md` as the source of truth for product, UI, and workflow
 - Heavy or rarely-visited components (charts, modals, drawers, detail-tab panels) are wrapped in `next/dynamic(..., { ssr: false })`. Check `pnpm run analyze` before adding any new heavy dependency (charting, PDF, maps, etc).
 - `tsconfig.json`'s `tsBuildInfoFile` stays inside `.next/cache/` — that's the only directory Vercel's build cache persists between deploys.
 - `middleware.ts`'s route-matcher extension exclusions (`\.js`, `\.css`, etc.) only match paths that *start* with those strings, not paths ending in them. Any new root-level static public file (manifest, service worker, etc.) must be added explicitly to `PUBLIC_PREFIXES`.
+- TanStack Query: set `staleTime`/`gcTime` from `src/lib/query-navigation.ts`'s tiers (`REFERENCE_*` for rarely-changing data, default `NAVIGATION_*`/`BUYER_*` for transactional) — never a raw hardcoded ms value or an implicit default. Every filtered/paginated hook sets `placeholderData: keepPreviousData`. Prefetch on `pointerdown`, not hover. Wrap multi-call server-only reads in React `cache()`; never use Next's shared fetch cache on a tenant-scoped read unless the cache key includes `tenant_id`.

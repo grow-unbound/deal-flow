@@ -36,6 +36,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import {
   CatalogNotifyBuyersActionSchema,
   CatalogPublishUpdatesActionSchema,
+  CampaignFormPayloadSchema,
   CatalogComposerPayloadSchema,
   CatalogPublishActionSchema,
   type CatalogNotifyRecipientFilter,
@@ -124,6 +125,11 @@ function buildCatalogScopeValue(input: {
     },
     ...(input.draft ? { composer_draft: input.draft } : {}),
   };
+}
+
+function readSimpleFormDescription(scopeValue: Record<string, unknown> | null): string {
+  const value = (scopeValue ?? {}) as { simple_form?: { description?: string | null } | null };
+  return value.simple_form?.description ?? '';
 }
 
 function generateShareToken() {
@@ -901,6 +907,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     composer: {
       name: composerDraft?.name ?? catalog.name,
+      description: readSimpleFormDescription((catalog.scope_value ?? {}) as Record<string, unknown>),
       status: workflowStatus.value,
       live_status: resolveCampaignWorkflowStatus({
         rawStatus: catalog.status,
@@ -939,8 +946,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const rawBody = await request.json().catch(() => null);
   const actionParsed = PatchSchema.safeParse(rawBody);
-  const composerParsed = actionParsed.success ? null : CatalogComposerPayloadSchema.safeParse(rawBody);
-  if (!actionParsed.success && !composerParsed?.success) {
+  const simpleParsed = actionParsed.success ? null : CampaignFormPayloadSchema.safeParse(rawBody);
+  const composerParsed = actionParsed.success || simpleParsed?.success ? null : CatalogComposerPayloadSchema.safeParse(rawBody);
+  if (!actionParsed.success && !simpleParsed?.success && !composerParsed?.success) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
@@ -1282,6 +1290,83 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) return NextResponse.json({ error: 'Failed to remove product from catalog' }, { status: 500 });
     revalidateSellerDashboardCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
+  }
+
+  if (simpleParsed?.success) {
+    const payload = simpleParsed.data;
+    if (payload.target_mode === 'customer_group') {
+      const { data: cohort, error: cohortError } = await db
+        .schema('app')
+        .from('cohorts')
+        .select('id')
+        .eq('id', payload.target_cohort_id)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+      if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+    }
+
+    if (payload.pricing_mode === 'pricelist') {
+      const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
+      if (!priceListOk) {
+        return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+      }
+    }
+
+    const liveScopeValue = (globalCatalog.scope_value ?? {}) as {
+      composer?: {
+        filters?: CatalogComposerFilterState;
+        tag_overrides?: Record<string, CatalogComposerTag | null>;
+        price_source?: 'price_list' | 'manual';
+        price_list_id?: string | null;
+        pricing_strategy?: CatalogComposerPricingStrategy;
+      };
+      composer_draft?: CatalogDraftSnapshot | null;
+    };
+    const nextScopeValue = {
+      ...buildCatalogScopeValue({
+        scopeType: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+        cohortId: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
+        buyerIds: [],
+        filters: liveScopeValue.composer?.filters ?? defaultCatalogFilters(),
+        tagOverrides: liveScopeValue.composer?.tag_overrides ?? {},
+        priceSource: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
+        priceListId: payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null,
+        pricingStrategy: liveScopeValue.composer?.pricing_strategy,
+        draft: liveScopeValue.composer_draft ?? null,
+      }),
+      simple_form: {
+        description: payload.description?.trim() ? payload.description.trim() : null,
+      },
+    };
+
+    const { data: updatedCatalog, error: updateCatalogError } = await db
+      .schema('app')
+      .from('campaigns')
+      .update({
+        name: payload.name,
+        scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+        scope_value: nextScopeValue,
+        valid_from: payload.valid_from.toISOString(),
+        valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+        message: payload.buyer_note?.trim() || null,
+        hero_image_url: payload.hero_image_url?.trim() || null,
+        updated_by: claims.sub,
+      })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .select('id, status')
+      .single();
+
+    if (updateCatalogError || !updatedCatalog) {
+      return NextResponse.json({ error: 'Failed to update catalog' }, { status: 500 });
+    }
+
+    revalidateSellerDashboardCache(claims.tenant_id);
+    return NextResponse.json({ catalog: updatedCatalog });
   }
 
   if (!composerParsed?.success) {

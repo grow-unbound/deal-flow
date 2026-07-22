@@ -263,6 +263,14 @@ export type CohortUpdateInput = z.infer<typeof CohortUpdateSchema>;
 export type CohortRuleFilter = z.infer<typeof CohortRuleFilterSchema>;
 export type CohortRules = z.infer<typeof CohortRulesSchema>;
 
+export const CustomerGroupFormPayloadSchema = z.object({
+  form_mode: z.literal('simple'),
+  name: z.string().min(1, 'Customer group name is required'),
+  description: z.string().optional().or(z.literal('')),
+  allowed_tenant_brand_ids: z.array(z.string().uuid('Invalid brand')).optional().nullable(),
+});
+export type CustomerGroupFormPayload = z.infer<typeof CustomerGroupFormPayloadSchema>;
+
 // Price list schemas
 export const PriceListSchema = z
   .object({
@@ -356,6 +364,29 @@ export const PriceListComposerPayloadSchema = z
     },
   );
 export type PriceListComposerPayload = z.infer<typeof PriceListComposerPayloadSchema>;
+
+export const PriceListFormPayloadSchema = z
+  .object({
+    form_mode: z.literal('simple'),
+    name: z.string().min(1, 'Price list name is required'),
+    description: z.string().trim().optional().or(z.literal('')),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    priority: z.coerce.number().int().min(0).default(0),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
+export type PriceListFormPayload = z.infer<typeof PriceListFormPayloadSchema>;
 
 export const PriceListItemSchema = z.object({
   price: z.coerce.number().positive('Price must be positive'),
@@ -479,6 +510,42 @@ export const CatalogComposerPayloadSchema = z
     },
   );
 export type CatalogComposerPayload = z.infer<typeof CatalogComposerPayloadSchema>;
+
+export const CampaignFormPayloadSchema = z
+  .object({
+    form_mode: z.literal('simple'),
+    name: z.string().min(1, 'Campaign name is required'),
+    description: z.string().optional().or(z.literal('')),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional().or(z.literal('')),
+    hero_image_url: z.string().url('Enter a valid image URL').optional().or(z.literal('')),
+    target_mode: z.enum(['customer_group', 'individual_buyers']).default('customer_group'),
+    target_cohort_id: z.string().uuid('Select a customer group').nullable().optional(),
+    pricing_mode: z.enum(['pricelist', 'individual_prices']).default('individual_prices'),
+    price_list_id: z.string().uuid('Select a pricelist').nullable().optional(),
+  })
+  .refine((data) => data.target_mode !== 'customer_group' || Boolean(data.target_cohort_id), {
+    message: 'Select a customer group',
+    path: ['target_cohort_id'],
+  })
+  .refine((data) => data.pricing_mode !== 'pricelist' || Boolean(data.price_list_id), {
+    message: 'Select a pricelist',
+    path: ['price_list_id'],
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
+export type CampaignFormPayload = z.infer<typeof CampaignFormPayloadSchema>;
 
 // Order schemas
 export const OrderSchema = z.object({

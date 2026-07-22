@@ -26,6 +26,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
 import { PublishCampaignDialog } from './PublishCampaignDialog';
+import { CampaignFormSheet } from '../CampaignFormSheet';
 
 const CatalogPerformanceTab = dynamic(
   () => import('./CatalogPerformanceTab').then((m) => m.CatalogPerformanceTab),
@@ -87,6 +88,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     initialState: 'performance',
   });
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'first_publish' | 'publish_updates' | 'notify_buyers'>('first_publish');
   const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
   const { isSellerAdmin } = useRole();
@@ -330,7 +332,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         actions={
           <div className="flex items-center gap-2 pt-1">
             {isSellerAdmin ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                 <PencilIcon size={14} />
                 Edit campaign
               </Button>
@@ -401,6 +403,26 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         <CatalogPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
+
+      <CampaignFormSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        mode="edit"
+        campaignId={id}
+        defaultValues={{
+          form_mode: 'simple',
+          name: data.header.name,
+          description: data.composer?.description ?? '',
+          valid_from: new Date(data.composer?.valid_from ?? new Date().toISOString()),
+          valid_to: data.composer?.valid_to ? new Date(data.composer.valid_to) : undefined,
+          buyer_note: data.composer?.message ?? '',
+          hero_image_url: '',
+          target_mode: data.composer?.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
+          target_cohort_id: data.composer?.scope_type === 'cohort' ? (data.composer.cohort_id ?? null) : null,
+          pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
+          price_list_id: data.composer?.price_source === 'price_list' ? (data.composer.price_list_id ?? null) : null,
+        }}
+      />
     </PageWrap>
   );
 }

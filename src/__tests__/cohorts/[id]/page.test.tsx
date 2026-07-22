@@ -114,7 +114,7 @@ describe('cohort detail page', () => {
 
     expect(screen.getByRole('tab', { name: 'Buyers' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Edit customer group/i })).toHaveAttribute('href', '/customer-groups/c1/edit');
+    expect(screen.getByRole('button', { name: /Edit customer group/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Members/i })).not.toBeInTheDocument();
