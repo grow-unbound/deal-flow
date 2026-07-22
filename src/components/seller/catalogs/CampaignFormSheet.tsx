@@ -131,7 +131,7 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
         <FormOverlayHeader
           eyebrow="Growth"
           title={mode === 'edit' ? 'Edit campaign' : 'Add a campaign'}
-          description="Keep setup lightweight here. Buyers, products, and individual pricing stay in the campaign detail tabs."
+          description="Setup targeted campaigns for select products."
         />
         <FormOverlayBody className="space-y-5">
           <Form {...form}>
@@ -194,43 +194,45 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="valid_from"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <DatePicker
-                            label="Valid from"
-                            mode="overlay"
-                            showSummary={false}
-                            value={field.value instanceof Date ? isoDateString(field.value) : ''}
-                            onChange={(next) => field.onChange(next ? new Date(`${next}T00:00:00`) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="valid_from"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <DatePicker
+                              label="Valid from"
+                              mode="overlay"
+                              showSummary={false}
+                              value={field.value instanceof Date ? isoDateString(field.value) : ''}
+                              onChange={(next) => field.onChange(next ? new Date(`${next}T00:00:00`) : undefined)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                  <FormField
-                    control={form.control}
-                    name="valid_to"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <DatePicker
-                            label="Valid to"
-                            mode="overlay"
-                            showSummary={false}
-                            value={field.value instanceof Date ? isoDateString(field.value) : ''}
-                            onChange={(next) => field.onChange(next ? new Date(`${next}T23:59:59`) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                    <FormField
+                      control={form.control}
+                      name="valid_to"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <DatePicker
+                              label="Valid to"
+                              mode="overlay"
+                              showSummary={false}
+                              value={field.value instanceof Date ? isoDateString(field.value) : ''}
+                              onChange={(next) => field.onChange(next ? new Date(`${next}T23:59:59`) : undefined)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}

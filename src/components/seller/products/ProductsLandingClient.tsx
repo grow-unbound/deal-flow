@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import dynamic from 'next/dynamic';
 import { Upload, Plus, Package } from 'lucide-react';
 
@@ -449,8 +450,9 @@ function ProductsLandingContent({
           return (
             <tr
               key={product.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
               onClick={() => router.push(`/products/${product.id}`)}
+              onPointerDown={() => triggerHaptic()}
             >
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
