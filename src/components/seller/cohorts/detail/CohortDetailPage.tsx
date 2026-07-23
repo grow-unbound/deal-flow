@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { Pencil, RefreshCw } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
@@ -15,6 +14,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
 import { CohortBuyersTab } from './CohortBuyersTab';
+import { CustomerGroupFormSheet } from '../CustomerGroupFormSheet';
 
 const CohortPerformanceTab = dynamic(
   () => import('./CohortPerformanceTab').then((m) => m.CohortPerformanceTab),
@@ -81,6 +81,7 @@ function formatRefreshedAt(iso: string | null | undefined): string {
 
 export function CohortDetailPage({ id }: CohortDetailPageProps) {
   const { isSellerAdmin } = useRole();
+  const [editOpen, setEditOpen] = useState(false);
   const refreshMutation = useRefreshCohort(id);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-cohort-detail-tab',
@@ -160,11 +161,9 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
    </span>
                 </div>
               ) : null}
-              <Button variant="outline" size="sm" className="h-9 px-4" asChild>
-                <Link href={`/customer-groups/${id}/edit`}>
+              <Button variant="outline" size="sm" className="h-9 px-4" onClick={() => setEditOpen(true)}>
                   <Pencil size={16} strokeWidth={2} aria-hidden />
                   Edit customer group
-                </Link>
               </Button>
             </div>
           ) : null
@@ -192,6 +191,18 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       {tab === 'performance' ? (
         <CohortPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
+      <CustomerGroupFormSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        mode="edit"
+        cohortId={id}
+        defaultValues={{
+          form_mode: 'simple',
+          name: data.details_rules.name,
+          description: data.details_rules.description,
+          allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
+        }}
+      />
     </PageWrap>
   );
 }

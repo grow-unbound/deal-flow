@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 import { ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -10,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 type FilterValue = string;
 
@@ -44,52 +44,6 @@ interface LegacyFilterBarProps {
 
 interface FilterBarProps extends LegacyFilterBarProps {
   groups?: FilterBarGroup[];
-}
-
-interface MenuPosition {
-  top: number;
-  left: number;
-  width: number;
-  maxHeight: number;
-}
-
-function useOutsideDismiss(
-  openKey: string | null,
-  setOpenKey: (value: string | null) => void,
-  extraRef?: React.RefObject<HTMLElement | null>,
-) {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!ref.current || !openKey) return;
-      const target = event.target as Node | null;
-      const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-      const clickedInsideRoot = target ? ref.current.contains(target) : false;
-      const clickedInsideExtra = target ? (extraRef?.current?.contains(target) ?? false) : false;
-      const clickedInsidePath = path.some((node) => node === ref.current || node === extraRef?.current);
-      if (!clickedInsideRoot && !clickedInsideExtra && !clickedInsidePath) {
-        setOpenKey(null);
-      }
-    }
-
-    function handleFocusIn(event: FocusEvent) {
-      if (!ref.current || !openKey) return;
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (ref.current.contains(target) || extraRef?.current?.contains(target)) return;
-      setOpenKey(null);
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-      document.removeEventListener('focusin', handleFocusIn);
-    };
-  }, [extraRef, openKey, setOpenKey]);
-
-  return ref;
 }
 
 function describeSelection(group: FilterBarGroup): string {
@@ -148,50 +102,6 @@ export function FilterBar({
   });
 
   const [openKey, setOpenKey] = React.useState<string | null>(null);
-  const triggerRefs = React.useRef(new Map<string, HTMLButtonElement | null>());
-  const panelRef = React.useRef<HTMLDivElement | null>(null);
-  const rootRef = useOutsideDismiss(openKey, setOpenKey, panelRef);
-  const [panelPosition, setPanelPosition] = React.useState<MenuPosition | null>(null);
-
-  const updatePanelPosition = React.useCallback(() => {
-    if (!openKey) {
-      setPanelPosition(null);
-      return;
-    }
-
-    const trigger = triggerRefs.current.get(openKey);
-    if (!trigger) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const viewportPadding = 8;
-    const width = rect.width;
-    const left = Math.max(
-      viewportPadding,
-      Math.min(rect.left, window.innerWidth - width - viewportPadding),
-    );
-    const top = rect.bottom + 2;
-    const maxHeight = Math.max(180, window.innerHeight - top - viewportPadding);
-
-    setPanelPosition({ top, left, width, maxHeight });
-  }, [openKey]);
-
-  React.useLayoutEffect(() => {
-    if (!openKey) {
-      setPanelPosition(null);
-      return;
-    }
-
-    updatePanelPosition();
-
-    const handleReposition = () => updatePanelPosition();
-    window.addEventListener('resize', handleReposition);
-    window.addEventListener('scroll', handleReposition, true);
-
-    return () => {
-      window.removeEventListener('resize', handleReposition);
-      window.removeEventListener('scroll', handleReposition, true);
-    };
-  }, [openKey, updatePanelPosition]);
 
   React.useEffect(() => {
     if (openKey && !activeGroups.some((group) => group.key === openKey)) {
@@ -204,11 +114,9 @@ export function FilterBar({
     setOpenKey(null);
   }, [activeGroups]);
   const allSelected = activeGroups.every((group) => group.values.length === 0);
-  const openGroup = activeGroups.find((group) => group.key === openKey) ?? null;
 
   return (
     <section
-      ref={rootRef}
       className="mt-5 rounded-t-[14px] border border-cream-300 border-b-0 bg-cream-50 px-3 py-[10px]"
     >
       <div className="flex w-full flex-nowrap items-center gap-2 overflow-visible">
@@ -251,24 +159,69 @@ export function FilterBar({
             const isOpen = openKey === group.key;
             const triggerLabel = group.label ? `${group.label}: ${describeSelection(group)}` : describeSelection(group);
             return (
-              <div key={group.key} className="relative shrink-0">
-                <button
-                  ref={(node) => {
-                    triggerRefs.current.set(group.key, node);
-                  }}
-                  type="button"
-                  onClick={() => setOpenKey(isOpen ? null : group.key)}
-                  className={cn(
-                    'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-sm text-cream-800 transition-colors hover:bg-cream-100',
-                    'border-cream-400 bg-white',
-                    group.values.length > 0 && 'border-ember-300 bg-ember-50 text-cream-900',
-                    isOpen && 'border-ember-300 bg-ember-50',
-                  )}
+              <Popover
+                key={group.key}
+                open={isOpen}
+                onOpenChange={(nextOpen) => setOpenKey(nextOpen ? group.key : null)}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-cream-800 transition-colors hover:bg-cream-100',
+                      'border-cream-400 bg-white',
+                      group.values.length > 0 && 'border-ember-300 bg-ember-50 text-cream-900',
+                      isOpen && 'border-ember-300 bg-ember-50',
+                    )}
                   >
-                  <span className="font-medium">{triggerLabel}</span>
-                  <ChevronDown size={14} />
-                </button>
-              </div>
+                    <span className="font-medium">{triggerLabel}</span>
+                    <ChevronDown size={14} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  sideOffset={2}
+                  className="z-[70] w-[var(--radix-popover-trigger-width)] max-h-[min(24rem,var(--radix-popover-content-available-height))] overflow-hidden rounded-[10px] border-cream-300 bg-white p-1 shadow-lg"
+                >
+                  <div className="max-h-full overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        group.onChange([]);
+                        setOpenKey(null);
+                      }}
+                      className={cn(
+                        'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
+                        group.values.length === 0 && 'font-medium text-cream-900',
+                      )}
+                    >
+                      All
+                    </button>
+                    {group.options.map((option) => {
+                      const checked = group.values.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={option.disabled}
+                          onClick={() => {
+                            group.onChange([option.value]);
+                            setOpenKey(null);
+                          }}
+                          className={cn(
+                            'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
+                            option.disabled && 'cursor-not-allowed opacity-50',
+                          )}
+                        >
+                          <span className={cn('min-w-0 flex-1', checked && 'font-medium text-cream-900')}>
+                            {option.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             );
           })}
         </div>
@@ -304,63 +257,6 @@ export function FilterBar({
           </button>
         ) : null}
       </div>
-
-      {openGroup && panelPosition
-        ? createPortal(
-          <div
-            ref={panelRef}
-            role="menu"
-            className="fixed z-[70] overflow-hidden rounded-[10px] border border-cream-300 bg-white shadow-lg"
-            style={{
-              top: panelPosition.top,
-              left: panelPosition.left,
-              width: panelPosition.width,
-              maxHeight: panelPosition.maxHeight,
-            }}
-          >
-            <div className="max-h-full overflow-y-auto p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  openGroup.onChange([]);
-                  setOpenKey(null);
-                }}
-                className={cn(
-                  'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
-                  openGroup.values.length === 0 && 'font-medium text-cream-900',
-                )}
-              >
-                All
-              </button>
-              {openGroup.options.map((option) => {
-                const checked = openGroup.values.includes(option.value);
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={option.disabled}
-                    onClick={() =>
-                      {
-                        openGroup.onChange([option.value]);
-                        setOpenKey(null);
-                      }
-                    }
-                    className={cn(
-                      'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
-                      option.disabled && 'cursor-not-allowed opacity-50',
-                    )}
-                  >
-                    <span className={cn('min-w-0 flex-1', checked && 'font-medium text-cream-900')}>
-                      {option.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>,
-          document.body,
-        )
-        : null}
     </section>
   );
 }

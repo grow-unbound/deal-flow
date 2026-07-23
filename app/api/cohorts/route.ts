@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
-import { CohortCreateSchema } from '@/lib/zod';
+import { CohortCreateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -323,12 +323,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = CohortCreateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'Validation failed' }, { status: 422 });
+  const simpleParsed = CustomerGroupFormPayloadSchema.safeParse(body);
+  const composerParsed = simpleParsed.success ? null : CohortCreateSchema.safeParse(body);
+  if (!simpleParsed.success && !composerParsed?.success) {
+    return NextResponse.json({ error: composerParsed?.error.errors[0]?.message ?? simpleParsed.error.errors[0]?.message ?? 'Validation failed' }, { status: 422 });
   }
 
-  const data = parsed.data;
+  const isSimpleForm = simpleParsed.success;
+  const membershipMode = isSimpleForm ? simpleParsed.data.membership_mode : 'manual';
+  const data: any = isSimpleForm
+    ? {
+        name: simpleParsed.data.name,
+        description: simpleParsed.data.description,
+        is_static: membershipMode === 'manual',
+        rules: membershipMode === 'automatic' ? simpleParsed.data.rules : null,
+        allowed_tenant_brand_ids: simpleParsed.data.allowed_tenant_brand_ids,
+      }
+    : composerParsed!.data;
   const allowedTenantBrandIds =
     data.allowed_tenant_brand_ids && data.allowed_tenant_brand_ids.length > 0
       ? data.allowed_tenant_brand_ids
@@ -358,6 +369,7 @@ export async function POST(request: NextRequest) {
       name: data.name,
       description: data.description ?? null,
       is_static: data.is_static,
+      membership_mode: membershipMode,
       rules: data.rules ?? null,
       allowed_tenant_brand_ids: allowedTenantBrandIds,
       created_by: claims.sub,
@@ -373,32 +385,49 @@ export async function POST(request: NextRequest) {
 
   let cachedMemberCount = 0;
 
-  try {
-    const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, data.rules, data.is_static);
-    cachedMemberCount = memberIds.length;
+  if (!isSimpleForm) {
+    try {
+      const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, data.rules, data.is_static);
+      cachedMemberCount = memberIds.length;
 
-    if (memberIds.length > 0) {
-      const rows = memberIds.map((buyerId) => ({ cohort_id: cohort.id, buyer_id: buyerId }));
-      const { error: membersError } = await db
-        .schema('app')
-        .from('cohort_members')
-        .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+      if (memberIds.length > 0) {
+        // SCD2: cohort_members only enforces uniqueness on the active row via a partial
+        // index, which upsert-on-conflict can't target -- insert only for pairs with no
+        // existing active row (a brand-new cohort has none, so this is effectively all rows,
+        // but stays correct if this path is ever reused for an existing cohort).
+        const rows = memberIds.map((buyerId) => ({ cohort_id: cohort.id, buyer_id: buyerId }));
+        const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
 
-      if (membersError) {
-        console.error('[POST /api/cohorts] member sync error:', membersError.message);
-        return NextResponse.json({ error: 'Cohort created but failed to save members' }, { status: 500 });
+        if (membersError) {
+          console.error('[POST /api/cohorts] member sync error:', membersError.message);
+          return NextResponse.json({ error: 'Cohort created but failed to save members' }, { status: 500 });
+        }
       }
-    }
 
-    await db
-      .schema('app')
-      .from('cohorts')
-      .update({ cached_member_count: cachedMemberCount })
-      .eq('id', cohort.id)
-      .eq('tenant_id', claims.tenant_id);
-  } catch (error: any) {
-    console.error('[POST /api/cohorts] composer sync error:', error?.message);
-    return NextResponse.json({ error: 'Cohort created but failed to build membership' }, { status: 500 });
+      await db
+        .schema('app')
+        .from('cohorts')
+        .update({ cached_member_count: cachedMemberCount })
+        .eq('id', cohort.id)
+        .eq('tenant_id', claims.tenant_id);
+    } catch (error: any) {
+      console.error('[POST /api/cohorts] composer sync error:', error?.message);
+      return NextResponse.json({ error: 'Cohort created but failed to build membership' }, { status: 500 });
+    }
+  } else if (membershipMode === 'automatic') {
+    // Recompute now (requirement 4: automatic membership evaluated on save), not left frozen
+    // until the next scheduled refresh.
+    const { error: refreshError } = await db.schema('app').rpc('refresh_cohort_by_id', { p_cohort_id: cohort.id });
+    if (refreshError) {
+      console.error('[POST /api/cohorts] refresh error:', refreshError.message);
+    } else {
+      const { count } = await db
+        .schema('app')
+        .from('cohort_members_active')
+        .select('*', { count: 'exact', head: true })
+        .eq('cohort_id', cohort.id);
+      cachedMemberCount = count ?? 0;
+    }
   }
 
   return NextResponse.json({ cohort: { ...cohort, cached_member_count: cachedMemberCount } }, { status: 201 });

@@ -278,6 +278,38 @@ export function aggregateCampaignViewsByCampaign(rows: CampaignViewRow[]): Map<s
   return result;
 }
 
+export interface CampaignItemMembershipWindow {
+  valid_from: string;
+  /** null/undefined = still active (open window) */
+  deleted_at?: string | null;
+}
+
+/**
+ * Point-in-time membership filter: keeps only line items whose product was actually part of
+ * the campaign on the date its parent order/estimate was placed, per that product's
+ * [valid_from, deleted_at) window(s) on app.campaign_items. A product removed from the
+ * campaign after an order shipped still counts for that order; a product added after an
+ * order shipped does not retroactively pick up that order's GMV.
+ */
+export function filterLineItemsByMembershipWindow<T extends CampaignLineItemRow & { parent_id: string }>(
+  items: T[],
+  parentDateByParentId: Map<string, string | null>,
+  windowsByProduct: Map<string, CampaignItemMembershipWindow[]>,
+): T[] {
+  return items.filter((item) => {
+    const parentDate = parentDateByParentId.get(item.parent_id);
+    if (!parentDate) return false;
+    const windows = windowsByProduct.get(item.tenant_product_id);
+    if (!windows || windows.length === 0) return false;
+    const parentTime = new Date(parentDate).getTime();
+    return windows.some((w) => {
+      const from = new Date(w.valid_from).getTime();
+      const until = w.deleted_at ? new Date(w.deleted_at).getTime() : Infinity;
+      return parentTime >= from && parentTime < until;
+    });
+  });
+}
+
 export function rollupSkuMetrics(
   orderItems: Array<CampaignLineItemRow & { parent_id: string }>,
   estimateItems: Array<CampaignLineItemRow & { parent_id: string }>,

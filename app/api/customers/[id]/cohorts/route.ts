@@ -60,11 +60,12 @@ export async function GET(
       rules: Record<string, any> | null;
     }
 
-    // 1. Static cohort memberships
-    const { data: staticRows, error: staticError } = await db
+    // 1. Static cohort memberships (current only -- cohort_members_active view, not the
+    // SCD2 base table, since this route only cares about the buyer's active memberships).
+    const { data: memberRows, error: staticError } = await db
       .schema('app')
-      .from('cohort_members')
-      .select('cohort:cohorts(id, name, description, is_static, rules)')
+      .from('cohort_members_active')
+      .select('cohort_id')
       .eq('buyer_id', id);
 
     if (staticError) {
@@ -72,16 +73,22 @@ export async function GET(
       return NextResponse.json({ cohorts: [] }, { headers: SELLER_CACHE_PERSONAL });
     }
 
-    const staticCohorts = ((staticRows ?? []) as Array<{ cohort: CohortRow | null }>)
-      .map((row) => row.cohort)
-      .filter((c): c is CohortRow => c !== null)
-      .map((c) => ({
+    const memberCohortIds = ((memberRows ?? []) as Array<{ cohort_id: string }>).map((row) => row.cohort_id);
+    let staticCohorts: Array<{ id: string; name: string; description: string | null; is_static: boolean; matched_by: 'static' }> = [];
+    if (memberCohortIds.length > 0) {
+      const { data: staticCohortRows } = await db
+        .schema('app')
+        .from('cohorts')
+        .select('id, name, description, is_static, rules')
+        .in('id', memberCohortIds);
+      staticCohorts = ((staticCohortRows ?? []) as CohortRow[]).map((c) => ({
         id: c.id,
         name: c.name,
         description: c.description,
         is_static: c.is_static,
         matched_by: 'static' as const,
       }));
+    }
 
     const staticCohortIds = new Set(staticCohorts.map((c) => c.id));
 

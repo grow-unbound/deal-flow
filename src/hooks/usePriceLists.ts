@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -9,6 +9,7 @@ import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib
 import { REFERENCE_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import type {
+  PriceListFormPayload,
   PriceListAssignmentInput,
   PriceListComposerPayload,
   PriceListCreateInput,
@@ -300,6 +301,154 @@ export function useCreatePriceList() {
   });
 }
 
+export function useSaveSimplePriceList(priceListId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: PriceListFormPayload): Promise<{ price_list: PriceList }> => {
+      const res = await apiFetch(priceListId ? `/api/price-lists/${priceListId}` : '/api/price-lists', {
+        method: priceListId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save price list');
+      }
+
+      return res.json() as Promise<{ price_list: PriceList }>;
+    },
+    onMutate: async (payload) => {
+      const keys: (readonly unknown[])[] = [['price-lists'], ['price-lists-landing']];
+      if (priceListId) keys.push(['price-list', priceListId]);
+      const snapshots = await takeSnapshots(queryClient, keys);
+
+      const optimisticId = priceListId ?? `optimistic-${Date.now()}`;
+      const optimisticUpdatedAt = new Date().toISOString();
+      const optimisticStatus: PriceListLandingStatus = payload.valid_to && payload.valid_to.getTime() < Date.now()
+        ? 'expired'
+        : 'active';
+      const optimisticTone: PriceListLandingStatusTone = optimisticStatus === 'active' ? 'success' : 'neutral';
+
+      if (priceListId) {
+        queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) =>
+          old
+            ? {
+                ...old,
+                price_list: {
+                  ...old.price_list,
+                  name: payload.name,
+                  description: payload.description || null,
+                  valid_from: payload.valid_from.toISOString(),
+                  valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+                  priority: payload.priority,
+                },
+              }
+            : old,
+        );
+      }
+
+      queryClient.setQueryData<{ price_lists: PriceList[] }>(['price-lists'], (old) => {
+        const nextRow: PriceList = {
+          id: optimisticId,
+          name: payload.name,
+          description: payload.description || null,
+          currency: old?.price_lists?.[0]?.currency ?? 'INR',
+          valid_from: payload.valid_from.toISOString(),
+          valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+          priority: payload.priority,
+          is_active: optimisticStatus === 'active',
+          tenant_id: old?.price_lists?.[0]?.tenant_id ?? '',
+          created_at: old?.price_lists?.find((item) => item.id === priceListId)?.created_at ?? optimisticUpdatedAt,
+          updated_at: optimisticUpdatedAt,
+        };
+
+        const existing = old?.price_lists ?? [];
+        if (priceListId) {
+          return {
+            price_lists: existing.map((item) => (item.id === priceListId ? { ...item, ...nextRow, id: priceListId } : item)),
+          };
+        }
+
+        return {
+          price_lists: [nextRow, ...existing],
+        };
+      });
+
+      queryClient.setQueriesData<InfiniteData<PriceListsLandingResponse, number>>(
+        { queryKey: ['price-lists-landing'] },
+        (old) => {
+          if (!old || old.pages.length === 0) return old;
+
+          const nextRow: PriceListLandingRow = {
+            id: optimisticId,
+            name: payload.name,
+            description: payload.description || null,
+            priority: payload.priority,
+            currency: old.pages[0]?.price_lists?.[0]?.currency ?? 'INR',
+            valid_from: payload.valid_from.toISOString(),
+            valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+            updated_at: optimisticUpdatedAt,
+            created_at: old.pages[0]?.price_lists?.find((item) => item.id === priceListId)?.created_at ?? optimisticUpdatedAt,
+            status: optimisticStatus,
+            status_tone: optimisticTone,
+            cohorts_count: 0,
+            cohort_names: [],
+            product_count: 0,
+            avg_discount_pct: null,
+            avg_margin_pct: null,
+            created_by_label: 'You',
+            is_expiring_soon: false,
+            pricing_strategy: 'edit_each',
+            strategy_value: null,
+          };
+
+          const firstPage = old.pages[0];
+          const updatedFirstPage: PriceListsLandingResponse = {
+            ...firstPage,
+            total: (firstPage.total ?? firstPage.price_lists.length) + (priceListId ? 0 : 1),
+            counts: {
+              ...firstPage.counts,
+              active: firstPage.counts.active + (priceListId || optimisticStatus !== 'active' ? 0 : 1),
+              draft: firstPage.counts.draft,
+              expired: firstPage.counts.expired + (priceListId || optimisticStatus !== 'expired' ? 0 : 1),
+            },
+            kpis: {
+              ...firstPage.kpis,
+              active_lists: firstPage.kpis.active_lists + (priceListId || optimisticStatus !== 'active' ? 0 : 1),
+              expiring_soon: firstPage.kpis.expiring_soon,
+              draft_lists: firstPage.kpis.draft_lists,
+            },
+            price_lists: priceListId
+              ? firstPage.price_lists.map((item) => (item.id === priceListId ? { ...item, ...nextRow, id: priceListId } : item))
+              : [nextRow, ...firstPage.price_lists],
+          };
+
+          return {
+            ...old,
+            pages: [updatedFirstPage, ...old.pages.slice(1)],
+          };
+        },
+      );
+
+      return { snapshots };
+    },
+    onError: (error, _payload, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Could not save price list');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['price-lists'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      if (priceListId) {
+        queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      }
+      toast.success(priceListId ? 'Price list updated' : 'Price list created');
+    },
+  });
+}
+
 export function useSavePriceListComposer(priceListId?: string) {
   const queryClient = useQueryClient();
 
@@ -454,6 +603,7 @@ export function useUpdatePriceListItem(priceListId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('List price updated');
     },

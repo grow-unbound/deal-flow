@@ -33,24 +33,26 @@ function PickerList({
   nullOptionDescription = 'Leave unassigned for now.',
 }: PickerListProps) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="overflow-hidden rounded-[8px] border border-cream-200 bg-white">
       <button
         type="button"
         onClick={() => onSelect(null)}
         className={cn(
-          'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-          selectedId == null ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+          'flex w-full items-center justify-between border-b border-cream-200 px-3 py-[10px] text-left transition-colors',
+          selectedId == null ? 'bg-ember-50' : 'hover:bg-cream-50',
         )}
       >
-        <div>
+        <div className="min-w-0">
           <p className="text-base font-medium text-cream-900">{nullOptionLabel}</p>
           <p className="text-sm text-cream-700">{nullOptionDescription}</p>
         </div>
-        {selectedId == null ? <Check size={14} className="shrink-0 text-ember-500" /> : null}
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+          {selectedId == null ? 'Selected' : 'Add'}
+        </span>
       </button>
 
       {items.length === 0 ? (
-        <div className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-base text-cream-500">
+        <div className="px-4 py-5 text-base text-cream-500">
           {emptyLabel}
         </div>
       ) : (
@@ -60,8 +62,8 @@ function PickerList({
             type="button"
             onClick={() => onSelect(item.id)}
             className={cn(
-              'flex w-full items-start justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-              selectedId === item.id ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+              'flex w-full items-start justify-between border-b border-cream-200 px-3 py-[10px] text-left transition-colors last:border-b-0',
+              selectedId === item.id ? 'bg-ember-50' : 'hover:bg-cream-50',
             )}
           >
             <div className="min-w-0">
@@ -73,7 +75,9 @@ function PickerList({
                 <p className="mt-0.5 text-sm text-cream-700">{item.meta}</p>
               ) : null}
             </div>
-            {selectedId === item.id ? <Check size={14} className="mt-0.5 shrink-0 text-ember-500" /> : null}
+            <span className="mt-0.5 shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+              {selectedId === item.id ? 'Selected' : 'Add'}
+            </span>
           </button>
         ))
       )}
@@ -103,6 +107,8 @@ interface StackedPickerFieldProps {
   nullOptionDescription?: string;
   previewCount?: number;
   disabled?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
 export function StackedPickerField({
@@ -117,6 +123,8 @@ export function StackedPickerField({
   nullOptionDescription,
   previewCount = 5,
   disabled = false,
+  emptyTitle,
+  emptyDescription,
 }: StackedPickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [inputQuery, setInputQuery] = useState('');
@@ -242,10 +250,10 @@ export function StackedPickerField({
           <Search size={14} className="shrink-0 text-cream-700" />
           <div className="min-w-0">
             <p className="truncate text-base font-medium text-cream-900">
-              {selectedItem?.title ?? 'Search cohorts'}
+              {selectedItem?.title ?? emptyTitle ?? 'Search cohorts'}
             </p>
             <p className="mt-0.5 text-sm text-cream-700">
-              {selectedItem?.meta ?? 'Browse all cohorts in a stacked picker'}
+              {selectedItem?.meta ?? emptyDescription ?? 'Browse all cohorts in a stacked picker'}
             </p>
           </div>
         </div>

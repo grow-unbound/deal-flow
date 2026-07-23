@@ -818,7 +818,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
       .maybeSingle(),
     db
       .schema('app')
-      .from('cohort_members')
+      .from('cohort_members_active')
       .select('cohort_id')
       .eq('buyer_id', buyerId),
   ]);

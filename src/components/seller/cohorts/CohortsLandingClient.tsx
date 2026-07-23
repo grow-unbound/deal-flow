@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -27,6 +28,7 @@ import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CohortsLandingSkeleton as SharedCohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { CustomerGroupFormSheet } from './CustomerGroupFormSheet';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)';
 
@@ -103,6 +105,7 @@ function CohortsLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
+  const [formOpen, setFormOpen] = useState(false);
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
@@ -211,7 +214,7 @@ function CohortsLandingContent({
         subtitle={`${kpis?.total_cohorts ?? 0} customer groups · ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} active customers assigned.`}
         horizon={horizonLabel}
         primary="Add a customer group"
-        onPrimaryClick={() => router.push('/customer-groups/new')}
+        onPrimaryClick={() => setFormOpen(true)}
       />
 
       {showRefreshingState ? (
@@ -224,6 +227,7 @@ function CohortsLandingContent({
         />
       ) : (
         <>
+      <CustomerGroupFormSheet open={formOpen} onOpenChange={setFormOpen} mode="create" />
       <InsightStrip4
         tiles={[
           {
@@ -313,11 +317,9 @@ function CohortsLandingContent({
               : 'Create a customer group to segment buyers for campaigns and pricing.'
           }
           action={
-            <Button variant="accent" asChild>
-              <Link href="/customer-groups/new" className="inline-flex items-center gap-1.5">
+            <Button variant="accent" onClick={() => setFormOpen(true)}>
                 <Plus size={13} />
                 Add a customer group
-              </Link>
             </Button>
           }
         />
@@ -338,8 +340,9 @@ function CohortsLandingContent({
           {filtered.map((cohort) => (
             <tr
               key={cohort.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
               onClick={() => router.push(`/customer-groups/${cohort.id}`)}
+              onPointerDown={() => triggerHaptic()}
             >
               <td className="px-5 py-3.5">
                 <div className="min-w-0">

@@ -21,8 +21,8 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'cat-99' }),
 }));
 
-import NewCatalogPage from '../../../app/(seller)/campaigns/new/page';
-import EditCatalogPage from '../../../app/(seller)/campaigns/[id]/edit/page';
+import NewCatalogPage from '../../../archived/app-seller-routes/campaigns/new/page';
+import EditCatalogPage from '../../../archived/app-seller-routes/campaigns/edit/page';
 
 describe('catalog composer routes', () => {
   it('renders the new catalog composer route', () => {

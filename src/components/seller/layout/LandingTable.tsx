@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 
 interface LandingTableColumn {
-  label?: string;
+  label?: ReactNode;
   align?: 'left' | 'right' | 'center';
   width?: number | string;
   minWidth?: number | string;
@@ -35,7 +35,7 @@ export function LandingTable({
   showEmptyState,
   emptyState,
 }: LandingTableProps) {
-  const hasHeader = columns.some((column) => Boolean(column.label?.trim()));
+  const hasHeader = columns.some((column) => column.label != null && column.label !== '');
 
   return (
     <ScrollableTableShell

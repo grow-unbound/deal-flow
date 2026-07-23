@@ -4,7 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { PriceListComposerPayloadSchema } from '@/lib/zod';
+import { PriceListComposerPayloadSchema, PriceListFormPayloadSchema } from '@/lib/zod';
 
 type PriceListStatus = 'active' | 'draft' | 'expired';
 type PriceListStatusTone = 'success' | 'warning' | 'neutral';
@@ -456,16 +456,18 @@ export async function PATCH(
     return NextResponse.json({ price_list: data });
   }
 
-  const parsed = PriceListComposerPayloadSchema.safeParse(body);
-  if (!parsed.success) {
+  const simpleParsed = PriceListFormPayloadSchema.safeParse(body);
+  const composerParsed = simpleParsed.success ? null : PriceListComposerPayloadSchema.safeParse(body);
+  if (!simpleParsed.success && !composerParsed?.success) {
     return NextResponse.json(
-      { error: parsed.error.errors[0]?.message ?? 'Validation failed' },
+      { error: composerParsed?.error.errors[0]?.message ?? simpleParsed.error.errors[0]?.message ?? 'Validation failed' },
       { status: 422 },
     );
   }
 
-  const payload = parsed.data;
-  if (payload.save_mode === 'publish' && payload.item_prices.length === 0) {
+  const isSimpleForm = simpleParsed.success;
+  const payload: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  if (!isSimpleForm && payload.save_mode === 'publish' && payload.item_prices.length === 0) {
     return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
   }
 
@@ -486,18 +488,22 @@ export async function PATCH(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const tenantProductIds = payload.item_prices.map((item) => item.tenant_product_id);
+  if (!isSimpleForm) {
+    const tenantProductIds = payload.item_prices.map((item: any) => item.tenant_product_id);
 
-  let validProductIds: Set<string>;
-  try {
-    validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+    let validProductIds: Set<string>;
+    try {
+      validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+    }
+
+    if (validProductIds.size !== tenantProductIds.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+    }
   }
 
-  if (validProductIds.size !== tenantProductIds.length) {
-    return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
-  }
+  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
 
   const { error: updateError } = await db
     .schema('app')
@@ -505,14 +511,18 @@ export async function PATCH(
     .update({
       name: payload.name,
       description: payload.description?.trim() ? payload.description.trim() : null,
-      currency: payload.currency,
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
       priority: payload.priority,
-      is_active: payload.save_mode === 'publish',
-      pricing_strategy: payload.pricing_strategy,
-      strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null),
-      filters: payload.filters,
+      ...(!isSimpleForm ? { currency: payload.currency } : {}),
+      ...(!isSimpleForm ? { is_active: payload.save_mode === 'publish' } : {}),
+      ...(!isSimpleForm ? { pricing_strategy: payload.pricing_strategy } : {}),
+      ...(!isSimpleForm ? { strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null) } : {}),
+      ...(!isSimpleForm ? { filters: payload.filters } : {}),
+      ...(isSimpleForm && simpleMembershipMode !== undefined ? {
+        membership_mode: simpleMembershipMode,
+        filters: simpleMembershipMode === 'automatic' ? payload.rules : { brand_names: [], category_names: [], availability: 'show_all' },
+      } : {}),
       updated_by: claims.sub,
       updated_at: new Date().toISOString(),
     })
@@ -522,6 +532,30 @@ export async function PATCH(
 
   if (updateError) {
     return NextResponse.json({ error: 'Failed to update price list', detail: updateError.message }, { status: 500 });
+  }
+
+  if (isSimpleForm) {
+    if (simpleMembershipMode === 'automatic') {
+      // Mode switch or rule edit -- recompute now (requirement 4).
+      const { error: refreshError } = await db.schema('app').rpc('refresh_price_list_by_id', { p_price_list_id: id });
+      if (refreshError) {
+        console.error('[PATCH /api/price-lists/[id]] refresh error:', refreshError.message);
+      }
+    }
+
+    const { data: updatedPriceList, error: updatedPriceListError } = await db
+      .schema('app')
+      .from('price_lists')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .maybeSingle();
+
+    if (updatedPriceListError) {
+      return NextResponse.json({ error: 'Price list updated but refresh failed' }, { status: 500 });
+    }
+
+    return NextResponse.json({ price_list: updatedPriceList as Record<string, unknown> & { id: string } });
   }
 
   const { data: existingItems, error: existingItemsError } = await db
@@ -540,7 +574,7 @@ export async function PATCH(
       item,
     ]),
   );
-  const submittedKeys = new Set(payload.item_prices.map((item) => `${item.tenant_product_id}:${item.min_qty}`));
+  const submittedKeys = new Set(payload.item_prices.map((item: any) => `${item.tenant_product_id}:${item.min_qty}`));
 
   const idsToSoftDelete = (existingItems ?? [])
     .filter((item: { tenant_product_id: string; min_qty: number; deleted_at: string | null }) => !item.deleted_at && !submittedKeys.has(`${item.tenant_product_id}:${item.min_qty}`))
@@ -609,7 +643,7 @@ export async function PATCH(
     tenant_id: claims.tenant_id,
     actor_user_id: claims.sub,
     entity_type: 'price_list',
-    entity_id: id,
+      entity_id: id,
     action: payload.save_mode === 'publish' ? 'publish' : 'update',
     diff: {
       event: payload.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',

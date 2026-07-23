@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, MapPin, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -384,7 +385,8 @@ function LocationsLandingContent({
                 <tr
                   key={row.id}
                   onClick={() => router.push(`/locations/${row.id}`)}
-                  className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+                  onPointerDown={() => triggerHaptic()}
+                  className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
                 >
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">

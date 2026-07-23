@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import Link from 'next/link';
 import { Plus, Library } from 'lucide-react';
 
@@ -27,6 +28,7 @@ import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { CampaignFormSheet } from './CampaignFormSheet';
 
 type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open to demand (high → low)';
 
@@ -88,6 +90,7 @@ function CatalogsLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
+  const [campaignFormOpen, setCampaignFormOpen] = useState(false);
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
@@ -227,7 +230,7 @@ function CatalogsLandingContent({
         subtitle={`${landingData.total ?? catalogs.length} campaigns · ${landingData.kpis.live_catalogs} live · ${landingData.kpis.scheduled_catalogs ?? 0} scheduled.`}
         horizon={horizonLabel}
         primary="Add a campaign"
-        onPrimaryClick={() => router.push('/campaigns/new')}
+        onPrimaryClick={() => setCampaignFormOpen(true)}
       />
 
       {showRefreshingState ? (
@@ -239,6 +242,7 @@ function CatalogsLandingContent({
         />
       ) : (
         <>
+      <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
       <InsightStrip4
         tiles={[
           {
@@ -339,11 +343,9 @@ function CatalogsLandingContent({
               : 'Publish a campaign to share products with a customer group.'
           }
           action={
-            <Button variant="accent" asChild>
-              <Link href="/campaigns/new" className="inline-flex items-center gap-1.5">
+            <Button variant="accent" onClick={() => setCampaignFormOpen(true)}>
                 <Plus size={13} />
                 Add a campaign
-              </Link>
             </Button>
           }
         />
@@ -355,8 +357,9 @@ function CatalogsLandingContent({
           {filtered.map((catalog) => (
             <tr
               key={catalog.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
               onClick={() => router.push(`/campaigns/${catalog.id}`)}
+              onPointerDown={() => triggerHaptic()}
             >
               <td className="px-5 py-3.5">
                 <div className="flex items-center gap-3">

@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import { ChevronRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -201,11 +202,12 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
               key={row.id ?? index}
               className={cn(
                 'border-b border-cream-200 last:border-b-0',
-                href && 'cursor-pointer hover:bg-cream-100'
+                href && 'cursor-pointer hover:bg-cream-100 active:bg-cream-200'
               )}
               tabIndex={href ? 0 : undefined}
               role={href ? 'link' : undefined}
               onClick={href ? () => router.push(href) : undefined}
+              onPointerDown={href ? () => triggerHaptic() : undefined}
               onKeyDown={href ? (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
