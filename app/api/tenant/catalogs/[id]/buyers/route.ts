@@ -8,6 +8,10 @@ import { supabaseAdmin } from '@/lib/supabase';
 const ParamsSchema = z.object({ id: z.string().uuid() });
 const SortSchema = z.enum(['gmv_desc', 'conversions_desc', 'recently_opened', 'name_asc']).catch('gmv_desc');
 
+function readMultiParam(params: URLSearchParams, key: string) {
+  return params.getAll(key).map((value) => value.trim()).filter(Boolean);
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const parsed = ParamsSchema.safeParse(await params);
   const claims = await getVerifiedClaims(request);
@@ -18,12 +22,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), 50);
   const offset = Math.max(0, Number(request.nextUrl.searchParams.get('offset') ?? 0) || 0);
+  const searchParams = request.nextUrl.searchParams;
   const { data, error } = await (supabaseAdmin as any).schema('app').rpc('search_catalog_buyers', {
     p_tenant_id: claims.tenant_id,
     p_catalog_id: parsed.data.id,
-    p_query: request.nextUrl.searchParams.get('q')?.trim() || null,
-    p_status: request.nextUrl.searchParams.get('status') || null,
-    p_sort: SortSchema.parse(request.nextUrl.searchParams.get('sort')),
+    p_query: searchParams.get('q')?.trim() || null,
+    p_member: searchParams.get('member') || 'yes',
+    p_status: readMultiParam(searchParams, 'status'),
+    p_last_sale: readMultiParam(searchParams, 'last_sale'),
+    p_sales_90d: readMultiParam(searchParams, 'sales_90d'),
+    p_buyer_app: readMultiParam(searchParams, 'buyer_app'),
+    p_sort: SortSchema.parse(searchParams.get('sort')),
     p_limit: limit,
     p_offset: offset,
   });
@@ -37,12 +46,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     buyer_id: String(row.buyer_id),
     buyer_name: String(row.buyer_name),
     city: String(row.city ?? ''),
+    geography_label: String(row.geography_label ?? row.city ?? '—'),
     cohort_label: String(row.cohort_label ?? 'Targeted buyers'),
-    opened_status: row.opened_status as 'Opened' | 'Converted' | 'Not yet',
-    spend: Number(row.spend ?? 0),
-    orders: Number(row.conversions ?? 0),
+    opened_status: row.opened_status as 'NOT YET OPENED' | 'OPENED' | 'CONVERTED',
+    spend: Number(row.demand_value ?? 0),
+    orders: Number(row.demand_count ?? 0),
+    demand_value: Number(row.demand_value ?? 0),
+    demand_count: Number(row.demand_count ?? 0),
     last_opened_at: row.last_opened_at ?? null,
     last_order_at: row.last_conversion_at ?? null,
+    last_conversion_at: row.last_conversion_at ?? null,
+    last_primary_demand_at: row.last_primary_demand_at ?? null,
+    is_member: Boolean(row.is_member),
+    buyer_app_status: row.buyer_app_status ?? 'not_enabled',
+    primary_demand_kind: row.primary_demand_kind ?? 'orders',
   }));
   const first = data?.[0];
 

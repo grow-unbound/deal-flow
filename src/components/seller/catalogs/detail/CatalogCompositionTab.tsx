@@ -1,93 +1,111 @@
-import { useMemo, useState } from 'react';
-import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layout';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { Pencil, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
-import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail, type CatalogProductDetailRow } from '@/hooks/useDetailTabSearch';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail } from '@/hooks/useDetailTabSearch';
+import {
+  MemberToggle,
+  MembershipBulkActionBar,
+  ProductImageCell,
+  RowSelectCheckbox,
+  SelectableRow,
+  SelectAllCheckbox,
+  TableBodySkeleton,
+  useSelectableRows,
+} from '@/components/seller/shared/SelectableMembershipTable';
+import { formatNumberInput, formatNumberValue } from '@/lib/utils';
 
-type SortOption = 'Catalog order' | 'Brand (A → Z)' | 'Units sold MTD (high → low)' | 'Days cover (low → high)';
+type SortOption = 'Campaign order' | 'Brand (A → Z)' | 'Campaign Sales (high → low)' | 'Units sold (high → low)';
 
-const AVAILABILITY_LABELS: Record<CatalogDetailResponse['products_summary']['filters']['availability'], string> = {
-  new_in_stock_today: 'New In Stock today',
-  in_stock_only: 'In Stock only',
-  low_stock_only: 'Low Stock only',
-  old_stock: 'Old Stock',
-  show_everything: 'Show everything',
-};
+const MEMBER_OPTIONS = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'all', label: 'All' },
+];
+
+const STOCK_OPTIONS = [
+  { value: 'new_stock', label: 'New stock' },
+  { value: 'in_stock', label: 'In stock' },
+  { value: 'low_stock', label: 'Low stock' },
+  { value: 'out_of_stock', label: 'Out of stock' },
+];
 
 interface CatalogCompositionTabProps {
   catalogId: string;
   summary: CatalogDetailResponse['products_summary'];
 }
 
-function tagLabel(tag: CatalogProductDetailRow['item_tag']) {
-  if (tag === 'new') return 'NEW';
-  if (tag === 'new_stock') return 'NEW STOCK';
-  if (tag === 'old_stock') return 'OLD STOCK';
-  return null;
-}
-
-function tagPillClasses(tag: CatalogProductDetailRow['item_tag']) {
-  if (tag === 'new' || tag === 'new_stock') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-cream-300 bg-cream-100 text-cream-700';
-}
-
 function renderFilterValue(values: string[]) {
   return values.length > 0 ? values.join(', ') : 'No saved filter';
 }
 
-function getInitials(value: string) {
-  return value
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'PR';
+function stockLabel(value: number | null | undefined) {
+  return formatNumberValue(Number(value ?? 0), 'COUNT');
 }
 
 export function CatalogCompositionTab({ catalogId, summary }: CatalogCompositionTabProps) {
   const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState('All products');
-  const [sortBy, setSortBy] = useState<SortOption>('Catalog order');
+  const [member, setMember] = useState('yes');
+  const [brands, setBrands] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [stock, setStock] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortOption>('Campaign order');
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [draftPrice, setDraftPrice] = useState('');
 
   const debouncedSearch = useDebounce(search, 300);
-  const stock = activeChip === 'In stock' ? 'in_stock' : activeChip === 'Low stock' ? 'low_stock' : activeChip === 'Out of stock' ? 'out_of_stock' : null;
-  const sort = sortBy === 'Brand (A → Z)' ? 'brand_asc' : sortBy === 'Units sold MTD (high → low)' ? 'units_desc' : sortBy === 'Days cover (low → high)' ? 'days_cover_asc' : 'catalog_order';
-  const result = useCatalogProductsDetail(catalogId, { query: debouncedSearch, filter: stock, sort });
+  const sort = sortBy === 'Brand (A → Z)' ? 'brand_asc' : sortBy === 'Campaign Sales (high → low)' ? 'sales_desc' : sortBy === 'Units sold (high → low)' ? 'units_desc' : 'catalog_order';
+  const result = useCatalogProductsDetail(catalogId, {
+    query: debouncedSearch,
+    sort,
+    params: { member, brand: brands, category: categories, stock },
+  });
   const rows = useMemo(() => flattenDetailRows(result.data), [result.data]);
+  const selection = useSelectableRows(rows, (row) => row.tenant_product_id);
+  const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
-  const filtered = useMemo(() => {
-    if (!isInterim) return rows;
-    const query = search.trim().toLowerCase();
-    return rows
-      .filter((row) => {
-        if (activeChip === 'In stock') return row.on_hand > 0;
-        if (activeChip === 'Low stock') return row.item_tag === 'old_stock';
-        if (activeChip === 'Out of stock') return row.on_hand <= 0;
-        return true;
-      })
-      .filter((row) => {
-        if (!query) return true;
-        return (
-          row.product_name.toLowerCase().includes(query) ||
-          row.sku.toLowerCase().includes(query) ||
-          row.brand_name.toLowerCase().includes(query)
-        );
-      })
-      .sort((a, b) => {
-        if (sortBy === 'Brand (A → Z)') return a.brand_name.localeCompare(b.brand_name) || a.product_name.localeCompare(b.product_name);
-        if (sortBy === 'Units sold MTD (high → low)') return b.catalog_units_sold - a.catalog_units_sold;
-        if (sortBy === 'Days cover (low → high)') return (a.days_cover ?? Number.POSITIVE_INFINITY) - (b.days_cover ?? Number.POSITIVE_INFINITY);
-        return a.catalog_order - b.catalog_order;
-      });
-  }, [activeChip, isInterim, rows, search, sortBy]);
+
+  useEffect(() => {
+    selection.clearSelection();
+  }, [member, brands, categories, stock, debouncedSearch, sort, selection.clearSelection]);
+
+  const brandOptions = useMemo(() => {
+    const labels = new Set([...summary.filters.brand_names, ...rows.map((row) => row.brand_name).filter(Boolean)]);
+    return Array.from(labels).sort().map((label) => ({ value: label, label }));
+  }, [rows, summary.filters.brand_names]);
+  const categoryOptions = useMemo(() => {
+    const labels = new Set([...summary.filters.category_names, ...rows.map((row) => row.category_name).filter(Boolean)]);
+    return Array.from(labels).sort().map((label) => ({ value: label, label }));
+  }, [rows, summary.filters.category_names]);
+
+  const filterGroups: FilterBarGroup[] = [
+    { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
+    { key: 'brand', label: 'Brand', options: brandOptions, values: brands, onChange: setBrands },
+    { key: 'category', label: 'Category', options: categoryOptions, values: categories, onChange: setCategories },
+    { key: 'stock', label: 'Stock status', options: STOCK_OPTIONS, values: stock, onChange: setStock },
+  ];
 
   const hasNoSavedFilters =
     summary.filters.brand_names.length === 0 &&
     summary.filters.category_names.length === 0 &&
     summary.filters.availability === 'show_everything' &&
     summary.tag_overrides_count === 0;
+
+  function startVisualEdit(row: (typeof rows)[number]) {
+    setEditingProductId(row.tenant_product_id);
+    setDraftPrice(formatNumberInput(row.override_price ?? row.base_selling_price ?? 0, 'CURRENCY_EXACT'));
+  }
+
+  function finishVisualEdit() {
+    toast.info('Campaign price updates will be connected in a later pass.');
+    setEditingProductId(null);
+    setDraftPrice('');
+  }
 
   return (
     <section className="mt-5 space-y-4">
@@ -107,7 +125,7 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
 
         {hasNoSavedFilters ? (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No saved filters. This catalog uses its manually selected product mix.
+            No saved filters. This campaign uses its manually selected product mix.
           </div>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -119,84 +137,103 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
               <p className="mt-1 text-base text-cream-900">{renderFilterValue(summary.filters.category_names)}</p>
             </div>
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Availability</p>
-              <p className="mt-1 text-base text-cream-900">{AVAILABILITY_LABELS[summary.filters.availability]}</p>
-            </div>
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Tag overrides</p>
-              <p className="mt-1 text-base text-cream-900">
-                {summary.tag_overrides_count > 0 ? `${summary.tag_overrides_count} product tags customised` : 'No saved overrides'}
-              </p>
-            </div>
           </div>
         )}
       </article>
 
       <div>
+        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
         <FilterBar
-          count={`${isInterim ? filtered.length : detailRowsTotal(result.data)} products${result.isFetching ? ' · Updating' : ''}`}
+          count={`${detailRowsTotal(result.data)} products${isInterim ? ' · Updating' : ''}`}
           searchPlaceholder="Search product, SKU, brand…"
-          chips={['All products', 'In stock', 'Low stock', 'Out of stock']}
-          activeChip={activeChip}
+          chips={[]}
+          activeChip=""
           sortBy={sortBy}
           hideViewToggle
+          groups={filterGroups}
           searchValue={search}
+          searchLoading={search.trim() !== debouncedSearch.trim()}
           onSearchChange={setSearch}
-          onChipChange={setActiveChip}
-          sortOptions={['Catalog order', 'Brand (A → Z)', 'Units sold MTD (high → low)', 'Days cover (low → high)']}
+          sortOptions={['Campaign order', 'Brand (A → Z)', 'Campaign Sales (high → low)', 'Units sold (high → low)']}
           onSortChange={(value) => setSortBy(value as SortOption)}
         />
 
         <LandingTable
           columns={[
-            { label: 'Product Name', width: 320, className: 'px-5' },
-            { label: 'Brand', className: 'px-5' },
-            { label: 'GMV Sales', align: 'right', className: 'px-5' },
-            { label: 'Units Sold', align: 'right', className: 'px-5' },
+            { label: <SelectAllCheckbox checked={selection.allSelected} indeterminate={selection.someSelected} onChange={selection.toggleVisible} />, width: 48, className: 'px-5' },
+            { label: 'Product Name', width: 340, className: 'px-5' },
+            { label: 'Member', width: 120, className: 'px-5' },
             { label: 'MRP', align: 'right', className: 'px-5' },
-            { label: 'Catalog Price', align: 'right', className: 'px-5' },
-            { label: 'Tag', align: 'right', className: 'px-5' },
+            { label: 'Campaign Price', width: 240, align: 'right', className: 'px-5' },
+            { label: 'Base Rate', align: 'right', className: 'px-5' },
+            { label: 'Cost Price', align: 'right', className: 'px-5' },
+            { label: 'Current Stock', align: 'right', className: 'px-5' },
+            { label: 'Campaign Sales', align: 'right', className: 'px-5' },
+            { label: 'Units Sold', align: 'right', className: 'px-5' },
           ]}
+          tableMinWidth={1340}
+          showEmptyState={!isInitialLoading && rows.length === 0}
+          emptyState={<div className="py-16 text-center text-sm text-cream-500">No products match these filters.</div>}
         >
-          {filtered.map((row) => {
-            const label = tagLabel(row.item_tag);
-            const catalogPrice = row.override_price ?? row.base_selling_price;
-
-            return (
-              <tr key={row.tenant_product_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-                <td className="px-5 py-3.5 text-cream-900">
-                  <div className="flex items-center gap-3">
-                    <EntityAvatar
-                      initials={getInitials(row.product_name)}
-                      hue={row.catalog_order % 3 === 1 ? 'ember' : row.catalog_order % 3 === 2 ? 'cream' : 'teal'}
-                      size={32}
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-medium">{row.product_name}</p>
-                      <p className="mt-0.5 font-mono text-xs text-cream-700">{row.sku}</p>
+          {isInitialLoading ? (
+            <TableBodySkeleton columns={10} />
+          ) : (
+            rows.map((row) => {
+              const isSelected = selection.selectedIds.includes(row.tenant_product_id);
+              const campaignPrice = row.override_price ?? row.base_selling_price;
+              const isEditing = editingProductId === row.tenant_product_id;
+              return (
+                <SelectableRow key={row.tenant_product_id} selected={isSelected}>
+                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <ProductImageCell src={row.image_url} alt={row.product_name} />
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-medium text-cream-950">{row.product_name}</p>
+                        <p className="mt-0.5 truncate font-mono text-xs text-cream-700">{row.sku} · {row.brand_name}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-base text-cream-900">{row.brand_name}</td>
-                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                  {catalogPrice != null ? formatNumberValue(catalogPrice, 'CURRENCY_EXACT') : '—'}
-                </td>
-                <td className="px-5 py-3.5 text-right">
-                  {label ? (
-                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]', tagPillClasses(row.item_tag))}>
-                      {label}
-                    </span>
-                  ) : (
-                    <span className="text-base text-cream-500">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+                  </td>
+                  <td className="px-5 py-3.5"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
+                  <td className="group px-5 py-3.5 text-right font-mono text-base text-cream-900">
+                    {isEditing ? (
+                      <div className="flex justify-end gap-2">
+                        <div className="inline-flex h-9 w-32 items-center rounded-[8px] border border-cream-300 bg-white px-2 focus-within:border-ember-400">
+                          <span className="shrink-0 text-cream-600">₹</span>
+                          <input
+                            value={draftPrice}
+                            onChange={(event) => setDraftPrice(formatNumberInput(event.target.value, 'CURRENCY_EXACT'))}
+                            inputMode="decimal"
+                            className="min-w-0 flex-1 bg-transparent text-right outline-none"
+                            aria-label="Campaign price"
+                          />
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={finishVisualEdit} aria-label="Finish campaign price edit"><Pencil size={14} /></Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingProductId(null); setDraftPrice(''); }} aria-label="Cancel campaign price edit"><X size={14} /></Button>
+                      </div>
+                    ) : (
+                      <button type="button" className="inline-flex items-center justify-end gap-2 hover:text-ember-700" onClick={() => startVisualEdit(row)}>
+                        {campaignPrice != null ? formatNumberValue(campaignPrice, 'CURRENCY_EXACT') : '—'}
+                        <Pencil size={13} className="opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-5 py-3.5 text-right">
+                    <p className="font-mono text-base text-cream-900">{row.base_selling_price != null ? formatNumberValue(row.base_selling_price, 'CURRENCY_EXACT') : '—'}</p>
+                    <p className="mt-0.5 text-xs text-cream-600">{row.discount_pct == null ? '—' : `${row.discount_pct >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(row.discount_pct), 'PERCENTAGE')}`}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-right">
+                    <p className="font-mono text-base text-cream-900">{row.cost_price != null && row.cost_price > 0 ? formatNumberValue(row.cost_price, 'CURRENCY_EXACT') : '—'}</p>
+                    <p className="mt-0.5 text-xs text-cream-600">{row.margin_pct == null ? '—' : formatNumberValue(row.margin_pct, 'PERCENTAGE')}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{stockLabel(row.on_hand)}</td>
+                  <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
+                </SelectableRow>
+              );
+            })
+          )}
         </LandingTable>
         {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
