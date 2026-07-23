@@ -66,25 +66,11 @@ function getIstMonthWindow(now = new Date()) {
 
   const currentStart = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString().slice(0, 10);
   const nextStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
-  const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
 
   return {
     currentStartDate: currentStart,
     nextStartDate: nextStart,
-    prevStartDate: prevStart,
   };
-}
-
-function getLastNMonthStarts(n: number, now = new Date()) {
-  const rows: Array<{ key: string; label: string }> = [];
-  const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  for (let i = n - 1; i >= 0; i -= 1) {
-    const date = new Date(Date.UTC(utcNow.getUTCFullYear(), utcNow.getUTCMonth() - i, 1));
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    const label = date.toLocaleDateString('en-IN', { month: 'short' });
-    rows.push({ key, label });
-  }
-  return rows;
 }
 
 function initialsFromName(name: string) {
@@ -192,7 +178,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const scopedCatalogs = (scopedCatalogRowsData ?? []) as CatalogRow[];
   const scopedCatalogIds = scopedCatalogs.map((catalog) => catalog.id);
-  const { currentStartDate, nextStartDate, prevStartDate } = getIstMonthWindow();
+  const { currentStartDate, nextStartDate } = getIstMonthWindow();
 
   const [memberOrdersRes, scopedCatalogOrdersRes, campaignViewsRes, catalogItemsRes] = await Promise.all([
     memberBuyerIdsList.length > 0
@@ -299,10 +285,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const allowedBrandNames = allowedTenantBrandIds?.map((brandId) => tenantBrandNameMap.get(brandId) ?? 'Unnamed brand') ?? [];
 
   let gmvMtd = 0;
-  let gmvPrev = 0;
   let ordersMtd = 0;
   const activeMembersSet = new Set<string>();
-  const monthAgg = new Map<string, { gmv: number; orders: number }>();
 
   for (const order of orderRows) {
     if (!memberBuyerIds.has(order.buyer_id)) continue;
@@ -310,23 +294,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
     if (!metricDay) continue;
 
-    const monthKey = metricDay.slice(0, 7);
-    const agg = monthAgg.get(monthKey) ?? { gmv: 0, orders: 0 };
-    agg.gmv += amount;
-    agg.orders += 1;
-    monthAgg.set(monthKey, agg);
-
     if (metricDay >= currentStartDate && metricDay < nextStartDate) {
       gmvMtd += amount;
       ordersMtd += 1;
       activeMembersSet.add(order.buyer_id);
     }
-    if (metricDay >= prevStartDate && metricDay < currentStartDate) {
-      gmvPrev += amount;
-    }
   }
 
-  const growthPct = gmvPrev > 0 ? Number((((gmvMtd - gmvPrev) / gmvPrev) * 100).toFixed(1)) : 0;
   const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
 
   const scopedCatalogIdSet = new Set(scopedCatalogIds);
@@ -339,9 +313,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const uniqueCatalogViews = computeCampaignViewMetrics(campaignViewRows).uniqueViewers;
   const conversionPct = uniqueCatalogViews > 0 ? Number(((catalogOrdersMtd / uniqueCatalogViews) * 100).toFixed(1)) : 0;
-
-  const twelveMonthKeys = getLastNMonthStarts(12);
-  const gmvTrend12m = twelveMonthKeys.map(({ key, label }) => ({ month: label, value: Number((monthAgg.get(key)?.gmv ?? 0).toFixed(2)) }));
 
   const mtdSpendByBuyer = new Map<string, number>();
   for (const order of orderRows) {
@@ -489,7 +460,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     meta_strip_4: {
       gmv_mtd: gmvMtd,
-      growth_pct: growthPct,
       active_members: activeMembersSet.size,
       total_members: totalMembers,
       aov,
@@ -511,7 +481,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     performance: {
       summary: {
         gmv_mtd: gmvMtd,
-        growth_pct: growthPct,
         aov,
       },
       engagement: {
@@ -524,7 +493,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       top_members: topMembers,
       catalogs,
-      gmv_trend_12m: gmvTrend12m,
     },
     performance_cards: includePerformance ? ((detailV2 as any)?.performance_cards ?? []) : [],
     detail_v2: includePerformance ? detailV2 : null,
@@ -639,6 +607,48 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (refreshError) {
       console.error('[PATCH /api/cohorts/[id]] refresh error:', refreshError.message);
     }
+  } else if (isSimpleForm && simpleMembershipMode === 'manual') {
+    const memberIds = payload.selected_buyer_ids ?? [];
+    const nextSet = new Set<string>(memberIds);
+    const { data: activeRows } = await db
+      .schema('app')
+      .from('cohort_members_active')
+      .select('buyer_id')
+      .eq('cohort_id', id);
+    const currentlyActive = new Set<string>((activeRows ?? []).map((row: { buyer_id: string }) => row.buyer_id));
+
+    const toClose = [...currentlyActive].filter((buyerId) => !nextSet.has(buyerId));
+    const toAdd = memberIds.filter((buyerId: string) => !currentlyActive.has(buyerId));
+
+    if (toClose.length > 0) {
+      const { error: closeError } = await db
+        .schema('app')
+        .from('cohort_members')
+        .update({ valid_until: new Date().toISOString() })
+        .eq('cohort_id', id)
+        .in('buyer_id', toClose)
+        .is('valid_until', null);
+      if (closeError) {
+        return NextResponse.json({ error: 'Failed to update selected buyers' }, { status: 500 });
+      }
+    }
+
+    if (toAdd.length > 0) {
+      const rows = toAdd.map((buyerId: string) => ({ cohort_id: id, buyer_id: buyerId }));
+      const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
+      if (membersError) {
+        return NextResponse.json({ error: 'Failed to save selected buyers' }, { status: 500 });
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('cohorts')
+      .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id);
+
+    cohort.cached_member_count = memberIds.length;
   }
 
   if (!isSimpleForm) {

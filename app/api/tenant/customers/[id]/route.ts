@@ -311,7 +311,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       performance_v2: {
         headline: {
           spend_mtd: invoicedSales90d,
-          growth_pct: 0,
           orders_mtd: invoiceCount90d,
           aov_mtd: invoiceCount90d > 0 ? invoicedSales90d / invoiceCount90d : 0,
         },

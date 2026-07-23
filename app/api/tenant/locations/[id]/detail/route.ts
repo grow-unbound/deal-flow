@@ -222,7 +222,6 @@ export async function GET(
     associated_users: normalizeLocationAssociatedUsers(baseLocation.associated_users),
     meta_strip: {
       gmv_mtd,
-      growth_pct: 0,
       outstanding_dues: overdue_amount,
       overdue_amount,
       invoice_count: invoices.length,

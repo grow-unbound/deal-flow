@@ -1,6 +1,6 @@
 export { cn } from '@/lib/cn';
 export type { NumberFormatKind, NumberFormatOptions } from '@/lib/number-format';
-export { formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/number-format';
+export { formatNumberInput, formatNumberValue, parseNumberInput, formatAsOfLabel } from '@/lib/number-format';
 
 export function formatDate(date: string | Date): string {
   return new Intl.DateTimeFormat('en-IN', {

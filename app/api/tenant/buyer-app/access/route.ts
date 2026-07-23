@@ -8,6 +8,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import type { AccessPageResponse } from '@/hooks/useBuyerAppAccess';
+import { queueBuyerAppEnabledMessages } from '@/lib/server/buyer-app-enable-notify';
 
 const AccessQuerySchema = z.object({
   q: z.string().trim().max(120).default(''),
@@ -161,6 +162,25 @@ export async function PATCH(request: NextRequest) {
     const db = supabaseAdmin as any;
     const { buyer_ids, enabled } = parsed.data;
 
+    let newlyEnabledIds: string[] = [];
+    if (enabled) {
+      const { data: disabledBuyers, error: lookupError } = await db
+        .schema('app')
+        .from('buyers')
+        .select('id')
+        .in('id', buyer_ids)
+        .eq('tenant_id', claims.tenant_id)
+        .eq('is_active', true)
+        .eq('buyer_app_enabled', false)
+        .is('deleted_at', null);
+
+      if (lookupError) {
+        return NextResponse.json({ error: 'Failed to update buyer app access' }, { status: 500 });
+      }
+
+      newlyEnabledIds = ((disabledBuyers ?? []) as { id: string }[]).map((row) => row.id);
+    }
+
     const { data: updated, error: updateError } = await db
       .schema('app')
       .from('buyers')
@@ -202,7 +222,19 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ updated_count: (updated ?? []).length });
+    let whatsappSentCount = 0;
+    let whatsappEligibleCount = 0;
+    if (enabled && newlyEnabledIds.length > 0) {
+      const queueResult = await queueBuyerAppEnabledMessages(db, claims.tenant_id, newlyEnabledIds);
+      whatsappSentCount = queueResult.sent_count;
+      whatsappEligibleCount = queueResult.eligible_count;
+    }
+
+    return NextResponse.json({
+      updated_count: (updated ?? []).length,
+      whatsapp_sent_count: whatsappSentCount,
+      whatsapp_eligible_count: whatsappEligibleCount,
+    });
   } catch (error) {
     console.error('[PATCH /api/tenant/buyer-app/access]', error);
     return NextResponse.json({ error: 'Failed to update buyer app access' }, { status: 500 });

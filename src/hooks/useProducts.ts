@@ -56,7 +56,6 @@ export interface TenantProduct {
   days_cover?: number | null;
   units_mtd?: number;
   gmv_mtd?: number;
-  growth_pct?: number;
   status_label?: string;
   status_tone?: 'success' | 'warning' | 'danger' | 'neutral';
 }
@@ -73,8 +72,6 @@ export interface ProductsKpis {
   category_count: number;
   units_mtd?: number;
   revenue_mtd: number;
-  revenue_prev_mtd: number;
-  revenue_growth_pct: number;
 }
 
 export interface ProductsTodaysReadItem {
@@ -109,7 +106,6 @@ export interface ProductDetailResponse {
     };
     meta_strip_4: {
       units_mtd: number;
-      growth_pct: number;
       days_cover: number;
       on_hand: number;
       sell_through_pct: number;
@@ -158,7 +154,6 @@ export interface ProductDetailResponse {
       }>;
       units_snapshot: {
         units_mtd: number;
-        growth_pct: number;
         revenue_last_30d: number;
       };
     };

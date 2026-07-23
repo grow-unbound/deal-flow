@@ -61,7 +61,7 @@ const BEAT_ROUTE_TEMPLATE = 'beat_route_buyer';
 
 function requiredManualVariableKeys(template: Pick<TemplateRow, 'meta_template_name'>): Set<string> {
   if (template.meta_template_name === BEAT_ROUTE_TEMPLATE) {
-    return new Set(['visit_date', 'visit_time']);
+    return new Set(['visit_date', 'visit_window']);
   }
   return new Set();
 }

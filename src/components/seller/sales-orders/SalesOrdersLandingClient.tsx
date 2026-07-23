@@ -181,7 +181,7 @@ function SalesOrdersLandingContent({
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
     if (!kpis) return `Sales orders ${lowerLabel} from your buyers.`;
-    return `${kpis.orders_mtd} sales orders in ${horizonLabel.toLowerCase()}.`;
+    return `${kpis.orders_mtd} sales orders in the trailing 90 days.`;
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
   const pulseAggregates = summaryData?.pulse_aggregates;
 
@@ -242,9 +242,9 @@ function SalesOrdersLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Order value · MTD',
+                  label: 'Order value · 90D',
                   value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
-                  sub: `${landingData.kpis.orders_mtd} sales orders`,
+                  sub: `${landingData.kpis.orders_mtd} sales orders in trailing 90 days`,
                 },
                 {
                   label: 'Open orders',

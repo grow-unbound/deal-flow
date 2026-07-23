@@ -17,6 +17,7 @@ import type { WhatsAppQualityRatingState } from '@/constants/whatsapp-quality-ba
 export interface WhatsAppTemplateOption {
   id: string;
   meta_template_name: string;
+  display_name: string;
   meta_category: 'marketing' | 'utility' | 'authentication';
   use_case: string;
   body: string;

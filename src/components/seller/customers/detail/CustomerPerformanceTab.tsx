@@ -21,7 +21,6 @@ function monthTick(monthKey: string): string {
 
 export function CustomerPerformanceTab({ performance, performanceV2, performanceCards }: CustomerPerformanceTabProps) {
   const trendValue = performance.monthly_spend_trend[performance.monthly_spend_trend.length - 1]?.spend ?? 0;
-  const growth = performanceV2.headline.growth_pct;
   const brandMixCard: DetailCardPayload<typeof performanceV2.brand_mix.rows> = {
     representation: 'mix',
     title: 'What this customer buys',
@@ -59,11 +58,6 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
             <div className="flex items-end gap-3">
               <p className="font-display text-3xl leading-none text-cream-950">{formatNumberValue(trendValue, 'CURRENCY_THRESHOLD')}</p>
               <p className="pb-1 text-base text-cream-700">
-                <span className={growth >= 0 ? 'text-success-500' : 'text-danger-500'}>
-                  {growth >= 0 ? '↑ +' : '↓ '}
-                  {formatNumberValue(Math.abs(growth), 'PERCENTAGE')}
-                </span>
-                {' · '}
                 {performanceV2.headline.orders_mtd} invoices · Avg invoice {formatNumberValue(performanceV2.headline.aov_mtd, 'CURRENCY_THRESHOLD')}
               </p>
             </div>

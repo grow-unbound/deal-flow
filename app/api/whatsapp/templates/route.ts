@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const { data: rows, error } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id, meta_template_name, meta_category, use_case, body, variables, approval_status, is_broadcast_template')
+    .select('id, meta_template_name, display_name, meta_category, use_case, body, variables, approval_status, is_broadcast_template')
     .is('tenant_id', null)
     .is('deleted_at', null)
     .eq('is_broadcast_template', true)
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
   const templates = (rows ?? []).map((row: {
     id: string;
     meta_template_name: string;
+    display_name: string;
     meta_category: 'marketing' | 'utility' | 'authentication';
     use_case: string;
     body: string;

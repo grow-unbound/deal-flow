@@ -193,7 +193,7 @@ export function WarehousesLandingClient({
           {
             label: 'Warehouses in operation',
             value: `${summary?.kpis.active_warehouses ?? 0}`,
-            sub: `${summary?.kpis.active_warehouses ?? 0} total`,
+            sub: `of ${summary?.kpis.warehouse_count ?? 0} warehouses`,
           },
           {
             label: 'Tracked SKUs',

@@ -114,7 +114,6 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       {
         label: 'Units · MTD',
         value: m.units_mtd,
-        sub: <span><span className={m.growth_pct >= 0 ? 'up' : 'down'}>{m.growth_pct >= 0 ? '↑ +' : '↓ '}{formatNumberValue(Math.abs(m.growth_pct), 'PERCENTAGE')}</span> vs last month</span>,
       },
       {
         label: 'Days of cover',
