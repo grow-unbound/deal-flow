@@ -503,6 +503,8 @@ export async function PATCH(
     }
   }
 
+  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
+
   const { error: updateError } = await db
     .schema('app')
     .from('price_lists')
@@ -517,6 +519,10 @@ export async function PATCH(
       ...(!isSimpleForm ? { pricing_strategy: payload.pricing_strategy } : {}),
       ...(!isSimpleForm ? { strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null) } : {}),
       ...(!isSimpleForm ? { filters: payload.filters } : {}),
+      ...(isSimpleForm && simpleMembershipMode !== undefined ? {
+        membership_mode: simpleMembershipMode,
+        filters: simpleMembershipMode === 'automatic' ? payload.rules : { brand_names: [], category_names: [], availability: 'show_all' },
+      } : {}),
       updated_by: claims.sub,
       updated_at: new Date().toISOString(),
     })
@@ -529,6 +535,14 @@ export async function PATCH(
   }
 
   if (isSimpleForm) {
+    if (simpleMembershipMode === 'automatic') {
+      // Mode switch or rule edit -- recompute now (requirement 4).
+      const { error: refreshError } = await db.schema('app').rpc('refresh_price_list_by_id', { p_price_list_id: id });
+      if (refreshError) {
+        console.error('[PATCH /api/price-lists/[id]] refresh error:', refreshError.message);
+      }
+    }
+
     const { data: updatedPriceList, error: updatedPriceListError } = await db
       .schema('app')
       .from('price_lists')

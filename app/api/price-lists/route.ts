@@ -380,6 +380,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const simpleMembershipMode = isSimpleForm ? data.membership_mode : 'manual';
+
   const { data: priceList, error: insertError } = await db
     .schema('app')
     .from('price_lists')
@@ -394,7 +396,14 @@ export async function POST(request: NextRequest) {
       is_active: isSimpleForm ? false : data.save_mode === 'publish',
       pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
       strategy_value: isSimpleForm ? null : (data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null)),
-      filters: isSimpleForm ? { brand_names: [], category_names: [], availability: 'show_all' } : data.filters,
+      // Composer path: membership_mode inferred the same way the Phase 1 backfill did --
+      // non-edit_each pricing with populated filters implies automatic product membership.
+      membership_mode: isSimpleForm
+        ? simpleMembershipMode
+        : (data.pricing_strategy !== 'edit_each' && data.filters && Object.keys(data.filters).length > 0 ? 'automatic' : 'manual'),
+      filters: isSimpleForm
+        ? (simpleMembershipMode === 'automatic' ? data.rules : { brand_names: [], category_names: [], availability: 'show_all' })
+        : data.filters,
       created_by: claims.sub,
       updated_by: claims.sub,
     })
@@ -407,6 +416,14 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to create price list', code: insertError.code, detail: insertError.message },
       { status: 500 },
     );
+  }
+
+  if (isSimpleForm && simpleMembershipMode === 'automatic') {
+    // Recompute now (requirement 4), not left frozen until the next scheduled refresh.
+    const { error: refreshError } = await db.schema('app').rpc('refresh_price_list_by_id', { p_price_list_id: priceList.id });
+    if (refreshError) {
+      console.error('[POST /api/price-lists] refresh error:', refreshError.message);
+    }
   }
 
   if (!isSimpleForm && data.item_prices.length > 0) {

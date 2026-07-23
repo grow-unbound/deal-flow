@@ -19,9 +19,20 @@ import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import {
+  MembershipModeSwitchDialog,
+  type MembershipModeSwitchDirection,
+} from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { useTenantBrands } from '@/hooks/useBrands';
 import { useSaveSimpleCustomerGroup } from '@/hooks/useCohorts';
 import { CustomerGroupFormPayloadSchema, type CustomerGroupFormPayload } from '@/lib/zod';
+
+const MEMBERSHIP_MODE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'automatic', label: 'Automatic' },
+];
 
 interface CustomerGroupFormSheetProps {
   open: boolean;
@@ -43,6 +54,7 @@ export function CustomerGroupFormSheet({
   const [brandPickerOpen, setBrandPickerOpen] = useState(false);
   const [brandSearch, setBrandSearch] = useState('');
   const brands = brandData?.brands ?? [];
+  const [pendingModeSwitch, setPendingModeSwitch] = useState<MembershipModeSwitchDirection | null>(null);
 
   const form = useForm<CustomerGroupFormPayload>({
     resolver: zodResolver(CustomerGroupFormPayloadSchema),
@@ -51,6 +63,7 @@ export function CustomerGroupFormSheet({
       name: '',
       description: '',
       allowed_tenant_brand_ids: [],
+      membership_mode: 'manual',
       ...defaultValues,
     },
   });
@@ -62,9 +75,27 @@ export function CustomerGroupFormSheet({
       name: '',
       description: '',
       allowed_tenant_brand_ids: [],
+      membership_mode: 'manual',
       ...defaultValues,
     });
   }, [defaultValues, form, open]);
+
+  // Mode switch (Manual <-> Automatic) is only editable here, in the Edit overlay, never
+  // inline in the Details tab (requirement 6). Switching away from an existing cohort's saved
+  // mode needs a confirmation warning; creating a brand-new cohort does not (nothing to lose).
+  const membershipMode = form.watch('membership_mode');
+  const initialMembershipMode = defaultValues?.membership_mode ?? 'manual';
+  const affectedMemberCount = defaultValues && 'cached_member_count' in defaultValues
+    ? Number((defaultValues as { cached_member_count?: number }).cached_member_count ?? 0)
+    : 0;
+
+  const requestModeChange = (nextMode: 'manual' | 'automatic') => {
+    if (mode === 'edit' && nextMode !== initialMembershipMode) {
+      setPendingModeSwitch(nextMode === 'automatic' ? 'to_automatic' : 'to_manual');
+      return;
+    }
+    form.setValue('membership_mode', nextMode, { shouldDirty: true });
+  };
 
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: form.formState.isDirty,
@@ -206,6 +237,40 @@ export function CustomerGroupFormSheet({
                   )}
                 />
               </FormBlock>
+
+              <FormBlock>
+                <FormItem>
+                  <FormLabel>Membership</FormLabel>
+                  <SegmentedControl
+                    aria-label="Membership mode"
+                    options={MEMBERSHIP_MODE_OPTIONS}
+                    allowClear={false}
+                    value={membershipMode}
+                    onChange={(value) => requestModeChange(value as 'manual' | 'automatic')}
+                  />
+                  <p className="text-sm text-cream-600">
+                    {membershipMode === 'automatic'
+                      ? 'Members are computed from the filters below and kept up to date automatically.'
+                      : 'Members are picked by hand in the detail experience.'}
+                  </p>
+                </FormItem>
+                {membershipMode === 'automatic' ? (
+                  <FormField
+                    control={form.control}
+                    name="rules"
+                    render={({ field }) => (
+                      <FormItem className="mt-4">
+                        <MembershipFilterPanel
+                          entityType="cohort"
+                          rules={field.value ?? {}}
+                          onRulesChange={field.onChange}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null}
+              </FormBlock>
             </form>
           </Form>
         </FormOverlayBody>
@@ -222,6 +287,20 @@ export function CustomerGroupFormSheet({
         open={dirtyGuard.discardOpen}
         onOpenChange={dirtyGuard.setDiscardOpen}
         onDiscard={dirtyGuard.confirmDiscard}
+      />
+      <MembershipModeSwitchDialog
+        open={pendingModeSwitch !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingModeSwitch(null);
+        }}
+        direction={pendingModeSwitch ?? 'to_automatic'}
+        affectedCount={affectedMemberCount}
+        onConfirm={() => {
+          if (pendingModeSwitch) {
+            form.setValue('membership_mode', pendingModeSwitch === 'to_automatic' ? 'automatic' : 'manual', { shouldDirty: true });
+          }
+          setPendingModeSwitch(null);
+        }}
       />
     </>
   );

@@ -156,7 +156,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('cohort_members')
+      .from('cohort_members_active')
       .select('cohort_id, buyer_id')
       .eq('cohort_id', id),
   ]);
@@ -626,23 +626,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     try {
       const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, nextRules, nextIsStatic);
 
-      const { error: clearError } = await db
+      // SCD2: diff against the currently-active set instead of clear-and-rebuild -- close
+      // rows for buyers no longer matched, insert rows only for newly-matched buyers. Never
+      // hard-delete, and never touch rows for buyers whose membership hasn't changed (so
+      // their original valid_from is preserved for point-in-time attribution).
+      const { data: activeRows } = await db
         .schema('app')
-        .from('cohort_members')
-        .delete()
+        .from('cohort_members_active')
+        .select('buyer_id')
         .eq('cohort_id', id);
+      const currentlyActive = new Set<string>((activeRows ?? []).map((row: { buyer_id: string }) => row.buyer_id));
+      const nextSet = new Set<string>(memberIds);
 
-      if (clearError) {
-        console.error('[PATCH /api/cohorts/[id]] member clear error:', clearError.message);
-        return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
-      }
+      const toClose = [...currentlyActive].filter((buyerId) => !nextSet.has(buyerId));
+      const toAdd = memberIds.filter((buyerId) => !currentlyActive.has(buyerId));
 
-      if (memberIds.length > 0) {
-        const rows = memberIds.map((buyerId) => ({ cohort_id: id, buyer_id: buyerId }));
-        const { error: membersError } = await db
+      if (toClose.length > 0) {
+        const { error: closeError } = await db
           .schema('app')
           .from('cohort_members')
-          .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+          .update({ valid_until: new Date().toISOString() })
+          .eq('cohort_id', id)
+          .in('buyer_id', toClose)
+          .is('valid_until', null);
+        if (closeError) {
+          console.error('[PATCH /api/cohorts/[id]] member close error:', closeError.message);
+          return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+        }
+      }
+
+      if (toAdd.length > 0) {
+        const rows = toAdd.map((buyerId) => ({ cohort_id: id, buyer_id: buyerId }));
+        const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
 
         if (membersError) {
           console.error('[PATCH /api/cohorts/[id]] member sync error:', membersError.message);

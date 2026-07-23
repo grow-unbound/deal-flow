@@ -245,7 +245,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
     cohortIds.length > 0
       ? db
           .schema('app')
-          .from('cohort_members')
+          .from('cohort_members_active')
           .select('cohort_id, buyer_id')
           .in('cohort_id', cohortIds)
       : Promise.resolve({ data: [], error: null }),

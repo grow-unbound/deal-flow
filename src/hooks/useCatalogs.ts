@@ -107,6 +107,7 @@ export interface CatalogDetailResponse {
     valid_from_label: string;
     valid_until_label: string;
     valid_until_iso: string | null;
+    hero_image_url: string | null;
     published_by: string;
     share_token: string | null;
     share_url: string | null;
@@ -890,6 +891,26 @@ export interface CatalogPublishPreviewResponse {
   };
 }
 
+export interface CatalogPublishVerificationResponse {
+  whatsapp: {
+    feature_enabled: boolean;
+    notify_available: boolean;
+    credits_per_message: number;
+    credits_balance: number;
+    credit_price_inr: number;
+    template_approved: boolean;
+    tenant_phone_configured: boolean;
+    broadcast_sending_paused: boolean;
+    quality_rating_blocked: boolean;
+  };
+  template: {
+    seller_name: string;
+    seller_phone_display: string;
+    footer_text: string;
+    buttons: Array<{ label: string; type: 'url' | 'quick_reply' }>;
+  };
+}
+
 export type CatalogDetailDialogMode = 'first_publish' | 'publish_updates' | 'notify_buyers';
 export type CatalogNotifyRecipientFilter = 'all_eligible' | 'not_viewed' | 'viewed_not_ordered';
 
@@ -919,6 +940,22 @@ export function useCatalogPublishPreview(
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Failed to load publish preview');
+      }
+      return res.json();
+    },
+    enabled: enabled && Boolean(campaignId),
+    staleTime: 0,
+  });
+}
+
+export function useCatalogPublishVerification(campaignId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['catalog-publish-verification', campaignId],
+    queryFn: async (): Promise<CatalogPublishVerificationResponse> => {
+      const res = await apiFetch(`/api/tenant/catalogs/${campaignId}/publish-verification`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to load WhatsApp verification');
       }
       return res.json();
     },

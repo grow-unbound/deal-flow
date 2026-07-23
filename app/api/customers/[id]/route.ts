@@ -277,19 +277,29 @@ export async function PUT(
     const nextCohortId = updateData.default_cohort_id || null;
 
     if (nextCohortId) {
-      await db
+      // SCD2: insert only if no active row already exists for this pair (upsert-on-conflict
+      // can't target the partial unique-active index).
+      const { data: existingActive } = await db
         .schema('app')
-        .from('cohort_members')
-        .upsert({ cohort_id: nextCohortId, buyer_id: id }, { onConflict: 'cohort_id,buyer_id' });
+        .from('cohort_members_active')
+        .select('id')
+        .eq('cohort_id', nextCohortId)
+        .eq('buyer_id', id)
+        .maybeSingle();
+      if (!existingActive) {
+        await db.schema('app').from('cohort_members').insert({ cohort_id: nextCohortId, buyer_id: id });
+      }
     }
 
     if (existing.default_cohort_id && existing.default_cohort_id !== nextCohortId) {
+      // Close the active window instead of deleting the row (SCD2: never hard-delete).
       await db
         .schema('app')
         .from('cohort_members')
-        .delete()
+        .update({ valid_until: new Date().toISOString() })
         .eq('cohort_id', existing.default_cohort_id)
-        .eq('buyer_id', id);
+        .eq('buyer_id', id)
+        .is('valid_until', null);
     }
   }
 

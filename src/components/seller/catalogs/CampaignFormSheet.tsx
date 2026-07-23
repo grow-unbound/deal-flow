@@ -27,6 +27,23 @@ import { usePriceLists } from '@/hooks/usePriceLists';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { uploadEntityFile } from '@/lib/upload-client';
 import { Switch } from '@/components/ui/switch';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import {
+  MembershipModeSwitchDialog,
+  type MembershipModeSwitchDirection,
+} from '@/components/seller/shared/MembershipModeSwitchDialog';
+
+const BUYER_TARGET_MODE_OPTIONS = [
+  { value: 'customer_group', label: 'Customer group' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'automatic', label: 'Automatic' },
+];
+
+const PRODUCT_MEMBERSHIP_MODE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'automatic', label: 'Automatic' },
+];
 
 interface CampaignFormSheetProps {
   open: boolean;
@@ -62,6 +79,9 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
     [priceListData?.price_lists],
   );
 
+  const [pendingBuyerTargetMode, setPendingBuyerTargetMode] = useState<'manual' | 'automatic' | 'customer_group' | null>(null);
+  const [pendingProductModeSwitch, setPendingProductModeSwitch] = useState<MembershipModeSwitchDirection | null>(null);
+
   const form = useForm<CampaignFormPayload>({
     resolver: zodResolver(CampaignFormPayloadSchema),
     defaultValues: {
@@ -73,6 +93,8 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
       hero_image_url: '',
       target_mode: 'customer_group',
       pricing_mode: 'individual_prices',
+      buyer_target_mode: 'customer_group',
+      product_membership_mode: 'manual',
       ...defaultValues,
     },
   });
@@ -88,6 +110,8 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
       hero_image_url: '',
       target_mode: 'customer_group',
       pricing_mode: 'individual_prices',
+      buyer_target_mode: 'customer_group',
+      product_membership_mode: 'manual',
       ...defaultValues,
     });
     setHeroUrls(defaultValues?.hero_image_url ? [defaultValues.hero_image_url] : []);
@@ -122,8 +146,28 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
     },
   });
 
-  const targetMode = form.watch('target_mode');
   const pricingMode = form.watch('pricing_mode');
+  const buyerTargetMode = form.watch('buyer_target_mode') ?? 'customer_group';
+  const productMembershipMode = form.watch('product_membership_mode') ?? 'manual';
+  const initialBuyerTargetMode = defaultValues?.buyer_target_mode ?? 'customer_group';
+  const initialProductMembershipMode = defaultValues?.product_membership_mode ?? 'manual';
+
+  const requestBuyerModeChange = (nextMode: 'manual' | 'automatic' | 'customer_group') => {
+    if (mode === 'edit' && nextMode !== initialBuyerTargetMode) {
+      setPendingBuyerTargetMode(nextMode);
+      return;
+    }
+    form.setValue('buyer_target_mode', nextMode, { shouldDirty: true });
+    form.setValue('target_mode', nextMode === 'customer_group' ? 'customer_group' : 'individual_buyers', { shouldDirty: true });
+  };
+
+  const requestProductModeChange = (nextMode: 'manual' | 'automatic') => {
+    if (mode === 'edit' && nextMode !== initialProductMembershipMode) {
+      setPendingProductModeSwitch(nextMode === 'automatic' ? 'to_automatic' : 'to_manual');
+      return;
+    }
+    form.setValue('product_membership_mode', nextMode, { shouldDirty: true });
+  };
 
   return (
     <>
@@ -292,19 +336,18 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                   />
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-medium text-cream-900">Target by customer group</p>
-                        <p className="text-sm text-cream-600">Turn off to manage individual buyers in Campaign Details.</p>
-                      </div>
-                      <Switch
-                        checked={targetMode === 'customer_group'}
-                        onCheckedChange={(checked) => form.setValue('target_mode', checked ? 'customer_group' : 'individual_buyers', { shouldDirty: true })}
-                        className={targetMode === 'customer_group' ? 'bg-ember-300' : 'bg-cream-300'}
+                    <FormItem>
+                      <FormLabel>Buyer targeting</FormLabel>
+                      <SegmentedControl
+                        aria-label="Buyer targeting mode"
+                        options={BUYER_TARGET_MODE_OPTIONS}
+                        allowClear={false}
+                        value={buyerTargetMode}
+                        onChange={(value) => requestBuyerModeChange(value as 'manual' | 'automatic' | 'customer_group')}
                       />
-                    </div>
+                    </FormItem>
 
-                    {targetMode === 'customer_group' ? (
+                    {buyerTargetMode === 'customer_group' ? (
                       <FormField
                         control={form.control}
                         name="target_cohort_id"
@@ -325,6 +368,21 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                 nullOptionDescription="Manage individual buyers from Campaign Details instead."
                               />
                             </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : buyerTargetMode === 'automatic' ? (
+                      <FormField
+                        control={form.control}
+                        name="buyer_rules"
+                        render={({ field }) => (
+                          <FormItem>
+                            <MembershipFilterPanel
+                              entityType="campaign_buyers"
+                              rules={field.value ?? {}}
+                              onRulesChange={field.onChange}
+                            />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -376,6 +434,38 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                       <p className="text-sm text-cream-600">Select products and set individual prices from the campaign detail tabs after this campaign is saved.</p>
                     )}
                   </div>
+
+                  <div className="space-y-2">
+                    <FormItem>
+                      <FormLabel>Product membership</FormLabel>
+                      <SegmentedControl
+                        aria-label="Product membership mode"
+                        options={PRODUCT_MEMBERSHIP_MODE_OPTIONS}
+                        allowClear={false}
+                        value={productMembershipMode}
+                        onChange={(value) => requestProductModeChange(value as 'manual' | 'automatic')}
+                      />
+                    </FormItem>
+
+                    {productMembershipMode === 'automatic' ? (
+                      <FormField
+                        control={form.control}
+                        name="product_rules"
+                        render={({ field }) => (
+                          <FormItem>
+                            <MembershipFilterPanel
+                              entityType="campaign_products"
+                              rules={field.value ?? { brand_names: [], category_names: [] }}
+                              onRulesChange={field.onChange}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
+                      <p className="text-sm text-cream-600">Select products from the campaign composer after this campaign is saved.</p>
+                    )}
+                  </div>
                 </FormSectionGrid>
               </FormBlock>
             </form>
@@ -391,6 +481,35 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
         </FormOverlayFooter>
       </FormOverlay>
       <DiscardChangesDialog open={dirtyGuard.discardOpen} onOpenChange={dirtyGuard.setDiscardOpen} onDiscard={dirtyGuard.confirmDiscard} />
+      <MembershipModeSwitchDialog
+        open={pendingBuyerTargetMode !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingBuyerTargetMode(null);
+        }}
+        direction={pendingBuyerTargetMode === 'automatic' ? 'to_automatic' : 'to_manual'}
+        affectedCount={0}
+        onConfirm={() => {
+          if (pendingBuyerTargetMode) {
+            form.setValue('buyer_target_mode', pendingBuyerTargetMode, { shouldDirty: true });
+            form.setValue('target_mode', pendingBuyerTargetMode === 'customer_group' ? 'customer_group' : 'individual_buyers', { shouldDirty: true });
+          }
+          setPendingBuyerTargetMode(null);
+        }}
+      />
+      <MembershipModeSwitchDialog
+        open={pendingProductModeSwitch !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingProductModeSwitch(null);
+        }}
+        direction={pendingProductModeSwitch ?? 'to_automatic'}
+        affectedCount={0}
+        onConfirm={() => {
+          if (pendingProductModeSwitch) {
+            form.setValue('product_membership_mode', pendingProductModeSwitch === 'to_automatic' ? 'automatic' : 'manual', { shouldDirty: true });
+          }
+          setPendingProductModeSwitch(null);
+        }}
+      />
     </>
   );
 }

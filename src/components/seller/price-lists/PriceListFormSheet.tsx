@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -19,9 +19,20 @@ import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import {
+  MembershipModeSwitchDialog,
+  type MembershipModeSwitchDirection,
+} from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { isoDateString } from '@/lib/date-utils';
 import { PriceListFormPayloadSchema, type PriceListFormPayload } from '@/lib/zod';
 import { useSaveSimplePriceList } from '@/hooks/usePriceLists';
+
+const MEMBERSHIP_MODE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'automatic', label: 'Automatic' },
+];
 
 interface PriceListFormSheetProps {
   open: boolean;
@@ -33,6 +44,7 @@ interface PriceListFormSheetProps {
 
 export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defaultValues }: PriceListFormSheetProps) {
   const mutation = useSaveSimplePriceList(priceListId);
+  const [pendingModeSwitch, setPendingModeSwitch] = useState<MembershipModeSwitchDirection | null>(null);
   const form = useForm<PriceListFormPayload>({
     resolver: zodResolver(PriceListFormPayloadSchema),
     defaultValues: {
@@ -41,6 +53,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       description: '',
       valid_from: new Date(),
       priority: 0,
+      membership_mode: 'manual',
       ...defaultValues,
     },
   });
@@ -53,6 +66,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       description: '',
       valid_from: new Date(),
       priority: 0,
+      membership_mode: 'manual',
       ...defaultValues,
     });
   }, [defaultValues, form, open]);
@@ -64,6 +78,17 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       onOpenChange(false);
     },
   });
+
+  const membershipMode = form.watch('membership_mode');
+  const initialMembershipMode = defaultValues?.membership_mode ?? 'manual';
+
+  const requestModeChange = (nextMode: 'manual' | 'automatic') => {
+    if (mode === 'edit' && nextMode !== initialMembershipMode) {
+      setPendingModeSwitch(nextMode === 'automatic' ? 'to_automatic' : 'to_manual');
+      return;
+    }
+    form.setValue('membership_mode', nextMode, { shouldDirty: true });
+  };
 
   return (
     <>
@@ -144,6 +169,39 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                   </FormItem>
                 )} />
               </FormBlock>
+              <FormBlock>
+                <FormItem>
+                  <FormLabel>Membership</FormLabel>
+                  <SegmentedControl
+                    aria-label="Membership mode"
+                    options={MEMBERSHIP_MODE_OPTIONS}
+                    allowClear={false}
+                    value={membershipMode}
+                    onChange={(value) => requestModeChange(value as 'manual' | 'automatic')}
+                  />
+                  <p className="text-sm text-cream-600">
+                    {membershipMode === 'automatic'
+                      ? 'Products are computed from the filters below and kept up to date automatically.'
+                      : 'Products are picked by hand in the detail tabs.'}
+                  </p>
+                </FormItem>
+                {membershipMode === 'automatic' ? (
+                  <FormField
+                    control={form.control}
+                    name="rules"
+                    render={({ field }) => (
+                      <FormItem className="mt-4">
+                        <MembershipFilterPanel
+                          entityType="price_list"
+                          rules={field.value ?? { brand_names: [], category_names: [] }}
+                          onRulesChange={field.onChange}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null}
+              </FormBlock>
             </form>
           </Form>
         </FormOverlayBody>
@@ -155,6 +213,20 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
         </FormOverlayFooter>
       </FormOverlay>
       <DiscardChangesDialog open={dirtyGuard.discardOpen} onOpenChange={dirtyGuard.setDiscardOpen} onDiscard={dirtyGuard.confirmDiscard} />
+      <MembershipModeSwitchDialog
+        open={pendingModeSwitch !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingModeSwitch(null);
+        }}
+        direction={pendingModeSwitch ?? 'to_automatic'}
+        affectedCount={0}
+        onConfirm={() => {
+          if (pendingModeSwitch) {
+            form.setValue('membership_mode', pendingModeSwitch === 'to_automatic' ? 'automatic' : 'manual', { shouldDirty: true });
+          }
+          setPendingModeSwitch(null);
+        }}
+      />
     </>
   );
 }
