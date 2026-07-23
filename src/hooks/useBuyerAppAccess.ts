@@ -7,12 +7,18 @@ import {
   useQuery,
   useQueryClient,
   type InfiniteData,
+  type QueryClient,
 } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { apiFetch, apiPatch } from '@/lib/api-fetch';
+import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { showBuyerAppAccessChangeToasts } from '@/lib/buyer-app-access-toast';
 import { rollbackSnapshots } from '@/lib/optimistic';
 import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import type {
+  BuyerAppAccessPatchResponse,
+  BuyerAppEnablePreviewResponse,
+} from '@/types/buyer-app-enable';
 
 export interface AccessKpis {
   enabled_count: number;
@@ -61,6 +67,74 @@ type AccessInfiniteData = InfiniteData<AccessPageResponse, number>;
 const ACCESS_QUERY_KEY = ['buyer-app-access'] as const;
 const ACCESS_LIST_QUERY_KEY = [...ACCESS_QUERY_KEY, 'list'] as const;
 const ACCESS_SUMMARY_QUERY_KEY = [...ACCESS_QUERY_KEY, 'summary'] as const;
+
+function isBuyerUsageInactive(buyer: AccessBuyer): boolean {
+  if (!buyer.last_app_order_at) return true;
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  return new Date(buyer.last_app_order_at).getTime() < cutoff;
+}
+
+function patchAccessListBuyers(
+  old: AccessInfiniteData | undefined,
+  buyerIds: string[],
+  enabled: boolean,
+): AccessInfiniteData | undefined {
+  if (!old) return old;
+  return {
+    ...old,
+    pages: old.pages.map((page) => ({
+      ...page,
+      buyers: page.buyers.map((buyer) =>
+        buyerIds.includes(buyer.id)
+          ? {
+              ...buyer,
+              buyer_app_enabled: enabled,
+              is_inactive: enabled ? isBuyerUsageInactive(buyer) : false,
+              is_suggested: !enabled && buyer.offline_spend_90d > 0,
+            }
+          : buyer,
+      ),
+    })),
+  };
+}
+
+function countAccessTransitions(
+  queryClient: QueryClient,
+  buyerIds: string[],
+  enabled: boolean,
+): { enabledDelta: number; inactiveDelta: number; suggestedDelta: number } {
+  let enabledDelta = 0;
+  let inactiveDelta = 0;
+  let suggestedDelta = 0;
+
+  const listQueries = queryClient.getQueriesData<AccessInfiniteData>({
+    queryKey: ACCESS_LIST_QUERY_KEY,
+  });
+
+  const seenBuyerIds = new Set<string>();
+
+  for (const [, data] of listQueries) {
+    if (!data) continue;
+    for (const page of data.pages) {
+      for (const buyer of page.buyers) {
+        if (!buyerIds.includes(buyer.id) || seenBuyerIds.has(buyer.id)) continue;
+        seenBuyerIds.add(buyer.id);
+        if (enabled && !buyer.buyer_app_enabled) {
+          enabledDelta += 1;
+          if (isBuyerUsageInactive(buyer)) inactiveDelta += 1;
+          if (buyer.is_suggested) suggestedDelta -= 1;
+        }
+        if (!enabled && buyer.buyer_app_enabled) {
+          enabledDelta -= 1;
+          if (buyer.is_inactive) inactiveDelta -= 1;
+          if (buyer.offline_spend_90d > 0) suggestedDelta += 1;
+        }
+      }
+    }
+  }
+
+  return { enabledDelta, inactiveDelta, suggestedDelta };
+}
 
 export function useAccessList(
   params: AccessListParams,
@@ -138,6 +212,32 @@ export function useAccessList(
   };
 }
 
+const ACCESS_ENABLE_PREVIEW_KEY = [...ACCESS_QUERY_KEY, 'enable-preview'] as const;
+
+export async function fetchBuyerAppEnablePreview(
+  buyerIds: string[],
+): Promise<BuyerAppEnablePreviewResponse> {
+  const res = await apiPost('/api/tenant/buyer-app/access/enable-preview', {
+    buyer_ids: buyerIds,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? 'Failed to load enable preview');
+  }
+  return res.json() as Promise<BuyerAppEnablePreviewResponse>;
+}
+
+export function useBuyerAppEnablePreview(buyerIds: string[], enabled: boolean) {
+  const sortedIds = [...buyerIds].sort().join(',');
+  return useQuery({
+    queryKey: [...ACCESS_ENABLE_PREVIEW_KEY, sortedIds],
+    queryFn: () => fetchBuyerAppEnablePreview(buyerIds),
+    enabled: enabled && buyerIds.length > 0,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
+}
+
 export function useToggleBuyerAccess() {
   const queryClient = useQueryClient();
 
@@ -148,7 +248,7 @@ export function useToggleBuyerAccess() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Failed to update access');
       }
-      return res.json();
+      return res.json() as Promise<BuyerAppAccessPatchResponse>;
     },
 
     onMutate: async ({ buyer_ids, enabled }) => {
@@ -156,38 +256,42 @@ export function useToggleBuyerAccess() {
       const snapshots = queryClient
         .getQueriesData<AccessInfiniteData>({ queryKey: ACCESS_LIST_QUERY_KEY })
         .map(([key, previous]) => ({ key, previous }));
+      const summarySnapshot = queryClient.getQueryData<AccessKpis>(ACCESS_SUMMARY_QUERY_KEY);
+      const { enabledDelta, inactiveDelta, suggestedDelta } = countAccessTransitions(
+        queryClient,
+        buyer_ids,
+        enabled,
+      );
 
-      queryClient.setQueriesData<AccessInfiniteData>({ queryKey: ACCESS_LIST_QUERY_KEY }, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            buyers: page.buyers.map((buyer) =>
-              buyer_ids.includes(buyer.id)
-                ? {
-                    ...buyer,
-                    buyer_app_enabled: enabled,
-                    is_inactive: enabled ? buyer.is_inactive : false,
-                    is_suggested: !enabled && buyer.offline_spend_90d > 0,
-                  }
-                : buyer,
-            ),
-          })),
-        };
-      });
+      queryClient.setQueriesData<AccessInfiniteData>(
+        { queryKey: ACCESS_LIST_QUERY_KEY },
+        (old) => patchAccessListBuyers(old, buyer_ids, enabled),
+      );
 
-      return { snapshots };
+      if (summarySnapshot) {
+        queryClient.setQueryData<AccessKpis>(ACCESS_SUMMARY_QUERY_KEY, {
+          ...summarySnapshot,
+          enabled_count: summarySnapshot.enabled_count + enabledDelta,
+          not_enabled_count: summarySnapshot.not_enabled_count - enabledDelta,
+          inactive_count: summarySnapshot.inactive_count + inactiveDelta,
+          suggested_count: summarySnapshot.suggested_count + suggestedDelta,
+        });
+      }
+
+      return { snapshots, summarySnapshot };
     },
 
     onError: (_error, _vars, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      if (context?.summarySnapshot) {
+        queryClient.setQueryData(ACCESS_SUMMARY_QUERY_KEY, context.summarySnapshot);
+      }
       toast.error('Failed to update buyer app access');
     },
 
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ACCESS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: ['buyer-app-landing'] });
+      void queryClient.invalidateQueries({ queryKey: ACCESS_SUMMARY_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['buyer-app-landing'] });
     },
   });
 }
@@ -198,17 +302,16 @@ export function useSingleBuyerToggle() {
 
   return {
     toggle: (buyerId: string, enabled: boolean) => {
-      const label = enabled ? 'enabled' : 'disabled';
       toggleMutation.mutate(
         { buyer_ids: [buyerId], enabled },
         {
-          onSuccess: () => {
-            toast.success(`Buyer app access ${label}`, {
-              action: {
-                label: 'Undo',
-                onClick: () => {
-                  toggleMutation.mutate({ buyer_ids: [buyerId], enabled: !enabled });
-                },
+          onSuccess: (data) => {
+            showBuyerAppAccessChangeToasts({
+              buyerCount: 1,
+              enabled,
+              data,
+              onUndo: () => {
+                toggleMutation.mutate({ buyer_ids: [buyerId], enabled: !enabled });
               },
             });
           },
@@ -225,18 +328,16 @@ export function useBulkToggleAccess() {
 
   return {
     bulkToggle: (buyerIds: string[], enabled: boolean, onDone?: () => void) => {
-      const n = buyerIds.length;
-      const label = enabled ? 'enabled' : 'disabled';
       toggleMutation.mutate(
         { buyer_ids: buyerIds, enabled },
         {
-          onSuccess: () => {
-            toast.success(`${n} buyer${n === 1 ? '' : 's'} ${label}`, {
-              action: {
-                label: 'Undo',
-                onClick: () => {
-                  toggleMutation.mutate({ buyer_ids: buyerIds, enabled: !enabled });
-                },
+          onSuccess: (data) => {
+            showBuyerAppAccessChangeToasts({
+              buyerCount: buyerIds.length,
+              enabled,
+              data,
+              onUndo: () => {
+                toggleMutation.mutate({ buyer_ids: buyerIds, enabled: !enabled });
               },
             });
             onDone?.();

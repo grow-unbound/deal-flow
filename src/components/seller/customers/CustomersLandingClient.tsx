@@ -208,7 +208,7 @@ function CustomersLandingContent({
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
   const horizonLabel = 'Trailing 90 days';
-  const metricSuffix = 'MTD';
+  const metricSuffix = '90D';
   const summaryQuery = useCustomersLanding('last90', initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({

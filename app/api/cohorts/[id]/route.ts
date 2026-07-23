@@ -66,25 +66,11 @@ function getIstMonthWindow(now = new Date()) {
 
   const currentStart = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString().slice(0, 10);
   const nextStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
-  const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
 
   return {
     currentStartDate: currentStart,
     nextStartDate: nextStart,
-    prevStartDate: prevStart,
   };
-}
-
-function getLastNMonthStarts(n: number, now = new Date()) {
-  const rows: Array<{ key: string; label: string }> = [];
-  const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  for (let i = n - 1; i >= 0; i -= 1) {
-    const date = new Date(Date.UTC(utcNow.getUTCFullYear(), utcNow.getUTCMonth() - i, 1));
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    const label = date.toLocaleDateString('en-IN', { month: 'short' });
-    rows.push({ key, label });
-  }
-  return rows;
 }
 
 function initialsFromName(name: string) {
@@ -103,6 +89,7 @@ function truncate56(text: string | null | undefined) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -136,10 +123,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const { data: detailV2, error: detailV2Error } = await db.schema('app').rpc('get_seller_cohort_detail_v2', {
-    p_tenant_id: claims.tenant_id,
-    p_cohort_id: id,
-  });
+  const { data: detailV2, error: detailV2Error } = includePerformance
+    ? await db.schema('app').rpc('get_seller_cohort_detail_v2', {
+        p_tenant_id: claims.tenant_id,
+        p_cohort_id: id,
+      })
+    : { data: null, error: null };
 
   if (detailV2Error) {
     console.error('[GET /api/cohorts/[id]] get_seller_cohort_detail_v2 failed', detailV2Error);
@@ -189,7 +178,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const scopedCatalogs = (scopedCatalogRowsData ?? []) as CatalogRow[];
   const scopedCatalogIds = scopedCatalogs.map((catalog) => catalog.id);
-  const { currentStartDate, nextStartDate, prevStartDate } = getIstMonthWindow();
+  const { currentStartDate, nextStartDate } = getIstMonthWindow();
 
   const [memberOrdersRes, scopedCatalogOrdersRes, campaignViewsRes, catalogItemsRes] = await Promise.all([
     memberBuyerIdsList.length > 0
@@ -296,10 +285,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const allowedBrandNames = allowedTenantBrandIds?.map((brandId) => tenantBrandNameMap.get(brandId) ?? 'Unnamed brand') ?? [];
 
   let gmvMtd = 0;
-  let gmvPrev = 0;
   let ordersMtd = 0;
   const activeMembersSet = new Set<string>();
-  const monthAgg = new Map<string, { gmv: number; orders: number }>();
 
   for (const order of orderRows) {
     if (!memberBuyerIds.has(order.buyer_id)) continue;
@@ -307,23 +294,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
     if (!metricDay) continue;
 
-    const monthKey = metricDay.slice(0, 7);
-    const agg = monthAgg.get(monthKey) ?? { gmv: 0, orders: 0 };
-    agg.gmv += amount;
-    agg.orders += 1;
-    monthAgg.set(monthKey, agg);
-
     if (metricDay >= currentStartDate && metricDay < nextStartDate) {
       gmvMtd += amount;
       ordersMtd += 1;
       activeMembersSet.add(order.buyer_id);
     }
-    if (metricDay >= prevStartDate && metricDay < currentStartDate) {
-      gmvPrev += amount;
-    }
   }
 
-  const growthPct = gmvPrev > 0 ? Number((((gmvMtd - gmvPrev) / gmvPrev) * 100).toFixed(1)) : 0;
   const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
 
   const scopedCatalogIdSet = new Set(scopedCatalogIds);
@@ -336,9 +313,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const uniqueCatalogViews = computeCampaignViewMetrics(campaignViewRows).uniqueViewers;
   const conversionPct = uniqueCatalogViews > 0 ? Number(((catalogOrdersMtd / uniqueCatalogViews) * 100).toFixed(1)) : 0;
-
-  const twelveMonthKeys = getLastNMonthStarts(12);
-  const gmvTrend12m = twelveMonthKeys.map(({ key, label }) => ({ month: label, value: Number((monthAgg.get(key)?.gmv ?? 0).toFixed(2)) }));
 
   const mtdSpendByBuyer = new Map<string, number>();
   for (const order of orderRows) {
@@ -486,7 +460,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     meta_strip_4: {
       gmv_mtd: gmvMtd,
-      growth_pct: growthPct,
       active_members: activeMembersSet.size,
       total_members: totalMembers,
       aov,
@@ -508,7 +481,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     performance: {
       summary: {
         gmv_mtd: gmvMtd,
-        growth_pct: growthPct,
         aov,
       },
       engagement: {
@@ -521,10 +493,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       top_members: topMembers,
       catalogs,
-      gmv_trend_12m: gmvTrend12m,
     },
-    performance_cards: (detailV2 as any)?.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? ((detailV2 as any)?.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     buyers: buyersPayload,
     rules_summary,
   }, { headers: SELLER_CACHE_PERSONAL });
@@ -571,8 +542,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         name: simpleParsed.data.name,
         description: simpleParsed.data.description,
         allowed_tenant_brand_ids: simpleParsed.data.allowed_tenant_brand_ids,
+        membership_mode: simpleParsed.data.membership_mode,
+        rules: simpleParsed.data.rules,
       }
     : composerParsed!.data;
+  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
 
   if (payload.name) {
     const { data: nameMatch } = await db
@@ -607,6 +581,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(payload.description !== undefined ? { description: payload.description || null } : {}),
       ...(!isSimpleForm && payload.is_static !== undefined ? { is_static: payload.is_static } : {}),
       ...(!isSimpleForm && payload.rules !== undefined ? { rules: payload.rules } : {}),
+      ...(isSimpleForm && simpleMembershipMode !== undefined ? {
+        membership_mode: simpleMembershipMode,
+        is_static: simpleMembershipMode === 'manual',
+        rules: simpleMembershipMode === 'automatic' ? payload.rules : null,
+      } : {}),
       ...(normalizedAllowedBrandIds !== undefined ? { allowed_tenant_brand_ids: normalizedAllowedBrandIds } : {}),
       updated_at: new Date().toISOString(),
       updated_by: claims.sub,
@@ -620,6 +599,56 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (updateError) {
     console.error('[PATCH /api/cohorts/[id]]', updateError.message);
     return NextResponse.json({ error: 'Failed to update cohort' }, { status: 500 });
+  }
+
+  if (isSimpleForm && simpleMembershipMode === 'automatic') {
+    // Mode switch or rule edit -- recompute now (requirement 4).
+    const { error: refreshError } = await db.schema('app').rpc('refresh_cohort_by_id', { p_cohort_id: id });
+    if (refreshError) {
+      console.error('[PATCH /api/cohorts/[id]] refresh error:', refreshError.message);
+    }
+  } else if (isSimpleForm && simpleMembershipMode === 'manual') {
+    const memberIds = payload.selected_buyer_ids ?? [];
+    const nextSet = new Set<string>(memberIds);
+    const { data: activeRows } = await db
+      .schema('app')
+      .from('cohort_members_active')
+      .select('buyer_id')
+      .eq('cohort_id', id);
+    const currentlyActive = new Set<string>((activeRows ?? []).map((row: { buyer_id: string }) => row.buyer_id));
+
+    const toClose = [...currentlyActive].filter((buyerId) => !nextSet.has(buyerId));
+    const toAdd = memberIds.filter((buyerId: string) => !currentlyActive.has(buyerId));
+
+    if (toClose.length > 0) {
+      const { error: closeError } = await db
+        .schema('app')
+        .from('cohort_members')
+        .update({ valid_until: new Date().toISOString() })
+        .eq('cohort_id', id)
+        .in('buyer_id', toClose)
+        .is('valid_until', null);
+      if (closeError) {
+        return NextResponse.json({ error: 'Failed to update selected buyers' }, { status: 500 });
+      }
+    }
+
+    if (toAdd.length > 0) {
+      const rows = toAdd.map((buyerId: string) => ({ cohort_id: id, buyer_id: buyerId }));
+      const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
+      if (membersError) {
+        return NextResponse.json({ error: 'Failed to save selected buyers' }, { status: 500 });
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('cohorts')
+      .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id);
+
+    cohort.cached_member_count = memberIds.length;
   }
 
   if (!isSimpleForm) {

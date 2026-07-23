@@ -42,6 +42,7 @@ function formatShortDate(value: string | null): string {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
 
   try {
     const claims = await getVerifiedClaims(request);
@@ -99,8 +100,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .order('created_at', { ascending: true }),
       db
         .schema('app')
-        .from('cohort_members')
-        .select('cohort_id, cohorts(name, deleted_at)')
+        .from('cohort_members_active')
+        .select('cohort_id')
         .eq('buyer_id', id),
       db
         .schema('app')
@@ -168,9 +169,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const summaryMetrics = detailV2.summary_metrics ?? {};
     const subtitleMeta = detailV2.subtitle_meta ?? {};
     const tabBadges = detailV2.tab_badges ?? {};
-    const activeCohorts: Array<{ id: string; name: string }> = (cohortMembersRes.data ?? [])
-      .filter((row: any) => !row.cohorts?.deleted_at)
-      .map((row: any) => ({ id: row.cohort_id as string, name: row.cohorts?.name ?? 'Customer group' }));
+    const memberCohortIds = ((cohortMembersRes.data ?? []) as Array<{ cohort_id: string }>).map((row) => row.cohort_id);
+    let activeCohorts: Array<{ id: string; name: string }> = [];
+    if (memberCohortIds.length > 0) {
+      const { data: cohortNameRows } = await db
+        .schema('app')
+        .from('cohorts')
+        .select('id, name')
+        .in('id', memberCohortIds)
+        .is('deleted_at', null);
+      activeCohorts = ((cohortNameRows ?? []) as Array<{ id: string; name: string }>).map((row) => ({
+        id: row.id,
+        name: row.name ?? 'Customer group',
+      }));
+    }
     const contacts = (buyerUsersRes.data ?? []).map((contact: any) => ({
       id: contact.id,
       user_id: contact.user_id ?? null,
@@ -219,8 +231,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const response = {
-      detail_v2: detailV2,
-      performance_cards: detailV2.performance_cards ?? [],
+      detail_v2: includePerformance ? detailV2 : null,
+      performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
       header: {
         id: buyer.id,
         buyer_name: buyer.business_name,
@@ -299,7 +311,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       performance_v2: {
         headline: {
           spend_mtd: invoicedSales90d,
-          growth_pct: 0,
           orders_mtd: invoiceCount90d,
           aov_mtd: invoiceCount90d > 0 ? invoicedSales90d / invoiceCount90d : 0,
         },

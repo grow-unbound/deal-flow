@@ -83,6 +83,13 @@ function mapMetaStatusToLedgerStatus(
   }
 }
 
+const STATUS_ORDER: Record<'sent' | 'delivered' | 'read' | 'failed', number> = {
+  sent: 1,
+  delivered: 2,
+  read: 3,
+  failed: 4,
+};
+
 async function handleStatusUpdates(
   admin: ReturnType<typeof createAdminClient>,
   statuses: MetaStatusUpdate[],
@@ -92,13 +99,64 @@ async function handleStatusUpdates(
   for (const status of statuses) {
     const providerMessageId = status.id?.trim();
     const ledgerStatus = status.status ? mapMetaStatusToLedgerStatus(status.status) : null;
-    if (!providerMessageId || !ledgerStatus) continue;
+    if (!providerMessageId || !ledgerStatus) {
+      console.warn('[whatsapp-inbound-webhook] ignored malformed status payload', {
+        providerMessageId: providerMessageId ?? null,
+        rawStatus: status.status ?? null,
+      });
+      continue;
+    }
 
     const timestamp = status.timestamp
       ? new Date(Number(status.timestamp) * 1000).toISOString()
       : new Date().toISOString();
 
-    const update: Record<string, unknown> = { status: ledgerStatus };
+    const { data: existingRows, error: existingError } = await admin
+      .schema('app')
+      .from('whatsapp_messages')
+      .select('id, status, whatsapp_broadcast_id')
+      .eq('provider_message_id', providerMessageId);
+
+    if (existingError) {
+      console.error('[whatsapp-inbound-webhook] existing status lookup failed', {
+        providerMessageId,
+        error: existingError.message,
+      });
+      continue;
+    }
+
+    const existing = (existingRows ?? []) as Array<{
+      id: string;
+      status: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'cancelled' | null;
+      whatsapp_broadcast_id: string | null;
+    }>;
+
+    if (existing.length === 0) {
+      console.warn('[whatsapp-inbound-webhook] unmatched provider message id', {
+        providerMessageId,
+        ledgerStatus,
+        timestamp,
+      });
+      continue;
+    }
+
+    const staleOrDuplicate = existing.every((row) => {
+      if (!row.status || !(row.status in STATUS_ORDER)) return false;
+      return STATUS_ORDER[row.status as keyof typeof STATUS_ORDER] >= STATUS_ORDER[ledgerStatus];
+    });
+    if (staleOrDuplicate) {
+      console.info('[whatsapp-inbound-webhook] duplicate or out-of-order status update', {
+        providerMessageId,
+        incomingStatus: ledgerStatus,
+        existingStatuses: existing.map((row) => row.status),
+      });
+      continue;
+    }
+
+    const update: Record<string, unknown> = {
+      provider_message_id: providerMessageId,
+      status: ledgerStatus,
+    };
     if (ledgerStatus === 'sent') update.sent_at = timestamp;
     if (ledgerStatus === 'delivered') update.delivered_at = timestamp;
     if (ledgerStatus === 'read') update.read_at = timestamp;
@@ -212,6 +270,10 @@ Deno.serve(async (req: Request) => {
 
       const phone = normalizeIndianPhone(message.from);
       if (!phone) continue;
+      console.info('[whatsapp-inbound-webhook] inbound opt-out received', {
+        phone,
+        textBody: textBody ?? null,
+      });
 
       const { error } = await admin
         .schema('app')

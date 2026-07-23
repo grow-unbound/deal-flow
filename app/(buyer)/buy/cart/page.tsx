@@ -11,6 +11,7 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
@@ -306,7 +307,7 @@ export default function CartPage() {
     return (
       <>
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-          <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
+          <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
@@ -343,7 +344,7 @@ export default function CartPage() {
     <>
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-        <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
+        <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
           <ChevronLeft className="h-5 w-5" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>

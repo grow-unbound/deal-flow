@@ -16,7 +16,6 @@ import {
   V3CalloutPanel,
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -306,14 +305,13 @@ function CategoriesLandingContent({
           />
 
           {showTableSkeleton ? (
-            <LandingTableRowsSkeleton columns={7} tableMinWidth={1220} />
+            <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
           ) : (
           <LandingTable
           columns={[
               { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
               { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-              { label: 'Trend · 90D', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: 'Products', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: 'Out of stock SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { width: 40, className: 'px-4' },
@@ -357,9 +355,6 @@ function CategoriesLandingContent({
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
-                </td>
-                <td className="px-5 py-3.5 text-right">
-                  <GrowthPill value={row.growth_pct} />
                 </td>
                 <td className="px-5 py-3.5 text-right text-medium text-cream-700">
                   {formatNumberValue(row.active_sku_count, 'COUNT')}

@@ -320,11 +320,13 @@ export function useCustomersLandingInfinite(
   });
 }
 
-export function useTenantCustomerDetail(id: string) {
+export function useTenantCustomerDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['tenant-customer-detail', id],
+    queryKey: ['tenant-customer-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<TenantCustomerDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/customers/${id}`, { fresh: true });
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/customers/${id}?${params.toString()}`, { fresh: true });
       if (!res.ok) {
         if (res.status === 403) {
           throw new Error('Forbidden');

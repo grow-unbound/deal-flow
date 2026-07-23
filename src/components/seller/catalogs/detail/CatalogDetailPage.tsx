@@ -86,16 +86,17 @@ function normalizeBuyerNotifyStatus(status: CatalogDetailResponse['buyers'][numb
 }
 
 export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
+  const showPerformanceTab = false;
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-catalog-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: 'products',
   });
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'first_publish' | 'publish_updates' | 'notify_buyers'>('first_publish');
   const { isSellerAdmin } = useRole();
-  const { data, isLoading, isError } = useTenantCatalogDetail(id);
+  const { data, isLoading, isError } = useTenantCatalogDetail(id, { includePerformance: false });
   const publishMutation = usePublishCatalog(id);
   const publishUpdatesMutation = usePublishCatalogUpdates(id);
   const notifyBuyersMutation = useNotifyCatalogBuyers(id);
@@ -107,15 +108,6 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       {
         label: 'Campaign-linked demand value',
         value: formatNumberValue(data.meta_strip_4.gmv, 'CURRENCY_THRESHOLD'),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct)}%
-            </span>{' '}
-            vs previous campaign
-          </span>
-        ),
       },
       {
         label: 'Customers with demand',
@@ -197,6 +189,12 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     publishMutation.isPending
     || publishUpdatesMutation.isPending
     || notifyBuyersMutation.isPending;
+  const tabs = [
+    { id: 'products', label: 'Products', badge: data.header.products_count },
+    ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
+    { id: 'buyers', label: 'Buyers', badge: data.meta_strip_4.cohort_members },
+  ] as const;
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
 
   async function handleCopyShareLink() {
     try {
@@ -371,27 +369,31 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
       <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
-      <DetailTabs
-        tabs={[
-          { id: 'products', label: 'Products', badge: data.header.products_count },
-          { id: 'performance', label: 'Performance' },
-          { id: 'buyers', label: 'Buyers', badge: data.meta_strip_4.cohort_members },
-        ]}
-        active={tab}
-        onChange={(tabId) => setTab(tabId as TabId)}
-      />
+      <DetailTabs tabs={tabs as unknown as Array<{ id: string; label: string; badge?: number }>} active={activeTab} onChange={(tabId) => setTab(tabId as TabId)} />
 
-      {tab === 'products' ? (
+      {activeTab === 'products' ? (
         <CatalogCompositionTab
           catalogId={id}
           summary={data.products_summary}
+          composer={data.composer}
+          headerName={data.header.name}
+          heroImageUrl={data.header.hero_image_url}
         />
       ) : null}
 
-      {tab === 'performance' ? (
+      {showPerformanceTab && activeTab === 'performance' ? (
         <CatalogPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
-      {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
+      {activeTab === 'buyers' ? (
+        <CatalogBuyersTab
+          catalogId={id}
+          buyers={data.buyers}
+          selectedCohort={data.header.selected_cohort}
+          composer={data.composer}
+          headerName={data.header.name}
+          heroImageUrl={data.header.hero_image_url}
+        />
+      ) : null}
 
       <CampaignFormSheet
         open={editOpen}
@@ -410,6 +412,12 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
           target_cohort_id: data.composer?.scope_type === 'cohort' ? (data.composer.cohort_id ?? null) : null,
           pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
           price_list_id: data.composer?.price_source === 'price_list' ? (data.composer.price_list_id ?? null) : null,
+          buyer_target_mode: data.composer?.buyer_target_mode,
+          buyer_ids: data.composer?.buyer_ids ?? data.buyers.filter((buyer) => buyer.is_member !== false).map((buyer) => buyer.buyer_id),
+          buyer_rules: data.composer?.buyer_rules,
+          product_membership_mode: data.composer?.product_membership_mode,
+          selected_product_ids: data.composer?.items.map((item) => item.tenant_product_id) ?? [],
+          product_rules: data.composer?.product_rules,
         }}
       />
     </PageWrap>

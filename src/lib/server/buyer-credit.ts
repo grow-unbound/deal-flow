@@ -1,3 +1,5 @@
+import { hasInvoiceReceivableExposure } from '@/lib/invoice-status';
+
 const DAY_MS = 86_400_000;
 
 type BuyerCreditDbClient = {
@@ -91,12 +93,15 @@ export async function loadBuyerCreditSnapshots(
     });
   }
 
+  // Fetch all non-deleted invoices regardless of status — the receivable
+  // predicate below (status + outstanding_balance) is the authoritative
+  // filter, not a bare `.neq('status', 'draft')`, which would still count
+  // stray positive outstanding_balance on `void` invoices as owed.
   const invoicesQuery = db
     .schema('app')
     .from('invoices')
     .select('buyer_id, outstanding_balance, due_date, status')
-    .eq('tenant_id', tenantId)
-    .neq('status', 'draft');
+    .eq('tenant_id', tenantId);
 
   for (const buyerChunk of chunkArray(uniqueBuyerIds, 1000)) {
     const invoicesRes = buyerChunk.length === 1
@@ -117,7 +122,7 @@ export async function loadBuyerCreditSnapshots(
       if (!snapshot) continue;
 
       const outstanding = Number(row.outstanding_balance ?? 0);
-      if (outstanding <= 0) continue;
+      if (!hasInvoiceReceivableExposure({ status: row.status ?? '', outstanding_balance: row.outstanding_balance })) continue;
 
       snapshot.outstanding_dues += outstanding;
       snapshot.credit_used += outstanding;

@@ -320,7 +320,12 @@ export const CustomerGroupFormPayloadSchema = z
     description: z.string().optional().or(z.literal('')),
     allowed_tenant_brand_ids: z.array(z.string().uuid('Invalid brand')).optional().nullable(),
     membership_mode: MembershipModeSchema.default('manual'),
+    selected_buyer_ids: z.array(z.string().uuid('Invalid buyer')).default([]),
     rules: BuyerMembershipRulesSchema.optional(),
+  })
+  .refine((data) => data.membership_mode !== 'manual' || data.selected_buyer_ids.length > 0, {
+    message: 'Select at least one buyer',
+    path: ['selected_buyer_ids'],
   })
   .refine((data) => data.membership_mode !== 'automatic' || Boolean(data.rules), {
     message: 'Select at least one filter for automatic membership',
@@ -431,6 +436,7 @@ export const PriceListFormPayloadSchema = z
     valid_to: z.coerce.date().optional(),
     priority: z.coerce.number().int().min(0).default(0),
     membership_mode: MembershipModeSchema.default('manual'),
+    selected_product_ids: z.array(z.string().uuid('Invalid product ID')).default([]),
     rules: ProductMembershipRulesSchema.optional(),
   })
   .refine(
@@ -445,6 +451,10 @@ export const PriceListFormPayloadSchema = z
       path: ['valid_to'],
     },
   )
+  .refine((data) => data.membership_mode !== 'manual' || data.selected_product_ids.length > 0, {
+    message: 'Select at least one product',
+    path: ['selected_product_ids'],
+  })
   .refine((data) => data.membership_mode !== 'automatic' || Boolean(data.rules), {
     message: 'Select at least one filter for automatic membership',
     path: ['rules'],
@@ -585,6 +595,7 @@ export const CampaignFormPayloadSchema = z
     hero_image_url: z.string().url('Enter a valid image URL').optional().or(z.literal('')),
     target_mode: z.enum(['customer_group', 'individual_buyers']).default('customer_group'),
     target_cohort_id: z.string().uuid('Select a customer group').nullable().optional(),
+    buyer_ids: z.array(z.string().uuid('Invalid buyer ID')).default([]),
     pricing_mode: z.enum(['pricelist', 'individual_prices']).default('individual_prices'),
     price_list_id: z.string().uuid('Select a pricelist').nullable().optional(),
     // Two independent membership axes (requirement 2), on top of the legacy target_mode/
@@ -594,6 +605,7 @@ export const CampaignFormPayloadSchema = z
     buyer_target_mode: CampaignBuyerTargetModeSchema.optional(),
     buyer_rules: BuyerMembershipRulesSchema.optional(),
     product_membership_mode: MembershipModeSchema.optional(),
+    selected_product_ids: z.array(z.string().uuid('Invalid product ID')).default([]),
     product_rules: ProductMembershipRulesSchema.optional(),
   })
   .refine((data) => data.target_mode !== 'customer_group' || Boolean(data.target_cohort_id), {
@@ -608,9 +620,17 @@ export const CampaignFormPayloadSchema = z
     message: 'Select at least one filter for automatic buyer targeting',
     path: ['buyer_rules'],
   })
+  .refine((data) => data.buyer_target_mode !== 'manual' || data.buyer_ids.length > 0, {
+    message: 'Select at least one buyer',
+    path: ['buyer_ids'],
+  })
   .refine((data) => data.product_membership_mode !== 'automatic' || Boolean(data.product_rules), {
     message: 'Select at least one filter for automatic product membership',
     path: ['product_rules'],
+  })
+  .refine((data) => data.product_membership_mode !== 'manual' || data.selected_product_ids.length > 0, {
+    message: 'Select at least one product',
+    path: ['selected_product_ids'],
   })
   .refine(
     (data) => {

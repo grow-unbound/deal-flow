@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
@@ -62,12 +62,13 @@ function CategoryDetailSkeleton() {
 }
 
 export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
+  const showPerformanceTab = false;
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-category-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: 'products',
   });
-  const { data, isLoading, isError } = useCategoryDetail(id);
+  const { data, isLoading, isError } = useCategoryDetail(id, { includePerformance: false });
   const { isSellerAdmin } = useRole();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -133,6 +134,19 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     updated_at: h.updated_at,
   };
 
+  const tabs = [
+    ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
+    { id: 'products', label: 'Products', badge: h.active_sku_count },
+    { id: 'brands', label: 'Brands', badge: h.brand_count },
+  ] as const;
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
+
+  useEffect(() => {
+    if (activeTab !== tab) {
+      setTab(activeTab as TabId);
+    }
+  }, [activeTab, setTab, tab]);
+
   return (
     <PageWrap className="pt-7">
       <DetailHeader
@@ -161,21 +175,13 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
 
       <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
-      <DetailTabs
-        tabs={[
-          { id: 'performance', label: 'Performance' },
-          { id: 'products', label: 'Products', badge: h.active_sku_count },
-          { id: 'brands', label: 'Brands', badge: h.brand_count },
-        ]}
-        active={tab}
-        onChange={(value) => setTab(value as TabId)}
-      />
+      <DetailTabs tabs={tabs as unknown as Array<{ id: string; label: string; badge?: number }>} active={activeTab} onChange={(value) => setTab(value as TabId)} />
 
-      {tab === 'performance' ? (
+      {showPerformanceTab && activeTab === 'performance' ? (
         <CategoryPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
-      {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
-      {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
+      {activeTab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
+      {activeTab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
 
       <CategoryFormSheet
         open={editOpen}

@@ -96,7 +96,7 @@ describe('cohort detail page integration', () => {
     render(<CohortDetailPage id="c1" />);
 
     expect(screen.getByRole('tab', { name: 'Buyers' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Members/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Catalogs/i })).not.toBeInTheDocument();

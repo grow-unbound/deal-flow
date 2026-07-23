@@ -45,8 +45,11 @@ export interface LocationsLandingKpis {
   total_invoice_count: number;
   outstanding_dues_total: number;
   dues_location_count: number;
+  overdue_dues_total: number;
+  overdue_location_count: number;
   open_estimate_count: number;
   total_estimate_count: number;
+  conversion_pct: number;
   top_location_name: string | null;
   top_location_gmv_share_pct: number;
   linked_warehouse_count: number;
@@ -62,8 +65,6 @@ export interface LocationsLandingRow {
   phone_number: string | null;
   initials: string;
   gmv_mtd: number;
-  gmv_prev: number;
-  growth_pct: number;
   active_buyers: number;
   outstanding_dues: number;
   sku_count: number;
@@ -216,7 +217,6 @@ export interface LocationDetailResponse {
   associated_users: Array<{ email: string; user_name: string | null; user_id: string | null }>;
   meta_strip: {
     gmv_mtd: number;
-    growth_pct: number;
     outstanding_dues: number;
     overdue_amount: number;
     invoice_count: number;
@@ -285,16 +285,18 @@ export function useLocationsLanding(
   return { ...query, data: data ?? retained };
 }
 
-export function useLocationDetail(id: string) {
+export function useLocationDetail(id: string, options?: { includePerformance?: boolean }) {
   const { currentTenantId } = useAuth();
 
   return useQuery<LocationDetailResponse>({
-    queryKey: ['location-detail', currentTenantId, id],
+    queryKey: ['location-detail', currentTenantId, id, options?.includePerformance ?? true],
     enabled: Boolean(currentTenantId) && Boolean(id),
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
     queryFn: async () => {
-      const res = await fetch(`/api/tenant/locations/${id}/detail`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await fetch(`/api/tenant/locations/${id}/detail?${params.toString()}`);
       if (res.status === 404) throw new Error('not_found');
       if (!res.ok) throw new Error(`location-detail ${res.status}`);
       return res.json() as Promise<LocationDetailResponse>;

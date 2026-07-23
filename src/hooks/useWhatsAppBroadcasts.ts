@@ -17,12 +17,15 @@ import type { WhatsAppQualityRatingState } from '@/constants/whatsapp-quality-ba
 export interface WhatsAppTemplateOption {
   id: string;
   meta_template_name: string;
+  display_name: string;
   meta_category: 'marketing' | 'utility' | 'authentication';
   use_case: string;
   body: string;
   variables: Array<{ key: string; description?: string }>;
   approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
   is_broadcast_template: boolean;
+  broadcast_supported: boolean;
+  broadcast_support_reason: string | null;
 }
 
 export interface ManageBroadcastRow {
@@ -130,7 +133,7 @@ export function useWhatsAppTemplates(enabled = true) {
       const res = await apiFetch('/api/whatsapp/templates');
       if (!res.ok) throw new Error('Failed to fetch WhatsApp templates');
       const data = (await res.json()) as { templates: WhatsAppTemplateOption[] };
-      return data.templates;
+      return data.templates.filter((template) => template.is_broadcast_template);
     },
     enabled,
     staleTime: NAVIGATION_QUERY_STALE_TIME,

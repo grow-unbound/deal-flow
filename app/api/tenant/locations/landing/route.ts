@@ -34,7 +34,6 @@ interface LocationRowMetric {
   outstanding_dues: number | string | null;
   oldest_unpaid_days: number | string | null;
   gmv_current: number | string | null;
-  gmv_previous: number | string | null;
   active_buyers: number | string | null;
 }
 
@@ -61,8 +60,11 @@ const EMPTY_KPIS: LocationsLandingKpis = {
   total_invoice_count: 0,
   outstanding_dues_total: 0,
   dues_location_count: 0,
+  overdue_dues_total: 0,
+  overdue_location_count: 0,
   open_estimate_count: 0,
   total_estimate_count: 0,
+  conversion_pct: 0,
   top_location_name: null,
   top_location_gmv_share_pct: 0,
   linked_warehouse_count: 0,
@@ -154,8 +156,6 @@ export async function GET(request: NextRequest) {
     const period = getSellerLandingPeriodMeta('last90');
     const currentStart = period.current_start.split('T')[0];
     const currentEndExclusive = period.current_end_exclusive.split('T')[0];
-    const previousStart = period.previous_start.split('T')[0];
-    const previousEndExclusive = period.previous_end_exclusive.split('T')[0];
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
     const includeSummary = request.nextUrl.searchParams.get('include_summary') !== 'false';
@@ -206,8 +206,6 @@ export async function GET(request: NextRequest) {
           p_location_ids: pageIds,
           p_current_start: currentStart,
           p_current_end_exclusive: currentEndExclusive,
-          p_previous_start: previousStart,
-          p_previous_end_exclusive: previousEndExclusive,
         })
       : Promise.resolve({ data: [], error: null });
     // Pre-computed snapshot fields — all demand metrics live in metrics_location_snapshot since
@@ -307,7 +305,6 @@ export async function GET(request: NextRequest) {
         const lowStock = Number(metrics?.low_stock_sku_count ?? 0);
         const stockStatus: LocationStockStatus = outOfStock > 0 ? 'out_of_stock' : lowStock > 0 ? 'low_stock' : 'clear';
         const gmvCurrent = Number(metrics?.gmv_current ?? 0);
-        const gmvPrevious = Number(metrics?.gmv_previous ?? 0);
         const snap = snapshotByLocation.get(seed.id);
         return {
           id: seed.id,
@@ -317,8 +314,6 @@ export async function GET(request: NextRequest) {
           phone_number: seed.phone_number ?? null,
           initials: getInitials(seed.name),
           gmv_mtd: gmvCurrent,
-          gmv_prev: gmvPrevious,
-          growth_pct: gmvPrevious > 0 ? Math.round(((gmvCurrent - gmvPrevious) / gmvPrevious) * 100) : 0,
           active_buyers: Number(metrics?.active_buyers ?? 0),
           outstanding_dues: Number(metrics?.outstanding_dues ?? 0),
           sku_count: Number(metrics?.sku_count ?? 0),

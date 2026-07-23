@@ -14,12 +14,16 @@ import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-p
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
+  BuyerMembershipRules,
+  CampaignBuyerTargetMode,
   CampaignFormPayload,
   CatalogComposerFilterState,
   CatalogComposerPayload,
   CatalogComposerPriceSource,
   CatalogComposerPricingStrategy,
   CatalogComposerTag,
+  MembershipMode,
+  ProductMembershipRules,
 } from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
@@ -268,6 +272,10 @@ export interface CatalogDetailResponse {
     pricing_strategy?: CatalogComposerPricingStrategy;
     filters: CatalogComposerFilterState;
     is_dynamic?: boolean;
+    buyer_target_mode?: CampaignBuyerTargetMode;
+    buyer_rules?: BuyerMembershipRules;
+    product_membership_mode?: MembershipMode;
+    product_rules?: ProductMembershipRules;
     tag_overrides: Record<string, CatalogComposerTag | null>;
     items: Array<{
       tenant_product_id: string;
@@ -461,11 +469,13 @@ export function useTenantCatalogs(
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
-export function useTenantCatalogDetail(id: string) {
+export function useTenantCatalogDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['tenant-catalog-detail', id],
+    queryKey: ['tenant-catalog-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<CatalogDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/catalogs/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/catalogs/${id}?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch catalog detail');
       return res.json();
     },
@@ -1321,6 +1331,59 @@ export function useRemoveCatalogProduct(id: string) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+    },
+  });
+}
+
+export function useAddCampaignBuyers(catalogId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const res = await apiFetch(`/api/tenant/catalogs/${catalogId}/buyer-membership`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyer_ids: buyerIds }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to add buyers');
+      }
+      return res.json() as Promise<{ ok: true; count: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      toast.success('Buyers added to campaign');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not add buyers');
+    },
+  });
+}
+
+export function useRemoveCampaignBuyers(catalogId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const results = await Promise.all(
+        buyerIds.map((buyerId) =>
+          apiFetch(`/api/tenant/catalogs/${catalogId}/buyer-membership?buyer_id=${encodeURIComponent(buyerId)}`, { method: 'DELETE' }),
+        ),
+      );
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const body = await failed.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to remove buyers');
+      }
+      return { ok: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      toast.success('Buyers removed from campaign');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not remove buyers');
     },
   });
 }

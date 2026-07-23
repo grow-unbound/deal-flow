@@ -117,10 +117,11 @@ describe('catalog-detail-page integration', () => {
     pushMock.mockReset();
   });
 
-  it('loads performance tab by default and keeps activity tab absent', () => {
+  it('loads products tab by default and keeps activity tab absent', () => {
     render(<CatalogDetailPage id="cat-1" />);
 
-    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Products/i })).toHaveClass('border-ember-500');
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 

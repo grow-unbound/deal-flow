@@ -59,12 +59,6 @@ function formatDueSummary(daysUntilDue: number | null, invoiceCount: number, out
   return `due in ${daysUntilDue}d · ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
 }
 
-function trendLabel(value: number): string {
-  if (value > 0) return `+${value}% vs last month`;
-  if (value < 0) return `${value}% vs last month`;
-  return 'Flat vs last month';
-}
-
 function activityStatusTone(status: string): StatusTone {
   switch (status) {
     case 'delivered':
@@ -207,7 +201,7 @@ export default function HomePage() {
                 {formatNumberValue(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0, 'CURRENCY_EXACT')}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-white/70" style={{ fontSize: 'var(--b-text-sub)' }}>
-                {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year
+                {summary?.invoice_count_ytd ?? 0} invoices this year
               </p>
             </>
           )}

@@ -11,12 +11,28 @@ vi.mock('@/hooks/useWhatsAppBroadcasts', () => ({
   useWhatsAppTemplates: () => ({
     data: [{
       id: 'tpl-1',
-      use_case: 'campaign_announcement',
+      use_case: 'campaigns',
       meta_category: 'marketing',
       approval_status: 'approved',
       body: 'Hello {{buyer_name}}',
       variables: [{ key: 'buyer_name', description: 'Buyer name' }],
-      meta_template_name: 'campaign_announcement',
+      meta_template_name: 'campaign_published_buyer',
+      display_name: 'Campaign announcement',
+      is_broadcast_template: true,
+      broadcast_supported: true,
+      broadcast_support_reason: null,
+    }, {
+      id: 'tpl-2',
+      use_case: 'campaigns',
+      meta_category: 'marketing',
+      approval_status: 'approved',
+      body: 'New stock for {{buyer_name}}',
+      variables: [{ key: 'buyer_name', description: 'Buyer name' }],
+      meta_template_name: 'new_stock_buyer',
+      display_name: 'New stock arrived',
+      is_broadcast_template: true,
+      broadcast_supported: true,
+      broadcast_support_reason: null,
     }],
     isLoading: false,
     error: null,
@@ -54,8 +70,7 @@ describe('BroadcastComposerSheet', () => {
     expect(screen.getByPlaceholderText(/july new-stock nudge/i)).toBeInTheDocument();
     expect(screen.getByText('Target buyers')).toBeInTheDocument();
     expect(screen.getByText('Select template')).toBeInTheDocument();
-    expect(screen.getByRole('switch')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /send broadcast now/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^send broadcast now$/i })).toBeInTheDocument();
     expect(screen.queryByText('Broadcast summary')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/nashik/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Dormant for more than/i)).not.toBeInTheDocument();

@@ -10,7 +10,6 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -30,9 +29,9 @@ import { CohortsLandingSkeleton as SharedCohortsLandingSkeleton } from '@/compon
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { CustomerGroupFormSheet } from './CustomerGroupFormSheet';
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)';
+type SortOption = 'GMV (high → low)' | 'GMV (low → high)';
 
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)'];
 
 function getInitials(name: string): string {
   return name
@@ -173,9 +172,8 @@ function CohortsLandingContent({
       }) : rows;
     return interimRows
       .sort((a, b) => {
-        if (sortBy === 'GMV (high → low)') return b.gmv_mtd - a.gmv_mtd;
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
-        return b.growth_pct - a.growth_pct;
+        return b.gmv_mtd - a.gmv_mtd;
       });
   }, [filters.brands, isFetching, landingData?.cohorts, search, sortBy]);
 
@@ -277,19 +275,6 @@ function CohortsLandingContent({
               trailing: formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD'),
             })),
           },
-          {
-            id: 'top_risers',
-            kind: 'opportunity',
-            eyebrow: 'Groups gaining traction',
-            hint: 'fastest growth',
-            rows: landingData.todays_read.top_risers.map((row, index) => ({
-              initials: getInitials(row.name),
-              hue: getHue(index),
-              name: row.name,
-              reason: `${row.live_catalogs_count} campaigns live · ${row.active_members} active`,
-              trailing: <GrowthPill value={row.growth_pct} />,
-            })),
-          },
         ]}
       />
 
@@ -331,7 +316,6 @@ function CohortsLandingContent({
             { label: 'Allowed brands', minWidth: 220, maxWidth: 340, className: 'px-5' },
             { label: 'Members who purchased', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-            { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
             { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
@@ -357,9 +341,6 @@ function CohortsLandingContent({
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {formatNumberValue(cohort.gmv_mtd, 'CURRENCY_THRESHOLD')}
-              </td>
-              <td className="px-5 py-3.5 text-right">
-                <GrowthPill value={cohort.growth_pct} />
               </td>
               <td className="px-5 py-3.5">
                 <div className="space-y-1">

@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
   const { data: order, error: orderErr } = await admin
     .schema('app')
     .from('orders')
-    .select('id, tenant_id, buyer_id, order_number, status, source, external_ref, notes, placed_at, subtotal, tax_amount, total_amount, currency, place_of_supply')
+    .select('id, tenant_id, buyer_id, order_number, status, source, external_ref, notes, placed_at, subtotal, tax_amount, total_amount, currency, place_of_supply, is_buyer_app_order')
     .eq('id', id)
     .maybeSingle();
 
@@ -163,7 +163,6 @@ Deno.serve(async (req: Request) => {
     // Pass Yukti's order_number as Zoho reference; Zoho auto-generates its own salesorder_number
     reference_number: order.order_number as string,
     is_inclusive_tax: true,
-    cf_catalog_order: true,
     line_items: items.map((item) => {
       const prod = productMap.get(item.tenant_product_id as string)!;
       return {
@@ -176,6 +175,10 @@ Deno.serve(async (req: Request) => {
     }),
     notes: notesText,
   };
+
+  if (order.is_buyer_app_order === true) {
+    zohoBody.cf_catalog_order = true;
+  }
 
   if (gstInfo.gstin && gstInfo.gst_treatment) {
     zohoBody.gst_treatment = gstInfo.gst_treatment;

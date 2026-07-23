@@ -20,7 +20,6 @@ export interface CohortsLandingKpis {
   covered_members: number;
   total_buyers: number;
   combined_gmv_mtd: number;
-  growth_pct: number;
   avg_conversion_pct: number;
   uncategorised_buyers: number;
 }
@@ -34,7 +33,6 @@ export interface CohortsLandingCalloutRow {
   total_members: number;
   gmv_mtd: number;
   aov: number;
-  growth_pct: number;
   live_catalogs_count: number;
 }
 
@@ -49,7 +47,6 @@ export interface CohortsLandingRow {
   allowed_brands_label: string;
   allowed_tenant_brand_ids?: string[] | null;
   gmv_mtd: number;
-  growth_pct: number;
   active_members: number;
   total_members: number;
   conversion_pct: number;
@@ -67,7 +64,6 @@ export interface CohortsLandingResponse {
   todays_read: {
     low_conversion: CohortsLandingCalloutRow[];
     top_performers: CohortsLandingCalloutRow[];
-    top_risers: CohortsLandingCalloutRow[];
   };
   cohorts: CohortsLandingRow[];
   brands: Array<{
@@ -105,7 +101,6 @@ export interface CohortDetailHeader {
 
 export interface CohortDetailMetaStrip4 {
   gmv_mtd: number;
-  growth_pct: number;
   active_members: number;
   total_members: number;
   aov: number;
@@ -154,7 +149,6 @@ export interface CohortDetailDetailsRules {
 export interface CohortDetailPerformance {
   summary: {
     gmv_mtd: number;
-    growth_pct: number;
     aov: number;
   };
   engagement: {
@@ -181,7 +175,6 @@ export interface CohortDetailPerformance {
     orders: number;
     gmv: number;
   }>;
-  gmv_trend_12m: Array<{ month: string; value: number }>;
 }
 
 export interface CohortDetailResponse {
@@ -329,11 +322,13 @@ export function useTenantCohortOptions(enabled = true) {
   });
 }
 
-export function useCohortDetail(id: string) {
+export function useCohortDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['cohort-detail', id],
+    queryKey: ['cohort-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<CohortDetailResponse> => {
-      const res = await apiFetch(`/api/cohorts/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/cohorts/${id}?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch customer group detail');
       }
@@ -579,7 +574,6 @@ export function useSaveSimpleCustomerGroup(cohortId?: string) {
             allowed_brands_label: allowedBrandsLabel(brandNames),
             allowed_tenant_brand_ids: selectedBrandIds.length > 0 ? selectedBrandIds : null,
             gmv_mtd: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.gmv_mtd ?? 0,
-            growth_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.growth_pct ?? 0,
             active_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.active_members ?? 0,
             total_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.total_members ?? 0,
             conversion_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.conversion_pct ?? 0,
@@ -776,6 +770,61 @@ export function useRefreshCohort(id: string) {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not refresh customer group');
+    },
+  });
+}
+
+export function useAddCohortMembers(cohortId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const res = await apiFetch(`/api/cohorts/${cohortId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyer_ids: buyerIds }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to add members');
+      }
+      return res.json() as Promise<{ ok: boolean; count: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      toast.success('Buyers added to customer group');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not add buyers');
+    },
+  });
+}
+
+export function useRemoveCohortMembers(cohortId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const results = await Promise.all(
+        buyerIds.map((buyerId) =>
+          apiFetch(`/api/cohorts/${cohortId}/members?buyer_id=${encodeURIComponent(buyerId)}`, { method: 'DELETE' }),
+        ),
+      );
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const body = await failed.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to remove members');
+      }
+      return { ok: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      toast.success('Buyers removed from customer group');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not remove buyers');
     },
   });
 }

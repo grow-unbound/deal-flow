@@ -291,6 +291,7 @@ function extractBuyerCity(geography: unknown): string {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -312,14 +313,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const [detailV2Res, catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload] = await Promise.all([
-    db.schema('app').rpc('get_seller_campaign_detail_v2', {
-      p_tenant_id: claims.tenant_id,
-      p_campaign_id: id,
-    }),
+    includePerformance
+      ? db.schema('app').rpc('get_seller_campaign_detail_v2', {
+          p_tenant_id: claims.tenant_id,
+          p_campaign_id: id,
+        })
+      : Promise.resolve({ data: null, error: null }),
     db
       .schema('app')
       .from('campaigns')
-      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, hero_image_url, created_by, created_at')
+      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, hero_image_url, created_by, created_at, buyer_target_mode, buyer_filter_rules, product_membership_mode, dynamic_rules')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
@@ -346,13 +349,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('tenant_id', claims.tenant_id)
       .eq('campaign_id', id)
       .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('campaign_views')
-      .select('buyer_id, campaign_id, viewed_at, view_date')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('campaign_id', id)
-      .is('deleted_at', null),
+    // Point-in-time audience filter (requirement 7): a view only counts toward opens if the
+    // buyer was actually in the campaign's audience at the moment they viewed it, not just
+    // currently. See app.filter_campaign_views_by_audience_at_view_time.
+    db.schema('app').rpc('filter_campaign_views_by_audience_at_view_time', { p_campaign_id: id }),
     getCatalogComposerPayload(db, claims.tenant_id, claims.role),
   ]);
 
@@ -376,6 +376,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     hero_image_url: string | null;
     created_by: string | null;
     created_at: string;
+    buyer_target_mode: string | null;
+    buyer_filter_rules: Record<string, unknown> | null;
+    product_membership_mode: string | null;
+    dynamic_rules: Record<string, unknown> | null;
   };
 
   const allCampaignItemRows = (itemsRes.data ?? []) as Array<{
@@ -426,7 +430,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (catalog.scope_type === 'cohort' && scopeValue.cohort_id) {
     selectedCohortId = scopeValue.cohort_id;
     const [membersRes, cohortRes] = await Promise.all([
-      db.schema('app').from('cohort_members').select('buyer_id').eq('cohort_id', scopeValue.cohort_id),
+      db.schema('app').from('cohort_members_active').select('buyer_id').eq('cohort_id', scopeValue.cohort_id),
       db.schema('app').from('cohorts').select('name').eq('id', scopeValue.cohort_id).maybeSingle(),
     ]);
 
@@ -863,7 +867,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     meta_strip_4: {
       gmv,
-      growth_pct: growthPct,
       orders: conversionCount,
       conversions: conversionCount,
       demand_customers: demandCustomers,
@@ -896,7 +899,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         order_count: orderCount,
         estimate_count: estimateCount,
         gmv,
-        growth_pct: growthPct,
         aov,
         views: totalViews,
         unique_viewers: currentCatalogViewMetrics.uniqueViewers,
@@ -927,8 +929,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         last_order_at: buyer.last_order_at,
       })),
     },
-    performance_cards: detailV2?.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     buyers: buyers.slice(0, 50),
     permissions: {
       can_extend_validity: claims.role === 'seller_admin',
@@ -955,6 +957,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       cohort_id: composerDraft?.cohort_id ?? composerScopeValue.cohort_id ?? null,
       buyer_ids: composerDraft?.buyer_ids ?? composerScopeValue.buyer_ids ?? (scopeValue.buyer_id ? [scopeValue.buyer_id] : []),
       filters: composerDraft?.filters ?? filters,
+      buyer_target_mode: catalog.buyer_target_mode ?? (catalog.scope_type === 'cohort' ? 'customer_group' : 'manual'),
+      buyer_rules: catalog.buyer_filter_rules ?? {},
+      product_membership_mode: catalog.product_membership_mode ?? 'manual',
+      product_rules: catalog.dynamic_rules ?? { brand_names: [], category_names: [] },
       tag_overrides: composerDraft?.tag_overrides ?? tagOverrides,
       items: (composerDraft?.items ?? catalogItems.map((item) => ({
         tenant_product_id: item.tenant_product_id,
@@ -1041,6 +1047,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         scopeType: globalCatalog.scope_type as ScopeType,
         scopeValue,
         notifyWhatsapp: true,
+        buyerNote: publishInput.buyer_note ?? '',
       });
 
       if (!preflight.can_notify) {
@@ -1323,6 +1330,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (simpleParsed?.success) {
     const payload = simpleParsed.data;
+    const buyerTargetMode = payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual');
+    const productMembershipMode = payload.product_membership_mode ?? 'manual';
     if (payload.target_mode === 'customer_group') {
       const { data: cohort, error: cohortError } = await db
         .schema('app')
@@ -1343,6 +1352,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
       }
     }
+    if (buyerTargetMode === 'manual') {
+      const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
+      if (validBuyerIds.size !== payload.buyer_ids.length) {
+        return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+      }
+    }
+    if (productMembershipMode === 'manual') {
+      const validProductIds = await ensureTenantProducts(db, claims.tenant_id, payload.selected_product_ids);
+      if (validProductIds.size !== payload.selected_product_ids.length) {
+        return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+      }
+    }
 
     const liveScopeValue = (globalCatalog.scope_value ?? {}) as {
       composer?: {
@@ -1358,7 +1379,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...buildCatalogScopeValue({
         scopeType: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
         cohortId: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
-        buyerIds: [],
+        buyerIds: buyerTargetMode === 'manual' ? payload.buyer_ids : [],
         filters: liveScopeValue.composer?.filters ?? defaultCatalogFilters(),
         tagOverrides: liveScopeValue.composer?.tag_overrides ?? {},
         priceSource: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
@@ -1370,9 +1391,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         description: payload.description?.trim() ? payload.description.trim() : null,
       },
     };
-
-    const buyerTargetMode = payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual');
-    const productMembershipMode = payload.product_membership_mode ?? 'manual';
     const pricingSource = payload.pricing_mode === 'pricelist' ? 'pricelist' : 'individual_prices';
     const campaignPriceListId = payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null;
 
@@ -1416,6 +1434,71 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         refreshCalls.push(db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: id }));
       }
       await Promise.all(refreshCalls);
+    } else if (productMembershipMode === 'manual') {
+      const { data: existingItems, error: existingItemsError } = await db
+        .schema('app')
+        .from('campaign_items')
+        .select('id, tenant_product_id, deleted_at')
+        .eq('campaign_id', id);
+
+      if (existingItemsError) {
+        return NextResponse.json({ error: 'Failed to sync selected products' }, { status: 500 });
+      }
+
+      const existingByProductId = new Map<string, { id: string; tenant_product_id: string; deleted_at: string | null }>(
+        (existingItems ?? []).map((item: { id: string; tenant_product_id: string; deleted_at: string | null }) => [item.tenant_product_id, item]),
+      );
+      const nextSet = new Set(payload.selected_product_ids);
+      const idsToSoftDelete = (existingItems ?? [])
+        .filter((item: { tenant_product_id: string; deleted_at: string | null }) => !item.deleted_at && !nextSet.has(item.tenant_product_id))
+        .map((item: { id: string }) => item.id);
+
+      if (idsToSoftDelete.length > 0) {
+        const { error: deleteItemsError } = await db
+          .schema('app')
+          .from('campaign_items')
+          .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub })
+          .in('id', idsToSoftDelete);
+        if (deleteItemsError) {
+          return NextResponse.json({ error: 'Failed to remove unselected products' }, { status: 500 });
+        }
+      }
+
+      for (const [index, tenantProductId] of payload.selected_product_ids.entries()) {
+        const existingItem = existingByProductId.get(tenantProductId);
+        if (existingItem) {
+          const { error: updateItemError } = await db
+            .schema('app')
+            .from('campaign_items')
+            .update({
+              display_order: index,
+              deleted_at: null,
+              updated_at: new Date().toISOString(),
+              updated_by: claims.sub,
+            })
+            .eq('id', existingItem.id);
+          if (updateItemError) {
+            return NextResponse.json({ error: 'Failed to update selected products' }, { status: 500 });
+          }
+          continue;
+        }
+
+        const { error: insertItemError } = await db
+          .schema('app')
+          .from('campaign_items')
+          .insert({
+            campaign_id: id,
+            tenant_product_id: tenantProductId,
+            display_order: index,
+            price_override: null,
+            created_by: claims.sub,
+            updated_by: claims.sub,
+            deleted_at: null,
+          });
+        if (insertItemError) {
+          return NextResponse.json({ error: 'Failed to add selected products' }, { status: 500 });
+        }
+      }
     }
 
     revalidateSellerDashboardCache(claims.tenant_id);
@@ -1540,6 +1623,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       scopeType: payload.scope_type,
       scopeValue: nextScopeValue,
       notifyWhatsapp: true,
+      buyerNote: payload.buyer_note ?? payload.message ?? '',
     });
 
     if (!preflight.can_notify) {

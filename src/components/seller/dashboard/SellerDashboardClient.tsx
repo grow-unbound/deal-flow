@@ -18,7 +18,7 @@ import {
 } from '@/components/seller/layout';
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
 import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type {
@@ -236,6 +236,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
     initials: row.customer_name.slice(0, 2).toUpperCase(),
   }));
   const salesMixSubtitle = `Invoiced sales by ${salesMixDimension}, last 90 days`;
+  const asOfLabel = formatAsOfLabel(data.portfolio?.as_of);
 
   return (
     <>
@@ -247,6 +248,9 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
           tone: metric.tone,
         }))}
       />
+      {asOfLabel ? (
+        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+      ) : null}
       <V3CalloutPanel
         items={admin.callouts.map((item) => ({
           ...item,
@@ -292,7 +296,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
             id: 'dashboard-business-flow',
             representation: 'posture',
             title: 'Business flow',
-            subtitle: 'This month',
+            subtitle: 'Last 90 days',
             body: {
               tiles: businessFlowTiles,
               showSupportingText: true,
@@ -477,6 +481,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
 function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   const assistant = data.assistant;
   if (!assistant) return null;
+  const asOfLabel = formatAsOfLabel(data.portfolio?.as_of);
 
   return (
     <>
@@ -488,6 +493,9 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
           tone: metric.tone,
         }))}
       />
+      {asOfLabel ? (
+        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+      ) : null}
       <V3CalloutPanel
         items={assistant.callouts.map((item) => ({
           ...item,
@@ -543,7 +551,7 @@ export function SellerDashboardClient({
   initialPeriod: SellerLandingPeriod;
 }) {
   const period = initialPeriod;
-  const horizonLabel = 'This Month';
+  const horizonLabel = 'Last 90 Days';
   const { data, isLoading, isError } = useSellerDashboard(period, initialData);
   const retainedData = useRetainedValue(data);
   const dashboard = data ?? retainedData;

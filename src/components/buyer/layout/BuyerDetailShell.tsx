@@ -8,7 +8,7 @@ import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationCon
 import { BuyerSearchIconButton } from '@/components/buyer/layout/BuyerSearchIconButton';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
-import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 
 export interface BuyerDetailShellProps {
   title: React.ReactNode;
@@ -44,8 +44,7 @@ export function BuyerDetailShell({
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
 
   function handleBack(): void {
-    markBuyerNavigationBack();
-    router.back();
+    navigateBuyerBack(router);
   }
 
   return (

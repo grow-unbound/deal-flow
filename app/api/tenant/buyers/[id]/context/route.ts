@@ -65,7 +65,7 @@ export async function GET(
         .maybeSingle(),
       db
         .schema('app')
-        .from('cohort_members')
+        .from('cohort_members_active')
         .select('cohort_id')
         .eq('buyer_id', id),
     ]);

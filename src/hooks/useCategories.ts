@@ -42,8 +42,6 @@ export interface CategoryTableRow {
   low_stock_sku_count: number;
   brand_count: number;
   gmv_mtd: number;
-  gmv_prev: number;
-  growth_pct: number;
   units_mtd: number;
   buyers_count: number;
   avg_days_cover: number | null;
@@ -226,12 +224,14 @@ export interface CategoryDetailResponse {
   detail_v2?: unknown;
 }
 
-export function useCategoryDetail(id: string) {
+export function useCategoryDetail(id: string, options?: { includePerformance?: boolean }) {
   const { session } = useAuth();
   return useQuery<CategoryDetailResponse>({
-    queryKey: ['category-detail', id],
+    queryKey: ['category-detail', id, options?.includePerformance ?? true],
     queryFn: async () => {
-      const res = await apiFetch(`/api/tenant/categories/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/categories/${id}?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch category detail');
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);

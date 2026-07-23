@@ -453,9 +453,15 @@ async function fetchSellerDashboardData(
   }).length;
 
   const currentOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.current_start, period.current_end_exclusive));
-  const currentInvoices = invoices.filter((row) => inPeriod(invoiceEventAt(row), period.current_start, period.current_end_exclusive));
   const currentOrdersCount = currentOrders.length;
-  const currentGmv = sumNumbers(currentInvoices, (row) => Number(row.total_amount ?? 0));
+  // "Invoiced sales" is always trailing-90d per specs/kpi-callout-audit-2026-07-23.md
+  // §6 rule 1 — computed here independent of `period` (which the dashboard route
+  // hardcodes to calendar 'month' for other, non-headline uses) so this JS-side
+  // fallback/sub-label never reverts to calendar-MTD even though `period` itself is MTD.
+  const ninetyDaysAgoMs = Date.now() - 90 * DAY_MS;
+  const invoices90d = invoices.filter((row) => new Date(invoiceEventAt(row)).getTime() >= ninetyDaysAgoMs);
+  const invoicedCustomers90d = new Set(invoices90d.map((row) => row.buyer_id)).size;
+  const currentGmv90d = sumNumbers(invoices90d, (row) => Number(row.total_amount ?? 0));
   const overdueInvoicesAll = invoices.filter((invoice) => isInvoiceOverdue(invoice));
   const overdueCustomerCountAll = new Set(overdueInvoicesAll.map((row) => row.buyer_id)).size;
   const invoiceLandingKpis = ((invoiceLandingRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
@@ -484,15 +490,14 @@ async function fetchSellerDashboardData(
 
   if (role === ROLES.SELLER_ADMIN) {
     const overdueInvoices = overdueInvoicesAll;
-    const invoicedCustomersThisMonth = new Set(currentInvoices.map((row) => row.buyer_id)).size;
     const overdueCustomerCount = overdueCustomerCountAll;
     const primaryKind = portfolio?.primary_demand_kind ?? 'orders';
 
     const adminMetrics: SellerDashboardMetric[] = [
       {
-        label: 'Invoiced sales · This month',
-        value: portfolioNumber(portfolio, 'metrics', 'invoiced_sales', 'value', currentGmv),
-        sub: `${invoicedCustomersThisMonth} customer${invoicedCustomersThisMonth === 1 ? '' : 's'}`,
+        label: 'Invoiced sales · Last 90 days',
+        value: portfolioNumber(portfolio, 'metrics', 'invoiced_sales', 'value', currentGmv90d),
+        sub: `${invoicedCustomers90d} customer${invoicedCustomers90d === 1 ? '' : 's'}`,
       },
       {
         label: 'Open demand',

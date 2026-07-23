@@ -95,8 +95,6 @@ export async function getCohortsLandingPayload(
       p_page_ids: pageIds,
       p_current_start: period.current_start,
       p_current_end_exclusive: period.current_end_exclusive,
-      p_previous_start: period.previous_start,
-      p_previous_end_exclusive: period.previous_end_exclusive,
       p_views_by_cohort: {},
       p_include_summary: includeSummary,
     },
@@ -428,6 +426,25 @@ export async function POST(request: NextRequest) {
         .eq('cohort_id', cohort.id);
       cachedMemberCount = count ?? 0;
     }
+  } else {
+    const memberIds = simpleParsed.data.selected_buyer_ids;
+    cachedMemberCount = memberIds.length;
+
+    if (memberIds.length > 0) {
+      const rows = memberIds.map((buyerId) => ({ cohort_id: cohort.id, buyer_id: buyerId }));
+      const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
+      if (membersError) {
+        console.error('[POST /api/cohorts] member insert error:', membersError.message);
+        return NextResponse.json({ error: 'Cohort created but failed to save selected buyers' }, { status: 500 });
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('cohorts')
+      .update({ cached_member_count: cachedMemberCount })
+      .eq('id', cohort.id)
+      .eq('tenant_id', claims.tenant_id);
   }
 
   return NextResponse.json({ cohort: { ...cohort, cached_member_count: cachedMemberCount } }, { status: 201 });

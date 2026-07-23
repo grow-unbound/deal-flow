@@ -205,22 +205,10 @@ export function useBuyerProductDetail(tenantProductId: string) {
 
   const item = productQuery.data?.items?.[0] ?? null;
 
-  const brandItemsQuery = useQuery<{ items?: BuyerCatalogItem[] }>({
-    queryKey: ['buyer-product-brand-items', tenantProductId, item?.brand_id, stockSignature],
-    enabled: Boolean(item?.brand_id),
-    queryFn: async () =>
-      fetchJson<{ items?: BuyerCatalogItem[] }>(
-        `/api/buyer/catalog?brand_id=${encodeURIComponent(item?.brand_id ?? '')}&limit=8&offset=0`,
-      ),
-  });
-
   const recommendationsQuery = useBuyerProductRecommendations(tenantProductId);
 
   return {
     item,
-    brandItems: (brandItemsQuery.data?.items ?? [])
-      .filter((candidate) => candidate.tenant_product_id !== tenantProductId)
-      .slice(0, 6),
     recos: recommendationsQuery.data ?? { co_order: [], co_buyer: [], same_category: [] },
     isLoading: productQuery.isLoading,
     isError: productQuery.isError || (!productQuery.isLoading && !item),

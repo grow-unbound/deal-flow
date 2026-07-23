@@ -26,7 +26,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatDate, formatNumberValue } from '@/lib/utils';
+import { formatAsOfLabel, formatDate, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -204,9 +204,10 @@ function InvoicesLandingContent({
     if (!kpis) {
       return `Track receivables and collections ${lowerLabel}.`;
     }
-    return `${kpis.invoices_this_period} invoices in ${horizonLabel.toLowerCase()}.`;
+    return `${kpis.invoices_this_period} invoices in the trailing 90 days.`;
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
   const pulseAggregates = summaryData?.pulse_aggregates;
+  const asOfLabel = formatAsOfLabel(summaryData?.computed_at);
 
   if (isLoading && !data) return <InvoicesLandingSkeleton />;
 
@@ -260,9 +261,9 @@ function InvoicesLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: 'Invoiced sales',
+                label: 'Invoiced sales · 90D',
                 value: formatNumberValue(kpis?.gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-                sub: `${kpis?.invoices_this_period ?? 0} invoices this period`,
+                sub: `${kpis?.invoices_this_period ?? 0} invoices in trailing 90 days`,
               },
               {
                 label: 'Outstanding amount',
@@ -283,6 +284,9 @@ function InvoicesLandingContent({
               },
             ]}
           />
+          {asOfLabel ? (
+            <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+          ) : null}
 
           <V3CalloutPanel
             items={[

@@ -31,7 +31,6 @@ export interface BuyerHomeResponse {
     gmv_mtd: number;
     gmv_ytd: number;
     invoice_count_ytd: number;
-    trend_vs_last_month_pct: number;
   };
   dues_card: {
     outstanding_dues: number;

@@ -37,6 +37,10 @@ interface PreparedMessage {
   failure_reason?: string;
 }
 
+function providerErrorBody(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -77,6 +81,12 @@ async function dispatchMessageIds(
 
     const msg = (prepared ?? null) as PreparedMessage | null;
     if (!msg?.ready) {
+      console.info('[whatsapp-dispatch-worker] skipped prepared message', {
+        messageId,
+        failed: msg?.failed ?? false,
+        skipped: msg?.skipped ?? null,
+        failureReason: msg?.failure_reason ?? null,
+      });
       if (msg?.failed) failed += 1;
       else skipped += 1;
       continue;
@@ -90,6 +100,12 @@ async function dispatchMessageIds(
     }
 
     try {
+      console.info('[whatsapp-dispatch-worker] sending provider message', {
+        messageId,
+        queueId: msg.queue_id ?? null,
+        recipientPhone: msg.recipient_phone,
+        metaTemplateName: payload.meta_template_name,
+      });
       const result = await whatsAppClient.sendTemplate({
         to: msg.recipient_phone,
         templateName: payload.meta_template_name,
@@ -112,12 +128,26 @@ async function dispatchMessageIds(
         })),
       });
 
+      console.info('[whatsapp-dispatch-worker] provider send succeeded', {
+        messageId,
+        queueId: msg.queue_id ?? null,
+        recipientPhone: msg.recipient_phone,
+        metaTemplateName: payload.meta_template_name,
+        providerMessageId: result.providerMessageId,
+      });
       await completeSend(admin, messageId, true, result.providerMessageId, null);
       dispatched += 1;
     } catch (err) {
       const reason = err instanceof WhatsAppConfigError
         ? 'WhatsApp credentials not configured'
-        : err instanceof Error ? err.message : String(err);
+        : providerErrorBody(err);
+      console.error('[whatsapp-dispatch-worker] provider send failed', {
+        messageId,
+        queueId: msg.queue_id ?? null,
+        recipientPhone: msg.recipient_phone,
+        metaTemplateName: payload.meta_template_name,
+        providerError: reason,
+      });
       await completeSend(admin, messageId, false, null, reason);
       failed += 1;
     }
