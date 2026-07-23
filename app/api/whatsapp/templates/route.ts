@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
     .select('id, meta_template_name, meta_category, use_case, body, variables, approval_status, is_broadcast_template')
     .is('tenant_id', null)
     .is('deleted_at', null)
-    .order('use_case', { ascending: true });
+    .eq('is_broadcast_template', true)
+    .order('meta_template_name', { ascending: true });
 
   if (error) {
     console.error('[GET /api/whatsapp/templates] DB error:', error.code, error.message);

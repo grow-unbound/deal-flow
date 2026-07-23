@@ -254,7 +254,7 @@ export function PublishCampaignDialog({
             <div className="space-y-4">
               <NotificationToggleRow
                 label="Notify buyers on WhatsApp"
-                description="Sends the campaign_announcement template to buyers in this campaign audience."
+                description="Sends the campaign publish template to buyers in this campaign audience."
                 checked={notifyWhatsapp}
                 onCheckedChange={handleNotifyChange}
               />

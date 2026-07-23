@@ -162,13 +162,14 @@ async function loadAnnouncementTemplate(
     .schema('app')
     .from('whatsapp_templates')
     .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config, buttons_config, header_config')
-    .eq('use_case', 'campaign_announcement')
+    .eq('use_case', 'campaigns')
+    .eq('meta_template_name', 'campaign_published_buyer')
     .is('tenant_id', null)
     .is('deleted_at', null)
     .maybeSingle();
 
   if (templateError || !template) {
-    throw new Error('campaign_announcement template not found (use_case)');
+    throw new Error('campaigns template (campaign_published_buyer) not found');
   }
 
   return template;
@@ -239,7 +240,7 @@ async function createAndQueueCampaignBroadcast(
       tenant_id: input.tenantId,
       name: input.broadcastName,
       whatsapp_template_id: template.id,
-      use_case: 'campaign_announcement',
+      use_case: 'campaigns',
       target_type: input.targetType,
       target_cohort_id: input.targetCohortId ?? null,
       target_filter: input.targetFilter ?? null,

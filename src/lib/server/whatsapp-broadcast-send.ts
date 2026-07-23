@@ -47,6 +47,7 @@ type CampaignRow = {
   id: string;
   name: string;
   share_token: string | null;
+  message: string | null;
 };
 
 type TenantRow = {
@@ -55,8 +56,15 @@ type TenantRow = {
   settings: Record<string, unknown> | null;
 };
 
-const REQUIRED_MANUAL_VARIABLES = new Set(['highlight_text', 'visit_window']);
 const PAYMENT_REMINDER_TEMPLATE = 'buyer_payment_reminder';
+const BEAT_ROUTE_TEMPLATE = 'beat_route_buyer';
+
+function requiredManualVariableKeys(template: Pick<TemplateRow, 'meta_template_name'>): Set<string> {
+  if (template.meta_template_name === BEAT_ROUTE_TEMPLATE) {
+    return new Set(['visit_date', 'visit_time']);
+  }
+  return new Set();
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -161,6 +169,9 @@ function resolveVariableValue({
   if (key === 'seller_name') return sellerName;
   if (key === 'seller_phone_number') return sellerPhone;
   if (key === 'campaign_title') return campaign?.name ?? '';
+  if (key === 'buyer_note') {
+    return variableBindings.buyer_note?.trim() || campaign?.message?.trim() || '';
+  }
   if (key === 'outstanding_amount') return invoiceSummary?.outstandingAmount ?? '0';
   if (key === 'due_invoice_count') return invoiceSummary?.dueInvoiceCount ?? '0';
   if (key === 'due_status') return invoiceSummary?.dueStatus ?? '';
@@ -178,6 +189,7 @@ function buildSendPayload(args: {
   headerMediaId?: string | null;
   headerImageLink?: string | null;
 }): WhatsAppSendPayload {
+  const manualKeys = requiredManualVariableKeys(args.template);
   const bodyParams = args.template.variables.map((variable) => {
     const text = resolveVariableValue({
       key: variable.key,
@@ -188,7 +200,7 @@ function buildSendPayload(args: {
       campaign: args.campaign,
       variableBindings: args.variableBindings,
     });
-    if (REQUIRED_MANUAL_VARIABLES.has(variable.key) && !text.trim()) {
+    if (manualKeys.has(variable.key) && !text.trim()) {
       throw new Error(`Missing required broadcast input: ${variable.key}`);
     }
     return {
@@ -277,7 +289,7 @@ export async function buildBroadcastMessageQueue(
       ? db
           .schema('app')
           .from('campaigns')
-          .select('id, name, share_token')
+          .select('id, name, share_token, message')
           .eq('tenant_id', input.tenantId)
           .eq('id', input.linkedCampaignId)
           .is('deleted_at', null)

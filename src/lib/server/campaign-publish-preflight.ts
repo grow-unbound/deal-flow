@@ -87,7 +87,8 @@ export async function runCampaignPublishPreflight(
       .schema('app')
       .from('whatsapp_templates')
       .select('approval_status')
-      .eq('use_case', 'campaign_announcement')
+      .eq('use_case', 'campaigns')
+      .eq('meta_template_name', 'campaign_published_buyer')
       .is('tenant_id', null)
       .is('deleted_at', null)
       .maybeSingle(),
