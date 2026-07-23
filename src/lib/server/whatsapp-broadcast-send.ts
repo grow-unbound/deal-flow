@@ -5,6 +5,10 @@ import {
   type BuyerInvoiceSummary,
   type InvoiceSummaryRow,
 } from '@/lib/server/whatsapp-invoice-summary';
+import {
+  assertTemplatePayloadValid,
+  getBroadcastTemplateEligibility,
+} from '@/lib/server/whatsapp-template-validation';
 
 type TemplateVariable = {
   key: string;
@@ -26,6 +30,7 @@ type TemplateRow = {
   use_case: string;
   locale: string | null;
   variables: TemplateVariable[];
+  is_broadcast_template?: boolean | null;
   button_config: TemplateButtonConfig | null;
   buttons_config?: TemplateButtonConfig[] | null;
   header_config?: { format?: string } | null;
@@ -231,6 +236,11 @@ export async function buildBroadcastMessageQueue(
     headerImageLink?: string | null;
   },
 ): Promise<EnqueueWhatsAppMessageInput[]> {
+  const eligibility = getBroadcastTemplateEligibility(input.template);
+  if (!eligibility.supported) {
+    throw new Error(eligibility.reason ?? 'Template is not supported for broadcast sending');
+  }
+
   const { data: tenant, error: tenantError } = await db
     .schema('app')
     .from('tenants')
@@ -324,6 +334,7 @@ export async function buildBroadcastMessageQueue(
       headerMediaId: input.headerMediaId,
       headerImageLink: input.headerImageLink,
     });
+    assertTemplatePayloadValid(input.template, sendPayload);
 
     queueInputs.push({
       tenantId: input.tenantId,

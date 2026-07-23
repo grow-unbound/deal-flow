@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, MapPin, Navigation } from 'lucide-react';
 import { getMapsLoader } from '@/lib/google-maps-loader';
-import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerDelivery } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
 import { apiFetch } from '@/lib/api-fetch';
@@ -81,8 +81,7 @@ export default function BuyerLocationPage(): React.ReactNode {
   }
 
   function goBack(): void {
-    markBuyerNavigationBack();
-    router.back();
+    navigateBuyerBack(router);
   }
 
   async function saveSelectedLocation(location: BuyerDeliveryLocation): Promise<void> {

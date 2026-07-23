@@ -86,10 +86,11 @@ describe('brand detail page', () => {
     useArchiveTenantBrandMock.mockReturnValue({ archive: vi.fn() });
   });
 
-  it('defaults to performance tab and shows breadcrumb link', () => {
+  it('defaults to details tab and shows breadcrumb link', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
     expect(screen.getByRole('link', { name: 'Brands' })).toHaveAttribute('href', '/brands');
   });
 
@@ -103,6 +104,6 @@ describe('brand detail page', () => {
   it('renders archive control in header', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('button', { name: /^Archive$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Archive brand/i })).toBeInTheDocument();
   });
 });

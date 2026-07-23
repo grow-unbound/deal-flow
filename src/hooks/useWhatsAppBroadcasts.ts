@@ -23,6 +23,8 @@ export interface WhatsAppTemplateOption {
   variables: Array<{ key: string; description?: string }>;
   approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
   is_broadcast_template: boolean;
+  broadcast_supported: boolean;
+  broadcast_support_reason: string | null;
 }
 
 export interface ManageBroadcastRow {

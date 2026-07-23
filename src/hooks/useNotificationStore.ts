@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type NotificationKind =
   | 'new_catalog'
   | 'new_estimate'
+  | 'new_invoice'
   | 'new_order'
   | 'estimate_updated'
   | 'order_updated'

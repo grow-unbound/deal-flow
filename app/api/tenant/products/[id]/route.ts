@@ -66,6 +66,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const includePerformance = req.nextUrl.searchParams.get('include_performance') !== 'false';
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
@@ -189,8 +190,8 @@ export async function GET(
         description: product.description ?? null,
         updated_at: product.updated_at,
       },
-      performance_cards: detailV2.performance_cards ?? [],
-      detail_v2: detailV2,
+      performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
+      detail_v2: includePerformance ? detailV2 : null,
       performance: {
         monthly_units_trend: [],
         inventory_ops: {

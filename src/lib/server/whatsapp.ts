@@ -8,6 +8,7 @@ import {
   type WhatsAppSendPayload,
 } from '@/lib/server/whatsapp-enqueue';
 import type { WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
+import { assertTemplatePayloadValid, type WhatsAppTemplateValidationShape } from '@/lib/server/whatsapp-template-validation';
 
 export interface WhatsappNotificationContext {
   sellerPhone: string;
@@ -29,6 +30,94 @@ interface WhatsappTemplateBodyParam {
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
 const FALLBACK_TEMPLATE_LOCALE = 'en';
+const TRANSACTIONAL_TEMPLATE_SHAPES: Record<string, WhatsAppTemplateValidationShape> = {
+  order_received_seller: {
+    meta_template_name: 'order_received_seller',
+    variables: [
+      { key: 'seller_location' },
+      { key: 'buyer_name' },
+      { key: 'buyer_phone_number' },
+      { key: 'order_number' },
+      { key: 'total_amount' },
+      { key: 'item_count' },
+      { key: 'eta' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'order_id' }],
+  },
+  order_received_buyer: {
+    meta_template_name: 'order_received_buyer',
+    variables: [
+      { key: 'buyer_name' },
+      { key: 'item_count' },
+      { key: 'order_number' },
+      { key: 'total_amount' },
+      { key: 'seller_name' },
+      { key: 'eta' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'order_id' }],
+  },
+  request_received_seller: {
+    meta_template_name: 'request_received_seller',
+    variables: [
+      { key: 'seller_location' },
+      { key: 'buyer_name' },
+      { key: 'buyer_phone_number' },
+      { key: 'request_number' },
+      { key: 'total_amount' },
+      { key: 'item_count' },
+      { key: 'eta' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'estimate_id' }],
+  },
+  request_received_buyer: {
+    meta_template_name: 'request_received_buyer',
+    variables: [
+      { key: 'buyer_name' },
+      { key: 'item_count' },
+      { key: 'estimate_number' },
+      { key: 'total_amount' },
+      { key: 'seller_name' },
+      { key: 'eta' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'estimate_id' }],
+  },
+  request_update_buyer: {
+    meta_template_name: 'request_update_buyer',
+    variables: [
+      { key: 'buyer_name' },
+      { key: 'request_number' },
+      { key: 'total_amount' },
+      { key: 'item_count' },
+      { key: 'seller_name' },
+      { key: 'seller_phone_number' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'estimate_id' }],
+  },
+  invoice_update_buyer: {
+    meta_template_name: 'invoice_update_buyer',
+    variables: [
+      { key: 'buyer_name' },
+      { key: 'invoice_number' },
+      { key: 'total_amount' },
+      { key: 'item_count' },
+      { key: 'seller_name' },
+      { key: 'seller_phone_number' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', variable_source: 'invoice_id' }],
+  },
+  buyer_payment_reminder: {
+    meta_template_name: 'buyer_payment_reminder',
+    variables: [
+      { key: 'buyer_name' },
+      { key: 'seller_name' },
+      { key: 'due_invoice_count' },
+      { key: 'outstanding_amount' },
+      { key: 'due_status' },
+      { key: 'seller_phone_number' },
+    ],
+    buttons_config: [],
+  },
+};
 
 /** Buyer-app totals are stored in whole rupees — Meta body params expect the same scale. */
 export function formatWhatsappInrAmount(amount: number): string {
@@ -66,6 +155,12 @@ function buildSendPayload(
   };
 }
 
+function validateTransactionalPayload(templateName: string, payload: WhatsAppSendPayload) {
+  const shape = TRANSACTIONAL_TEMPLATE_SHAPES[templateName];
+  if (!shape) return;
+  assertTemplatePayloadValid(shape, payload);
+}
+
 async function enqueueWhatsappTemplate(
   to: string,
   templateName: string,
@@ -76,6 +171,23 @@ async function enqueueWhatsappTemplate(
 ): Promise<boolean> {
   const destination = formatWhatsappDestination(to);
   if (!destination) {
+    console.error('[whatsapp] invalid destination', {
+      templateName,
+      triggerSource: ctx.triggerSource,
+      relatedEntityId: ctx.relatedEntityId ?? null,
+    });
+    return false;
+  }
+  const sendPayload = buildSendPayload(templateName, locale, bodyParams, buttonParam);
+  try {
+    validateTransactionalPayload(templateName, sendPayload);
+  } catch (error) {
+    console.error('[whatsapp] local payload validation failed', {
+      templateName,
+      triggerSource: ctx.triggerSource,
+      relatedEntityId: ctx.relatedEntityId ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
   const result = await enqueueWhatsAppMessage({
@@ -84,17 +196,32 @@ async function enqueueWhatsappTemplate(
     recipientPhone: destination,
     metaCategory: ctx.metaCategory,
     triggerSource: ctx.triggerSource,
-    sendPayload: buildSendPayload(templateName, locale, bodyParams, buttonParam),
+    sendPayload,
     relatedEntityType: ctx.relatedEntityType ?? null,
     relatedEntityId: ctx.relatedEntityId ?? null,
   });
 
   if (result.skipped === 'duplicate') return true;
   if (!result.enqueued || !result.messageId) {
+    console.error('[whatsapp] enqueue failed', {
+      templateName,
+      triggerSource: ctx.triggerSource,
+      relatedEntityId: ctx.relatedEntityId ?? null,
+      skipped: result.skipped ?? null,
+    });
     return false;
   }
 
   const dispatch = await triggerWhatsAppDispatch([result.messageId]);
+  if (!dispatch?.ok || dispatch.dispatched === 0) {
+    console.error('[whatsapp] dispatch failed', {
+      templateName,
+      triggerSource: ctx.triggerSource,
+      relatedEntityId: ctx.relatedEntityId ?? null,
+      messageId: result.messageId,
+      dispatch,
+    });
+  }
   return Boolean(dispatch?.ok && dispatch.dispatched > 0);
 }
 

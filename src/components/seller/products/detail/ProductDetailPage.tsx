@@ -82,21 +82,22 @@ function daysCoverClass(days: number): string {
 export function ProductDetailPage({ id }: ProductDetailPageProps) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
+  const showPerformanceTab = false;
   const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-product-detail-tab',
     scopeKey: id,
-    initialState: isSellerAssistant ? 'details' : 'performance',
+    initialState: 'details',
   });
-  const { data, isLoading, isError } = useProductDetail(id);
+  const { data, isLoading, isError } = useProductDetail(id, { includePerformance: false });
   const updateProduct = useUpdateProduct();
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Details' },
-      ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
+      ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'pricing', label: 'Pricing & cohorts' },
     ],
-    [isSellerAssistant],
+    [showPerformanceTab],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -208,7 +209,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           onSave={(payload) => updateProduct.mutate({ id, data: payload })}
         />
       ) : null}
-      {activeTab === 'performance' ? (
+      {showPerformanceTab && activeTab === 'performance' ? (
         <ProductPerformanceTab performance={data.detail.performance} performanceCards={data.detail.performance_cards} />
       ) : null}
       {activeTab === 'pricing' ? (

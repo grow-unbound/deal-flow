@@ -5,7 +5,13 @@ import { Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
-import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import {
+  useAddCatalogProduct,
+  useRemoveCatalogProduct,
+  useSaveSimpleCatalog,
+  type CatalogDetailResponse,
+} from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail } from '@/hooks/useDetailTabSearch';
 import {
@@ -18,6 +24,7 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
+import type { ProductMembershipRules } from '@/lib/zod';
 import { formatNumberInput, formatNumberValue } from '@/lib/utils';
 
 type SortOption = 'Campaign order' | 'Brand (A → Z)' | 'Campaign Sales (high → low)' | 'Units sold (high → low)';
@@ -38,17 +45,17 @@ const STOCK_OPTIONS = [
 interface CatalogCompositionTabProps {
   catalogId: string;
   summary: CatalogDetailResponse['products_summary'];
+  composer?: CatalogDetailResponse['composer'];
+  headerName: string;
+  heroImageUrl: string | null;
 }
 
-function renderFilterValue(values: string[]) {
-  return values.length > 0 ? values.join(', ') : 'No saved filter';
-}
 
 function stockLabel(value: number | null | undefined) {
   return formatNumberValue(Number(value ?? 0), 'COUNT');
 }
 
-export function CatalogCompositionTab({ catalogId, summary }: CatalogCompositionTabProps) {
+export function CatalogCompositionTab({ catalogId, summary, composer, headerName, heroImageUrl }: CatalogCompositionTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
   const [brands, setBrands] = useState<string[]>([]);
@@ -74,6 +81,43 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
     selection.clearSelection();
   }, [member, brands, categories, stock, debouncedSearch, sort, selection.clearSelection]);
 
+  const addProduct = useAddCatalogProduct(catalogId);
+  const removeProduct = useRemoveCatalogProduct(catalogId);
+  const productMembershipMode = composer?.product_membership_mode ?? 'manual';
+
+  // Automatic-mode rule editing (requirement 5). Reconstructs the full simple-form payload
+  // from the current composer snapshot since the PATCH route validates the whole form, not
+  // a partial rules-only update.
+  const savedProductRules = composer?.product_rules ?? { brand_names: [], category_names: [] };
+  const [draftProductRules, setDraftProductRules] = useState<ProductMembershipRules>(savedProductRules);
+  useEffect(() => {
+    setDraftProductRules(savedProductRules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId, composer?.product_rules]);
+  const saveCatalog = useSaveSimpleCatalog(catalogId);
+  const productRulesDirty = JSON.stringify(draftProductRules) !== JSON.stringify(savedProductRules);
+
+  function saveProductRules() {
+    if (!composer) return;
+    saveCatalog.mutate({
+      form_mode: 'simple',
+      name: headerName,
+      description: composer.description ?? '',
+      valid_from: new Date(composer.valid_from),
+      valid_to: composer.valid_to ? new Date(composer.valid_to) : undefined,
+      buyer_note: composer.message ?? '',
+      hero_image_url: heroImageUrl ?? '',
+      target_mode: composer.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
+      target_cohort_id: composer.scope_type === 'cohort' ? composer.cohort_id : null,
+      pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
+      price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
+      buyer_target_mode: composer.buyer_target_mode,
+      buyer_rules: composer.buyer_rules,
+      product_membership_mode: 'automatic',
+      product_rules: draftProductRules,
+    });
+  }
+
   const brandOptions = useMemo(() => {
     const labels = new Set([...summary.filters.brand_names, ...rows.map((row) => row.brand_name).filter(Boolean)]);
     return Array.from(labels).sort().map((label) => ({ value: label, label }));
@@ -89,12 +133,6 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
     { key: 'category', label: 'Category', options: categoryOptions, values: categories, onChange: setCategories },
     { key: 'stock', label: 'Stock status', options: STOCK_OPTIONS, values: stock, onChange: setStock },
   ];
-
-  const hasNoSavedFilters =
-    summary.filters.brand_names.length === 0 &&
-    summary.filters.category_names.length === 0 &&
-    summary.filters.availability === 'show_everything' &&
-    summary.tag_overrides_count === 0;
 
   function startVisualEdit(row: (typeof rows)[number]) {
     setEditingProductId(row.tenant_product_id);
@@ -123,26 +161,51 @@ export function CatalogCompositionTab({ catalogId, summary }: CatalogComposition
           </div>
         </div>
 
-        {hasNoSavedFilters ? (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No saved filters. This campaign uses its manually selected product mix.
+        {productMembershipMode === 'automatic' ? (
+          <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+            <MembershipFilterPanel entityType="campaign_products" rules={draftProductRules} onRulesChange={(next) => setDraftProductRules(next as ProductMembershipRules)} />
+            <div className="flex items-center justify-end gap-2">
+              {productRulesDirty ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDraftProductRules(savedProductRules)} disabled={saveCatalog.isPending}>
+                  Discard
+                </Button>
+              ) : null}
+              <Button type="button" size="sm" disabled={!productRulesDirty || saveCatalog.isPending} onClick={saveProductRules}>
+                {saveCatalog.isPending ? 'Saving…' : 'Save filters'}
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
-              <p className="mt-1 text-base text-cream-900">{renderFilterValue(summary.filters.brand_names)}</p>
-            </div>
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
-              <p className="mt-1 text-base text-cream-900">{renderFilterValue(summary.filters.category_names)}</p>
-            </div>
+          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
+            No saved filters. This campaign uses its manually selected product mix.
           </div>
         )}
       </article>
 
       <div>
-        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
+        <MembershipBulkActionBar
+          selectedCount={selection.selectedIds.length}
+          onClear={selection.clearSelection}
+          isPending={addProduct.isPending || removeProduct.isPending}
+          onInclude={() => {
+            if (productMembershipMode === 'automatic') {
+              toast.info('This campaign is Automatic — edit its filters above instead of picking products here.');
+              return;
+            }
+            const toAdd = rows.filter((row) => selection.selectedIds.includes(row.tenant_product_id) && !row.is_member);
+            if (toAdd.length === 0) return;
+            Promise.all(toAdd.map((row) => addProduct.mutateAsync({ tenant_product_id: row.tenant_product_id }))).then(() => selection.clearSelection());
+          }}
+          onRemove={() => {
+            if (productMembershipMode === 'automatic') {
+              toast.info('This campaign is Automatic — edit its filters above instead of picking products here.');
+              return;
+            }
+            const toRemove = rows.filter((row) => selection.selectedIds.includes(row.tenant_product_id) && row.is_member);
+            if (toRemove.length === 0) return;
+            Promise.all(toRemove.map((row) => removeProduct.mutateAsync({ tenant_product_id: row.tenant_product_id }))).then(() => selection.clearSelection());
+          }}
+        />
         <FilterBar
           count={`${detailRowsTotal(result.data)} products${isInterim ? ' · Updating' : ''}`}
           searchPlaceholder="Search product, SKU, brand…"

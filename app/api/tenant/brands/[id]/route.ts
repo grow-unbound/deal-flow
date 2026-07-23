@@ -63,6 +63,7 @@ function toNullableText(value: string | null | undefined) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -186,8 +187,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       product_count: productCount,
       units_90d: units90d,
     },
-    performance_cards: detailV2.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     buyers_total: 0,
     buyers: [],
     catalogs,

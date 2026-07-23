@@ -20,6 +20,7 @@ vi.mock('@/contexts/BuyerCartContext', () => ({
 
 vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   markBuyerNavigationForward: vi.fn(),
+  navigateBuyerBack: vi.fn(),
 }));
 
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';

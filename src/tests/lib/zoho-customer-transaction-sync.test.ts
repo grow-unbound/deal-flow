@@ -1213,6 +1213,112 @@ describe('zoho customer and transaction persistence', () => {
     expect(row?.created_by).toBe('user-actor');
   });
 
+  it('preserves an existing estimate buyer-app source and flag during Zoho upserts', async () => {
+    const admin = createAdminStub({
+      tableRows: {
+        estimates: [
+          {
+            id: 'estimate-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'EST-DETAIL',
+            estimate_number: 'EST-2026-0099',
+            source: 'buyer_app',
+            is_buyer_app_estimate: true,
+            deleted_at: null,
+          },
+        ],
+      },
+      fieldMappings: [
+        {
+          tenant_integration_id: 'integration-1',
+          entity_type: 'estimates',
+          is_active: true,
+          zoho_field_name: 'cf_catalog_estimate',
+          target_column: 'is_buyer_app_estimate',
+          transform_type: 'boolean_from_zoho',
+        },
+      ],
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-actor',
+      'integration-1',
+      'estimates',
+      'zoho_books',
+      [
+        {
+          estimate_id: 'EST-DETAIL',
+          estimate_number: 'EST-2026-0099',
+          status: 'sent',
+          custom_fields: [],
+          line_items: [],
+        },
+      ],
+    );
+
+    const persistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'persist_with_natural_key_lock' && call.args.p_table === 'estimates'
+    ));
+    const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(row?.source).toBe('buyer_app');
+    expect(row?.is_buyer_app_estimate).toBe(true);
+  });
+
+  it('applies order buyer-app field mappings and preserves existing source/flag during Zoho upserts', async () => {
+    const admin = createAdminStub({
+      tableRows: {
+        orders: [
+          {
+            id: 'order-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'SO-DETAIL',
+            order_number: 'SO-2026-0009',
+            source: 'buyer_app',
+            is_buyer_app_order: true,
+            deleted_at: null,
+          },
+        ],
+      },
+      fieldMappings: [
+        {
+          tenant_integration_id: 'integration-1',
+          entity_type: 'orders',
+          is_active: true,
+          zoho_field_name: 'cf_catalog_order',
+          target_column: 'is_buyer_app_order',
+          transform_type: 'boolean_from_zoho',
+        },
+      ],
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-actor',
+      'integration-1',
+      'orders',
+      'zoho_books',
+      [
+        {
+          salesorder_id: 'SO-DETAIL',
+          salesorder_number: 'SO-2026-0009',
+          status: 'open',
+          custom_fields: [],
+          line_items: [],
+        },
+      ],
+    );
+
+    const persistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'persist_with_natural_key_lock' && call.args.p_table === 'orders'
+    ));
+    const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(row?.source).toBe('buyer_app');
+    expect(row?.is_buyer_app_order).toBe(true);
+  });
+
   it('resolves salesperson_id to a tenant user for transactional imports', async () => {
     const admin = createAdminStub({
       tenantUsers: [{ user_id: 'seller-user-1', tenant_id: 'tenant-1', is_active: true }],

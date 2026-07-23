@@ -103,6 +103,7 @@ function truncate56(text: string | null | undefined) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -136,10 +137,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const { data: detailV2, error: detailV2Error } = await db.schema('app').rpc('get_seller_cohort_detail_v2', {
-    p_tenant_id: claims.tenant_id,
-    p_cohort_id: id,
-  });
+  const { data: detailV2, error: detailV2Error } = includePerformance
+    ? await db.schema('app').rpc('get_seller_cohort_detail_v2', {
+        p_tenant_id: claims.tenant_id,
+        p_cohort_id: id,
+      })
+    : { data: null, error: null };
 
   if (detailV2Error) {
     console.error('[GET /api/cohorts/[id]] get_seller_cohort_detail_v2 failed', detailV2Error);
@@ -523,8 +526,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       catalogs,
       gmv_trend_12m: gmvTrend12m,
     },
-    performance_cards: (detailV2 as any)?.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? ((detailV2 as any)?.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     buyers: buyersPayload,
     rules_summary,
   }, { headers: SELLER_CACHE_PERSONAL });
@@ -571,8 +574,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         name: simpleParsed.data.name,
         description: simpleParsed.data.description,
         allowed_tenant_brand_ids: simpleParsed.data.allowed_tenant_brand_ids,
+        membership_mode: simpleParsed.data.membership_mode,
+        rules: simpleParsed.data.rules,
       }
     : composerParsed!.data;
+  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
 
   if (payload.name) {
     const { data: nameMatch } = await db
@@ -607,6 +613,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(payload.description !== undefined ? { description: payload.description || null } : {}),
       ...(!isSimpleForm && payload.is_static !== undefined ? { is_static: payload.is_static } : {}),
       ...(!isSimpleForm && payload.rules !== undefined ? { rules: payload.rules } : {}),
+      ...(isSimpleForm && simpleMembershipMode !== undefined ? {
+        membership_mode: simpleMembershipMode,
+        is_static: simpleMembershipMode === 'manual',
+        rules: simpleMembershipMode === 'automatic' ? payload.rules : null,
+      } : {}),
       ...(normalizedAllowedBrandIds !== undefined ? { allowed_tenant_brand_ids: normalizedAllowedBrandIds } : {}),
       updated_at: new Date().toISOString(),
       updated_by: claims.sub,
@@ -620,6 +631,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (updateError) {
     console.error('[PATCH /api/cohorts/[id]]', updateError.message);
     return NextResponse.json({ error: 'Failed to update cohort' }, { status: 500 });
+  }
+
+  if (isSimpleForm && simpleMembershipMode === 'automatic') {
+    // Mode switch or rule edit -- recompute now (requirement 4).
+    const { error: refreshError } = await db.schema('app').rpc('refresh_cohort_by_id', { p_cohort_id: id });
+    if (refreshError) {
+      console.error('[PATCH /api/cohorts/[id]] refresh error:', refreshError.message);
+    }
   }
 
   if (!isSimpleForm) {

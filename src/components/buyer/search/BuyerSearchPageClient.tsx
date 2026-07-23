@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-fetch';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
-import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
@@ -129,8 +129,7 @@ export function BuyerSearchPageClient() {
   const refreshing = scope !== 'buy-again' && catalogSearchQuery.isFetching && catalogItems.length > 0;
 
   function handleClose(): void {
-    markBuyerNavigationBack();
-    router.back();
+    navigateBuyerBack(router);
   }
 
   return (

@@ -199,7 +199,7 @@ export async function loadInvoiceDocument(
   const creditAvailable = creditSnapshot?.available_credit ?? creditLimit;
 
   const cohortRows = buyerId
-    ? await db.schema('app').from('cohort_members').select('cohort_id').eq('buyer_id', buyerId)
+    ? await db.schema('app').from('cohort_members_active').select('cohort_id').eq('buyer_id', buyerId)
     : { data: [] as Array<Record<string, unknown>> };
   const cohortIds = ((cohortRows.data ?? []) as Array<Record<string, unknown>>).map((row) => row.cohort_id as string);
 

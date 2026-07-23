@@ -117,15 +117,16 @@ function LocationProfileStrip({
 }
 
 export function LocationDetailPage({ id }: LocationDetailPageProps) {
+  const showPerformanceTab = false;
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: locationsData } = useTenantLocations();
   const editingLocation = locationsData?.locations.find((l) => l.id === id) ?? null;
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-location-detail',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: 'orders',
   });
-  const { data, isLoading, isError, refetch } = useLocationDetail(id);
+  const { data, isLoading, isError, refetch } = useLocationDetail(id, { includePerformance: false });
 
   if (isLoading) return <SharedLocationDetailSkeleton />;
   if (isError || !data) {
@@ -140,12 +141,12 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
   const meta = data.meta_strip;
   const tabs = [
-    { id: 'performance', label: 'Performance' },
+    ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
     { id: 'orders', label: 'Orders', badge: data.tab_badges.orders_mtd },
     { id: 'estimates', label: 'Estimates', badge: data.tab_badges.estimates_mtd },
     { id: 'invoices', label: 'Invoices', badge: data.tab_badges.invoices_mtd },
   ];
-  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'performance';
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'orders';
 
   useEffect(() => {
     if (activeTab !== tab) {
@@ -232,7 +233,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {activeTab === 'performance' ? (
+      {showPerformanceTab && activeTab === 'performance' ? (
         <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} />
       ) : null}
       {activeTab === 'orders' ? <LocationOrdersTab locationId={id} /> : null}

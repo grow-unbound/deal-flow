@@ -146,12 +146,13 @@ export async function buildCampaignPublishPreview(
   const sellerContext = buildSellerContextFromTenant(tenant);
 
   const preflight = input.whatsappFeatureEnabled
-    ? await runCampaignPublishPreflight(db, {
+      ? await runCampaignPublishPreflight(db, {
         tenantId: input.tenantId,
         scopeType: input.campaign.scope_type,
         scopeValue,
         notifyWhatsapp: input.notifyWhatsapp,
         recipientBuyerIds: input.recipientBuyerIds,
+        buyerNote: input.campaign.buyer_note ?? '',
       })
     : {
         can_notify: false,
@@ -234,6 +235,7 @@ export async function buildCampaignPublishVerification(
           scopeValue: {},
           notifyWhatsapp: false,
           recipientBuyerIds: [],
+          buyerNote: '',
         })
       : Promise.resolve(fallbackPreflight),
   ]);

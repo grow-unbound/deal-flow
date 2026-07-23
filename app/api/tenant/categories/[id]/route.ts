@@ -36,6 +36,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const idParsed = IdParamsSchema.safeParse({ id });
   if (!idParsed.success) return jsonError(400, 'Invalid category id', 'VALIDATION');
 
@@ -327,8 +328,8 @@ export async function GET(
       ts: row.ts,
       diff: row.diff,
     })),
-    performance_cards: enrichedPerformanceCards,
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? enrichedPerformanceCards : [],
+    detail_v2: includePerformance ? detailV2 : null,
   };
 
   return NextResponse.json({ data: response }, { headers: SELLER_CACHE_PERSONAL });

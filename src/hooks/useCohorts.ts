@@ -329,11 +329,13 @@ export function useTenantCohortOptions(enabled = true) {
   });
 }
 
-export function useCohortDetail(id: string) {
+export function useCohortDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['cohort-detail', id],
+    queryKey: ['cohort-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<CohortDetailResponse> => {
-      const res = await apiFetch(`/api/cohorts/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/cohorts/${id}?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch customer group detail');
       }
@@ -776,6 +778,61 @@ export function useRefreshCohort(id: string) {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not refresh customer group');
+    },
+  });
+}
+
+export function useAddCohortMembers(cohortId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const res = await apiFetch(`/api/cohorts/${cohortId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyer_ids: buyerIds }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to add members');
+      }
+      return res.json() as Promise<{ ok: boolean; count: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      toast.success('Buyers added to customer group');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not add buyers');
+    },
+  });
+}
+
+export function useRemoveCohortMembers(cohortId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (buyerIds: string[]) => {
+      const results = await Promise.all(
+        buyerIds.map((buyerId) =>
+          apiFetch(`/api/cohorts/${cohortId}/members?buyer_id=${encodeURIComponent(buyerId)}`, { method: 'DELETE' }),
+        ),
+      );
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const body = await failed.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to remove members');
+      }
+      return { ok: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      toast.success('Buyers removed from customer group');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not remove buyers');
     },
   });
 }

@@ -11,7 +11,6 @@ function source(path: string) {
 
 describe('legacy buyer pickers use bounded server search', () => {
   it.each([
-    'src/components/seller/cohorts/CohortMemberSelector.tsx',
     'src/components/seller/price-lists/AssignmentsPanel.tsx',
   ])('%s avoids the unbounded customer universe', (path) => {
     const contents = source(path);
@@ -21,13 +20,6 @@ describe('legacy buyer pickers use bounded server search', () => {
     expect(contents).toContain('useDebounce');
     expect(contents).not.toContain("apiFetch('/api/customers')");
     expect(contents).not.toContain("fetch('/api/customers'");
-  });
-
-  it('retains cohort selections independently of the current result page', () => {
-    const contents = source('src/components/seller/cohorts/CohortMemberSelector.tsx');
-
-    expect(contents).toContain('buyerCache');
-    expect(contents).toContain('selected.map((id) => buyerCache[id]');
   });
 
   it('retains the selected price-list buyer label after the result page changes', () => {

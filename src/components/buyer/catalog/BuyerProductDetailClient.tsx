@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
 import { cn, formatNumberValue } from '@/lib/utils';
-import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
@@ -13,7 +13,6 @@ import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
-import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -22,26 +21,15 @@ interface BuyerProductDetailClientProps {
 export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetailClientProps): React.ReactNode {
   const router = useRouter();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
-  const { item, brandItems, recos, isLoading: loading, isError: error } = useBuyerProductDetail(tenantProductId);
+  const { item, recos, isLoading: loading, isError: error } = useBuyerProductDetail(tenantProductId);
   const [imgError, setImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
 
   const cartLine = item ? cartItems.find((i) => i.tenant_product_id === item.tenant_product_id) : undefined;
 
-  const similarProducts = React.useMemo(() => {
-    const map = new Map<string, BuyerCatalogItem>();
-    for (const candidate of [...recos.co_buyer, ...brandItems]) {
-      if (candidate.tenant_product_id !== tenantProductId) {
-        map.set(candidate.tenant_product_id, candidate);
-      }
-    }
-    return Array.from(map.values()).slice(0, 12);
-  }, [recos.co_buyer, brandItems, tenantProductId]);
-
   function handleBack(): void {
-    markBuyerNavigationBack();
-    router.back();
+    navigateBuyerBack(router);
   }
 
   function handleAddToCart(): void {
@@ -234,14 +222,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           title={item.category_name ? `More in ${item.category_name}` : 'More in this category'}
           widget="same_category"
           items={recos.same_category}
-          sourceProductId={tenantProductId}
-          alwaysShow
-        />
-
-        <RecoSection
-          title="Other similar products"
-          widget="similar_products"
-          items={similarProducts}
           sourceProductId={tenantProductId}
           alwaysShow
         />

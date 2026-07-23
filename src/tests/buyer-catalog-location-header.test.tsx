@@ -22,6 +22,7 @@ vi.mock('@/contexts/BuyerDeliveryContext', () => ({
 
 vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   markBuyerNavigationForward: vi.fn(),
+  navigateBuyerBack: vi.fn(),
 }));
 
 vi.mock('@/hooks/useBuyerScrollCollapse', () => ({

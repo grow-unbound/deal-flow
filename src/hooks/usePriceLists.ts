@@ -16,6 +16,7 @@ import type {
   PriceListFilterState,
   PriceListItemCreateInput,
   PriceListPricingStrategy,
+  MembershipMode,
 } from '@/lib/zod';
 
 export interface PriceList {
@@ -29,7 +30,11 @@ export interface PriceList {
   is_active: boolean;
   pricing_strategy?: PriceListPricingStrategy;
   strategy_value?: number | null;
+  /** Legacy composer filter shape when membership_mode is unset/manual. */
   filters?: PriceListFilterState | null;
+  /** Manual/Automatic membership model (Phase 5). Automatic mode reuses the `filters` column
+   *  to store ProductMembershipRules instead of the legacy PriceListFilterState shape. */
+  membership_mode?: MembershipMode;
   tenant_id: string;
   created_at: string;
   updated_at: string;
@@ -548,11 +553,13 @@ export function usePriceListComposerProducts(filters: PriceListComposerProductFi
   });
 }
 
-export function usePriceListDetail(id: string) {
+export function usePriceListDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['price-list', id],
+    queryKey: ['price-list', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<{ price_list: PriceListDetail }> => {
-      const res = await apiFetch(`/api/price-lists/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/price-lists/${id}?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch price list');
       }
@@ -606,6 +613,64 @@ export function useUpdatePriceListItem(priceListId: string) {
       queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('List price updated');
+    },
+  });
+}
+
+export function useAddPriceListItems(priceListId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: Array<{ tenant_product_id: string; price: number }>) => {
+      const results = await Promise.all(
+        rows.map((row) =>
+          apiFetch(`/api/price-lists/${priceListId}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenant_product_id: row.tenant_product_id, price: row.price, min_qty: 1 }),
+          }),
+        ),
+      );
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const body = await failed.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to add products');
+      }
+      return { ok: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      toast.success('Products added to price list');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not add products');
+    },
+  });
+}
+
+export function useRemovePriceListItems(priceListId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (itemIds: string[]) => {
+      const results = await Promise.all(
+        itemIds.map((itemId) => apiFetch(`/api/price-lists/${priceListId}/items/${itemId}`, { method: 'DELETE' })),
+      );
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const body = await failed.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to remove products');
+      }
+      return { ok: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      toast.success('Products removed from price list');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not remove products');
     },
   });
 }

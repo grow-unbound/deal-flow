@@ -8,7 +8,7 @@ import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from '
 import { useCart } from '@/contexts/BuyerCartContext';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api-fetch';
-import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 ;
@@ -189,7 +189,7 @@ export function BuyerTransactionPlacedPage({
       >
         <button
           type="button"
-          onClick={() => window.history.back()}
+          onClick={() => navigateBuyerBack(router)}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--cream-800)] transition-colors active:bg-[var(--cream-100)]"
           aria-label="Go back"
         >

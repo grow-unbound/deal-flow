@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mocks must be declared before any imports that trigger module resolution
 const requireBuyerAccessProfileMock = vi.fn();
 const sendImmediateTransactionNotificationsMock = vi.fn();
+const estimateInsertPayloads: Array<Record<string, unknown>> = [];
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
@@ -66,7 +67,10 @@ vi.mock('@/lib/supabase', () => ({
                 })),
               })),
             })),
-            insert: vi.fn(() => ({ select: vi.fn(() => ({ single: insertSingleMock })) })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              estimateInsertPayloads.push(payload);
+              return { select: vi.fn(() => ({ single: insertSingleMock })) };
+            }),
             update: vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) })),
           };
         }
@@ -147,6 +151,7 @@ function withNextUrl(request: Request): Request {
 describe('buyer estimates route (POST)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    estimateInsertPayloads.length = 0;
     const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
     vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(false);
     insertSingleMock.mockResolvedValue({
@@ -217,6 +222,10 @@ describe('buyer estimates route (POST)', () => {
         itemCount: 2,
       }),
     );
+    expect(estimateInsertPayloads[0]).toMatchObject({
+      source: 'buyer_app',
+      is_buyer_app_estimate: true,
+    });
   });
 
   it('defers whatsapp when outbound integration will assign the document number', async () => {

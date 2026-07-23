@@ -13,6 +13,7 @@ export interface CampaignPublishPreflightInput {
   scopeValue: Record<string, unknown> | null;
   notifyWhatsapp: boolean;
   recipientBuyerIds?: string[];
+  buyerNote?: string | null;
 }
 
 export interface CampaignPublishPreflightResult {
@@ -145,6 +146,9 @@ export async function runCampaignPublishPreflight(
     };
   }
 
+  if (!input.buyerNote?.trim()) {
+    blockers.push('Add a buyer note before sending the WhatsApp campaign announcement');
+  }
   if (recipientCount === 0) blockers.push('No opted-in buyers with valid phone numbers in this audience');
   if (!templateApproved) blockers.push('WhatsApp template is not approved yet');
   if (!tenantPhoneConfigured) blockers.push('Tenant WhatsApp contact number is missing or invalid');

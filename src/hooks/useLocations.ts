@@ -285,16 +285,18 @@ export function useLocationsLanding(
   return { ...query, data: data ?? retained };
 }
 
-export function useLocationDetail(id: string) {
+export function useLocationDetail(id: string, options?: { includePerformance?: boolean }) {
   const { currentTenantId } = useAuth();
 
   return useQuery<LocationDetailResponse>({
-    queryKey: ['location-detail', currentTenantId, id],
+    queryKey: ['location-detail', currentTenantId, id, options?.includePerformance ?? true],
     enabled: Boolean(currentTenantId) && Boolean(id),
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
     queryFn: async () => {
-      const res = await fetch(`/api/tenant/locations/${id}/detail`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await fetch(`/api/tenant/locations/${id}/detail?${params.toString()}`);
       if (res.status === 404) throw new Error('not_found');
       if (!res.ok) throw new Error(`location-detail ${res.status}`);
       return res.json() as Promise<LocationDetailResponse>;

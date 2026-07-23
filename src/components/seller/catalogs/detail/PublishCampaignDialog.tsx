@@ -163,6 +163,9 @@ export function PublishCampaignDialog({
     if (isPublishUpdates) return [];
     const blockers: string[] = [];
     if (!verification) return blockers;
+    if ((isFirstPublish || isNotifyBuyers) && notifyWhatsapp && buyerNote.trim().length === 0) {
+      blockers.push('Add a buyer note before sending the WhatsApp campaign announcement');
+    }
     if (!verification.whatsapp.feature_enabled) blockers.push('WhatsApp broadcast feature is not enabled for this tenant');
     if (!verification.whatsapp.template_approved) blockers.push('WhatsApp template is not approved yet');
     if (!verification.whatsapp.tenant_phone_configured) blockers.push('Tenant WhatsApp contact number is missing or invalid');

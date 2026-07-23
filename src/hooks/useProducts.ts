@@ -408,11 +408,13 @@ export function useProduct(id: string) {
   });
 }
 
-export function useProductDetail(id: string) {
+export function useProductDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['tenant-product-detail', id],
+    queryKey: ['tenant-product-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<ProductDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/products/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/products/${id}?${params.toString()}`);
       if (!res.ok) throw new Error('Product not found');
       return res.json() as Promise<ProductDetailResponse>;
     },

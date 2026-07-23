@@ -594,7 +594,7 @@ interface TenantFieldMappingRow {
   transform_type: string;
 }
 
-type FieldMappingEntityType = 'customers' | 'estimates' | 'invoices';
+type FieldMappingEntityType = 'customers' | 'estimates' | 'orders' | 'invoices';
 
 async function loadFieldMappings(
   admin: AdminClient,
@@ -1048,6 +1048,109 @@ export async function resolveInternalIdWithFallback(
 
 export function buildTransactionalSourcePayload(rec: Record<string, unknown>): Record<string, unknown> {
   return omitKeys(rec, ['line_items']);
+}
+
+type ExistingTransactionalParentRow = {
+  external_ref: string | null;
+  source: string | null;
+  estimate_number?: string | null;
+  order_number?: string | null;
+  is_buyer_app_estimate?: boolean | null;
+  is_buyer_app_order?: boolean | null;
+};
+
+async function loadExistingTransactionalParentRows(
+  admin: AdminClient,
+  tableName: 'estimates' | 'orders',
+  tenantId: string,
+  externalRefs: string[],
+  naturalKeyColumn: 'estimate_number' | 'order_number',
+  naturalKeys: string[],
+): Promise<{
+  byExternalRef: Map<string, ExistingTransactionalParentRow>;
+  byNaturalKey: Map<string, ExistingTransactionalParentRow>;
+}> {
+  const byExternalRef = new Map<string, ExistingTransactionalParentRow>();
+  const byNaturalKey = new Map<string, ExistingTransactionalParentRow>();
+
+  if (externalRefs.length > 0) {
+    const { data, error } = await admin
+      .schema('app')
+      .from(tableName)
+      .select(`external_ref, source, ${naturalKeyColumn}, is_buyer_app_${tableName === 'estimates' ? 'estimate' : 'order'}`)
+      .eq('tenant_id', tenantId)
+      .in('external_ref', externalRefs)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new Error(`Failed to load existing ${tableName} by external_ref: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as ExistingTransactionalParentRow[]) {
+      if (row.external_ref) byExternalRef.set(row.external_ref, row);
+      const naturalKey = row[naturalKeyColumn];
+      if (typeof naturalKey === 'string' && naturalKey.length > 0) {
+        byNaturalKey.set(naturalKey, row);
+      }
+    }
+  }
+
+  if (naturalKeys.length > 0) {
+    const { data, error } = await admin
+      .schema('app')
+      .from(tableName)
+      .select(`external_ref, source, ${naturalKeyColumn}, is_buyer_app_${tableName === 'estimates' ? 'estimate' : 'order'}`)
+      .eq('tenant_id', tenantId)
+      .in(naturalKeyColumn, naturalKeys)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new Error(`Failed to load existing ${tableName} by ${naturalKeyColumn}: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as ExistingTransactionalParentRow[]) {
+      if (row.external_ref && !byExternalRef.has(row.external_ref)) {
+        byExternalRef.set(row.external_ref, row);
+      }
+      const naturalKey = row[naturalKeyColumn];
+      if (typeof naturalKey === 'string' && naturalKey.length > 0 && !byNaturalKey.has(naturalKey)) {
+        byNaturalKey.set(naturalKey, row);
+      }
+    }
+  }
+
+  return { byExternalRef, byNaturalKey };
+}
+
+function preserveExistingTransactionalOriginAndFlags(
+  rows: Record<string, unknown>[],
+  existingRows: {
+    byExternalRef: Map<string, ExistingTransactionalParentRow>;
+    byNaturalKey: Map<string, ExistingTransactionalParentRow>;
+  },
+  naturalKeyColumn: 'estimate_number' | 'order_number',
+  flagColumn: 'is_buyer_app_estimate' | 'is_buyer_app_order',
+): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const externalRef = asStr(row.external_ref);
+    const naturalKey = asStr(row[naturalKeyColumn]);
+    const existing = (externalRef ? existingRows.byExternalRef.get(externalRef) : null)
+      ?? (naturalKey ? existingRows.byNaturalKey.get(naturalKey) : null)
+      ?? null;
+
+    if (!existing) return row;
+
+    const nextRow = { ...row };
+    if (existing.source) {
+      nextRow.source = existing.source;
+    }
+
+    if (existing[flagColumn] === true) {
+      nextRow[flagColumn] = true;
+    }
+
+    return nextRow;
+  });
 }
 
 // ── FK-failsafe ensure helpers ────────────────────────────────────────────────
@@ -2881,8 +2984,23 @@ async function persistEstimates(
     });
   }
 
+  const existingEstimateRows = await loadExistingTransactionalParentRows(
+    admin,
+    'estimates',
+    tenantId,
+    parentRows.map((row) => asStr(row.external_ref)).filter((value): value is string => value !== null),
+    'estimate_number',
+    parentRows.map((row) => asStr(row.estimate_number)).filter((value): value is string => value !== null),
+  );
+  const normalizedEstimateRows = preserveExistingTransactionalOriginAndFlags(
+    parentRows,
+    existingEstimateRows,
+    'estimate_number',
+    'is_buyer_app_estimate',
+  );
+
   const guardedEstimateRows = await applyImmediateEchoGuards(
-    admin, tenantId, integrationId, 'estimates', 'estimates', parentRows,
+    admin, tenantId, integrationId, 'estimates', 'estimates', normalizedEstimateRows,
   );
   const estimatePersist = await persistWithNaturalKeyLock(
     admin, 'estimates', tenantId, dedupeByExternalOrNaturalKey(guardedEstimateRows, ['estimate_number']), 'estimate_number', ['tenant_id', 'external_ref'],
@@ -3012,6 +3130,7 @@ async function persistOrders(
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result = emptyPersistResult();
+  const orderFieldMappings = await loadFieldMappings(admin, integrationId, 'orders');
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
   const customerExternalIds = [...new Set(
@@ -3073,6 +3192,7 @@ async function persistOrders(
     const resolvedActorId = resolveImportedActorId(actorId, salespersonId, salespersonActorMap);
     const subtotal = pickNumber(rec.sub_total, rec.subtotal);
     const taxAmount = pickNumber(rec.tax_total, rec.tax_amount);
+    const customFields = buildCustomFieldsJson(rec);
     const placeOfSupply = pickString(
       rec.place_of_supply,
       rec.place_of_contact,
@@ -3088,6 +3208,8 @@ async function persistOrders(
       placed_by: resolvedActorId,
       order_number: asStr(rec.salesorder_number) ?? externalId,
       status: asStr(rec.status) ?? 'open',
+      custom_fields: customFields,
+      ...applyFieldMappings(customFields, orderFieldMappings),
       source: 'zoho_import',
       location_id: locationId,
       estimate_id: asStr(rec.estimate_id)
@@ -3130,8 +3252,23 @@ async function persistOrders(
     });
   }
 
+  const existingOrderRows = await loadExistingTransactionalParentRows(
+    admin,
+    'orders',
+    tenantId,
+    parentRows.map((row) => asStr(row.external_ref)).filter((value): value is string => value !== null),
+    'order_number',
+    parentRows.map((row) => asStr(row.order_number)).filter((value): value is string => value !== null),
+  );
+  const normalizedOrderRows = preserveExistingTransactionalOriginAndFlags(
+    parentRows,
+    existingOrderRows,
+    'order_number',
+    'is_buyer_app_order',
+  );
+
   const guardedOrderRows = await applyImmediateEchoGuards(
-    admin, tenantId, integrationId, 'orders', 'orders', parentRows,
+    admin, tenantId, integrationId, 'orders', 'orders', normalizedOrderRows,
   );
   const orderPersist = await persistWithNaturalKeyLock(
     admin, 'orders', tenantId, dedupeByExternalOrNaturalKey(guardedOrderRows, ['order_number']), 'order_number', ['tenant_id', 'external_ref'],

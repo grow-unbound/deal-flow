@@ -55,6 +55,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
@@ -323,8 +324,8 @@ export async function GET(
       estimates_mtd: estimates.length,
       invoices_mtd: invoices.length,
     },
-    performance_cards: detailV2.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
   };
 
   return timedJson(response);

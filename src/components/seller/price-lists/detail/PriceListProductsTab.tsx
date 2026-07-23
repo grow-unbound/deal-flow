@@ -14,11 +14,12 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
 import type { PriceListItem } from '@/hooks/usePriceLists';
-import { useUpdatePriceListItem } from '@/hooks/usePriceLists';
+import { useAddPriceListItems, useRemovePriceListItems, useSaveSimplePriceList, useUpdatePriceListItem } from '@/hooks/usePriceLists';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, usePriceListProductsDetail } from '@/hooks/useDetailTabSearch';
-import type { PriceListFilterState, PriceListPricingStrategy } from '@/lib/zod';
+import type { MembershipMode, PriceListFilterState, PriceListPricingStrategy, ProductMembershipRules } from '@/lib/zod';
 import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 
 type SortOption =
@@ -36,6 +37,12 @@ export interface PriceListProductsTabProps {
   canViewFinancials?: boolean;
   pricingStrategy?: PriceListPricingStrategy;
   strategyValue?: number | null;
+  membershipMode?: MembershipMode;
+  name: string;
+  description: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  priority: number;
 }
 
 const MEMBER_OPTIONS = [
@@ -50,10 +57,6 @@ const STOCK_OPTIONS = [
   { value: 'low_stock', label: 'Low stock' },
   { value: 'out_of_stock', label: 'Out of stock' },
 ];
-
-function renderFilterValues(values: string[]) {
-  return values.length > 0 ? values.join(', ') : '—';
-}
 
 function strategyPrice(base: number, strategy: PriceListPricingStrategy, value: number | null | undefined) {
   if (strategy === 'percentage') return Math.max(base * (1 - Number(value ?? 0) / 100), 0);
@@ -73,6 +76,12 @@ export function PriceListProductsTab({
   canViewFinancials = true,
   pricingStrategy = 'edit_each',
   strategyValue = null,
+  membershipMode = 'manual',
+  name,
+  description,
+  validFrom,
+  validTo,
+  priority,
 }: PriceListProductsTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
@@ -93,8 +102,21 @@ export function PriceListProductsTab({
   const rows = useMemo(() => flattenDetailRows(result.data), [result.data]);
   const selection = useSelectableRows(rows, (row) => row.tenant_product_id);
   const updateItem = useUpdatePriceListItem(priceListId);
+  const addItems = useAddPriceListItems(priceListId);
+  const removeItems = useRemovePriceListItems(priceListId);
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
+
+  // Automatic-mode rule editing (requirement 5). Automatic price lists reuse the legacy
+  // `filters` column to store ProductMembershipRules instead of PriceListFilterState.
+  const savedRules = (membershipMode === 'automatic' ? (filters as unknown as ProductMembershipRules) : null) ?? { brand_names: [], category_names: [] };
+  const [draftRules, setDraftRules] = useState<ProductMembershipRules>(savedRules);
+  useEffect(() => {
+    setDraftRules(savedRules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceListId, filters]);
+  const savePriceList = useSaveSimplePriceList(priceListId);
+  const rulesDirty = JSON.stringify(draftRules) !== JSON.stringify(savedRules);
 
   useEffect(() => {
     selection.clearSelection();
@@ -138,40 +160,76 @@ export function PriceListProductsTab({
     setDraftPrice('');
   }
 
-  const hasSavedFilters = (filters?.brand_names?.length ?? 0) > 0 || (filters?.category_names?.length ?? 0) > 0;
-
   return (
     <section className="mt-5 space-y-4">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-lg text-cream-950">Filters applied</h3>
+            <h3 className="font-display text-lg text-cream-950">{membershipMode === 'automatic' ? 'Filters applied' : 'Manual product list'}</h3>
             <p className="mt-1 text-base text-cream-700">
               {detailRowsTotal(result.data) || items.length} products across {brandsCovered} brands.
             </p>
           </div>
         </div>
 
-        {hasSavedFilters ? (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
-              <p className="mt-1 text-base text-cream-900">{renderFilterValues(filters?.brand_names ?? [])}</p>
-            </div>
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
-              <p className="mt-1 text-base text-cream-900">{renderFilterValues(filters?.category_names ?? [])}</p>
+        {membershipMode === 'automatic' ? (
+          <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+            <MembershipFilterPanel entityType="price_list" rules={draftRules} onRulesChange={(next) => setDraftRules(next as ProductMembershipRules)} />
+            <div className="flex items-center justify-end gap-2">
+              {rulesDirty ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDraftRules(savedRules)} disabled={savePriceList.isPending}>
+                  Discard
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rulesDirty || savePriceList.isPending}
+                onClick={() =>
+                  savePriceList.mutate({
+                    form_mode: 'simple',
+                    name,
+                    description: description ?? '',
+                    valid_from: validFrom ? new Date(validFrom) : new Date(),
+                    valid_to: validTo ? new Date(validTo) : undefined,
+                    priority,
+                    membership_mode: 'automatic',
+                    rules: draftRules,
+                  })
+                }
+              >
+                {savePriceList.isPending ? 'Saving…' : 'Save filters'}
+              </Button>
             </div>
           </div>
         ) : (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No product filters applied. This price list is for specific products only.
+            This is a targeted price list. Products are managed manually below.
           </div>
         )}
       </article>
 
       <div>
-        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
+        <MembershipBulkActionBar
+          selectedCount={selection.selectedIds.length}
+          onClear={selection.clearSelection}
+          isPending={addItems.isPending || removeItems.isPending}
+          onInclude={() => {
+            const toAdd = rows
+              .filter((row) => selection.selectedIds.includes(row.tenant_product_id) && !row.is_member)
+              .map((row) => ({ tenant_product_id: row.tenant_product_id, price: Number(row.list_price ?? row.base_price ?? 0) }))
+              .filter((row) => row.price > 0);
+            if (toAdd.length === 0) return;
+            addItems.mutate(toAdd, { onSuccess: () => selection.clearSelection() });
+          }}
+          onRemove={() => {
+            const toRemove = rows
+              .filter((row) => selection.selectedIds.includes(row.tenant_product_id) && row.is_member && row.item_id)
+              .map((row) => row.item_id as string);
+            if (toRemove.length === 0) return;
+            removeItems.mutate(toRemove, { onSuccess: () => selection.clearSelection() });
+          }}
+        />
         <FilterBar
           count={`${detailRowsTotal(result.data)} products${isInterim ? ' · Updating' : ''}`}
           searchPlaceholder="Search product, SKU, or brand…"

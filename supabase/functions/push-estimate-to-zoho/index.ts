@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
   const { data: estimate, error: estErr } = await admin
     .schema('app')
     .from('estimates')
-    .select('id, tenant_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at, place_of_supply')
+    .select('id, tenant_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at, place_of_supply, is_buyer_app_estimate')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -159,7 +159,6 @@ Deno.serve(async (req: Request) => {
     date: today,
     expiry_date: expiry,
     is_inclusive_tax: true,
-    cf_catalog_estimate: true,
     line_items: items.map((item) => {
       const prod = productMap.get(item.tenant_product_id as string)!;
       return {
@@ -172,6 +171,10 @@ Deno.serve(async (req: Request) => {
     }),
     notes: notesText,
   };
+
+  if (estimate.is_buyer_app_estimate === true) {
+    zohoBody.cf_catalog_estimate = true;
+  }
 
   if (gstInfo.gstin && gstInfo.gst_treatment) {
     zohoBody.gst_treatment = gstInfo.gst_treatment;

@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 
 interface BuyerHeaderProps {
   title: string;
@@ -26,7 +27,7 @@ export function BuyerHeader({ title, showBack = false, action }: BuyerHeaderProp
       <div className="flex items-center gap-2">
         {showBack && (
           <button
-            onClick={() => router.back()}
+            onClick={() => navigateBuyerBack(router)}
             className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-cream-200 transition-colors duration-fast"
             aria-label="Go back"
           >

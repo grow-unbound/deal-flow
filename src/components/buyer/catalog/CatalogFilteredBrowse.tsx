@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { SearchX } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
@@ -206,6 +207,12 @@ function NoProductsFoundState(): React.ReactNode {
         <p className="mt-2 text-sm leading-6 text-[var(--fg-3)]">
           Try a different search or switch filters to explore more products.
         </p>
+        <Link
+          href="/buy/catalog"
+          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
+        >
+          Browse Catalog
+        </Link>
       </div>
     </div>
   );

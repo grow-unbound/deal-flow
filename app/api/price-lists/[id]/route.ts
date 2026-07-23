@@ -63,6 +63,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
@@ -90,7 +91,7 @@ export async function GET(
   const { data: priceList, error: plError } = await db
     .schema('app')
     .from('price_lists')
-    .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by, updated_by')
+    .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, membership_mode, created_at, updated_at, created_by, updated_by')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -109,10 +110,12 @@ export async function GET(
   }
 
   const [detailV2Res, itemsRes, assignmentsRes, activityRes] = await Promise.all([
-    db.schema('app').rpc('get_seller_pricelist_detail_v2', {
-      p_tenant_id: claims.tenant_id,
-      p_price_list_id: id,
-    }),
+    includePerformance
+      ? db.schema('app').rpc('get_seller_pricelist_detail_v2', {
+          p_tenant_id: claims.tenant_id,
+          p_price_list_id: id,
+        })
+      : Promise.resolve({ data: null, error: null }),
     db
       .schema('app')
       .from('price_list_items')
@@ -293,7 +296,7 @@ export async function GET(
     cohortIds.length > 0
       ? db
           .schema('app')
-          .from('cohort_members')
+          .from('cohort_members_active')
           .select('cohort_id, buyer_id')
           .in('cohort_id', cohortIds)
       : Promise.resolve({ data: [], error: null }),
@@ -336,8 +339,8 @@ export async function GET(
   const detailV2 = detailV2Res.error ? null : detailV2Res.data as any;
 
   return NextResponse.json({
-    performance_cards: detailV2?.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     price_list: {
       ...priceList,
       status,
@@ -367,8 +370,8 @@ export async function GET(
         };
       }),
       activity: events,
-      performance_cards: detailV2?.performance_cards ?? [],
-      detail_v2: detailV2,
+      performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
+      detail_v2: includePerformance ? detailV2 : null,
       stats: {
         products_covered: enrichedItems.length,
         brands_covered: brandSet.size,

@@ -279,7 +279,7 @@ describe('customers/[id] detail shell', () => {
     renderPage();
 
     expect(screen.getByRole('tab', { name: /Details/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Performance/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Estimates/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Orders/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Invoices/i })).toBeInTheDocument();
