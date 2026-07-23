@@ -1,10 +1,11 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationStore, type AppNotification } from '@/hooks/useNotificationStore';
 import { useSellerRealtime } from '@/hooks/useSellerRealtime';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 interface SellerRealtimeContextType {
   unreadCount: number;
@@ -29,6 +30,49 @@ export function SellerRealtimeProvider({ children }: { children: React.ReactNode
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [locationIdsKey],
   );
+  const [locationNamesById, setLocationNamesById] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLocationNames() {
+      if (!tenantId) {
+        if (active) setLocationNamesById({});
+        return;
+      }
+
+      let query = supabaseBrowser
+        .schema('app')
+        .from('locations')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+
+      if (locationIds && locationIds.length > 0) {
+        query = query.in('id', locationIds);
+      }
+
+      const { data, error } = await query;
+      if (!active || error) return;
+
+      const next = Object.fromEntries(
+        (data ?? [])
+          .map((row) => {
+            const id = typeof row.id === 'string' ? row.id : null;
+            const name = typeof row.name === 'string' ? row.name.trim() : '';
+            return id && name ? [id, name] : null;
+          })
+          .filter((entry): entry is [string, string] => entry !== null),
+      );
+      setLocationNamesById(next);
+    }
+
+    void loadLocationNames();
+
+    return () => {
+      active = false;
+    };
+  }, [tenantId, locationIdsKey, locationIds]);
 
   const { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
 
@@ -44,6 +88,7 @@ export function SellerRealtimeProvider({ children }: { children: React.ReactNode
   const { newEntityIds, markSeen } = useSellerRealtime({
     tenantId,
     locationIds,
+    locationNamesById,
     onNew: handleNew,
     onPatch: patchByEntityId,
   });

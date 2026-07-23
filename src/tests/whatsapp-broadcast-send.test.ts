@@ -117,7 +117,7 @@ describe('buildBroadcastMessageQueue', () => {
       { text: 'Wine Yard Technologies', parameter_name: 'seller_name' },
       { text: '1', parameter_name: 'due_invoice_count' },
       { text: '332', parameter_name: 'outstanding_amount' },
-      { text: 'overdue by 100 days', parameter_name: 'due_status' },
+      { text: 'overdue by 105 days', parameter_name: 'due_status' },
       { text: '9490744841', parameter_name: 'seller_phone_number' },
     ]);
     expect(queue[0]?.sendPayload.button_params).toBeUndefined();

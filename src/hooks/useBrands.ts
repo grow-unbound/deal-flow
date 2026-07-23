@@ -365,11 +365,13 @@ export function useTenantBrands(
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
-export function useTenantBrandDetail(id: string) {
+export function useTenantBrandDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['tenant-brand-detail', id],
+    queryKey: ['tenant-brand-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<BrandDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/brands/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/brands/${id}?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch brand detail');
       }

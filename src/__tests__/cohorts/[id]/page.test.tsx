@@ -103,7 +103,7 @@ describe('cohort detail page', () => {
     useCohortDetailMock.mockReset();
   });
 
-  it('renders exactly two tabs (Buyers and Performance)', () => {
+  it('renders the Buyers tab and hides Performance', () => {
     useCohortDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -113,7 +113,7 @@ describe('cohort detail page', () => {
     render(<CohortDetailPage id="c1" />);
 
     expect(screen.getByRole('tab', { name: 'Buyers' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit customer group/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
@@ -174,22 +174,4 @@ describe('cohort detail page', () => {
     expect(screen.getByText('20 of 100 buyers')).toBeInTheDocument();
   });
 
-  it('renders performance tab with card-based layout', () => {
-    useCohortDetailMock.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: cohortDetailFixture({
-        performance_cards: [
-          { id: 'c1', title: 'Invoiced Sales Trend', representation: 'unavailable', availability: 'unavailable' },
-          { id: 'c2', title: 'Member Engagement', representation: 'unavailable', availability: 'unavailable' },
-        ],
-      }),
-    });
-
-    render(<CohortDetailPage id="c1" />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Performance' }));
-
-    expect(screen.getByText('Invoiced Sales Trend')).toBeInTheDocument();
-    expect(screen.getByText('Member Engagement')).toBeInTheDocument();
-  });
 });

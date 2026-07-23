@@ -29,7 +29,6 @@ import type { WhatsAppBroadcastTargetType } from '@/lib/zod';
 
 const MANUAL_TEMPLATE_KEYS = new Set(['highlight_text', 'visit_window']);
 const CAMPAIGN_TEMPLATE_USE_CASES = new Set(['new_stock', 'campaign_announcement']);
-const BUYER_APP_NUDGE_USE_CASE = 'buyer_app_nudge';
 const SELECT_BUYERS_VALUE = '__select_buyers__';
 
 function combineScheduledAt(dateValue: string, timeValue: string) {
@@ -40,12 +39,6 @@ function combineScheduledAt(dateValue: string, timeValue: string) {
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function isTemplateSupported(template: WhatsAppTemplateOption) {
-  return template.is_broadcast_template
-    && template.meta_template_name !== 'login_otp'
-    && template.use_case !== BUYER_APP_NUDGE_USE_CASE;
 }
 
 function editableVariables(template: WhatsAppTemplateOption | null) {
@@ -83,10 +76,7 @@ export function BroadcastComposerSheet({
     ? WHATSAPP_QUALITY_BANNER_COPY[platformStatus.quality_rating_state]
     : null;
 
-  const templates = useMemo(
-    () => rawTemplates.filter(isTemplateSupported),
-    [rawTemplates],
-  );
+  const templates = useMemo(() => rawTemplates, [rawTemplates]);
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
@@ -99,9 +89,13 @@ export function BroadcastComposerSheet({
   );
 
   const requiresCampaign = Boolean(selectedTemplate && CAMPAIGN_TEMPLATE_USE_CASES.has(selectedTemplate.use_case));
+  const templateBlockedReason = selectedTemplate?.broadcast_supported === false
+    ? (selectedTemplate.broadcast_support_reason ?? 'This template cannot be used for broadcasts')
+    : null;
   const manualVariables = editableVariables(selectedTemplate);
   const scheduledFor = combineScheduledAt(scheduledDate, scheduledTime);
   const canPreview = Boolean(selectedTemplate)
+    && !templateBlockedReason
     && ((targetType === 'cohort' && Boolean(targetCohortId)) || (targetType === 'buyer_selection' && selectedBuyerIds.length > 0))
     && (sendNow || Boolean(scheduledFor))
     && (!requiresCampaign || Boolean(linkedCampaignId));
@@ -168,7 +162,7 @@ export function BroadcastComposerSheet({
   }
 
   function handleSendBroadcast() {
-    if (!selectedTemplate || !canPreview) return;
+    if (!selectedTemplate || !canPreview || templateBlockedReason) return;
 
     createBroadcast.mutate(
       {
@@ -266,8 +260,15 @@ export function BroadcastComposerSheet({
             </SelectTrigger>
             <SelectContent>
               {templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
+                <SelectItem
+                  key={template.id}
+                  value={template.id}
+                  disabled={template.broadcast_supported === false}
+                >
                   {template.use_case.replace(/_/g, ' ')}
+                  {template.broadcast_supported === false && template.broadcast_support_reason
+                    ? ` — ${template.broadcast_support_reason}`
+                    : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -332,6 +333,13 @@ export function BroadcastComposerSheet({
               </AlertDescription>
             </Alert>
           ) : null}
+
+          {templateBlockedReason ? (
+            <Alert variant="warning">
+              <AlertTitle>Template unavailable for broadcasts</AlertTitle>
+              <AlertDescription>{templateBlockedReason}</AlertDescription>
+            </Alert>
+          ) : null}
         </section>
 
         <section className="space-y-2">
@@ -389,6 +397,7 @@ export function BroadcastComposerSheet({
             || createBroadcast.isPending
             || (requiresCampaign && !linkedCampaignId)
             || (!sendNow && !scheduledFor)
+            || Boolean(templateBlockedReason)
           }
         >
           {sendNow ? <Send size={14} /> : <MessageCircle size={14} />}

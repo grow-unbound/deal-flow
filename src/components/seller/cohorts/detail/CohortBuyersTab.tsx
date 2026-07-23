@@ -11,10 +11,15 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { Button } from '@/components/ui/button';
 import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCohortBuyersDetail } from '@/hooks/useDetailTabSearch';
+import { useAddCohortMembers, useRemoveCohortMembers, useSaveSimpleCustomerGroup, type CohortDetailDetailsRules } from '@/hooks/useCohorts';
+import type { BuyerMembershipRules } from '@/lib/zod';
 import { formatDate, formatNumberValue } from '@/lib/utils';
+import { toast } from 'sonner';
 
 type SortOption =
   | 'Spend 90D (high → low)'
@@ -54,6 +59,7 @@ interface CohortBuyersTabProps {
   cohortId: string;
   rules_summary: CohortRulesSummary;
   activeMembersMtd: number;
+  details_rules: CohortDetailDetailsRules;
 }
 
 function buyerAppLabel(status: string) {
@@ -79,7 +85,7 @@ function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string, count:
   return `${formatNumberValue(count, 'COUNT')} ${label}`;
 }
 
-export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: CohortBuyersTabProps) {
+export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, details_rules }: CohortBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
   const [lastSale, setLastSale] = useState<string[]>([]);
@@ -101,6 +107,25 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
 
+  // Manual membership can be edited inline here; automatic membership's rules stay
+  // Edit-overlay-only (requirement 6) -- this tab only adds/removes explicit picks.
+  const addMembers = useAddCohortMembers(cohortId);
+  const removeMembers = useRemoveCohortMembers(cohortId);
+  const canEditMembership = rules_summary.is_static;
+
+  // Automatic-mode rule editing lives here (requirement 5); mode switching itself stays
+  // Edit-overlay-only (requirement 6). The `rules` column holds the new fixed-bucket
+  // BuyerMembershipRules shape once saved via the simple form -- not the legacy field/
+  // operator/value shape `details_rules.rules` is typed for, hence the cast.
+  const savedRules = (details_rules.rules as unknown as BuyerMembershipRules) ?? {};
+  const [draftRules, setDraftRules] = useState<BuyerMembershipRules>(savedRules);
+  useEffect(() => {
+    setDraftRules(savedRules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cohortId, details_rules.updated_at]);
+  const saveGroup = useSaveSimpleCustomerGroup(cohortId);
+  const rulesDirty = JSON.stringify(draftRules) !== JSON.stringify(savedRules);
+
   useEffect(() => {
     selection.clearSelection();
   }, [member, lastSale, sales90d, buyerApp, debouncedSearch, sort, selection.clearSelection]);
@@ -116,7 +141,6 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
   const rulesSub = rules_summary.is_static
     ? `${rules_summary.matched_of_total_label}. Buyers are explicitly assigned to this customer group.`
     : `${rules_summary.member_count} buyers match · ${rules_summary.matched_of_total_label}.`;
-  const hasFilters = rules_summary.filters.length > 0;
 
   return (
     <section className="mt-5 space-y-4">
@@ -136,18 +160,33 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             This is a targeted customer group. Membership is managed manually; rule filters do not apply.
           </div>
-        ) : hasFilters ? (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {rules_summary.filters.map((row: CohortRulesSummary['filters'][number], idx: number) => (
-              <div key={`${row.label}-${idx}`} className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{row.label}</p>
-                <p className="mt-1 text-base text-cream-900">{row.value_text}</p>
-              </div>
-            ))}
-          </div>
         ) : (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
-            No saved filters. This customer group uses its manually curated member list only.
+          <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+            <MembershipFilterPanel entityType="cohort" rules={draftRules} onRulesChange={(next) => setDraftRules(next as BuyerMembershipRules)} />
+            <div className="flex items-center justify-end gap-2">
+              {rulesDirty ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDraftRules(savedRules)} disabled={saveGroup.isPending}>
+                  Discard
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rulesDirty || saveGroup.isPending}
+                onClick={() =>
+                  saveGroup.mutate({
+                    form_mode: 'simple',
+                    name: details_rules.name,
+                    description: details_rules.description,
+                    allowed_tenant_brand_ids: details_rules.allowed_tenant_brand_ids ?? [],
+                    membership_mode: 'automatic',
+                    rules: draftRules,
+                  })
+                }
+              >
+                {saveGroup.isPending ? 'Saving…' : 'Save filters'}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -158,7 +197,25 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
       </article>
 
       <div>
-        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
+        <MembershipBulkActionBar
+          selectedCount={selection.selectedIds.length}
+          onClear={selection.clearSelection}
+          isPending={addMembers.isPending || removeMembers.isPending}
+          onInclude={() => {
+            if (!canEditMembership) {
+              toast.info('This group is Automatic — edit its filters from Edit instead of picking buyers here.');
+              return;
+            }
+            addMembers.mutate(selection.selectedIds, { onSuccess: () => selection.clearSelection() });
+          }}
+          onRemove={() => {
+            if (!canEditMembership) {
+              toast.info('This group is Automatic — edit its filters from Edit instead of picking buyers here.');
+              return;
+            }
+            removeMembers.mutate(selection.selectedIds, { onSuccess: () => selection.clearSelection() });
+          }}
+        />
         <FilterBar
           count={`${detailRowsTotal(result.data)} buyers${isInterim ? ' · Updating' : ''}`}
           searchPlaceholder="Search buyer, contact, or geography…"

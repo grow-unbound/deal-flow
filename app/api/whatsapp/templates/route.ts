@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
+import { getBroadcastTemplateEligibility } from '@/lib/server/whatsapp-template-validation';
 
 /**
  * WhatsApp Broadcast Phase E — platform-managed template list.
@@ -38,7 +39,6 @@ export async function GET(request: NextRequest) {
     .from('whatsapp_templates')
     .select('id, meta_template_name, meta_category, use_case, body, variables, approval_status, is_broadcast_template')
     .is('tenant_id', null)
-    .eq('is_broadcast_template', true)
     .is('deleted_at', null)
     .order('use_case', { ascending: true });
 
@@ -47,5 +47,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
   }
 
-  return NextResponse.json({ templates: rows ?? [] }, { headers: SELLER_CACHE_REFERENCE });
+  const templates = (rows ?? []).map((row: {
+    id: string;
+    meta_template_name: string;
+    meta_category: 'marketing' | 'utility' | 'authentication';
+    use_case: string;
+    body: string;
+    variables: Array<{ key: string; description?: string }>;
+    approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
+    is_broadcast_template: boolean;
+  }) => {
+    const eligibility = getBroadcastTemplateEligibility(row);
+    return {
+      ...row,
+      broadcast_supported: eligibility.supported,
+      broadcast_support_reason: eligibility.reason,
+    };
+  });
+
+  return NextResponse.json({ templates }, { headers: SELLER_CACHE_REFERENCE });
 }

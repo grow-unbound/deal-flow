@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api-fetch';
 import { CategoryFilter } from '@/components/buyer/catalog/CategoryFilter';
 import { BrandFilter } from '@/components/buyer/catalog/BrandFilter';
@@ -355,6 +356,12 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
                       Clear filters
                     </button>
                   )}
+                  <Link
+                    href="/buy/catalog"
+                    className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-4 py-1.5 text-sm font-medium text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
+                  >
+                    Browse Catalog
+                  </Link>
                 </div>
               </div>
             ) : (

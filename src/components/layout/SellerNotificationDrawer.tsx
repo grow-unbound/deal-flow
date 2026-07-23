@@ -10,6 +10,7 @@ import type { AppNotification, NotificationKind } from '@/hooks/useNotificationS
 
 const KIND_META: Record<NotificationKind, { label: string; Icon: React.ElementType }> = {
   new_estimate:     { label: 'New Estimate',     Icon: FileText },
+  new_invoice:      { label: 'New Invoice',      Icon: Receipt },
   new_order:        { label: 'New Order',         Icon: Package },
   new_catalog:      { label: 'New Catalog',       Icon: BookOpen },
   estimate_updated: { label: 'Estimate Updated',  Icon: FilePen },

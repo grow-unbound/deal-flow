@@ -16,7 +16,7 @@ vi.mock('@/hooks/useTenantLocations', () => ({
 }));
 
 vi.mock('@/hooks/useRouteSnapshot', () => ({
-  useRouteSnapshot: () => ({ state: 'performance', setState: vi.fn() }),
+  useRouteSnapshot: () => ({ state: 'orders', setState: vi.fn() }),
 }));
 
 vi.mock('@/components/seller/settings/LocationFormSheet', () => ({
@@ -26,7 +26,7 @@ vi.mock('@/components/seller/settings/LocationFormSheet', () => ({
 import { LocationDetailPage } from '@/components/seller/locations/detail/LocationDetailPage';
 
 describe('location detail page', () => {
-  it('renames the overview tab to performance', () => {
+  it('hides performance and defaults to orders', () => {
     useLocationDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -75,9 +75,8 @@ describe('location detail page', () => {
 
     render(<LocationDetailPage id="loc-1" />);
 
-    expect(screen.getByRole('tab', { name: 'Performance' })).toHaveClass('border-ember-500');
-    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /^Orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Orders/i })).toHaveClass('border-ember-500');
   });
 });

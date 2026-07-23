@@ -187,12 +187,14 @@ async function createAndQueueCampaignBroadcast(
     duplicateGuard: 'campaign_singleton' | 'none';
   },
 ): Promise<CampaignPublishNotifyResult> {
+  const buyerNote = input.buyerNote?.trim() ?? '';
   const preflight = await runCampaignPublishPreflight(db, {
     tenantId: input.tenantId,
     scopeType: input.scopeType,
     scopeValue: input.scopeValue,
     notifyWhatsapp: true,
     recipientBuyerIds: input.buyerIds,
+    buyerNote,
   });
 
   if (!preflight.can_notify) {
@@ -244,7 +246,7 @@ async function createAndQueueCampaignBroadcast(
       target_buyer_ids: input.targetBuyerIds ?? null,
       linked_campaign_id: input.campaignId,
       variable_bindings: {
-        buyer_note: input.buyerNote?.trim() || 'Check out our latest offers.',
+        buyer_note: buyerNote,
       },
       status: input.scheduledFor ? 'scheduled' : 'sending',
       scheduled_for: input.scheduledFor ?? null,
@@ -267,9 +269,9 @@ async function createAndQueueCampaignBroadcast(
     whatsappBroadcastId: broadcast.id as string,
     buyerIds: input.buyerIds,
     template,
-    variableBindings: {
-      buyer_note: input.buyerNote?.trim() || 'Check out our latest offers.',
-    },
+      variableBindings: {
+        buyer_note: buyerNote,
+      },
     linkedCampaignId: input.campaignId,
     scheduledSendAt: input.scheduledFor ?? null,
     headerMediaId: metaHeaderMediaId,

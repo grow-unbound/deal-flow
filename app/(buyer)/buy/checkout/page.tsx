@@ -8,6 +8,7 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { apiFetch } from '@/lib/api-fetch';
 ;
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
@@ -166,7 +167,7 @@ export default function CheckoutPage() {
         }}
       >
         <button
-          onClick={() => router.back()}
+          onClick={() => navigateBuyerBack(router)}
           className="flex h-8 w-8 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--cream-800)]"
           aria-label="Go back"
         >

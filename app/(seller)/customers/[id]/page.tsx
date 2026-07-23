@@ -86,13 +86,14 @@ function formatLastActivity(subtitleMeta: {
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { isSellerAdmin, isSellerAssistant } = useRole();
+  const showPerformanceTab = false;
   const { data: settings } = useTenantSettings();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-customer-detail-tab',
     scopeKey: id,
-    initialState: isSellerAssistant ? 'details' : 'performance',
+    initialState: 'details',
   });
-  const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
+  const { data, isLoading, isError, error } = useTenantCustomerDetail(id, { includePerformance: false });
   const deleteMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
   const [collectPaymentOpen, setCollectPaymentOpen] = useState(false);
@@ -107,14 +108,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Details' },
-      ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
+      ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates', badge: data?.tab_badges.estimates_90d ?? 0 }] : []),
       ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders', badge: data?.tab_badges.orders_90d ?? 0 }] : []),
       ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices', badge: data?.tab_badges.invoices_90d ?? 0 }] : []),
       { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
       ...(featureVisibility.priceLists ? [{ id: 'price-lists', label: 'Price Lists', badge: data?.tab_badges.price_lists_assigned ?? 0 }] : []),
     ],
-    [data?.cohorts_summary.rows.length, data?.tab_badges.estimates_90d, data?.tab_badges.invoices_90d, data?.tab_badges.orders_90d, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, isSellerAssistant],
+    [data?.cohorts_summary.rows.length, data?.tab_badges.estimates_90d, data?.tab_badges.invoices_90d, data?.tab_badges.orders_90d, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, showPerformanceTab],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -182,17 +183,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           ]}
           actions={
             <div className="flex items-center gap-2 pt-1">
-              {hasOutstandingDues ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setCollectPaymentOpen(true)}
-                >
-                  <CircleDollarSign size={16} />
-                  Collect payment
-                </Button>
-              ) : null}
               {isSellerAdmin ? (
                 <>
                   {data.details.is_active ? (
@@ -237,6 +227,17 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 </>
               ) : null}
 
+              {hasOutstandingDues ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setCollectPaymentOpen(true)}
+                >
+                  <CircleDollarSign size={16} />
+                  Collect payment
+                </Button>
+              ) : null}
             <Button
               type="button"
               variant="accent"
@@ -259,7 +260,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         />
 
         {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
-        {activeTab === 'performance' ? (
+        {showPerformanceTab && activeTab === 'performance' ? (
           <CustomerPerformanceTab
             performance={data.performance}
             performanceV2={data.performance_v2}

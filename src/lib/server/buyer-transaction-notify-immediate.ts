@@ -11,6 +11,7 @@ interface SendImmediateTransactionNotificationsInput {
   tenantId: string;
   buyerId: string;
   locationId: string;
+  initiatingBuyerUserId?: string | null;
   documentId: string;
   documentNumber: string;
   totalAmount: number;

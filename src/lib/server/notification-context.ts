@@ -16,6 +16,10 @@ interface BuyerRow {
   business_name: string;
 }
 
+interface BuyerUserRow {
+  phone: string | null;
+}
+
 interface LocationRow {
   name: string;
   phone_number: string | null;
@@ -38,10 +42,11 @@ export async function fetchWhatsappNotificationContext(
   buyerId: string,
   locationId: string | null,
   notificationType: NotificationType,
+  initiatingBuyerUserId?: string | null,
 ): Promise<WhatsappNotificationContext | null> {
   const db = supabaseAdmin ?? supabase;
 
-  const [tenantResult, buyerResult, locationResult, warehouseResult, locationCountResult] = await Promise.all([
+  const [tenantResult, buyerResult, buyerUserResult, locationResult, warehouseResult, locationCountResult] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
       .schema('app')
@@ -57,6 +62,20 @@ export async function fetchWhatsappNotificationContext(
       .select('phone, contact_name, business_name')
       .eq('id', buyerId)
       .single() as Promise<{ data: BuyerRow | null; error: unknown }>,
+
+    initiatingBuyerUserId
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((db as any)
+          .schema('app')
+          .from('buyer_users')
+          .select('phone')
+          .eq('buyer_id', buyerId)
+          .eq('user_id', initiatingBuyerUserId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle() as Promise<{ data: BuyerUserRow | null; error: unknown }>)
+      : Promise.resolve({ data: null, error: null }),
 
     locationId
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,7 +139,7 @@ export async function fetchWhatsappNotificationContext(
   const { sellerName } = buildSellerContextFromTenant(tenantResult.data);
 
   const buyer = buyerResult.data;
-  const buyerPhone = buyer.phone ?? '';
+  const buyerPhone = buyerUserResult.data?.phone ?? buyer.phone ?? '';
   const buyerName = buyer.contact_name ?? buyer.business_name;
 
   const sellerLocation =

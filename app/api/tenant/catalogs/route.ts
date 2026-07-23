@@ -1224,6 +1224,7 @@ export async function POST(request: NextRequest) {
       scopeType: composerPayload.scope_type,
       scopeValue,
       notifyWhatsapp: true,
+      buyerNote: payload.buyer_note ?? payload.message ?? '',
     });
 
     if (!preflight.can_notify) {

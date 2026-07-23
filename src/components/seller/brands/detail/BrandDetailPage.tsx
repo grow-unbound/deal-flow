@@ -90,27 +90,28 @@ function subtitle(header: BrandDetailResponse['header']) {
 }
 
 export function BrandDetailPage({ id }: BrandDetailPageProps) {
+  const showPerformanceTab = false;
   const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-brand-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: 'details',
   });
-  const { data, isLoading, isError } = useTenantBrandDetail(id);
+  const { data, isLoading, isError } = useTenantBrandDetail(id, { includePerformance: false });
   const updateMutation = useUpdateTenantBrand(id);
   const archiveMutation = useArchiveTenantBrand(id);
 
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Details' },
-      { id: 'performance', label: 'Performance' },
+      ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: 'Products', badge: data?.header.skus },
       { id: 'buyers', label: 'Buyers', badge: data?.buyers_total },
       { id: 'catalogs', label: 'Catalogs', badge: data?.catalogs.length },
     ],
-    [data?.buyers_total, data?.catalogs.length, data?.header.skus],
+    [data?.buyers_total, data?.catalogs.length, data?.header.skus, showPerformanceTab],
   );
-  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'performance';
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
   useEffect(() => {
     if (activeTab !== tab) {
@@ -216,7 +217,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
           onSave={(payload) => updateMutation.mutate(payload)}
         />
       ) : null}
-      {activeTab === 'performance' ? (
+      {showPerformanceTab && activeTab === 'performance' ? (
         <BrandPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {activeTab === 'products' ? <BrandProductsTab brandId={id} /> : null}
