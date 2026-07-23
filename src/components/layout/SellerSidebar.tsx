@@ -1,6 +1,6 @@
 'use client';
 
-import { use, type FC } from 'react';
+import { use, useState, type FC } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -151,10 +151,13 @@ export function SellerSidebar({
   canCollapse = true,
   featureAvailabilityPromise,
 }: SellerSidebarProps) {
+  const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const featureAvailability = use(featureAvailabilityPromise);
   const pathname = usePathname();
   const { isSellerAssistant, role } = useRole();
   const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;
+  const showExpandedContent = !isCollapsed || isHoverExpanded;
+  const asideWidth = isCollapsed && isHoverExpanded ? '248px' : 'var(--sidebar-w)';
 
   function getFlag(key: NavFlagKey): boolean | undefined {
     const map: Record<NavFlagKey, boolean | undefined> = {
@@ -199,15 +202,16 @@ export function SellerSidebar({
         <Link
           href={item.href}
           className={[
-            'flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-base font-medium transition-colors duration-fast',
+            'flex items-center rounded-[12px] py-2.5 text-base font-medium transition-colors duration-fast',
+            showExpandedContent ? 'gap-3 px-3 justify-start' : 'justify-center px-0',
             active
               ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]'
               : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
           ].join(' ')}
-          title={isCollapsed ? item.label : undefined}
+          title={!showExpandedContent ? item.label : undefined}
         >
           <item.icon size={17} className={active ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
-          {!isCollapsed && item.label}
+          {showExpandedContent && item.label}
         </Link>
       </Pressable>
     );
@@ -215,11 +219,22 @@ export function SellerSidebar({
 
   return (
     <aside
-      className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width] duration-base"
-      style={{ width: 'var(--sidebar-w)' }}
+      className={[
+        'fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width,box-shadow] duration-base',
+        isCollapsed && isHoverExpanded ? 'shadow-lg' : '',
+      ].join(' ')}
+      style={{ width: asideWidth }}
+      onMouseEnter={() => isCollapsed && setIsHoverExpanded(true)}
+      onMouseLeave={() => setIsHoverExpanded(false)}
+      onFocusCapture={() => isCollapsed && setIsHoverExpanded(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsHoverExpanded(false);
+        }
+      }}
     >
-      <div className="flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
-        {isCollapsed ? (
+      <div className={showExpandedContent ? 'flex h-16 shrink-0 items-center border-b border-cream-300 px-3' : 'flex h-16 shrink-0 items-center justify-center border-b border-cream-300 px-0'}>
+        {!showExpandedContent ? (
           <YuktiLogo variant="mark-copper" className="h-7 w-7" priority />
         ) : (
           <div className="min-w-0">
@@ -228,7 +243,7 @@ export function SellerSidebar({
         )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+      <nav className={showExpandedContent ? 'flex-1 space-y-0.5 overflow-y-auto px-3 py-4' : 'flex-1 space-y-0.5 overflow-y-auto px-2 py-4'}>
         {isSellerAssistant ? (
           <div className="space-y-0.5">
             {ASSISTANT_NAV_ORDER
@@ -243,8 +258,8 @@ export function SellerSidebar({
             const visibleItems = group.items.filter(isNavItemVisible).filter(canAccessNavItem);
             if (visibleItems.length === 0) return null;
             return (
-              <div key={group.label} className={isCollapsed && groupIndex > 0 ? 'pt-3' : undefined}>
-                {!isCollapsed && (
+              <div key={group.label} className={!showExpandedContent && groupIndex > 0 ? 'pt-2' : undefined}>
+                {showExpandedContent && (
                   <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
                     {group.label}
                   </p>
@@ -257,18 +272,18 @@ export function SellerSidebar({
       </nav>
 
       {canCollapse ? (
-        <footer className="shrink-0 border-t border-cream-300 px-3 py-3">
+        <footer className={showExpandedContent ? 'shrink-0 border-t border-cream-300 px-3 py-3' : 'shrink-0 border-t border-cream-300 px-2 py-3'}>
           <button
             type="button"
             onClick={onToggleCollapse}
             className={[
-              'flex w-full items-center rounded-[12px] px-3 py-2.5 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
-              isCollapsed ? 'justify-center' : 'gap-3',
+              'flex w-full items-center rounded-[12px] py-2.5 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
+              showExpandedContent ? 'gap-3 px-3 justify-start' : 'justify-center px-0',
             ].join(' ')}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={!showExpandedContent && isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            {!isCollapsed && <span className="text-base font-medium">Collapse</span>}
+            {showExpandedContent ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            {showExpandedContent && <span className="text-base font-medium">Collapse</span>}
           </button>
         </footer>
       ) : null}

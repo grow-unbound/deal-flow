@@ -1238,6 +1238,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Two independent membership axes (requirement 2). isSimpleForm: infer buyer_target_mode
+  // from the legacy target_mode when the new field is omitted (current UI doesn't send it
+  // yet); composer path infers from scope_type/is_dynamic the same way the Phase 1 backfill
+  // did, since CatalogComposerPayloadSchema doesn't carry these fields either.
+  const buyerTargetMode = isSimpleForm
+    ? (payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual'))
+    : (payload.scope_type === 'cohort' ? 'customer_group' : 'manual');
+  const buyerFilterRules = isSimpleForm ? (payload.buyer_rules ?? null) : null;
+  const productMembershipMode = isSimpleForm ? (payload.product_membership_mode ?? 'manual') : (payload.is_dynamic ? 'automatic' : 'manual');
+  const productRules = isSimpleForm ? (payload.product_rules ?? null) : (payload.is_dynamic ? payload.filters : null);
+  const pricingSource = isSimpleForm
+    ? (payload.pricing_mode === 'pricelist' ? 'pricelist' : 'individual_prices')
+    : (payload.price_source === 'price_list' ? 'pricelist' : 'individual_prices');
+  const campaignPriceListId = isSimpleForm
+    ? (payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null)
+    : (payload.price_source === 'price_list' ? payload.price_list_id ?? null : null);
+
   const { data: insertedCatalog, error: insertError } = await db
     .schema('app')
     .from('campaigns')
@@ -1254,6 +1271,13 @@ export async function POST(request: NextRequest) {
       hero_image_url: (isSimpleForm ? payload.hero_image_url : payload.hero_image_url) || null,
       status,
       share_token: shareToken,
+      buyer_target_mode: buyerTargetMode,
+      buyer_filter_rules: buyerFilterRules,
+      product_membership_mode: productMembershipMode,
+      dynamic_rules: productRules,
+      is_dynamic: productMembershipMode === 'automatic',
+      pricing_source: pricingSource,
+      price_list_id: campaignPriceListId,
       created_by: claims.sub,
       updated_by: claims.sub,
     })
@@ -1263,6 +1287,18 @@ export async function POST(request: NextRequest) {
   if (insertError || !insertedCatalog) {
     console.error('[POST /api/tenant/catalogs] insert error:', insertError);
     return NextResponse.json({ error: 'Failed to create catalog' }, { status: 500 });
+  }
+
+  if (buyerTargetMode === 'automatic' || productMembershipMode === 'automatic') {
+    // Recompute now (requirement 4), not left frozen until the next scheduled refresh.
+    const refreshCalls: PromiseLike<unknown>[] = [];
+    if (buyerTargetMode === 'automatic') {
+      refreshCalls.push(db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: insertedCatalog.id }));
+    }
+    if (productMembershipMode === 'automatic') {
+      refreshCalls.push(db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: insertedCatalog.id }));
+    }
+    await Promise.all(refreshCalls);
   }
 
   if (!isSimpleForm && payload.items.length > 0) {

@@ -16,12 +16,14 @@ import {
   aggregateCampaignViewsByCampaign,
   computeCampaignAttributedMetrics,
   computeCampaignViewMetrics,
+  filterLineItemsByMembershipWindow,
   getCampaignBuyerOpenedStatus,
   groupLineItemsByParent,
   isEligibleCampaignEstimate,
   isEligibleCampaignOrder,
   rollupSkuMetrics,
   type CampaignEstimateRow,
+  type CampaignItemMembershipWindow,
   type CampaignOrderRow,
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
@@ -317,17 +319,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('campaigns')
-      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, created_by, created_at')
+      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, hero_image_url, created_by, created_at')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .single(),
+    // No deleted_at filter: point-in-time SKU attribution below needs every historical
+    // membership window, not just currently-active items.
     db
       .schema('app')
       .from('campaign_items')
-      .select('id, tenant_product_id, price_override, display_order, created_at')
+      .select('id, tenant_product_id, price_override, display_order, created_at, valid_from, deleted_at')
       .eq('campaign_id', id)
-      .is('deleted_at', null)
       .order('display_order', { ascending: true }),
     db
       .schema('app')
@@ -370,17 +373,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     status: CatalogStatus;
     share_token: string | null;
     message: string | null;
+    hero_image_url: string | null;
     created_by: string | null;
     created_at: string;
   };
 
-  const catalogItems = (itemsRes.data ?? []) as Array<{
+  const allCampaignItemRows = (itemsRes.data ?? []) as Array<{
     id: string;
     tenant_product_id: string;
     price_override: number | null;
     display_order: number | null;
     created_at: string;
+    valid_from: string;
+    deleted_at: string | null;
   }>;
+  // Display list stays current-membership-only, matching prior behavior.
+  const catalogItems = allCampaignItemRows.filter((item) => item.deleted_at === null);
+  const campaignItemWindowsByProduct = new Map<string, CampaignItemMembershipWindow[]>();
+  for (const item of allCampaignItemRows) {
+    const windows = campaignItemWindowsByProduct.get(item.tenant_product_id) ?? [];
+    windows.push({ valid_from: item.valid_from, deleted_at: item.deleted_at });
+    campaignItemWindowsByProduct.set(item.tenant_product_id, windows);
+  }
 
   const orders = (ordersRes.data ?? []) as CampaignOrderRow[];
 
@@ -459,7 +473,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ]),
   );
 
-  const tenantProductIds = catalogItems.map((item) => item.tenant_product_id);
+  // Broader than the current-membership catalogItems list: includes products that were part
+  // of this campaign at some point in the past, so their historical line items are still
+  // fetched and can be point-in-time attributed below.
+  const tenantProductIds = Array.from(campaignItemWindowsByProduct.keys());
   const orderIds = orders.map((order) => order.id);
   const eligibleOrders = orders.filter(isEligibleCampaignOrder);
   const eligibleEstimates = estimates.filter(isEligibleCampaignEstimate);
@@ -493,24 +510,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to load line items' }, { status: 500 });
   }
 
-  const orderItemsByParent = groupLineItemsByParent(
-    ((orderItemsRes.data ?? []) as Array<{
-      order_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>).map((item) => ({ ...item, parent_id: item.order_id })),
-  );
-  const estimateItemsByParent = groupLineItemsByParent(
-    ((estimateItemsRes.data ?? []) as Array<{
-      estimate_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
-  );
+  // Point-in-time attribution: a line item only counts toward this campaign if its product
+  // was actually a campaign member on the date the order/estimate was placed -- not just
+  // currently. Matches recordConversion's own date fallback (placed_at ?? created_at for
+  // orders; created_at for estimates) so the gating date lines up with the GMV timestamp.
+  const orderDateByParentId = new Map(orders.map((order) => [order.id, order.placed_at ?? order.created_at]));
+  const estimateDateByParentId = new Map(estimates.map((estimate) => [estimate.id, estimate.created_at]));
+
+  const rawOrderItems = ((orderItemsRes.data ?? []) as Array<{
+    order_id: string;
+    tenant_product_id: string;
+    qty: number | null;
+    line_total: number | null;
+    unit_price: number | null;
+  }>).map((item) => ({ ...item, parent_id: item.order_id }));
+  const rawEstimateItems = ((estimateItemsRes.data ?? []) as Array<{
+    estimate_id: string;
+    tenant_product_id: string;
+    qty: number | null;
+    line_total: number | null;
+    unit_price: number | null;
+  }>).map((item) => ({ ...item, parent_id: item.estimate_id }));
+
+  const attributedOrderItems = filterLineItemsByMembershipWindow(rawOrderItems, orderDateByParentId, campaignItemWindowsByProduct);
+  const attributedEstimateItems = filterLineItemsByMembershipWindow(rawEstimateItems, estimateDateByParentId, campaignItemWindowsByProduct);
+
+  const orderItemsByParent = groupLineItemsByParent(attributedOrderItems);
+  const estimateItemsByParent = groupLineItemsByParent(attributedEstimateItems);
 
   const channelOptions = {
     includeOrders: createFlags.create_sales_orders,
@@ -545,20 +571,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } = conversionMetrics;
 
   const skuMetricsByProduct = rollupSkuMetrics(
-    ((orderItemsRes.data ?? []) as Array<{
-      order_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>).map((item) => ({ ...item, parent_id: item.order_id })),
-    ((estimateItemsRes.data ?? []) as Array<{
-      estimate_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
+    attributedOrderItems,
+    attributedEstimateItems,
     channelValidOrderIds,
     channelValidEstimateIds,
   );
@@ -604,12 +618,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!previousCatalogRes.error && previousCatalogRes.data?.id) {
     const prevCampaignId = previousCatalogRes.data.id;
     const [prevItemsRes, prevOrdersRes, prevEstimatesRes] = await Promise.all([
+      // No deleted_at filter here either -- same point-in-time reasoning as the current period.
       db
         .schema('app')
         .from('campaign_items')
-        .select('tenant_product_id')
-        .eq('campaign_id', prevCampaignId)
-        .is('deleted_at', null),
+        .select('tenant_product_id, valid_from, deleted_at')
+        .eq('campaign_id', prevCampaignId),
       db
         .schema('app')
         .from('orders')
@@ -626,9 +640,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .is('deleted_at', null),
     ]);
 
-    const prevProductIds = ((prevItemsRes.data ?? []) as Array<{ tenant_product_id: string }>).map(
-      (row) => row.tenant_product_id,
-    );
+    const prevItemRows = (prevItemsRes.data ?? []) as Array<{
+      tenant_product_id: string;
+      valid_from: string;
+      deleted_at: string | null;
+    }>;
+    const prevWindowsByProduct = new Map<string, CampaignItemMembershipWindow[]>();
+    for (const row of prevItemRows) {
+      const windows = prevWindowsByProduct.get(row.tenant_product_id) ?? [];
+      windows.push({ valid_from: row.valid_from, deleted_at: row.deleted_at });
+      prevWindowsByProduct.set(row.tenant_product_id, windows);
+    }
+    const prevProductIds = Array.from(prevWindowsByProduct.keys());
     const prevOrders = ((prevOrdersRes.data ?? []) as CampaignOrderRow[]) ?? [];
     const prevEstimates = ((prevEstimatesRes.data ?? []) as CampaignEstimateRow[]) ?? [];
     const prevEligibleOrders = prevOrders.filter(isEligibleCampaignOrder);
@@ -657,26 +680,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ]);
 
     if (!prevOrderItemsRes.error && !prevEstimateItemsRes.error) {
+      const prevOrderDateByParentId = new Map(prevOrders.map((order) => [order.id, order.placed_at ?? order.created_at]));
+      const prevEstimateDateByParentId = new Map(prevEstimates.map((estimate) => [estimate.id, estimate.created_at]));
+      const prevRawOrderItems = ((prevOrderItemsRes.data ?? []) as Array<{
+        order_id: string;
+        tenant_product_id: string;
+        qty: number | null;
+        line_total: number | null;
+        unit_price: number | null;
+      }>).map((item) => ({ ...item, parent_id: item.order_id }));
+      const prevRawEstimateItems = ((prevEstimateItemsRes.data ?? []) as Array<{
+        estimate_id: string;
+        tenant_product_id: string;
+        qty: number | null;
+        line_total: number | null;
+        unit_price: number | null;
+      }>).map((item) => ({ ...item, parent_id: item.estimate_id }));
+
       const prevMetrics = computeCampaignAttributedMetrics(
         prevOrders,
         prevEstimates,
         groupLineItemsByParent(
-          ((prevOrderItemsRes.data ?? []) as Array<{
-            order_id: string;
-            tenant_product_id: string;
-            qty: number | null;
-            line_total: number | null;
-            unit_price: number | null;
-          }>).map((item) => ({ ...item, parent_id: item.order_id })),
+          filterLineItemsByMembershipWindow(prevRawOrderItems, prevOrderDateByParentId, prevWindowsByProduct),
         ),
         groupLineItemsByParent(
-          ((prevEstimateItemsRes.data ?? []) as Array<{
-            estimate_id: string;
-            tenant_product_id: string;
-            qty: number | null;
-            line_total: number | null;
-            unit_price: number | null;
-          }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
+          filterLineItemsByMembershipWindow(prevRawEstimateItems, prevEstimateDateByParentId, prevWindowsByProduct),
         ),
         channelOptions,
       );
@@ -818,6 +846,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       valid_from_label: formatDate(catalog.valid_from),
       valid_until_label: formatDate(catalog.valid_to),
       valid_until_iso: catalog.valid_to,
+      hero_image_url: catalog.hero_image_url,
       published_by: publishedBy,
       share_token: catalog.share_token,
       share_url: catalog.share_token ? buildBuyerCatalogUrl(request.nextUrl.origin, catalog.share_token) : null,
@@ -1342,6 +1371,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       },
     };
 
+    const buyerTargetMode = payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual');
+    const productMembershipMode = payload.product_membership_mode ?? 'manual';
+    const pricingSource = payload.pricing_mode === 'pricelist' ? 'pricelist' : 'individual_prices';
+    const campaignPriceListId = payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null;
+
     const { data: updatedCatalog, error: updateCatalogError } = await db
       .schema('app')
       .from('campaigns')
@@ -1353,6 +1387,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
         message: payload.buyer_note?.trim() || null,
         hero_image_url: payload.hero_image_url?.trim() || null,
+        buyer_target_mode: buyerTargetMode,
+        buyer_filter_rules: buyerTargetMode === 'automatic' ? (payload.buyer_rules ?? null) : null,
+        product_membership_mode: productMembershipMode,
+        dynamic_rules: productMembershipMode === 'automatic' ? (payload.product_rules ?? null) : null,
+        is_dynamic: productMembershipMode === 'automatic',
+        pricing_source: pricingSource,
+        price_list_id: campaignPriceListId,
         updated_by: claims.sub,
       })
       .eq('id', id)
@@ -1363,6 +1404,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (updateCatalogError || !updatedCatalog) {
       return NextResponse.json({ error: 'Failed to update catalog' }, { status: 500 });
+    }
+
+    if (buyerTargetMode === 'automatic' || productMembershipMode === 'automatic') {
+      // Mode switch or rule edit -- recompute now (requirement 4).
+      const refreshCalls: PromiseLike<unknown>[] = [];
+      if (buyerTargetMode === 'automatic') {
+        refreshCalls.push(db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: id }));
+      }
+      if (productMembershipMode === 'automatic') {
+        refreshCalls.push(db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: id }));
+      }
+      await Promise.all(refreshCalls);
     }
 
     revalidateSellerDashboardCache(claims.tenant_id);
