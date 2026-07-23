@@ -125,7 +125,7 @@ describe('buildBroadcastMessageQueue', () => {
     expect(queue[0]?.sendPayload.button_params).toBeUndefined();
   });
 
-  it('requires visit_date and visit_time for beat_route_buyer', async () => {
+  it('requires visit_date and visit_window for beat_route_buyer', async () => {
     const template = {
       id: 'template-beat',
       meta_template_name: 'beat_route_buyer',
@@ -137,7 +137,7 @@ describe('buildBroadcastMessageQueue', () => {
         { key: 'buyer_name' },
         { key: 'seller_name' },
         { key: 'visit_date' },
-        { key: 'visit_time' },
+        { key: 'visit_window' },
         { key: 'seller_phone_number' },
       ],
       button_config: { type: 'url' as const, url_template: 'https://app.useyukti.in/buy/home' },
@@ -152,13 +152,13 @@ describe('buildBroadcastMessageQueue', () => {
       buyerIds: ['buyer-1'],
       variableBindings: { visit_date: '26 July' },
       template,
-    })).rejects.toThrow('Missing required broadcast input: visit_time');
+    })).rejects.toThrow('Missing required broadcast input: visit_window');
 
     const queue = await buildBroadcastMessageQueue(createMockDb(), {
       tenantId: 'tenant-1',
       whatsappBroadcastId: 'broadcast-1',
       buyerIds: ['buyer-1'],
-      variableBindings: { visit_date: '26 July', visit_time: '3:30PM-5:30PM' },
+      variableBindings: { visit_date: '26 July', visit_window: '3:30PM-5:30PM' },
       template,
     });
 
@@ -166,7 +166,7 @@ describe('buildBroadcastMessageQueue', () => {
       { text: 'Catalog', parameter_name: 'buyer_name' },
       { text: 'Wine Yard Technologies', parameter_name: 'seller_name' },
       { text: '26 July', parameter_name: 'visit_date' },
-      { text: '3:30PM-5:30PM', parameter_name: 'visit_time' },
+      { text: '3:30PM-5:30PM', parameter_name: 'visit_window' },
       { text: '9490744841', parameter_name: 'seller_phone_number' },
     ]);
     expect(queue[0]?.sendPayload.button_params).toBeUndefined();

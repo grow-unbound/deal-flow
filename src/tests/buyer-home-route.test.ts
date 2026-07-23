@@ -315,7 +315,6 @@ describe('buyer home route', () => {
     expect(body.greeting_name).toBe('Rajan');
     expect(body.summary_card.invoice_count_ytd).toBe(3);
     expect(body.summary_card.gmv_ytd).toBe(45000);
-    expect(body.summary_card.trend_vs_last_month_pct).toBe(25);
     expect(body.open_orders_count).toBe(1);
     expect(body.dues_card.outstanding_dues).toBe(8000);
     expect(body.dues_card.open_invoice_count).toBe(1);

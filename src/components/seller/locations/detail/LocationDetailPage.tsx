@@ -165,12 +165,6 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     {
       label: 'Invoiced sales 90D',
       value: formatNumberValue(meta.gmv_mtd, 'CURRENCY_THRESHOLD'),
-      sub: (
-        <span className={meta.growth_pct >= 0 ? 'up' : 'down'}>
-          {meta.growth_pct >= 0 ? '↑ +' : '↓ '}
-          {Math.abs(meta.growth_pct)}% vs last period
-        </span>
-      ),
     },
     {
       label: 'Overdue amount',

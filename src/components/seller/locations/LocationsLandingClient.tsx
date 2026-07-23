@@ -266,9 +266,9 @@ function LocationsLandingContent({
               },
               {
                 label: 'Overdue amount',
-                value: formatNumberValue(kpis.outstanding_dues_total, 'CURRENCY_THRESHOLD'),
-                sub: `across ${kpis.dues_location_count} locations`,
-                tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
+                value: formatNumberValue(kpis.overdue_dues_total, 'CURRENCY_THRESHOLD'),
+                sub: `across ${kpis.overdue_location_count} locations`,
+                tone: kpis.overdue_dues_total > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Customers who bought',

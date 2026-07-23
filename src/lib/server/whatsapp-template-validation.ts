@@ -96,7 +96,7 @@ const TRANSACTIONAL_TEMPLATE_VARIABLES: Record<string, string[]> = {
     'buyer_name',
     'seller_name',
     'visit_date',
-    'visit_time',
+    'visit_window',
     'seller_phone_number',
   ],
   new_stock_buyer: [

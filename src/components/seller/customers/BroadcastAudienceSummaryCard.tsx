@@ -77,7 +77,7 @@ export function BroadcastAudienceSummaryCard({
         <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
           <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Template</p>
           <p className="mt-1 font-medium text-cream-900">
-            {selectedTemplate ? formatWhatsAppTemplateLabel(selectedTemplate.meta_template_name) : 'Not selected'}
+            {selectedTemplate ? formatWhatsAppTemplateLabel(selectedTemplate) : 'Not selected'}
           </p>
         </div>
         <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">

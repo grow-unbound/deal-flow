@@ -42,8 +42,6 @@ export interface CategoryTableRow {
   low_stock_sku_count: number;
   brand_count: number;
   gmv_mtd: number;
-  gmv_prev: number;
-  growth_pct: number;
   units_mtd: number;
   buyers_count: number;
   avg_days_cover: number | null;

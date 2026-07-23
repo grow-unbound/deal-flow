@@ -45,6 +45,8 @@ export interface LocationsLandingKpis {
   total_invoice_count: number;
   outstanding_dues_total: number;
   dues_location_count: number;
+  overdue_dues_total: number;
+  overdue_location_count: number;
   open_estimate_count: number;
   total_estimate_count: number;
   conversion_pct: number;
@@ -63,8 +65,6 @@ export interface LocationsLandingRow {
   phone_number: string | null;
   initials: string;
   gmv_mtd: number;
-  gmv_prev: number;
-  growth_pct: number;
   active_buyers: number;
   outstanding_dues: number;
   sku_count: number;
@@ -217,7 +217,6 @@ export interface LocationDetailResponse {
   associated_users: Array<{ email: string; user_name: string | null; user_id: string | null }>;
   meta_strip: {
     gmv_mtd: number;
-    growth_pct: number;
     outstanding_dues: number;
     overdue_amount: number;
     invoice_count: number;

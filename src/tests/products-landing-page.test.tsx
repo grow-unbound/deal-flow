@@ -134,13 +134,13 @@ describe('products landing integration', () => {
             {
               products: alphaOnly
                 ? [
-                    { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
+                    { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30, is_active: true },
                   ]
                 : inactiveOnly
                   ? []
                   : [
-                      { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
-                      { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', on_hand: 5, days_cover: 12 },
+                      { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30, is_active: true },
+                      { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', on_hand: 5, days_cover: 12, is_active: false },
                     ],
               kpis: {
                 active_skus: 2,
@@ -166,8 +166,12 @@ describe('products landing integration', () => {
     render(<ProductsLandingClient initialData={null} />);
 
     expect(screen.getByText('2 active products across 2 brands and 1 categories.')).toBeInTheDocument();
+    expect(screen.getByText('Stock status')).toBeInTheDocument();
     expect(screen.getByText('Alpha Water')).toBeInTheDocument();
     expect(screen.getByText('Beta Juice')).toBeInTheDocument();
+    expect(screen.getByText('Status')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Brand: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));

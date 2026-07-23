@@ -212,7 +212,7 @@ function EstimatesLandingContent({
     if (!kpis) {
       return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
     }
-    return `${kpis.total_estimates_this_period} estimates in ${horizonLabel.toLowerCase()}.`;
+    return `${kpis.total_estimates_this_period} estimates in the trailing 90 days.`;
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
 
   const pulseAggregates = summaryData?.pulse_aggregates;
@@ -279,9 +279,9 @@ function EstimatesLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Estimate value · MTD',
+                  label: 'Estimate value · 90D',
                   value: formatNumberValue(kpis?.total_gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates`,
+                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates in trailing 90 days`,
                 },
                 {
                   label: 'Open estimates',

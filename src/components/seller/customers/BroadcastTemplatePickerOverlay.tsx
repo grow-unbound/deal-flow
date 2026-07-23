@@ -54,7 +54,7 @@ export function BroadcastTemplatePickerOverlay({
         template.use_case,
         template.meta_category,
         template.body,
-        template.meta_template_name,
+        template.display_name,
         ...template.variables.map((variable) => variable.key),
       ]
         .filter(Boolean)
@@ -86,7 +86,7 @@ export function BroadcastTemplatePickerOverlay({
           <MessageCircle size={14} className="shrink-0 text-cream-700" />
           <div className="min-w-0">
             <p className="truncate text-base font-medium text-cream-900">
-              {selectedTemplate ? formatWhatsAppTemplateLabel(selectedTemplate.meta_template_name) : 'Select template'}
+              {selectedTemplate ? formatWhatsAppTemplateLabel(selectedTemplate) : 'Select template'}
             </p>
             <p className="mt-0.5 text-sm text-cream-700">{triggerDescription}</p>
           </div>
@@ -162,7 +162,7 @@ export function BroadcastTemplatePickerOverlay({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="truncate text-base font-medium text-cream-900">
-                            {formatWhatsAppTemplateLabel(template.meta_template_name)}
+                            {formatWhatsAppTemplateLabel(template)}
                           </p>
                           <Badge variant={template.meta_category === 'marketing' ? 'ember' : 'teal'}>
                             {template.meta_category}
@@ -192,7 +192,7 @@ export function BroadcastTemplatePickerOverlay({
       >
         <SheetContent side="right" className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-white">
           <SheetHeader className="pr-12">
-            <SheetTitle>{draftTemplate ? formatWhatsAppTemplateLabel(draftTemplate.meta_template_name) : 'Template details'}</SheetTitle>
+            <SheetTitle>{draftTemplate ? formatWhatsAppTemplateLabel(draftTemplate) : 'Template details'}</SheetTitle>
             {draftTemplate ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge variant={draftTemplate.meta_category === 'marketing' ? 'ember' : 'teal'}>

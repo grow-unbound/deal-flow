@@ -202,3 +202,22 @@ export function parseNumberInput(raw: string, kind: NumberFormatKind): number | 
       return null;
   }
 }
+
+const asOfTimeFormatter = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/**
+ * Freshness stamp for snapshot-backed KPI cards -- "as of HH:MM" in IST.
+ * Returns null when there's no valid timestamp so callers can omit the
+ * stamp entirely rather than render a misleading "as of --:--".
+ */
+export function formatAsOfLabel(isoTimestamp: string | null | undefined): string | null {
+  if (!isoTimestamp) return null;
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return `as of ${asOfTimeFormatter.format(date)} IST`;
+}

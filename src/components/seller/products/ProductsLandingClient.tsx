@@ -399,7 +399,7 @@ function ProductsLandingContent({
       )}
 
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={9} tableMinWidth={1560} />
+        <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
       ) : (
         <LandingTable
         showEmptyState={displayRows.length === 0 && !isLoading}
@@ -426,14 +426,15 @@ function ProductsLandingContent({
           { label: 'Product', width: 320, minWidth: 320, maxWidth: 420, className: 'px-5' },
           { label: 'Brand', width: 200, minWidth: 200, maxWidth: 260, className: 'px-5' },
           { label: 'Category', width: 150, minWidth: 150, maxWidth: 220, className: 'px-5' },
+          { label: 'Status', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
           { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: `Sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: 'Stock status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
-        tableMinWidth={1640}
+        tableMinWidth={1800}
         >
           {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
@@ -478,6 +479,9 @@ function ProductsLandingContent({
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <span className="text-sm text-cream-900">{toLabelCase(category)}</span>
+              </td>
+              <td className="px-5 py-3.5 text-base text-cream-900">
+                <StatusTag tone={product.is_active ? 'success' : 'neutral'} label={product.is_active ? 'Active' : 'Inactive'} />
               </td>
               <td className="px-5 py-3.5 text-right">
                 <div className="flex flex-col items-end">

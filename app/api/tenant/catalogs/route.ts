@@ -1131,6 +1131,8 @@ export async function POST(request: NextRequest) {
   const composerPayload = isSimpleForm ? null : composerParsed!.data;
 
   if (isSimpleForm) {
+    const buyerTargetMode = payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual');
+    const productMembershipMode = payload.product_membership_mode ?? 'manual';
     if (payload.target_mode === 'customer_group') {
       const { data: cohort, error: cohortError } = await db
         .schema('app')
@@ -1148,6 +1150,18 @@ export async function POST(request: NextRequest) {
       const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
       if (!priceListOk) {
         return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+      }
+    }
+    if (buyerTargetMode === 'manual') {
+      const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
+      if (validBuyerIds.size !== payload.buyer_ids.length) {
+        return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+      }
+    }
+    if (productMembershipMode === 'manual') {
+      const validProductIds = await ensureTenantProducts(db, claims.tenant_id, payload.selected_product_ids);
+      if (validProductIds.size !== payload.selected_product_ids.length) {
+        return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
       }
     }
   } else {
@@ -1193,7 +1207,9 @@ export async function POST(request: NextRequest) {
         ...buildCatalogScopeValue({
           scopeType: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
           cohortId: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
-          buyerIds: [],
+          buyerIds: (payload.buyer_target_mode ?? (payload.target_mode === 'customer_group' ? 'customer_group' : 'manual')) === 'manual'
+            ? payload.buyer_ids
+            : [],
           filters: { brand_names: [], category_names: [], availability: 'show_everything' },
           tagOverrides: {},
           priceSource: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
@@ -1319,6 +1335,25 @@ export async function POST(request: NextRequest) {
 
     if (itemsError) {
       console.error('[POST /api/tenant/catalogs] items error:', itemsError);
+      return NextResponse.json({ error: 'Failed to create catalog items' }, { status: 500 });
+    }
+  } else if (isSimpleForm && productMembershipMode === 'manual' && payload.selected_product_ids.length > 0) {
+    const { error: itemsError } = await db
+      .schema('app')
+      .from('campaign_items')
+      .insert(
+        payload.selected_product_ids.map((tenantProductId: string, index: number) => ({
+          campaign_id: insertedCatalog.id,
+          tenant_product_id: tenantProductId,
+          display_order: index,
+          price_override: null,
+          created_by: claims.sub,
+          updated_by: claims.sub,
+        })),
+      );
+
+    if (itemsError) {
+      console.error('[POST /api/tenant/catalogs] simple items error:', itemsError);
       return NextResponse.json({ error: 'Failed to create catalog items' }, { status: 500 });
     }
   }

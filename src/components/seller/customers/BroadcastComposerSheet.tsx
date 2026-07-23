@@ -38,8 +38,8 @@ const BEAT_ROUTE_FIELD_META: Record<string, { label: string; placeholder: string
     placeholder: '26 July',
     helper: 'Shown in the message as the visit date',
   },
-  visit_time: {
-    label: 'Visit time',
+  visit_window: {
+    label: 'Visit time window',
     placeholder: '3:30PM–5:30PM',
     helper: 'Time window for the visit',
   },
@@ -57,7 +57,7 @@ function combineScheduledAt(dateValue: string, timeValue: string) {
 
 function editableVariables(template: WhatsAppTemplateOption | null) {
   if (!template || template.meta_template_name !== BEAT_ROUTE_TEMPLATE) return [];
-  return template.variables.filter((variable) => variable.key === 'visit_date' || variable.key === 'visit_time');
+  return template.variables.filter((variable) => variable.key === 'visit_date' || variable.key === 'visit_window');
 }
 
 export function BroadcastComposerSheet({
@@ -112,7 +112,7 @@ export function BroadcastComposerSheet({
   const manualVariables = editableVariables(selectedTemplate);
   const isBeatRouteTemplate = selectedTemplate?.meta_template_name === BEAT_ROUTE_TEMPLATE;
   const beatRouteManualComplete = !isBeatRouteTemplate
-    || (Boolean(variableBindings.visit_date?.trim()) && Boolean(variableBindings.visit_time?.trim()));
+    || (Boolean(variableBindings.visit_date?.trim()) && Boolean(variableBindings.visit_window?.trim()));
   const scheduledFor = combineScheduledAt(scheduledDate, scheduledTime);
   const canPreview = Boolean(selectedTemplate)
     && !templateBlockedReason
@@ -171,7 +171,7 @@ export function BroadcastComposerSheet({
       return next;
     });
     if (template && !broadcastName.trim()) {
-      setBroadcastName(`${formatWhatsAppTemplateLabel(template.meta_template_name)} broadcast`);
+      setBroadcastName(`${formatWhatsAppTemplateLabel(template)} broadcast`);
     }
     if (!template || !CAMPAIGN_TEMPLATE_USE_CASES.has(template.use_case)) {
       setLinkedCampaignId(null);
@@ -187,7 +187,7 @@ export function BroadcastComposerSheet({
 
     createBroadcast.mutate(
       {
-        name: broadcastName.trim() || `${formatWhatsAppTemplateLabel(selectedTemplate.meta_template_name)} broadcast`,
+        name: broadcastName.trim() || `${formatWhatsAppTemplateLabel(selectedTemplate)} broadcast`,
         whatsapp_template_id: selectedTemplate.id,
         use_case: selectedTemplate.use_case,
         target_type: targetType,
@@ -286,7 +286,7 @@ export function BroadcastComposerSheet({
                   value={template.id}
                   disabled={template.broadcast_supported === false}
                 >
-                  {formatWhatsAppTemplateLabel(template.meta_template_name)}
+                  {formatWhatsAppTemplateLabel(template)}
                   {template.broadcast_supported === false && template.broadcast_support_reason
                     ? ` — ${template.broadcast_support_reason}`
                     : ''}

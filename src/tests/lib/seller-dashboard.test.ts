@@ -271,7 +271,7 @@ describe('seller dashboard aggregation', () => {
     const period = getSellerLandingPeriodMeta('month', new Date('2026-07-10T00:00:00.000Z'));
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_admin', sub: 'admin-1', location_ids: null }, period);
 
-    expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · This month');
+    expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · Last 90 days');
     expect(dashboard.admin?.metrics[0]?.value).toBe(1500);
     expect(dashboard.admin?.metrics[1]?.value).toBe(800);
     expect(dashboard.admin?.metrics[2]?.value).toBe(1270);

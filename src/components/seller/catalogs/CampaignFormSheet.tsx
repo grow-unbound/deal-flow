@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { Check } from 'lucide-react';
 import {
   DiscardChangesDialog,
   FormBlock,
@@ -18,32 +19,28 @@ import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { StackedPickerField, type PickerItem } from '@/components/ui/stacked-picker-field';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { CampaignFormPayloadSchema, type CampaignFormPayload } from '@/lib/zod';
 import { isoDateString } from '@/lib/date-utils';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
-import { useSaveSimpleCatalog } from '@/hooks/useCatalogs';
+import { useCatalogComposerBuyerPicker, useCatalogComposerProducts, useSaveSimpleCatalog } from '@/hooks/useCatalogs';
 import { usePriceLists } from '@/hooks/usePriceLists';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { uploadEntityFile } from '@/lib/upload-client';
-import { Switch } from '@/components/ui/switch';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
 import {
   MembershipModeSwitchDialog,
   type MembershipModeSwitchDirection,
 } from '@/components/seller/shared/MembershipModeSwitchDialog';
-
-const BUYER_TARGET_MODE_OPTIONS = [
-  { value: 'customer_group', label: 'Customer group' },
-  { value: 'manual', label: 'Manual' },
-  { value: 'automatic', label: 'Automatic' },
-];
-
-const PRODUCT_MEMBERSHIP_MODE_OPTIONS = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'automatic', label: 'Automatic' },
-];
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 interface CampaignFormSheetProps {
   open: boolean;
@@ -59,6 +56,10 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
   const [stagedHeroFile, setStagedHeroFile] = useState<File | null>(null);
   const { data: cohortOptions = [] } = useTenantCohortOptions(true);
   const { data: priceListData } = usePriceLists();
+  const [buyerPickerOpen, setBuyerPickerOpen] = useState(false);
+  const [buyerSearch, setBuyerSearch] = useState('');
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
 
   const cohortItems = useMemo<PickerItem[]>(
     () => cohortOptions.map((cohort) => ({
@@ -94,7 +95,9 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
       target_mode: 'customer_group',
       pricing_mode: 'individual_prices',
       buyer_target_mode: 'customer_group',
+      buyer_ids: [],
       product_membership_mode: 'manual',
+      selected_product_ids: [],
       ...defaultValues,
     },
   });
@@ -111,7 +114,9 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
       target_mode: 'customer_group',
       pricing_mode: 'individual_prices',
       buyer_target_mode: 'customer_group',
+      buyer_ids: [],
       product_membership_mode: 'manual',
+      selected_product_ids: [],
       ...defaultValues,
     });
     setHeroUrls(defaultValues?.hero_image_url ? [defaultValues.hero_image_url] : []);
@@ -148,9 +153,55 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
 
   const pricingMode = form.watch('pricing_mode');
   const buyerTargetMode = form.watch('buyer_target_mode') ?? 'customer_group';
+  const selectedBuyerIds = form.watch('buyer_ids') ?? [];
   const productMembershipMode = form.watch('product_membership_mode') ?? 'manual';
+  const selectedProductIds = form.watch('selected_product_ids') ?? [];
   const initialBuyerTargetMode = defaultValues?.buyer_target_mode ?? 'customer_group';
   const initialProductMembershipMode = defaultValues?.product_membership_mode ?? 'manual';
+  const buyerPickerQuery = useCatalogComposerBuyerPicker({
+    query: buyerSearch,
+    selectedIds: selectedBuyerIds,
+    enabled: buyerPickerOpen && buyerTargetMode === 'manual',
+  });
+  const buyerRows = useMemo(
+    () => buyerPickerQuery.data?.pages.flatMap((page) => page.buyers) ?? [],
+    [buyerPickerQuery.data?.pages],
+  );
+  const buyerMap = useMemo(() => new Map(buyerRows.map((buyer) => [buyer.id, buyer])), [buyerRows]);
+  const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
+  const selectedBuyerSummary = useMemo(() => {
+    if (selectedBuyerIds.length === 0) return 'Select buyers';
+    const first = buyerMap.get(selectedBuyerIds[0]);
+    return `${first?.business_name ?? 'Selected buyer'}${selectedBuyerIds.length > 1 ? ` +${selectedBuyerIds.length - 1} more` : ''}`;
+  }, [buyerMap, selectedBuyerIds]);
+  const productQuery = useCatalogComposerProducts({ query: productSearch, limit: 30 }, productPickerOpen && productMembershipMode === 'manual');
+  const productRows = useMemo(
+    () => productQuery.data?.pages.flatMap((page) => page.products) ?? [],
+    [productQuery.data?.pages],
+  );
+  const productMap = useMemo(() => new Map(productRows.map((product) => [product.id, product])), [productRows]);
+  const selectedProductSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
+  const selectedProductSummary = useMemo(() => {
+    if (selectedProductIds.length === 0) return 'Select products';
+    const first = productMap.get(selectedProductIds[0]);
+    return `${first?.display_name ?? 'Selected product'}${selectedProductIds.length > 1 ? ` +${selectedProductIds.length - 1} more` : ''}`;
+  }, [productMap, selectedProductIds]);
+  const { sentinelRef: buyerSentinelRef } = useInfiniteScroll({
+    hasMore: buyerPickerQuery.hasNextPage ?? false,
+    isLoading: buyerPickerQuery.isFetchingNextPage,
+    rootMargin: '240px',
+    onLoadMore: () => {
+      void buyerPickerQuery.fetchNextPage();
+    },
+  });
+  const { sentinelRef: productSentinelRef } = useInfiniteScroll({
+    hasMore: productQuery.hasNextPage ?? false,
+    isLoading: productQuery.isFetchingNextPage,
+    rootMargin: '240px',
+    onLoadMore: () => {
+      void productQuery.fetchNextPage();
+    },
+  });
 
   const requestBuyerModeChange = (nextMode: 'manual' | 'automatic' | 'customer_group') => {
     if (mode === 'edit' && nextMode !== initialBuyerTargetMode) {
@@ -208,7 +259,7 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                 onOpenChange(false);
               })}
             >
-              <FormBlock>
+              <FormBlock title="Details">
                 <FormSectionGrid columns={1}>
                   <FormField
                     control={form.control}
@@ -335,18 +386,106 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                     )}
                   />
 
-                  <div className="space-y-2">
+<div className="space-y-2">
+                    <FormField
+                      control={form.control}
+                      name="pricing_mode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Pricing source</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={(value) => form.setValue('pricing_mode', value as 'pricelist' | 'individual_prices', { shouldDirty: true })}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select pricing source" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="individual_prices">Campaign-specific pricing</SelectItem>
+                              <SelectItem value="pricelist">Use an existing pricelist</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-sm text-cream-600">
+                            {pricingMode === 'pricelist'
+                              ? 'Apply one saved pricelist to this campaign.'
+                              : 'Use campaign-specific product pricing and overrides.'}
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {pricingMode === 'pricelist' ? (
+                      <FormField
+                        control={form.control}
+                        name="price_list_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Pricelist</FormLabel>
+                            <FormControl>
+                              <StackedPickerField
+                                title="Pick a pricelist"
+                                items={priceListItems}
+                                mode="stacked"
+                                selectedId={field.value ?? null}
+                                onSelect={field.onChange}
+                                searchPlaceholder="Search pricelists…"
+                                emptyTitle="Select pricelist"
+                                emptyDescription="Choose which pricelist powers this campaign"
+                                nullOptionLabel="No pricelist"
+                                nullOptionDescription="Manage campaign-specific pricing from the detail tabs instead."
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
+                      <p className="text-sm text-cream-600">Select products and set individual prices from the campaign detail tabs after this campaign is saved.</p>
+                    )}
+                  </div>
+
+
+                </FormSectionGrid>
+              </FormBlock>
+
+              <FormBlock title="Targeting">
+                <FormField
+                  control={form.control}
+                  name="buyer_target_mode"
+                  render={({ field }) => (
                     <FormItem>
                       <FormLabel>Buyer targeting</FormLabel>
-                      <SegmentedControl
-                        aria-label="Buyer targeting mode"
-                        options={BUYER_TARGET_MODE_OPTIONS}
-                        allowClear={false}
-                        value={buyerTargetMode}
-                        onChange={(value) => requestBuyerModeChange(value as 'manual' | 'automatic' | 'customer_group')}
-                      />
+                      <Select
+                        value={field.value ?? buyerTargetMode}
+                        onValueChange={(value) => requestBuyerModeChange(value as 'manual' | 'automatic' | 'customer_group')}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select buyer targeting mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="customer_group">Customer group</SelectItem>
+                          <SelectItem value="manual">Manual buyer selection</SelectItem>
+                          <SelectItem value="automatic">Automatic filters</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-cream-600">
+                        {buyerTargetMode === 'customer_group'
+                          ? 'Target one saved customer group.'
+                          : buyerTargetMode === 'automatic'
+                            ? 'Target buyers who match the filters below.'
+                            : 'Pick the exact buyers that should receive this campaign.'}
+                      </p>
+                      <FormMessage />
                     </FormItem>
+                  )}
+                />
 
+                <div className="space-y-2">
                     {buyerTargetMode === 'customer_group' ? (
                       <FormField
                         control={form.control}
@@ -388,64 +527,143 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                         )}
                       />
                     ) : (
-                      <p className="text-sm text-cream-600">Select and manage individual buyers from Campaign Details {'->'} Buyers after this campaign is saved.</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-medium text-cream-900">Use pricelist</p>
-                        <p className="text-sm text-cream-600">Turn off to manage individual campaign prices in Campaign Details.</p>
-                      </div>
-                      <Switch
-                        checked={pricingMode === 'pricelist'}
-                        onCheckedChange={(checked) => form.setValue('pricing_mode', checked ? 'pricelist' : 'individual_prices', { shouldDirty: true })}
-                        className={pricingMode === 'pricelist' ? 'bg-ember-300' : 'bg-cream-300'}
-                      />
-                    </div>
-
-                    {pricingMode === 'pricelist' ? (
                       <FormField
                         control={form.control}
-                        name="price_list_id"
-                        render={({ field }) => (
+                        name="buyer_ids"
+                        render={() => (
                           <FormItem>
-                            <FormLabel>Pricelist</FormLabel>
-                            <FormControl>
-                              <StackedPickerField
-                                title="Pick a pricelist"
-                                items={priceListItems}
-                                mode="stacked"
-                                selectedId={field.value ?? null}
-                                onSelect={field.onChange}
-                                searchPlaceholder="Search pricelists…"
-                                emptyTitle="Select pricelist"
-                                emptyDescription="Choose which pricelist powers this campaign"
-                                nullOptionLabel="No pricelist"
-                                nullOptionDescription="Manage campaign-specific pricing from the detail tabs instead."
-                              />
-                            </FormControl>
+                            <FormLabel>Buyer selection</FormLabel>
+                            <SearchOverlayPicker
+                              open={buyerPickerOpen}
+                              onOpenChange={(next) => {
+                                setBuyerPickerOpen(next);
+                                if (!next) setBuyerSearch('');
+                              }}
+                              title="Select buyers"
+                              eyebrow="Growth"
+                              description="Choose the buyers that should receive this campaign."
+                              triggerTitle={selectedBuyerSummary}
+                              triggerDescription={selectedBuyerIds.length > 0 ? `${selectedBuyerIds.length} buyers selected` : 'Search and add buyers'}
+                              searchValue={buyerSearch}
+                              onSearchValueChange={setBuyerSearch}
+                              searchPlaceholder="Search buyers…"
+                              footer={(
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button type="button" variant="ghost" onClick={() => setBuyerPickerOpen(false)}>
+                                    Cancel
+                                  </Button>
+                                  <Button type="button" onClick={() => setBuyerPickerOpen(false)}>
+                                    <Check className="h-3.5 w-3.5" />
+                                    {`Select ${selectedBuyerIds.length} buyers`}
+                                  </Button>
+                                </div>
+                              )}
+                            >
+                              {selectedBuyerIds.length > 0 ? (
+                                <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected buyers</p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {selectedBuyerIds.map((buyerId) => {
+                                      const buyer = buyerMap.get(buyerId);
+                                      return (
+                                        <button
+                                          key={buyerId}
+                                          type="button"
+                                          onClick={() => form.setValue('buyer_ids', selectedBuyerIds.filter((id) => id !== buyerId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                                          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
+                                        >
+                                          <span>{buyer?.business_name ?? 'Selected buyer'}</span>
+                                          <span aria-hidden="true" className="text-teal-700">×</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {buyerPickerQuery.isFetching && buyerRows.length === 0 ? (
+                                <div className="space-y-1">
+                                  {Array.from({ length: 4 }).map((_, idx) => (
+                                    <div key={idx} className="h-12 animate-pulse rounded-[8px] bg-cream-100" />
+                                  ))}
+                                </div>
+                              ) : buyerRows.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {buyerRows.map((buyer) => {
+                                    const selected = selectedBuyerSet.has(buyer.id);
+                                    return (
+                                      <button
+                                        key={buyer.id}
+                                        type="button"
+                                        onClick={() => form.setValue(
+                                          'buyer_ids',
+                                          selected
+                                            ? selectedBuyerIds.filter((id) => id !== buyer.id)
+                                            : [...selectedBuyerIds, buyer.id],
+                                          { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                        )}
+                                        className={[
+                                          'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                          selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                        ].join(' ')}
+                                      >
+                                        <div className="min-w-0">
+                                          <p className="text-base font-medium text-cream-900">{buyer.business_name}</p>
+                                          <p className="mt-0.5 text-sm text-cream-700">
+                                            {buyer.city ?? 'Unknown city'}
+                                            {` · ₹${Math.round(buyer.spend_mtd).toLocaleString('en-IN')} spend MTD`}
+                                          </p>
+                                        </div>
+                                        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                          {selected ? 'Selected' : 'Add'}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                  {buyerPickerQuery.hasNextPage ? <div ref={buyerSentinelRef} className="h-4" /> : null}
+                                </div>
+                              ) : (
+                                <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                                  No buyers match this search.
+                                </p>
+                              )}
+                            </SearchOverlayPicker>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    ) : (
-                      <p className="text-sm text-cream-600">Select products and set individual prices from the campaign detail tabs after this campaign is saved.</p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <FormItem>
-                      <FormLabel>Product membership</FormLabel>
-                      <SegmentedControl
-                        aria-label="Product membership mode"
-                        options={PRODUCT_MEMBERSHIP_MODE_OPTIONS}
-                        allowClear={false}
-                        value={productMembershipMode}
-                        onChange={(value) => requestProductModeChange(value as 'manual' | 'automatic')}
-                      />
-                    </FormItem>
+                    <FormField
+                      control={form.control}
+                      name="product_membership_mode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Product selection mode</FormLabel>
+                          <Select
+                            value={field.value ?? productMembershipMode}
+                            onValueChange={(value) => requestProductModeChange(value as 'manual' | 'automatic')}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select product selection mode" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="manual">Manual selection</SelectItem>
+                              <SelectItem value="automatic">Automatic filters</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-sm text-cream-600">
+                            {productMembershipMode === 'automatic'
+                              ? 'Products are computed from the filters below and kept up to date automatically.'
+                              : 'Pick the exact products that should appear in this campaign.'}
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                     {productMembershipMode === 'automatic' ? (
                       <FormField
@@ -463,10 +681,112 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                         )}
                       />
                     ) : (
-                      <p className="text-sm text-cream-600">Select products from the campaign composer after this campaign is saved.</p>
+                      <FormField
+                        control={form.control}
+                        name="selected_product_ids"
+                        render={() => (
+                          <FormItem>
+                            <FormLabel>Product selection</FormLabel>
+                            <SearchOverlayPicker
+                              open={productPickerOpen}
+                              onOpenChange={(next) => {
+                                setProductPickerOpen(next);
+                                if (!next) setProductSearch('');
+                              }}
+                              title="Select products"
+                              eyebrow="Growth"
+                              description="Choose the products that should be included in this campaign."
+                              triggerTitle={selectedProductSummary}
+                              triggerDescription={selectedProductIds.length > 0 ? `${selectedProductIds.length} products selected` : 'Search and add products'}
+                              searchValue={productSearch}
+                              onSearchValueChange={setProductSearch}
+                              searchPlaceholder="Search products, SKU, or brand…"
+                              footer={(
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button type="button" variant="ghost" onClick={() => setProductPickerOpen(false)}>
+                                    Cancel
+                                  </Button>
+                                  <Button type="button" onClick={() => setProductPickerOpen(false)}>
+                                    <Check className="h-3.5 w-3.5" />
+                                    {`Select ${selectedProductIds.length} products`}
+                                  </Button>
+                                </div>
+                              )}
+                            >
+                              {selectedProductIds.length > 0 ? (
+                                <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected products</p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {selectedProductIds.map((productId) => {
+                                      const product = productMap.get(productId);
+                                      return (
+                                        <button
+                                          key={productId}
+                                          type="button"
+                                          onClick={() => form.setValue('selected_product_ids', selectedProductIds.filter((id) => id !== productId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                                          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
+                                        >
+                                          <span>{product?.display_name ?? 'Selected product'}</span>
+                                          <span aria-hidden="true" className="text-teal-700">×</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {productQuery.isFetching && productRows.length === 0 ? (
+                                <div className="space-y-1">
+                                  {Array.from({ length: 4 }).map((_, idx) => (
+                                    <div key={idx} className="h-12 animate-pulse rounded-[8px] bg-cream-100" />
+                                  ))}
+                                </div>
+                              ) : productRows.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {productRows.map((product) => {
+                                    const selected = selectedProductSet.has(product.id);
+                                    return (
+                                      <button
+                                        key={product.id}
+                                        type="button"
+                                        onClick={() => form.setValue(
+                                          'selected_product_ids',
+                                          selected
+                                            ? selectedProductIds.filter((id) => id !== product.id)
+                                            : [...selectedProductIds, product.id],
+                                          { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                        )}
+                                        className={[
+                                          'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                          selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                        ].join(' ')}
+                                      >
+                                        <div className="min-w-0">
+                                          <p className="text-base font-medium text-cream-900">{product.display_name}</p>
+                                          <p className="mt-0.5 text-sm text-cream-700">
+                                            {product.brand_name}
+                                            {product.internal_sku ? ` · ${product.internal_sku}` : ''}
+                                          </p>
+                                        </div>
+                                        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                          {selected ? 'Selected' : 'Add'}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                  {productQuery.hasNextPage ? <div ref={productSentinelRef} className="h-4" /> : null}
+                                </div>
+                              ) : (
+                                <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                                  No products match this search.
+                                </p>
+                              )}
+                            </SearchOverlayPicker>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     )}
                   </div>
-                </FormSectionGrid>
               </FormBlock>
             </form>
           </Form>

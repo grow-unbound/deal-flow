@@ -47,8 +47,6 @@ export interface TenantBrand {
   updated_at: string;
   master_brand: MasterBrand | null;
   gmv_mtd?: number;
-  gmv_prev_mtd?: number;
-  growth_pct?: number;
   portfolio_share_pct?: number;
   sku_count?: number;
   active_buyers_mtd?: number;
@@ -56,46 +54,22 @@ export interface TenantBrand {
   catalog_days_ago?: number | null;
   catalog_name?: string | null;
   categories?: string[];
-  alerts?: string[];
 }
 
 export interface BrandsKpis {
   portfolio_gmv_mtd: number;
-  portfolio_gmv_prev_mtd: number;
   brands_carried: number;
   buyers_with_orders_mtd: number;
   total_buyers: number;
-  need_attention_count: number;
   catalog_freshness_count: number;
   total_campaigns?: number;
   catalog_freshness_earliest_days: number | null;
-}
-
-export interface TodaysReadItem {
-  // get_seller_brand_landing_summary's needs_attention rows only carry {id, name} —
-  // growth_pct/alerts are not part of that payload, so they must stay optional here
-  // (they previously were typed as required, which hid an undefined.includes() crash
-  // in BrandsLandingClient's attentionReason()).
-  id: string;
-  name: string;
-  growth_pct?: number;
-  alerts?: string[];
 }
 
 export interface TopPerformerItem {
   id: string;
   name: string;
   gmv_mtd: number;
-}
-
-export interface TopRiserItem {
-  id: string;
-  name: string;
-  growth_pct: number;
-  gmv_mtd: number;
-  // Not returned by get_seller_brand_landing_summary's top_risers rows — do not
-  // reference this without deriving it from growth_pct/gmv_mtd first.
-  gmv_prev_mtd?: number;
 }
 
 export interface TenantBrandsResponse {
@@ -111,9 +85,7 @@ export interface TenantBrandsResponse {
   }>;
   kpis?: BrandsKpis;
   todays_read?: {
-    needs_attention: TodaysReadItem[];
     top_performers: TopPerformerItem[];
-    top_risers: TopRiserItem[];
   };
   /** Active product count, for the "{branded} of {active} active products branded" subtitle. */
   active_product_count?: number;

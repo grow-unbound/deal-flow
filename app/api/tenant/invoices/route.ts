@@ -586,6 +586,13 @@ export async function GET(request: NextRequest) {
     const landingRows: InvoiceLandingRow[] = pageRows.map((row, index) => toLandingRow(row, index));
     const landingById = new Map(landingRows.map((row) => [row.id, row]));
     const ensureLandingRow = (row: InvoiceDbRow, index: number) => landingById.get(row.id) ?? toLandingRow(row, index);
+    // metrics_v2_transaction_landing's own `computed_at` reflects when the
+    // underlying snapshot rows were actually last refreshed -- previously
+    // fetched here and silently discarded (only `.kpis` was read); surfaced
+    // now as the KPI strip's "as of" freshness stamp (kpi-callout-audit
+    // 2026-07-23 §7 P2 item 13). Falls back to null, not wall-clock "now",
+    // so the frontend can omit the stamp rather than show a fabricated time.
+    const kpiComputedAt = (landingMetricsRes.data as { computed_at?: string | null } | null)?.computed_at ?? null;
     const kpis = ((landingMetricsRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
       invoices_this_period: 0,
       invoices_prev_period: 0,
@@ -687,6 +694,7 @@ export async function GET(request: NextRequest) {
       nextCursor,
       total: invoiceTotalRes.count ?? landingRows.length,
       as_of: new Date().toISOString(),
+      computed_at: kpiComputedAt,
       // Invoices' fixed headline ("This month") is calendar-based, not a
       // rolling trailing-day window, so there is no single horizon day count.
       commercial_horizon_days: null,

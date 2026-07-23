@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { Check } from 'lucide-react';
 import {
   DiscardChangesDialog,
   FormBlock,
@@ -19,7 +20,14 @@ import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
 import {
   MembershipModeSwitchDialog,
@@ -27,12 +35,8 @@ import {
 } from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { isoDateString } from '@/lib/date-utils';
 import { PriceListFormPayloadSchema, type PriceListFormPayload } from '@/lib/zod';
-import { useSaveSimplePriceList } from '@/hooks/usePriceLists';
-
-const MEMBERSHIP_MODE_OPTIONS = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'automatic', label: 'Automatic' },
-];
+import { usePriceListComposerProducts, useSaveSimplePriceList } from '@/hooks/usePriceLists';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 interface PriceListFormSheetProps {
   open: boolean;
@@ -45,6 +49,8 @@ interface PriceListFormSheetProps {
 export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defaultValues }: PriceListFormSheetProps) {
   const mutation = useSaveSimplePriceList(priceListId);
   const [pendingModeSwitch, setPendingModeSwitch] = useState<MembershipModeSwitchDirection | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const form = useForm<PriceListFormPayload>({
     resolver: zodResolver(PriceListFormPayloadSchema),
     defaultValues: {
@@ -54,6 +60,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       valid_from: new Date(),
       priority: 0,
       membership_mode: 'manual',
+      selected_product_ids: [],
       ...defaultValues,
     },
   });
@@ -67,6 +74,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       valid_from: new Date(),
       priority: 0,
       membership_mode: 'manual',
+      selected_product_ids: [],
       ...defaultValues,
     });
   }, [defaultValues, form, open]);
@@ -80,7 +88,23 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
   });
 
   const membershipMode = form.watch('membership_mode');
+  const selectedProductIds = form.watch('selected_product_ids') ?? [];
   const initialMembershipMode = defaultValues?.membership_mode ?? 'manual';
+  const productsQuery = usePriceListComposerProducts({ search: productSearch, limit: 30 }, productPickerOpen && membershipMode === 'manual');
+  const productRows = productsQuery.data?.pages.flatMap((page) => page.products) ?? [];
+  const productMap = new Map(productRows.map((product) => [product.id, product]));
+  const selectedProductSet = new Set(selectedProductIds);
+  const selectedProductSummary = selectedProductIds.length === 0
+    ? 'Select products'
+    : `${productMap.get(selectedProductIds[0])?.display_name ?? 'Selected product'}${selectedProductIds.length > 1 ? ` +${selectedProductIds.length - 1} more` : ''}`;
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: productsQuery.hasNextPage ?? false,
+    isLoading: productsQuery.isFetchingNextPage,
+    rootMargin: '240px',
+    onLoadMore: () => {
+      void productsQuery.fetchNextPage();
+    },
+  });
 
   const requestModeChange = (nextMode: 'manual' | 'automatic') => {
     if (mode === 'edit' && nextMode !== initialMembershipMode) {
@@ -109,7 +133,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                 onOpenChange(false);
               })}
             >
-              <FormBlock>
+              <FormBlock title="Details">
                 <FormSectionGrid columns={1}>
                   <FormField control={form.control} name="name" render={({ field }) => (
                     <FormItem>
@@ -169,22 +193,36 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                   </FormItem>
                 )} />
               </FormBlock>
-              <FormBlock>
-                <FormItem>
-                  <FormLabel>Membership</FormLabel>
-                  <SegmentedControl
-                    aria-label="Membership mode"
-                    options={MEMBERSHIP_MODE_OPTIONS}
-                    allowClear={false}
-                    value={membershipMode}
-                    onChange={(value) => requestModeChange(value as 'manual' | 'automatic')}
-                  />
-                  <p className="text-sm text-cream-600">
-                    {membershipMode === 'automatic'
-                      ? 'Products are computed from the filters below and kept up to date automatically.'
-                      : 'Products are picked by hand in the detail tabs.'}
-                  </p>
-                </FormItem>
+              <FormBlock title="Targeting">
+                <FormField
+                  control={form.control}
+                  name="membership_mode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product selection mode</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => requestModeChange(value as 'manual' | 'automatic')}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select product selection mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual selection</SelectItem>
+                          <SelectItem value="automatic">Automatic filters</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-cream-600">
+                        {membershipMode === 'automatic'
+                          ? 'Products are computed from the filters below and kept up to date automatically.'
+                          : 'Choose the products that should start in this pricelist. Draft prices will seed from the current base selling price.'}
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 {membershipMode === 'automatic' ? (
                   <FormField
                     control={form.control}
@@ -200,7 +238,112 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                       </FormItem>
                     )}
                   />
-                ) : null}
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="selected_product_ids"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Product selection</FormLabel>
+                        <SearchOverlayPicker
+                          open={productPickerOpen}
+                          onOpenChange={(next) => {
+                            setProductPickerOpen(next);
+                            if (!next) setProductSearch('');
+                          }}
+                          title="Select products"
+                          eyebrow="Pricing"
+                          description="Choose the products that should be included in this pricelist."
+                          triggerTitle={selectedProductSummary}
+                          triggerDescription={selectedProductIds.length > 0 ? `${selectedProductIds.length} products selected` : 'Search and add products'}
+                          searchValue={productSearch}
+                          onSearchValueChange={setProductSearch}
+                          searchPlaceholder="Search products, SKU, or brand…"
+                          footer={(
+                            <div className="flex items-center justify-end gap-2">
+                              <Button type="button" variant="ghost" onClick={() => setProductPickerOpen(false)}>
+                                Cancel
+                              </Button>
+                              <Button type="button" onClick={() => setProductPickerOpen(false)}>
+                                <Check className="h-3.5 w-3.5" />
+                                {`Select ${selectedProductIds.length} products`}
+                              </Button>
+                            </div>
+                          )}
+                        >
+                          {selectedProductIds.length > 0 ? (
+                            <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected products</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {selectedProductIds.map((productId) => {
+                                  const product = productMap.get(productId);
+                                  return (
+                                    <button
+                                      key={productId}
+                                      type="button"
+                                      onClick={() => form.setValue('selected_product_ids', selectedProductIds.filter((id) => id !== productId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                                      className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
+                                    >
+                                      <span>{product?.display_name ?? 'Selected product'}</span>
+                                      <span aria-hidden="true" className="text-teal-700">×</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                          {productsQuery.isFetching && productRows.length === 0 ? (
+                            <div className="space-y-1">
+                              {Array.from({ length: 4 }).map((_, idx) => (
+                                <div key={idx} className="h-12 animate-pulse rounded-[8px] bg-cream-100" />
+                              ))}
+                            </div>
+                          ) : productRows.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {productRows.map((product) => {
+                                const selected = selectedProductSet.has(product.id);
+                                return (
+                                  <button
+                                    key={product.id}
+                                    type="button"
+                                    onClick={() => form.setValue(
+                                      'selected_product_ids',
+                                      selected
+                                        ? selectedProductIds.filter((id) => id !== product.id)
+                                        : [...selectedProductIds, product.id],
+                                      { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                    )}
+                                    className={[
+                                      'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                      selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                    ].join(' ')}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-base font-medium text-cream-900">{product.display_name}</p>
+                                      <p className="mt-0.5 text-sm text-cream-700">
+                                        {product.brand_name}
+                                        {product.internal_sku ? ` · ${product.internal_sku}` : ''}
+                                      </p>
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                      {selected ? 'Selected' : 'Add'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                              {productsQuery.hasNextPage ? <div ref={sentinelRef} className="h-4" /> : null}
+                            </div>
+                          ) : (
+                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                              No products match this search.
+                            </p>
+                          )}
+                        </SearchOverlayPicker>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </FormBlock>
             </form>
           </Form>

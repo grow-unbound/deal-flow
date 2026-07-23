@@ -20,8 +20,20 @@ export interface InvoiceStatusInput {
 
 const RECEIVABLE_STATUSES = new Set(['sent', 'viewed', 'unpaid', 'partially_paid', 'overdue']);
 
+// Mirrors SQL `app.invoice_status_gmv_included`: every status except `draft` and `void`
+// counts toward GMV (sent/viewed/unpaid/partially_paid/paid/overdue).
+const GMV_INCLUDED_STATUSES = new Set(['sent', 'viewed', 'unpaid', 'partially_paid', 'paid', 'overdue']);
+
 export function hasInvoiceReceivableExposure(row: Pick<InvoiceStatusInput, 'status' | 'outstanding_balance'>): boolean {
   return Number(row.outstanding_balance ?? 0) > 0 && RECEIVABLE_STATUSES.has(row.status);
+}
+
+/**
+ * Mirrors the SQL function `app.invoice_status_gmv_included`: an invoice counts
+ * toward GMV/spend figures unless it is `draft` or `void`.
+ */
+export function invoiceStatusGmvIncluded(status: string): boolean {
+  return GMV_INCLUDED_STATUSES.has(status);
 }
 
 export function isInvoiceOverdue(row: InvoiceStatusInput): boolean {

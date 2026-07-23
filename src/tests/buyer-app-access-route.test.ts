@@ -4,6 +4,8 @@ import { NextRequest } from 'next/server';
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const rpcMock = vi.fn();
+const fromMock = vi.fn();
+const queueBuyerAppEnabledMessagesMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -14,13 +16,20 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
+vi.mock('@/lib/server/buyer-app-enable-notify', () => ({
+  queueBuyerAppEnabledMessages: (...args: unknown[]) => queueBuyerAppEnabledMessagesMock(...args),
+}));
+
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
-    schema: vi.fn(() => ({ rpc: (...args: unknown[]) => rpcMock(...args) })),
+    schema: vi.fn(() => ({
+      rpc: (...args: unknown[]) => rpcMock(...args),
+      from: (...args: unknown[]) => fromMock(...args),
+    })),
   },
 }));
 
-import { GET } from '../../app/api/tenant/buyer-app/access/route';
+import { GET, PATCH } from '../../app/api/tenant/buyer-app/access/route';
 
 const rpcResponse = {
   summary_authoritative: false,
@@ -154,5 +163,120 @@ describe('GET /api/tenant/buyer-app/access', () => {
       offset: 0,
     }));
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/tenant/buyer-app/access', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    getFlagMock.mockResolvedValue(true);
+    queueBuyerAppEnabledMessagesMock.mockResolvedValue({
+      sent_count: 1,
+      eligible_count: 1,
+      skipped_count: 0,
+    });
+  });
+
+  it('queues WhatsApp only when enabling previously disabled buyers', async () => {
+    let buyersCallCount = 0;
+    const disabledLookup = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockResolvedValue({
+        data: [{ id: '00000000-0000-4000-8000-000000000001' }],
+        error: null,
+      }),
+    };
+    const updateChain = {
+      update: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      select: vi.fn().mockResolvedValue({
+        data: [{ id: '00000000-0000-4000-8000-000000000001' }],
+        error: null,
+      }),
+    };
+    const auditInsert = {
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'buyers') {
+        buyersCallCount += 1;
+        return buyersCallCount === 1 ? disabledLookup : updateChain;
+      }
+      if (table === 'audit_log') {
+        return auditInsert;
+      }
+      return {};
+    });
+
+    const response = await PATCH(new NextRequest('http://localhost:3000/api/tenant/buyer-app/access', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        buyer_ids: ['00000000-0000-4000-8000-000000000001'],
+        enabled: true,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      updated_count: 1,
+      whatsapp_sent_count: 1,
+      whatsapp_eligible_count: 1,
+    });
+    expect(queueBuyerAppEnabledMessagesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant-1',
+      ['00000000-0000-4000-8000-000000000001'],
+    );
+  });
+
+  it('does not queue WhatsApp when disabling access', async () => {
+    const updateChain = {
+      update: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      select: vi.fn().mockResolvedValue({
+        data: [{ id: '00000000-0000-4000-8000-000000000001' }],
+        error: null,
+      }),
+    };
+    const auditInsert = {
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'buyers') return updateChain;
+      if (table === 'audit_log') return auditInsert;
+      return {};
+    });
+
+    const response = await PATCH(new NextRequest('http://localhost:3000/api/tenant/buyer-app/access', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        buyer_ids: ['00000000-0000-4000-8000-000000000001'],
+        enabled: false,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      updated_count: 1,
+      whatsapp_sent_count: 0,
+      whatsapp_eligible_count: 0,
+    });
+    expect(queueBuyerAppEnabledMessagesMock).not.toHaveBeenCalled();
   });
 });

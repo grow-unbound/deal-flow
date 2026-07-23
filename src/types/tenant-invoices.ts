@@ -101,6 +101,8 @@ export interface TenantInvoicesResponse {
   todays_read: InvoicesTodaysRead;
   invoices: InvoiceLandingRow[];
   filters?: LandingFilterMeta;
+  /** When the underlying KPI snapshot rows were last refreshed (ISO timestamp), null if unavailable. */
+  computed_at?: string | null;
 }
 
 /** --- Detail (EP-16-002) --- */

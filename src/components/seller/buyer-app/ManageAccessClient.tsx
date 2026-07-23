@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { FeatureGate } from '@/components/FeatureGate';
@@ -16,9 +16,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import {
+  BuyerAppAccessConfirmDialog,
+  type BuyerAppAccessConfirmMode,
+} from '@/components/seller/buyer-app/BuyerAppAccessConfirmDialog';
+import {
+  isBuyerAppDisableConfirmSkipped,
+  isBuyerAppEnableConfirmSkipped,
+  setBuyerAppDisableConfirmSkipped,
+  setBuyerAppEnableConfirmSkipped,
+} from '@/lib/buyer-app-access-confirm';
+import { showBuyerAppAccessChangeToasts } from '@/lib/buyer-app-access-toast';
+import {
   useAccessList,
-  useSingleBuyerToggle,
-  useBulkToggleAccess,
+  useBuyerAppEnablePreview,
+  useToggleBuyerAccess,
   type AccessBuyer,
   type AccessKpis,
   type AccessPageResponse,
@@ -280,11 +291,13 @@ function filterAndSortBuyers(
 function AccessTable({
   buyers,
   selectedIds,
+  pendingToggles,
   onSelectionChange,
   onToggle,
 }: {
   buyers: AccessBuyer[];
   selectedIds: string[];
+  pendingToggles: Record<string, boolean>;
   onSelectionChange: (ids: string[]) => void;
   onToggle: (buyerId: string, enabled: boolean) => void;
 }) {
@@ -323,7 +336,7 @@ function AccessTable({
             </th>
             <th
               className="table-label px-5 py-[11px] text-left text-cream-700"
-              style={{ minWidth: 260 }}
+              style={{ width: 400, minWidth: 260 }}
             >
               Buyer
             </th>
@@ -331,31 +344,31 @@ function AccessTable({
               className="table-label px-5 py-[11px] text-left text-cream-700"
               style={{ minWidth: 140 }}
             >
-              Location
+              Buyer City
             </th>
             <th
               className="table-label px-5 py-[11px] text-left text-cream-700"
-              style={{ minWidth: 200 }}
+              style={{ minWidth: 150 }}
             >
               App Access
             </th>
             <th
               className="table-label px-5 py-[11px] text-right text-cream-700"
-              style={{ minWidth: 140 }}
+              style={{ minWidth: 200 }}
             >
               Last App Order
             </th>
             <th
               className="table-label px-5 py-[11px] text-right text-cream-700"
-              style={{ minWidth: 180 }}
+              style={{ minWidth: 200 }}
             >
-              Offline / Total (90d)
+              Offline / Total · 90d
             </th>
             <th
               className="table-label px-5 py-[11px] text-right text-cream-700"
-              style={{ minWidth: 140 }}
+              style={{ minWidth: 200 }}
             >
-              App GMV (90d)
+              Demand from App · 90d
             </th>
           </tr>
         </thead>
@@ -387,11 +400,9 @@ function AccessTable({
                   </td>
                   <td className="px-5 py-3.5">
                     <p className="text-base font-medium text-cream-900">{buyer.business_name}</p>
-                    {buyer.contact_name || buyer.phone ? (
+                    {buyer.phone ? (
                       <p className="mt-0.5 text-xs text-cream-500">
-                        {[buyer.contact_name, buyer.phone ? `+91 ${buyer.phone}` : null]
-                          .filter(Boolean)
-                          .join(' · ')}
+                        {buyer.phone ? buyer.phone : null}
                       </p>
                     ) : null}
                   </td>
@@ -403,16 +414,12 @@ function AccessTable({
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2.5">
                       <Switch
-                        checked={buyer.buyer_app_enabled}
+                        checked={pendingToggles[buyer.id] ?? buyer.buyer_app_enabled}
                         onCheckedChange={(checked) => onToggle(buyer.id, checked)}
                       />
                       {buyer.is_suggested ? (
                         <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                           Suggested
-                        </span>
-                      ) : buyer.is_inactive ? (
-                        <span className="inline-flex rounded-full bg-ember-50 px-2 py-0.5 text-[10px] font-semibold text-ember-700">
-                          Inactive
                         </span>
                       ) : null}
                     </div>
@@ -511,11 +518,39 @@ function ManageAccessSkeleton() {
 
 // ─── Main content ─────────────────────────────────────────────────────────────
 
+function resolveBuyerLabel(buyer: AccessBuyer): string {
+  return buyer.contact_name?.trim() || buyer.business_name;
+}
+
 function ManageAccessContent({ initialData }: { initialData: AccessPageResponse | null }) {
   const [filter, setFilter] = useState<AccessFilter>(DEFAULT_FILTER);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    mode: BuyerAppAccessConfirmMode;
+    buyerIds: string[];
+    singleBuyerLabel: string | null;
+  }>({
+    open: false,
+    mode: 'enable',
+    buyerIds: [],
+    singleBuyerLabel: null,
+  });
   const pageSize = initialData?.limit ?? 50;
   const [querySearch, setQuerySearch] = useState('');
+  const [pendingToggles, setPendingToggles] = useState<Record<string, boolean>>({});
+  const pendingOnDoneRef = useRef<(() => void) | null>(null);
+
+  const clearPendingToggles = useCallback((buyerIds: string[]) => {
+    setPendingToggles((current) => {
+      if (buyerIds.length === 0) return current;
+      const next = { ...current };
+      for (const buyerId of buyerIds) {
+        delete next[buyerId];
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -566,8 +601,11 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
     },
     initialData,
   );
-  const { toggle } = useSingleBuyerToggle();
-  const { bulkToggle, isPending: bulkPending } = useBulkToggleAccess();
+  const toggleMutation = useToggleBuyerAccess();
+  const enablePreviewQuery = useBuyerAppEnablePreview(
+    confirmDialog.buyerIds,
+    confirmDialog.open && confirmDialog.mode === 'enable',
+  );
 
   const pages = data?.pages ?? [];
   const buyers = useMemo(() => pages.flatMap((page) => page.buyers), [pages]);
@@ -578,6 +616,88 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
     () => filterAndSortBuyers(buyers, filter, isInterim),
     [buyers, filter, isInterim],
   );
+
+  const buyerById = useMemo(
+    () => new Map(buyers.map((buyer) => [buyer.id, buyer])),
+    [buyers],
+  );
+
+  const applyAccessChange = useCallback((buyerIds: string[], enabled: boolean, onDone?: () => void) => {
+    toggleMutation.mutate(
+      { buyer_ids: buyerIds, enabled },
+      {
+        onSuccess: (data) => {
+          showBuyerAppAccessChangeToasts({
+            buyerCount: buyerIds.length,
+            enabled,
+            data,
+            onUndo: () => {
+              toggleMutation.mutate({ buyer_ids: buyerIds, enabled: !enabled });
+            },
+          });
+          clearPendingToggles(buyerIds);
+          onDone?.();
+        },
+        onError: () => {
+          clearPendingToggles(buyerIds);
+        },
+      },
+    );
+  }, [clearPendingToggles, toggleMutation]);
+
+  const requestAccessChange = useCallback((buyerIds: string[], enabled: boolean, onDone?: () => void) => {
+    const targetIds = buyerIds.filter((id) => {
+      const buyer = buyerById.get(id);
+      if (!buyer) return false;
+      return enabled ? !buyer.buyer_app_enabled : buyer.buyer_app_enabled;
+    });
+
+    if (targetIds.length === 0) return;
+
+    setPendingToggles((current) => {
+      const next = { ...current };
+      for (const buyerId of targetIds) {
+        next[buyerId] = enabled;
+      }
+      return next;
+    });
+
+    const skipConfirm = enabled
+      ? isBuyerAppEnableConfirmSkipped()
+      : isBuyerAppDisableConfirmSkipped();
+
+    if (skipConfirm) {
+      applyAccessChange(targetIds, enabled, onDone);
+      return;
+    }
+
+    const singleBuyer = targetIds.length === 1 ? buyerById.get(targetIds[0]!) ?? null : null;
+    setConfirmDialog({
+      open: true,
+      mode: enabled ? 'enable' : 'disable',
+      buyerIds: targetIds,
+      singleBuyerLabel: singleBuyer ? resolveBuyerLabel(singleBuyer) : null,
+    });
+    pendingOnDoneRef.current = onDone ?? null;
+  }, [applyAccessChange, buyerById]);
+
+  function handleConfirmAccessChange(skipConfirm: boolean) {
+    const { buyerIds, mode } = confirmDialog;
+    if (skipConfirm) {
+      if (mode === 'enable') {
+        setBuyerAppEnableConfirmSkipped();
+      } else {
+        setBuyerAppDisableConfirmSkipped();
+      }
+    }
+
+    applyAccessChange(buyerIds, mode === 'enable', () => {
+      pendingOnDoneRef.current?.();
+      pendingOnDoneRef.current = null;
+      setSelectedIds([]);
+    });
+    setConfirmDialog((current) => ({ ...current, open: false }));
+  }
 
   function handleFilterChange(updates: Partial<AccessFilter>) {
     setFilter((prev) => ({ ...prev, ...updates }));
@@ -662,9 +782,9 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
       {selectedIds.length > 0 ? (
         <BulkActionBar
           selectedCount={selectedIds.length}
-          isPending={bulkPending}
-          onEnable={() => bulkToggle(selectedIds, true, () => setSelectedIds([]))}
-          onDisable={() => bulkToggle(selectedIds, false, () => setSelectedIds([]))}
+          isPending={toggleMutation.isPending}
+          onEnable={() => requestAccessChange(selectedIds, true, () => setSelectedIds([]))}
+          onDisable={() => requestAccessChange(selectedIds, false, () => setSelectedIds([]))}
           onClear={() => setSelectedIds([])}
         />
       ) : null}
@@ -687,8 +807,34 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
       <AccessTable
         buyers={filteredBuyers}
         selectedIds={selectedIds}
+        pendingToggles={pendingToggles}
         onSelectionChange={setSelectedIds}
-        onToggle={(buyerId, enabled) => toggle(buyerId, enabled)}
+        onToggle={(buyerId, enabled) => requestAccessChange([buyerId], enabled)}
+      />
+
+      <BuyerAppAccessConfirmDialog
+        open={confirmDialog.open}
+        mode={confirmDialog.mode}
+        selectedCount={confirmDialog.buyerIds.length}
+        singleBuyerLabel={confirmDialog.singleBuyerLabel}
+        preview={enablePreviewQuery.data ?? null}
+        previewLoading={confirmDialog.mode === 'enable' && enablePreviewQuery.isLoading}
+        previewError={
+          confirmDialog.mode === 'enable' && enablePreviewQuery.isError
+            ? (enablePreviewQuery.error instanceof Error
+              ? enablePreviewQuery.error.message
+              : 'Failed to load preview')
+            : null
+        }
+        isPending={toggleMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingToggles(confirmDialog.buyerIds);
+            setConfirmDialog((current) => ({ ...current, open: false }));
+            pendingOnDoneRef.current = null;
+          }
+        }}
+        onConfirm={handleConfirmAccessChange}
       />
 
       {hasNextPage ? (

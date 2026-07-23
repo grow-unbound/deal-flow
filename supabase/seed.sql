@@ -689,19 +689,19 @@ VALUES
 -- Platform-managed transactional templates (already approved with Meta).
 -- tenant_id = NULL means these are global/platform templates.
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_category, use_case, locale,
+  tenant_id, meta_template_name, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 ) VALUES
 (
-  NULL, 'login_otp', 'authentication', 'otp_login', 'en_US',
+  NULL, 'login_otp', 'Login OTP', 'authentication', 'otp_login', 'en_US',
   E'OTP Code: {{1}}. This is your OTP code for {{2}}. For your security, do not share this code.\n\nIf you have any concerns or questions, contact us at {{3}}.',
   '[{"key":"otp","description":"OTP code"},{"key":"product_name","description":"Product/app name"},{"key":"support_number","description":"Support contact number"}]'::jsonb,
   NULL, NULL, 'Powered by Yukti', NULL,
   'approved', true, false
 ),
 (
-  NULL, 'order_received_seller', 'utility', 'updates', 'en_IN',
+  NULL, 'order_received_seller', 'Order received', 'utility', 'updates', 'en_IN',
   E'Hi {{seller_location}} team,\n\nThere is a new order for your location. Here are the details.\n\nCustomer Name: *{{buyer_name}}*\nPhone Number: {{buyer_phone_number}}\nOrder Number: {{order_number}}\nTotal Amount: *₹{{total_amount}} ({{item_count}} items)*\n\nPlease contact the buyer in the next {{eta}} hours.',
   '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
@@ -710,7 +710,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'order_received_buyer', 'utility', 'updates', 'en_IN',
+  NULL, 'order_received_buyer', 'Order submitted', 'utility', 'updates', 'en_IN',
   E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_name}} team will contact you in {{eta}} hours.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
@@ -719,7 +719,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'request_received_seller', 'utility', 'updates', 'en',
+  NULL, 'request_received_seller', 'Estimate received', 'utility', 'updates', 'en',
   E'Hi {{seller_location}} team,\n\nThere is a new request for your location. Here are the details.\n\nCustomer Name: *{{buyer_name}}*\nPhone Number: {{buyer_phone_number}}\nEstimate Number: {{request_number}}\nTotal Amount: *₹{{total_amount}} ({{item_count}} items)*\n\nPlease contact the buyer in the next {{eta}} hours.',
   '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"request_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
@@ -728,7 +728,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'request_received_buyer', 'utility', 'updates', 'en',
+  NULL, 'request_received_buyer', 'Estimate sent', 'utility', 'updates', 'en',
   E'Hi *{{buyer_name}}*,\n\nWe received your request for *{{item_count}} items*. Here are your details.\n\nRequest Number: *{{estimate_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur *{{seller_name}}* team will contact you in {{eta}} hours.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"estimate_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"seller_name","description":"Seller business name and location"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
@@ -737,7 +737,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'request_update_buyer', 'utility', 'updates', 'en',
+  NULL, 'request_update_buyer', 'Send estimate', 'utility', 'updates', 'en',
   E'Hi {{buyer_name}},\n\nHere is your enquiry {{request_number}} for ₹{{total_amount}} ({{item_count}} items).\n\nContact {{seller_name}} ({{seller_phone_number}}) to confirm the order at these prices.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"request_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
@@ -746,7 +746,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'invoice_update_buyer', 'utility', 'updates', 'en',
+  NULL, 'invoice_update_buyer', 'Invoice sent', 'utility', 'updates', 'en',
   E'Hi {{buyer_name}},\n\nHere is invoice {{invoice_number}} for your review.\n\nAmount: ₹{{total_amount}} ({{item_count}} items)\n\nContact {{seller_name}} ({{seller_phone_number}}) for next steps.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"invoice_number","description":"Invoice reference number"},{"key":"total_amount","description":"Invoice total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/invoices/{{1}}","variable_source":"invoice_id"}'::jsonb,
@@ -755,7 +755,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
-  NULL, 'buyer_payment_reminder', 'utility', 'updates', 'en',
+  NULL, 'buyer_payment_reminder', 'Payment reminder', 'utility', 'updates', 'en',
   E'Hi {{buyer_name}},\n\nThis is a payment reminder from *{{seller_name}}* on {{due_invoice_count}} invoices.\n\nAmount Due: *₹{{outstanding_amount}} ({{due_status}})*\nContact: {{seller_phone_number}}\n\nCheck your dues and pay at the earliest.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"due_invoice_count","description":"Number of due invoices"},{"key":"outstanding_amount","description":"Outstanding amount in INR"},{"key":"due_status","description":"Due in X days or Overdue by X days status"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/orders"}'::jsonb,
@@ -764,7 +764,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'campaign_published_buyer', 'utility', 'campaigns', 'en',
+  NULL, 'campaign_published_buyer', 'Campaign announcement', 'utility', 'campaigns', 'en',
   E'Hi {{buyer_name}},\n\n{{seller_name}} has a new campaign live - *{{campaign_title}}*.\n\n*{{buyer_note}}*\nContact: {{seller_phone_number}} for more details.\n\nCheck it out and order in the app.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"campaign_title","description":"Campaign title"}, {"key":"buyer_note","description":"Seller note to buyers about the campaign"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '[{"type":"url", "index":"0", "url_template":"https://app.useyukti.in/catalog?share_toke={{1}}","variable_source":"share_token"}, {"type":"QUICK_REPLY","index":"1","text":"Opt out"}]'::jsonb,
@@ -773,16 +773,16 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'beat_route_buyer', 'utility', 'engagement', 'en',
-  E'Hi {{buyer_name}},\n\nOur team from {{seller_name}} will be visiting you soon.\n\nVisit window: {{visit_date}} {{visit_time}}\nContact: {{seller_phone_number}}\n\nKeep your payments and any new stock requirements ready. \nYou can also place orders anytime in the app.',
-  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"},{"key":"visit_date","description":"Visit date, e.g. 26 July"},{"key":"visit_time","description":"Visit time window, e.g. 3:30PM-5:30PM"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
+  NULL, 'beat_route_buyer', 'Agent visit reminder', 'utility', 'engagement', 'en',
+  E'Hi {{buyer_name}},\n\nOur team from {{seller_name}} will be visiting you soon.\n\nVisit window: {{visit_date}} {{visit_window}}\nContact: {{seller_phone_number}}\n\nKeep your payments and any new stock requirements ready. \nYou can also place orders anytime in the app.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"},{"key":"visit_date","description":"Visit date, e.g. 26 July"},{"key":"visit_window","description":"Visit time window, e.g. 3:30PM-5:30PM"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
   NULL, 'Powered by Yukti',
   '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/home"}]'::jsonb,
   'approved', true, true
 ),
 (
-  NULL, 'new_stock_buyer', 'marketing', 'campaigns', 'en',
+  NULL, 'new_stock_buyer', 'New stock arrived', 'marketing', 'campaigns', 'en',
   E'Hi {{buyer_name}},\n\n{{seller_name}} just added new stock.\n\n{{buyer_note}}\n\nCheck out latest arrivals and place your order in the app before it''s gone.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"},{"key":"buyer_note","description":"Seller note to the buyer from campaigns.message"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
@@ -791,7 +791,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'buyer_app_dormant', 'marketing', 'buyer_app', 'en',
+  NULL, 'buyer_app_dormant', 'App order reminder', 'marketing', 'buyer_app', 'en',
   E'Hi {{buyer_name}},\n\nYou''re all set up on the {{seller_name}}''s catalog app.\n\nPlace your first order whenever you''re ready. Until then, explore their products and review prices.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
@@ -800,7 +800,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'buyer_app_adoption', 'marketing', 'buyer_app', 'en',
+  NULL, 'buyer_app_adoption', 'App login reminder', 'marketing', 'buyer_app', 'en',
   E'Hi {{buyer_name}},\n\n{{seller_name}} set up the catalog app for you, but it looks like you haven''t logged in yet.\n\nYou can explore their entire catalog, review prices, and place orders easily. It only takes a minute to get started.\n\nTap below to log in.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
@@ -809,7 +809,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'buyer_app_enabled', 'marketing', 'buyer_app', 'en',
+  NULL, 'buyer_app_enabled', 'Buyer app enabled', 'marketing', 'buyer_app', 'en',
   E'Hi {{buyer_name}},\n\n{{seller_name}} has enabled the catalog app for you.\n\nYou can now explore their latest stock, check prices, and place orders anytime.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
@@ -818,6 +818,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 )
 ON CONFLICT (tenant_id, meta_template_name) DO UPDATE SET
+  display_name            = EXCLUDED.display_name,
   approval_status       = EXCLUDED.approval_status,
   is_platform_managed   = EXCLUDED.is_platform_managed,
   use_case              = EXCLUDED.use_case,

@@ -101,15 +101,6 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       {
         label: 'Invoiced sales 90D',
         value: formatNumberValue(data.meta_strip_4.gmv_mtd, 'CURRENCY_THRESHOLD'),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {formatNumberValue(Math.abs(data.meta_strip_4.growth_pct), 'PERCENTAGE')}
-            </span>{' '}
-            vs last month
-          </span>
-        ),
       },
       {
         label: 'Members who purchased',
@@ -205,6 +196,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           description: data.details_rules.description,
           allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
           membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
+          selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
           rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
         }}
       />

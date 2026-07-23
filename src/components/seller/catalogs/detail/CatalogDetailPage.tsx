@@ -108,15 +108,6 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       {
         label: 'Campaign-linked demand value',
         value: formatNumberValue(data.meta_strip_4.gmv, 'CURRENCY_THRESHOLD'),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct)}%
-            </span>{' '}
-            vs previous campaign
-          </span>
-        ),
       },
       {
         label: 'Customers with demand',
@@ -422,8 +413,10 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
           pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
           price_list_id: data.composer?.price_source === 'price_list' ? (data.composer.price_list_id ?? null) : null,
           buyer_target_mode: data.composer?.buyer_target_mode,
+          buyer_ids: data.composer?.buyer_ids ?? data.buyers.filter((buyer) => buyer.is_member !== false).map((buyer) => buyer.buyer_id),
           buyer_rules: data.composer?.buyer_rules,
           product_membership_mode: data.composer?.product_membership_mode,
+          selected_product_ids: data.composer?.items.map((item) => item.tenant_product_id) ?? [],
           product_rules: data.composer?.product_rules,
         }}
       />

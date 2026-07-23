@@ -20,7 +20,6 @@ export interface CohortsLandingKpis {
   covered_members: number;
   total_buyers: number;
   combined_gmv_mtd: number;
-  growth_pct: number;
   avg_conversion_pct: number;
   uncategorised_buyers: number;
 }
@@ -34,7 +33,6 @@ export interface CohortsLandingCalloutRow {
   total_members: number;
   gmv_mtd: number;
   aov: number;
-  growth_pct: number;
   live_catalogs_count: number;
 }
 
@@ -49,7 +47,6 @@ export interface CohortsLandingRow {
   allowed_brands_label: string;
   allowed_tenant_brand_ids?: string[] | null;
   gmv_mtd: number;
-  growth_pct: number;
   active_members: number;
   total_members: number;
   conversion_pct: number;
@@ -67,7 +64,6 @@ export interface CohortsLandingResponse {
   todays_read: {
     low_conversion: CohortsLandingCalloutRow[];
     top_performers: CohortsLandingCalloutRow[];
-    top_risers: CohortsLandingCalloutRow[];
   };
   cohorts: CohortsLandingRow[];
   brands: Array<{
@@ -105,7 +101,6 @@ export interface CohortDetailHeader {
 
 export interface CohortDetailMetaStrip4 {
   gmv_mtd: number;
-  growth_pct: number;
   active_members: number;
   total_members: number;
   aov: number;
@@ -154,7 +149,6 @@ export interface CohortDetailDetailsRules {
 export interface CohortDetailPerformance {
   summary: {
     gmv_mtd: number;
-    growth_pct: number;
     aov: number;
   };
   engagement: {
@@ -181,7 +175,6 @@ export interface CohortDetailPerformance {
     orders: number;
     gmv: number;
   }>;
-  gmv_trend_12m: Array<{ month: string; value: number }>;
 }
 
 export interface CohortDetailResponse {
@@ -581,7 +574,6 @@ export function useSaveSimpleCustomerGroup(cohortId?: string) {
             allowed_brands_label: allowedBrandsLabel(brandNames),
             allowed_tenant_brand_ids: selectedBrandIds.length > 0 ? selectedBrandIds : null,
             gmv_mtd: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.gmv_mtd ?? 0,
-            growth_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.growth_pct ?? 0,
             active_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.active_members ?? 0,
             total_members: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.total_members ?? 0,
             conversion_pct: firstPage.cohorts.find((cohort) => cohort.id === cohortId)?.conversion_pct ?? 0,

@@ -30,7 +30,6 @@ type CategoryMetricRow = {
   low_stock_sku_count: number | string;
   brand_count: number | string;
   gmv_current: number | string;
-  gmv_previous: number | string;
   units_current: number | string;
   buyers_current: number | string;
   avg_days_cover: number | string | null;
@@ -89,8 +88,6 @@ export async function getCategoriesLandingPayload(
           p_category_ids: pageCategoryIds,
           p_current_start: period.current_start.split('T')[0],
           p_current_end_exclusive: period.current_end_exclusive.split('T')[0],
-          p_previous_start: period.previous_start.split('T')[0],
-          p_previous_end_exclusive: period.previous_end_exclusive.split('T')[0],
           p_velocity_start: thirtyDaysAgoStr,
         })
       : emptyResult,
@@ -137,8 +134,6 @@ export async function getCategoriesLandingPayload(
   const rows: CategoryTableRow[] = rawCategories.map((cat) => {
     const metric = metricsByCategory.get(cat.id);
     const gmv_mtd = Number(metric?.gmv_current ?? 0);
-    const gmv_prev = Number(metric?.gmv_previous ?? 0);
-    const growth_pct = gmv_prev > 0 ? Math.round(((gmv_mtd - gmv_prev) / gmv_prev) * 100) : 0;
     return {
       id: cat.id,
       name: cat.name,
@@ -150,8 +145,6 @@ export async function getCategoriesLandingPayload(
       low_stock_sku_count: Number(metric?.low_stock_sku_count ?? 0),
       brand_count: Number(metric?.brand_count ?? 0),
       gmv_mtd,
-      gmv_prev,
-      growth_pct,
       units_mtd: Number(metric?.units_current ?? 0),
       buyers_count: Number(metric?.buyers_current ?? 0),
       avg_days_cover: metric?.avg_days_cover == null ? null : Number(metric.avg_days_cover),

@@ -15,7 +15,8 @@ export type WhatsAppTriggerSource =
   | 'payment_reminder'
   | 'otp_login'
   | 'dispatch_notice'
-  | 'broadcast';
+  | 'broadcast'
+  | 'buyer_app_enabled';
 
 export interface LogWhatsAppMessageInput {
   tenantId: string;
