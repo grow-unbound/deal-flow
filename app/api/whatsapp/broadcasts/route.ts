@@ -43,7 +43,7 @@ interface RawBroadcastRow {
   target_cohort_id: string | null;
   target_buyer_ids: string[] | null;
   whatsapp_template_id: string | null;
-  whatsapp_templates: { meta_template_name: string } | null;
+  whatsapp_templates: { meta_template_name: string; display_name: string } | null;
   cohorts: { name: string } | null;
 }
 
@@ -113,7 +113,7 @@ async function resolveBroadcastSearchTemplateIds(
     .select('id')
     .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
     .is('deleted_at', null)
-    .ilike('meta_template_name', `%${q}%`);
+    .or(`meta_template_name.ilike.%${q}%,display_name.ilike.%${q}%`);
 
   return (templates ?? []).map((row: { id: string }) => row.id);
 }
@@ -207,7 +207,7 @@ function enrichBroadcastRow(row: RawBroadcastRow) {
     actual_recipient_count: row.actual_recipient_count,
     created_at: row.created_at,
     display_at: displayAt,
-    template_name: row.whatsapp_templates?.meta_template_name ?? null,
+    template_name: row.whatsapp_templates?.display_name ?? row.whatsapp_templates?.meta_template_name ?? null,
     target_label: formatBroadcastTargetLabel(row),
     sent_count: row.sent_count ?? 0,
     delivered_count: row.delivered_count ?? 0,
@@ -279,7 +279,7 @@ export async function GET(request: NextRequest) {
         target_cohort_id,
         target_buyer_ids,
         whatsapp_template_id,
-        whatsapp_templates ( meta_template_name ),
+        whatsapp_templates ( meta_template_name, display_name ),
         cohorts:target_cohort_id ( name )
       `,
       { count: 'exact' },

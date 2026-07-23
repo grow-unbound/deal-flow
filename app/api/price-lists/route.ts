@@ -136,6 +136,28 @@ async function ensureTenantProducts(
   return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
 }
 
+async function getTenantProductBasePrices(
+  db: any,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) return [] as Array<{ id: string; base_selling_price: number | null }>;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id, base_selling_price')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to load selected products');
+  }
+
+  return (data ?? []) as Array<{ id: string; base_selling_price: number | null }>;
+}
+
 export async function GET(request: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -365,6 +387,7 @@ export async function POST(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
+  const simpleMembershipMode = isSimpleForm ? data.membership_mode : 'manual';
   if (!isSimpleForm) {
     const tenantProductIds = data.item_prices.map((item: any) => item.tenant_product_id);
 
@@ -378,9 +401,18 @@ export async function POST(request: NextRequest) {
     if (validProductIds.size !== tenantProductIds.length) {
       return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
     }
-  }
+  } else if (data.membership_mode === 'manual') {
+    let validProductIds: Set<string>;
+    try {
+      validProductIds = await ensureTenantProducts(db, claims.tenant_id, data.selected_product_ids);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+    }
 
-  const simpleMembershipMode = isSimpleForm ? data.membership_mode : 'manual';
+    if (validProductIds.size !== data.selected_product_ids.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+    }
+  }
 
   const { data: priceList, error: insertError } = await db
     .schema('app')
@@ -448,6 +480,36 @@ export async function POST(request: NextRequest) {
         { error: 'Price list was created but products could not be saved', code: itemsError.code, detail: itemsError.message },
         { status: 500 },
       );
+    }
+  } else if (isSimpleForm && simpleMembershipMode === 'manual' && data.selected_product_ids.length > 0) {
+    let selectedProducts: Array<{ id: string; base_selling_price: number | null }>;
+    try {
+      selectedProducts = await getTenantProductBasePrices(db, claims.tenant_id, data.selected_product_ids);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to load selected products' }, { status: 500 });
+    }
+
+    if (selectedProducts.some((product) => Number(product.base_selling_price ?? 0) <= 0)) {
+      return NextResponse.json({ error: 'Every selected product needs a base selling price before it can be added.' }, { status: 422 });
+    }
+
+    const { error: itemsError } = await db
+      .schema('app')
+      .from('price_list_items')
+      .insert(
+        selectedProducts.map((product) => ({
+          price_list_id: priceList.id,
+          tenant_product_id: product.id,
+          price: Number(product.base_selling_price ?? 0),
+          min_qty: 1,
+          max_qty: null,
+          created_by: claims.sub,
+          updated_by: claims.sub,
+        })),
+      );
+
+    if (itemsError) {
+      return NextResponse.json({ error: 'Price list was created but products could not be saved', detail: itemsError.message }, { status: 500 });
     }
   }
 

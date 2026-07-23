@@ -56,7 +56,6 @@ export interface TenantProduct {
   days_cover?: number | null;
   units_mtd?: number;
   gmv_mtd?: number;
-  growth_pct?: number;
   status_label?: string;
   status_tone?: 'success' | 'warning' | 'danger' | 'neutral';
 }
@@ -73,8 +72,6 @@ export interface ProductsKpis {
   category_count: number;
   units_mtd?: number;
   revenue_mtd: number;
-  revenue_prev_mtd: number;
-  revenue_growth_pct: number;
 }
 
 export interface ProductsTodaysReadItem {
@@ -109,7 +106,6 @@ export interface ProductDetailResponse {
     };
     meta_strip_4: {
       units_mtd: number;
-      growth_pct: number;
       days_cover: number;
       on_hand: number;
       sell_through_pct: number;
@@ -158,7 +154,6 @@ export interface ProductDetailResponse {
       }>;
       units_snapshot: {
         units_mtd: number;
-        growth_pct: number;
         revenue_last_30d: number;
       };
     };
@@ -408,11 +403,13 @@ export function useProduct(id: string) {
   });
 }
 
-export function useProductDetail(id: string) {
+export function useProductDetail(id: string, options?: { includePerformance?: boolean }) {
   return useQuery({
-    queryKey: ['tenant-product-detail', id],
+    queryKey: ['tenant-product-detail', id, options?.includePerformance ?? true],
     queryFn: async (): Promise<ProductDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/products/${id}`);
+      const params = new URLSearchParams();
+      params.set('include_performance', String(options?.includePerformance ?? true));
+      const res = await apiFetch(`/api/tenant/products/${id}?${params.toString()}`);
       if (!res.ok) throw new Error('Product not found');
       return res.json() as Promise<ProductDetailResponse>;
     },

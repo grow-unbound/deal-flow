@@ -74,17 +74,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const cohortRes = await db
     .schema('app')
-    .from('cohort_members')
-    .select('cohort_id, cohorts(name, deleted_at)')
+    .from('cohort_members_active')
+    .select('cohort_id')
     .eq('buyer_id', buyerId)
 
   if (cohortRes.error) {
     return NextResponse.json({ error: 'Failed to load price lists' }, { status: 500 });
   }
 
-  const activeCohorts = (cohortRes.data ?? []).filter((row: any) => !row.cohorts?.deleted_at);
-  const cohortIds = activeCohorts.map((row: any) => row.cohort_id as string);
-  const cohortNames = new Map(activeCohorts.map((row: any) => [row.cohort_id as string, row.cohorts?.name ?? 'Customer group']));
+  const memberCohortIds = ((cohortRes.data ?? []) as Array<{ cohort_id: string }>).map((row) => row.cohort_id);
+  const cohortIds: string[] = [];
+  const cohortNames = new Map<string, string>();
+  if (memberCohortIds.length > 0) {
+    const { data: cohortNameRows } = await db
+      .schema('app')
+      .from('cohorts')
+      .select('id, name')
+      .in('id', memberCohortIds)
+      .is('deleted_at', null);
+    for (const row of (cohortNameRows ?? []) as Array<{ id: string; name: string }>) {
+      cohortIds.push(row.id);
+      cohortNames.set(row.id, row.name ?? 'Customer group');
+    }
+  }
 
   const assignmentsRes =
     cohortIds.length > 0

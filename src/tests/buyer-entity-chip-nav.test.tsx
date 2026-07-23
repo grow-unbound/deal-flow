@@ -10,6 +10,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   markBuyerNavigationForward: vi.fn(),
+  navigateBuyerBack: vi.fn(),
 }));
 
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';

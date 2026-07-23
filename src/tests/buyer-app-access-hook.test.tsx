@@ -82,7 +82,11 @@ describe('useToggleBuyerAccess', () => {
     );
     apiPatchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true }),
+      json: async () => ({
+        updated_count: 1,
+        whatsapp_sent_count: 0,
+        whatsapp_eligible_count: 0,
+      }),
     });
 
     const { result } = renderHook(() => useToggleBuyerAccess(), {

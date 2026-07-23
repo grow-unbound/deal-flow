@@ -1,8 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
-import { SegmentedControl } from '@/components/ui/segmented-control';
 import { MultiSelectOverlayField } from '@/components/ui/multi-select-overlay-field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useMembershipPreviewCount } from '@/hooks/useMembershipPreviewCount';
 import { useTenantBrands } from '@/hooks/useBrands';
 import { useTenantCategories } from '@/hooks/useTenantCategories';
@@ -68,31 +74,55 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
     return (
       <div className="space-y-4">
         <FilterRow label="Last sale">
-          <SegmentedControl
-            aria-label="Last sale"
-            options={LAST_SALE_OPTIONS}
-            value={buyerRules.last_sale_bucket ?? null}
-            onChange={(value) => setBuyerRule('last_sale_bucket', value ? (value as BuyerMembershipRules['last_sale_bucket']) : undefined)}
+          <Select
+            value={buyerRules.last_sale_bucket ?? '__all__'}
+            onValueChange={(value) => setBuyerRule('last_sale_bucket', value === '__all__' ? undefined : value as BuyerMembershipRules['last_sale_bucket'])}
             disabled={disabled}
-          />
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All buyers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All buyers</SelectItem>
+              {LAST_SALE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FilterRow>
         <FilterRow label="Sales (90d)">
-          <SegmentedControl
-            aria-label="Sales 90 days"
-            options={SALES_90D_OPTIONS}
-            value={buyerRules.sales_90d_level ?? null}
-            onChange={(value) => setBuyerRule('sales_90d_level', value ? (value as BuyerMembershipRules['sales_90d_level']) : undefined)}
+          <Select
+            value={buyerRules.sales_90d_level ?? '__all__'}
+            onValueChange={(value) => setBuyerRule('sales_90d_level', value === '__all__' ? undefined : value as BuyerMembershipRules['sales_90d_level'])}
             disabled={disabled}
-          />
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All spend bands" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All spend bands</SelectItem>
+              {SALES_90D_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FilterRow>
         <FilterRow label="Buyer app status">
-          <SegmentedControl
-            aria-label="Buyer app status"
-            options={BUYER_APP_STATUS_OPTIONS}
-            value={buyerRules.buyer_app_status ?? null}
-            onChange={(value) => setBuyerRule('buyer_app_status', value ? (value as BuyerMembershipRules['buyer_app_status']) : undefined)}
+          <Select
+            value={buyerRules.buyer_app_status ?? '__all__'}
+            onValueChange={(value) => setBuyerRule('buyer_app_status', value === '__all__' ? undefined : value as BuyerMembershipRules['buyer_app_status'])}
             disabled={disabled}
-          />
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All app statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All app statuses</SelectItem>
+              {BUYER_APP_STATUS_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FilterRow>
         <LiveCount isLoading={preview.isLoading} count={preview.data?.count} sampleNames={preview.data?.sample_names} noun="buyers" />
       </div>
@@ -127,6 +157,7 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
           title="Select brands"
           emptySelectionLabel="All brands"
           searchPlaceholder="Search brands…"
+          countNoun="brands"
         />
       </FilterRow>
       <FilterRow label="Category">
@@ -137,16 +168,25 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
           title="Select categories"
           emptySelectionLabel="All categories"
           searchPlaceholder="Search categories…"
+          countNoun="categories"
         />
       </FilterRow>
       <FilterRow label="Stock status">
-        <SegmentedControl
-          aria-label="Stock status"
-          options={STOCK_STATUS_OPTIONS}
-          value={productRules.stock_status ?? null}
-          onChange={(value) => setProductRule('stock_status', value ? (value as ProductMembershipRules['stock_status']) : undefined)}
+        <Select
+          value={productRules.stock_status ?? '__all__'}
+          onValueChange={(value) => setProductRule('stock_status', value === '__all__' ? undefined : value as ProductMembershipRules['stock_status'])}
           disabled={disabled}
-        />
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="All stock states" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All stock states</SelectItem>
+            {STOCK_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </FilterRow>
       <LiveCount isLoading={preview.isLoading} count={preview.data?.count} sampleNames={preview.data?.sample_names} noun="products" />
     </div>

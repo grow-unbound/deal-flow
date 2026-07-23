@@ -73,7 +73,19 @@ const SAMPLE_BY_KEY = {
   support_number: process.env.WHATSAPP_ADMIN_NUMBER ?? '919490744841',
   campaign_title: 'Monsoon Clearance',
   buyer_note: 'Flat 15% off selected SKUs — sample broadcast note.',
+  visit_date: '26 July',
+  visit_window: '3:30PM–5:30PM',
+  invoice_number: 'INV-SAMPLE-001',
 };
+
+const NEW_TEMPLATE_NAMES = [
+  'beat_route_buyer',
+  'new_stock_buyer',
+  'buyer_app_dormant',
+  'buyer_app_adoption',
+  'buyer_app_enabled',
+  'invoice_update_buyer',
+];
 
 const TRIGGER_BY_TEMPLATE = {
   login_otp: { triggerSource: 'otp_login', tenantId: PLATFORM_TENANT_ID, priority: 1 },
@@ -81,13 +93,22 @@ const TRIGGER_BY_TEMPLATE = {
   order_received_seller: { triggerSource: 'order_placed', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'orders' },
   request_received_buyer: { triggerSource: 'enquiry_received', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'estimates' },
   request_received_seller: { triggerSource: 'enquiry_received', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'estimates' },
+  request_update_buyer: { triggerSource: 'estimate_update', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'estimates' },
+  invoice_update_buyer: { triggerSource: 'invoice_update', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'invoices' },
   buyer_payment_reminder: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
   campaign_published_buyer: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  beat_route_buyer: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  new_stock_buyer: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  buyer_app_dormant: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  buyer_app_adoption: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  buyer_app_enabled: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
 };
 
 function parseArgs(argv) {
   let phone = DEFAULT_PHONE;
   let dryRun = false;
+  let onlyTemplates = null;
+  let delayMs = 0;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dry-run') dryRun = true;
@@ -95,12 +116,23 @@ function parseArgs(argv) {
       phone = argv[i + 1];
       i += 1;
     }
+    if (arg === '--only' && argv[i + 1]) {
+      onlyTemplates = argv[i + 1].split(',').map((name) => name.trim()).filter(Boolean);
+      i += 1;
+    }
+    if (arg === '--new') {
+      onlyTemplates = [...NEW_TEMPLATE_NAMES];
+    }
+    if (arg === '--delay-ms' && argv[i + 1]) {
+      delayMs = Number(argv[i + 1]);
+      i += 1;
+    }
     if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/send-whatsapp-template-samples.mjs [--phone 9490744841] [--dry-run]');
+      console.log('Usage: node scripts/send-whatsapp-template-samples.mjs [--phone 9490744841] [--only tpl1,tpl2] [--new] [--dry-run]');
       process.exit(0);
     }
   }
-  return { phone, dryRun };
+  return { phone, dryRun, onlyTemplates, delayMs };
 }
 
 function formatWhatsappDestination(phone) {
@@ -115,6 +147,16 @@ function buildBodyParams(template) {
       { text: SAMPLE_BY_KEY.otp },
       { text: SAMPLE_BY_KEY.product_name },
       { text: SAMPLE_BY_KEY.support_number },
+    ];
+  }
+
+  if (template.meta_template_name === 'beat_route_buyer') {
+    return [
+      { text: SAMPLE_BY_KEY.buyer_name, parameter_name: 'buyer_name' },
+      { text: SAMPLE_BY_KEY.seller_name, parameter_name: 'seller_name' },
+      { text: SAMPLE_BY_KEY.visit_date, parameter_name: 'visit_date' },
+      { text: SAMPLE_BY_KEY.visit_window, parameter_name: 'visit_window' },
+      { text: SAMPLE_BY_KEY.seller_phone_number, parameter_name: 'seller_phone_number' },
     ];
   }
 
@@ -205,7 +247,7 @@ async function triggerDispatch(messageIds) {
 }
 
 async function main() {
-  const { phone, dryRun } = parseArgs(process.argv.slice(2));
+  const { phone, dryRun, onlyTemplates, delayMs } = parseArgs(process.argv.slice(2));
   const recipientPhone = formatWhatsappDestination(phone);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -233,10 +275,20 @@ async function main() {
   if (error) throw new Error(`Failed to load templates: ${error.message}`);
   if (!templates?.length) throw new Error('No approved platform templates found');
 
+  const selectedTemplates = onlyTemplates?.length
+    ? templates.filter((template) => onlyTemplates.includes(template.meta_template_name))
+    : templates;
+
+  if (onlyTemplates?.length && selectedTemplates.length !== onlyTemplates.length) {
+    const found = new Set(selectedTemplates.map((template) => template.meta_template_name));
+    const missing = onlyTemplates.filter((name) => !found.has(name));
+    throw new Error(`Templates not found or not approved: ${missing.join(', ')}`);
+  }
+
   console.log(`Recipient: ${recipientPhone}`);
-  console.log(`Templates: ${templates.map((t) => t.meta_template_name).join(', ')}`);
+  console.log(`Templates: ${selectedTemplates.map((t) => t.meta_template_name).join(', ')}`);
   if (dryRun) {
-    for (const template of templates) {
+    for (const template of selectedTemplates) {
       console.log(`\n--- ${template.meta_template_name} ---`);
       console.log(JSON.stringify(buildSendPayload(template), null, 2));
     }
@@ -245,7 +297,7 @@ async function main() {
 
   const enqueued = [];
 
-  for (const template of templates) {
+  for (const template of selectedTemplates) {
     const routing = TRIGGER_BY_TEMPLATE[template.meta_template_name];
     if (!routing?.tenantId) {
       console.warn(`Skipping ${template.meta_template_name}: no routing config`);

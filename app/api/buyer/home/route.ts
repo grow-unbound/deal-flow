@@ -8,7 +8,7 @@ import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
-import { hasInvoiceReceivableExposure } from '@/lib/invoice-status';
+import { hasInvoiceReceivableExposure, invoiceStatusGmvIncluded } from '@/lib/invoice-status';
 
 const RECENT_ORDER_PREVIEW_LIMIT = 20;
 const ORDER_AGAIN_PREVIEW_LIMIT = 5;
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       const previewPayload: BuyerHomeResponse = {
         greeting_name: 'Preview',
         open_orders_count: 0,
-        summary_card: { gmv_mtd: 0, gmv_ytd: 0, invoice_count_ytd: 0, trend_vs_last_month_pct: 0 },
+        summary_card: { gmv_mtd: 0, gmv_ytd: 0, invoice_count_ytd: 0 },
         dues_card: { outstanding_dues: 0, open_invoice_count: 0, earliest_due_date: null, days_until_earliest_due: null },
         credit_card: { credit_limit: 0, available_credit: 0, credit_used: 0 },
         order_again_preview: [],
@@ -164,35 +164,28 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       status: string | null;
     }>;
 
-    const gmvMtd = financialInvoices
+    // GMV/spend figures must exclude draft & void invoices — otherwise
+    // unfinalized or voided invoices inflate "Spend this month/year".
+    const gmvEligibleInvoices = financialInvoices.filter((row) => invoiceStatusGmvIncluded(String(row.status ?? '')));
+    const gmvMtd = gmvEligibleInvoices
       .filter((row) => {
         if (!row.invoice_date) return false;
         const ts = new Date(row.invoice_date).getTime();
         return ts >= currentMonthStart.getTime() && ts < nextMonthStart.getTime();
       })
       .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const gmvPreviousMonth = financialInvoices
-      .filter((row) => {
-        if (!row.invoice_date) return false;
-        const ts = new Date(row.invoice_date).getTime();
-        return ts >= previousMonthStart.getTime() && ts < currentMonthStart.getTime();
-      })
-      .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const gmvYtd = financialInvoices
+    const gmvYtd = gmvEligibleInvoices
       .filter((row) => {
         if (!row.invoice_date) return false;
         const ts = new Date(row.invoice_date).getTime();
         return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
       })
       .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const invoiceCountYtd = financialInvoices.filter((row) => {
+    const invoiceCountYtd = gmvEligibleInvoices.filter((row) => {
       if (!row.invoice_date) return false;
       const ts = new Date(row.invoice_date).getTime();
       return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
     }).length;
-    const trendVsLastMonthPct = gmvPreviousMonth > 0
-      ? Math.round(((gmvMtd - gmvPreviousMonth) / gmvPreviousMonth) * 100)
-      : gmvMtd > 0 ? 100 : 0;
     // Open invoices within the fetched window are a lower bound only (the window
     // is ~12-13 months); the snapshot's oldest_due_at is the authoritative
     // all-time value and takes priority when present.
@@ -208,22 +201,30 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const daysUntilEarliestDue = earliestDueDate
       ? Math.ceil((new Date(earliestDueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       : null;
+    // Same "amount owed" fallback used for both the dues card and the credit tile
+    // when the metrics_buyer_snapshot row is missing — a live sum over the buyer's
+    // own outstanding invoices via the canonical receivable predicate, not an
+    // independent (and previously silently-zero) fallback per field.
+    const outstandingDuesFallback = openInvoiceRows.reduce((sum, row) => sum + Number(row.outstanding_balance ?? 0), 0);
+    const outstandingDues = Number(buyerMetrics?.receivable_amount ?? outstandingDuesFallback);
+    const creditLimit = Number(buyerMetrics?.credit_limit ?? buyer.credit_limit ?? 0);
+    const creditUsed = Number(
+      (buyerMetrics?.credit_limit != null && buyerMetrics?.credit_available != null)
+        ? Number(buyerMetrics.credit_limit) - Number(buyerMetrics.credit_available)
+        : outstandingDues,
+    );
+    const availableCredit = Math.max(creditLimit - creditUsed, 0);
     const buyerHomeSummary = {
       gmv_mtd: gmvMtd,
       gmv_ytd: gmvYtd,
       invoice_count_ytd: invoiceCountYtd,
-      trend_vs_last_month_pct: trendVsLastMonthPct,
-      outstanding_dues: Number(buyerMetrics?.receivable_amount ?? openInvoiceRows.reduce((sum, row) => sum + Number(row.outstanding_balance ?? 0), 0)),
+      outstanding_dues: outstandingDues,
       open_invoice_count: openInvoiceRows.length,
       earliest_due_date: earliestDueDate,
       days_until_earliest_due: daysUntilEarliestDue,
-      credit_limit: Number(buyerMetrics?.credit_limit ?? buyer.credit_limit ?? 0),
-      available_credit: Number(buyerMetrics?.credit_available ?? buyer.credit_limit ?? 0),
-      credit_used: Number(
-        (buyerMetrics?.credit_limit != null && buyerMetrics?.credit_available != null)
-          ? Number(buyerMetrics.credit_limit) - Number(buyerMetrics.credit_available)
-          : buyerMetrics?.receivable_amount ?? 0,
-      ),
+      credit_limit: creditLimit,
+      available_credit: availableCredit,
+      credit_used: creditUsed,
       open_orders_count: recentOrders.filter((row) => OPEN_ORDER_STATUSES.has(String(row.status ?? ''))).length,
     };
 
@@ -386,7 +387,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         gmv_mtd: Number(buyerHomeSummary.gmv_mtd.toFixed(2)),
         gmv_ytd: Number(buyerHomeSummary.gmv_ytd.toFixed(2)),
         invoice_count_ytd: buyerHomeSummary.invoice_count_ytd,
-        trend_vs_last_month_pct: buyerHomeSummary.trend_vs_last_month_pct,
       },
       dues_card: {
         outstanding_dues: buyerHomeSummary.outstanding_dues,

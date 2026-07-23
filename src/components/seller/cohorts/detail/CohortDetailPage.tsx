@@ -13,6 +13,7 @@ import { formatNumberValue } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
+import type { BuyerMembershipRules } from '@/lib/zod';
 import { CohortBuyersTab } from './CohortBuyersTab';
 import { CustomerGroupFormSheet } from '../CustomerGroupFormSheet';
 
@@ -81,16 +82,17 @@ function formatRefreshedAt(iso: string | null | undefined): string {
 
 export function CohortDetailPage({ id }: CohortDetailPageProps) {
   const { isSellerAdmin } = useRole();
+  const showPerformanceTab = false;
   const [editOpen, setEditOpen] = useState(false);
   const refreshMutation = useRefreshCohort(id);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-cohort-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: 'buyers',
     version: COHORT_DETAIL_TAB_SNAPSHOT_VERSION,
   });
 
-  const { data, isLoading, isError } = useCohortDetail(id);
+  const { data, isLoading, isError } = useCohortDetail(id, { includePerformance: false });
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -99,15 +101,6 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       {
         label: 'Invoiced sales 90D',
         value: formatNumberValue(data.meta_strip_4.gmv_mtd, 'CURRENCY_THRESHOLD'),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {formatNumberValue(Math.abs(data.meta_strip_4.growth_pct), 'PERCENTAGE')}
-            </span>{' '}
-            vs last month
-          </span>
-        ),
       },
       {
         label: 'Members who purchased',
@@ -175,7 +168,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       <DetailTabs
         tabs={[
           { id: 'buyers', label: 'Buyers' },
-          { id: 'performance', label: 'Performance' },
+          ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
         ]}
         active={tab}
         onChange={(value) => setTab(value as TabId)}
@@ -186,9 +179,10 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           cohortId={id}
           rules_summary={data.rules_summary}
           activeMembersMtd={data.meta_strip_4.active_members}
+          details_rules={data.details_rules}
         />
       ) : null}
-      {tab === 'performance' ? (
+      {showPerformanceTab && tab === 'performance' ? (
         <CohortPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       <CustomerGroupFormSheet
@@ -201,6 +195,9 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           name: data.details_rules.name,
           description: data.details_rules.description,
           allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
+          membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
+          selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
+          rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
         }}
       />
     </PageWrap>

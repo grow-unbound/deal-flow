@@ -13,7 +13,7 @@ vi.mock('@/hooks/useCategories', () => ({
 }));
 
 vi.mock('@/hooks/useRouteSnapshot', () => ({
-  useRouteSnapshot: () => ({ state: 'performance', setState: vi.fn() }),
+  useRouteSnapshot: () => ({ state: 'products', setState: vi.fn() }),
 }));
 
 vi.mock('@/hooks/useRole', () => ({
@@ -31,7 +31,7 @@ vi.mock('@/components/seller/settings/CategoryFormSheet', () => ({
 import { CategoryDetailPage } from '@/components/seller/categories/detail/CategoryDetailPage';
 
 describe('category detail page', () => {
-  it('renames the overview tab to performance', () => {
+  it('hides performance and defaults to products', () => {
     useCategoryDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -84,8 +84,8 @@ describe('category detail page', () => {
 
     render(<CategoryDetailPage id="cat-1" />);
 
-    expect(screen.getByRole('tab', { name: 'Performance' })).toHaveClass('border-ember-500');
-    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
-    expect(screen.getByText('Revenue trend')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Products/i })).toHaveClass('border-ember-500');
+    expect(screen.getByRole('tab', { name: /^Brands/i })).toBeInTheDocument();
   });
 });

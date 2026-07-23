@@ -3,8 +3,19 @@
 import { useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'df_buyer_nav_direction';
+const DEFAULT_BUYER_BACK_FALLBACK = '/buy/home';
 
 export type BuyerNavDirection = 'forward' | 'back';
+export interface BuyerBackRouter {
+  back: () => void;
+  replace: (href: string) => void;
+}
+
+function canUseBrowserBack(): boolean {
+  if (typeof window === 'undefined') return false;
+  const state = window.history.state as { idx?: unknown } | null;
+  return typeof state?.idx === 'number' && state.idx > 0;
+}
 
 /**
  * Call before navigating deeper into the stack (e.g. catalog → detail).
@@ -20,6 +31,21 @@ export function markBuyerNavigationForward(): void {
 export function markBuyerNavigationBack(): void {
   if (typeof sessionStorage === 'undefined') return;
   sessionStorage.setItem(STORAGE_KEY, 'back');
+}
+
+/**
+ * Navigates back when this tab has a real history stack; otherwise returns to buyer home.
+ */
+export function navigateBuyerBack(
+  router: BuyerBackRouter,
+  fallbackHref: string = DEFAULT_BUYER_BACK_FALLBACK,
+): void {
+  markBuyerNavigationBack();
+  if (canUseBrowserBack()) {
+    router.back();
+    return;
+  }
+  router.replace(fallbackHref);
 }
 
 /**

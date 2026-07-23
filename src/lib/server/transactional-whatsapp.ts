@@ -12,6 +12,7 @@ interface EnqueueTransactionAcknowledgementInput {
   tenantId: string;
   buyerId: string;
   locationId: string;
+  initiatingBuyerUserId?: string | null;
   documentId: string;
   documentNumber?: string | null;
   totalAmount: number;
@@ -41,6 +42,7 @@ export async function enqueueTransactionAcknowledgement(
     input.buyerId,
     input.locationId,
     notificationType,
+    input.initiatingBuyerUserId,
   );
   if (!ctx) {
     return false;

@@ -66,6 +66,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const includePerformance = req.nextUrl.searchParams.get('include_performance') !== 'false';
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
@@ -166,7 +167,6 @@ export async function GET(
       },
       meta_strip_4: {
         units_mtd: invoiceUnits90d,
-        growth_pct: 0,
         days_cover: daysCover ?? 0,
         on_hand: available,
         sell_through_pct: available + invoiceUnits90d > 0 ? Math.round((invoiceUnits90d / (available + invoiceUnits90d)) * 100) : 0,
@@ -189,8 +189,8 @@ export async function GET(
         description: product.description ?? null,
         updated_at: product.updated_at,
       },
-      performance_cards: detailV2.performance_cards ?? [],
-      detail_v2: detailV2,
+      performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
+      detail_v2: includePerformance ? detailV2 : null,
       performance: {
         monthly_units_trend: [],
         inventory_ops: {
@@ -202,7 +202,7 @@ export async function GET(
         },
         top_buyers: [],
         price_by_cohort: [{ cohort: 'All buyers (base)', price: Number(product.base_selling_price ?? 0), has_override: false }],
-        units_snapshot: { units_mtd: invoiceUnits90d, growth_pct: 0, revenue_last_30d: Math.round(invoiceValue90d) },
+        units_snapshot: { units_mtd: invoiceUnits90d, revenue_last_30d: Math.round(invoiceValue90d) },
       },
       pricing_summary: {
         mrp: product.mrp,

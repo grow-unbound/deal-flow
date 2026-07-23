@@ -31,6 +31,7 @@ import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
 import { formatNumberValue } from '@/lib/utils';
 import { PriceListFormSheet } from '@/components/seller/price-lists/PriceListFormSheet';
+import type { ProductMembershipRules } from '@/lib/zod';
 
 const PriceListPerformanceTab = dynamic(
   () => import('@/components/seller/price-lists/detail/PriceListPerformanceTab').then((m) => m.PriceListPerformanceTab),
@@ -47,16 +48,17 @@ export default function PriceListDetailPage() {
   const priceListId = typeof id === 'string' ? id : '';
   const router = useRouter();
   const { isSellerAdmin } = useRole();
+  const showPerformanceTab = false;
 
   const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
     storageKey: 'seller-price-list-detail-tab',
     scopeKey: priceListId,
-    initialState: 'performance',
+    initialState: 'products',
   });
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
-  const { data, isLoading, isError } = usePriceListDetail(priceListId);
+  const { data, isLoading, isError } = usePriceListDetail(priceListId, { includePerformance: false });
   const priceListAction = usePriceListAction(priceListId);
 
   const priceList = data?.price_list;
@@ -65,18 +67,18 @@ export default function PriceListDetailPage() {
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
     return [
-      { id: 'performance', label: 'Performance' },
+      ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
     ];
-  }, [isSellerAdmin, priceList?.items?.length]);
+  }, [isSellerAdmin, priceList?.items?.length, showPerformanceTab]);
 
   useEffect(() => {
     if (!priceList) return;
     const validIds = new Set(tabs.map((t) => t.id));
-    if (!validIds.has(activeTab)) setActiveTab('performance');
+    if (!validIds.has(activeTab)) setActiveTab('products');
   }, [activeTab, priceList, setActiveTab, tabs]);
 
-  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'performance';
+  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'products';
 
   const discountBands = useMemo(
     () => (priceList ? getDiscountBandCounts(priceList) : { discounted: 0, atBase: 0, aboveBase: 0, total: 0 }),
@@ -156,10 +158,9 @@ export default function PriceListDetailPage() {
 
               <DetailTabs tabs={tabs} active={tabActive} onChange={setActiveTab} />
 
-              {tabActive === 'performance' ? (
+              {showPerformanceTab && tabActive === 'performance' ? (
                 <PriceListPerformanceTab priceList={priceList} performanceCards={priceList.performance_cards} />
               ) : null}
-
               {tabActive === 'products' ? (
                 <PriceListProductsTab
                   priceListId={priceListId}
@@ -169,6 +170,12 @@ export default function PriceListDetailPage() {
                   canViewFinancials={isSellerAdmin}
                   pricingStrategy={priceList.pricing_strategy}
                   strategyValue={priceList.strategy_value}
+                  membershipMode={priceList.membership_mode}
+                  name={priceList.name}
+                  description={priceList.description}
+                  validFrom={priceList.valid_from}
+                  validTo={priceList.valid_to}
+                  priority={priceList.priority}
                 />
               ) : null}
 
@@ -201,6 +208,8 @@ export default function PriceListDetailPage() {
                   valid_from: priceList.valid_from ? new Date(priceList.valid_from) : new Date(),
                   valid_to: priceList.valid_to ? new Date(priceList.valid_to) : undefined,
                   priority: priceList.priority,
+                  membership_mode: priceList.membership_mode ?? 'manual',
+                  rules: priceList.membership_mode === 'automatic' ? (priceList.filters as unknown as ProductMembershipRules) : undefined,
                 }}
               />
             </>

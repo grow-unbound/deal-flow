@@ -34,11 +34,11 @@ import { LocationsLandingSkeleton as SharedLocationsLandingSkeleton } from '@/co
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Outstanding dues (high → low)';
+type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Outstanding (high → low)';
 const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'] as const;
 const DUE_OPTIONS = ['Due', 'Overdue'] as const;
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Outstanding dues (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Outstanding (high → low)'];
 
 function LocationsLandingSkeleton() {
   return (
@@ -118,7 +118,7 @@ function LocationsLandingContent({
         stock: [] as string[],
         dues: [] as string[],
       },
-      sortBy: 'GMV (high → low)' as SortOption,
+      sortBy: 'Sales (high → low)' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
@@ -209,8 +209,8 @@ function LocationsLandingContent({
         );
       })
       .sort((a, b) => {
-        if (sortBy === 'GMV (high → low)') return b.gmv_mtd - a.gmv_mtd;
-        if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
+        if (sortBy === 'Sales (high → low)') return b.gmv_mtd - a.gmv_mtd;
+        if (sortBy === 'Sales (low → high)') return a.gmv_mtd - b.gmv_mtd;
         return b.outstanding_dues - a.outstanding_dues;
       });
   }, [filters.dues, filters.status, filters.stock, landingData?.locations, search, sortBy]);
@@ -241,7 +241,7 @@ function LocationsLandingContent({
       <PageHeader
         eyebrow="Operations"
         title="Locations"
-        subtitle={`${kpis.active_locations} active locations · ${kpis.linked_warehouse_count} linked warehouses.`}
+        subtitle={`${filtered.length} active locations · ${kpis.linked_warehouse_count} linked warehouses.`}
         horizon={horizonLabel}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -262,13 +262,13 @@ function LocationsLandingContent({
               {
                 label: 'Invoiced sales 90D',
                 value: formatNumberValue(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
-                sub: `${filtered.length} active locations in view`,
+                sub: `${kpis.active_locations} active locations`,
               },
               {
                 label: 'Overdue amount',
-                value: formatNumberValue(kpis.outstanding_dues_total, 'CURRENCY_THRESHOLD'),
-                sub: `across ${kpis.dues_location_count} locations`,
-                tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
+                value: formatNumberValue(kpis.overdue_dues_total, 'CURRENCY_THRESHOLD'),
+                sub: `across ${kpis.overdue_location_count} locations`,
+                tone: kpis.overdue_dues_total > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Customers who bought',
@@ -366,14 +366,13 @@ function LocationsLandingContent({
           <LandingTable
             columns={[
                 { label: 'Location', width: 220, minWidth: 200, maxWidth: 360, className: 'px-5' },
-                { label: 'Sales · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
-                { label: 'Invoices · 90D', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: 'Active customers', align: 'right', minWidth: 100, maxWidth: 150, className: 'px-5' },
+                { label: 'Overdue amount', align: 'right', minWidth: 100, maxWidth: 150, className: 'px-5' },
+                { label: 'Sales · 90D', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
+                { label: 'Invoices · 90D', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
                 { label: kpis.open_primary_demand_kind === 'orders' ? 'Order value · 90D' : 'Estimate value · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
                 { label: kpis.open_primary_demand_kind === 'orders' ? 'Orders · 90D' : 'Estimates · 90D', align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
                 { label: 'Conversion · 90D', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
-                { label: 'Active customers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
-                { label: 'Overdue amount', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
-                { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}
               tableMinWidth={1700}
@@ -398,6 +397,12 @@ function LocationsLandingContent({
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.active_buyers}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.outstanding_dues > 0 ? formatNumberValue(row.outstanding_dues, 'CURRENCY_THRESHOLD') : '—'}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
@@ -411,15 +416,6 @@ function LocationsLandingContent({
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : row.conversion_90d > 0 ? `${row.conversion_90d}%` : '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {row.active_buyers}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                    {row.outstanding_dues > 0 ? formatNumberValue(row.outstanding_dues, 'CURRENCY_THRESHOLD') : '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StatusTag tone={stockTone(row.stock_status)} label={stockLabel(row.stock_status)} />
                   </td>
                   <td className="px-4 py-3.5 text-right text-cream-500">
                     <ChevronRight size={14} className="text-cream-400" />

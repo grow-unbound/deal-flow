@@ -6,20 +6,34 @@ const {
   onNewMock,
   onPatchMock,
   removeChannelMock,
+  schemaMock,
+  fromMock,
+  selectMock,
+  eqMock,
+  maybeSingleMock,
   estimateInsertCallbacks,
   estimateUpdateCallbacks,
   orderInsertCallbacks,
   orderUpdateCallbacks,
+  invoiceInsertCallbacks,
+  invoiceUpdateCallbacks,
   broadcastUpdateCallbacks,
 } = vi.hoisted(() => ({
   invalidateQueriesMock: vi.fn(),
   onNewMock: vi.fn(),
   onPatchMock: vi.fn(),
   removeChannelMock: vi.fn(),
+  schemaMock: vi.fn(),
+  fromMock: vi.fn(),
+  selectMock: vi.fn(),
+  eqMock: vi.fn(),
+  maybeSingleMock: vi.fn(),
   estimateInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
   estimateUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
   orderInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
   orderUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
+  invoiceInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
+  invoiceUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
   broadcastUpdateCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
 }));
 
@@ -44,6 +58,10 @@ vi.mock('@/lib/supabase-browser', () => {
         orderUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
       } else if (config.table === 'orders') {
         orderInsertCallbacks.push(callback);
+      } else if (config.table === 'invoices' && config.event === 'UPDATE') {
+        invoiceUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
+      } else if (config.table === 'invoices') {
+        invoiceInsertCallbacks.push(callback);
       } else if (config.table === 'whatsapp_broadcasts' && config.event === 'UPDATE') {
         broadcastUpdateCallbacks.push(callback);
       }
@@ -56,6 +74,23 @@ vi.mock('@/lib/supabase-browser', () => {
     supabaseBrowser: {
       channel: vi.fn(() => chain),
       removeChannel: removeChannelMock,
+      schema: schemaMock.mockReturnValue({
+        from: fromMock.mockImplementation((table: string) => ({
+          select: selectMock.mockImplementation((_fields: string) => ({
+            eq: eqMock.mockImplementation((_field: string, id: string) => ({
+              maybeSingle: maybeSingleMock.mockImplementation(async () => {
+                if (table === 'estimates') {
+                  return { data: { estimate_number: id === 'est-link-1' ? 'EST-000123' : null }, error: null };
+                }
+                if (table === 'orders') {
+                  return { data: { order_number: id === 'ord-link-1' ? 'SO-000321' : null }, error: null };
+                }
+                return { data: null, error: null };
+              }),
+            })),
+          })),
+        })),
+      }),
     },
   };
 });
@@ -72,7 +107,14 @@ describe('useSellerRealtime', () => {
     estimateUpdateCallbacks.length = 0;
     orderInsertCallbacks.length = 0;
     orderUpdateCallbacks.length = 0;
+    invoiceInsertCallbacks.length = 0;
+    invoiceUpdateCallbacks.length = 0;
     broadcastUpdateCallbacks.length = 0;
+    schemaMock.mockClear();
+    fromMock.mockClear();
+    selectMock.mockClear();
+    eqMock.mockClear();
+    maybeSingleMock.mockClear();
   });
 
   it('skips estimate insert notifications when estimate_number is null', () => {
@@ -80,6 +122,7 @@ describe('useSellerRealtime', () => {
       useSellerRealtime({
         tenantId: 'tenant-1',
         locationIds: null,
+        locationNamesById: { 'loc-1': 'Mumbai HQ' },
         onNew: onNewMock,
         onPatch: onPatchMock,
       }),
@@ -107,6 +150,7 @@ describe('useSellerRealtime', () => {
       useSellerRealtime({
         tenantId: 'tenant-1',
         locationIds: null,
+        locationNamesById: { 'loc-1': 'Mumbai HQ' },
         onNew: onNewMock,
         onPatch: onPatchMock,
       }),
@@ -131,36 +175,37 @@ describe('useSellerRealtime', () => {
 
     expect(onPatchMock).toHaveBeenCalledWith('estimate', 'est-1', {
       title: 'New estimate · EST-000045',
-      body: '₹12,345',
+      body: 'Mumbai HQ',
     });
     expect(onNewMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'est-1_new_estimate',
         kind: 'new_estimate',
         title: 'New estimate · EST-000045',
+        body: 'Mumbai HQ',
       }),
     );
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tenant-estimates'] });
   });
 
-  it('invalidates order landing keys when order_number becomes available', () => {
-    const { result, unmount } = renderHook(() =>
+  it('shows buyer app tag after the location for estimate notifications', () => {
+    renderHook(() =>
       useSellerRealtime({
         tenantId: 'tenant-1',
         locationIds: null,
+        locationNamesById: { 'loc-1': 'Mumbai HQ' },
         onNew: onNewMock,
       }),
     );
 
     act(() => {
-      orderUpdateCallbacks[0]?.({
-        old: { id: 'ord-1', order_number: null },
+      estimateInsertCallbacks[0]?.({
         new: {
-          id: 'ord-1',
+          id: 'est-2',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
-          order_number: 'SO-000045',
-          total_amount: 54321,
+          estimate_number: 'EST-000046',
+          source: 'buyer_app',
           created_at: '2026-07-06T00:00:00.000Z',
         },
       });
@@ -168,9 +213,43 @@ describe('useSellerRealtime', () => {
 
     expect(onNewMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        body: 'Mumbai HQ · BUYER APP',
+      }),
+    );
+  });
+
+  it('invalidates order landing keys when order_number becomes available', async () => {
+    const { result, unmount } = renderHook(() =>
+      useSellerRealtime({
+        tenantId: 'tenant-1',
+        locationIds: null,
+        locationNamesById: { 'loc-1': 'Mumbai HQ' },
+        onNew: onNewMock,
+      }),
+    );
+
+    await act(async () => {
+      orderUpdateCallbacks[0]?.({
+        old: { id: 'ord-1', order_number: null },
+        new: {
+          id: 'ord-1',
+          tenant_id: 'tenant-1',
+          location_id: 'loc-1',
+          order_number: 'SO-000045',
+          estimate_id: 'est-link-1',
+          total_amount: 54321,
+          created_at: '2026-07-06T00:00:00.000Z',
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(onNewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         kind: 'new_order',
         entityType: 'order',
         entityId: 'ord-1',
+        body: 'Mumbai HQ · From EST-000123',
       }),
     );
     expect(result.current.newEntityIds.has('ord-1')).toBe(true);
@@ -180,11 +259,114 @@ describe('useSellerRealtime', () => {
     expect(removeChannelMock).toHaveBeenCalled();
   });
 
+  it('creates invoice notifications with location first and linked order number', async () => {
+    const { result } = renderHook(() =>
+      useSellerRealtime({
+        tenantId: 'tenant-1',
+        locationIds: null,
+        locationNamesById: { 'loc-1': 'Mumbai HQ' },
+        onNew: onNewMock,
+        onPatch: onPatchMock,
+      }),
+    );
+
+    await act(async () => {
+      invoiceInsertCallbacks[0]?.({
+        new: {
+          id: 'inv-1',
+          tenant_id: 'tenant-1',
+          location_id: 'loc-1',
+          invoice_number: 'INV-000045',
+          order_id: 'ord-link-1',
+          estimate_id: 'est-link-1',
+          created_at: '2026-07-06T00:00:00.000Z',
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(onNewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'inv-1_new_invoice',
+        kind: 'new_invoice',
+        entityType: 'invoice',
+        entityId: 'inv-1',
+        body: 'Mumbai HQ · From SO-000321',
+      }),
+    );
+    expect(result.current.newEntityIds.has('inv-1')).toBe(true);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tenant-invoices'] });
+  });
+
+  it('falls back to estimate number for invoice notifications when no order exists', async () => {
+    renderHook(() =>
+      useSellerRealtime({
+        tenantId: 'tenant-1',
+        locationIds: null,
+        locationNamesById: {},
+        onNew: onNewMock,
+        onPatch: onPatchMock,
+      }),
+    );
+
+    await act(async () => {
+      invoiceUpdateCallbacks[0]?.({
+        old: { id: 'inv-2', invoice_number: null },
+        new: {
+          id: 'inv-2',
+          tenant_id: 'tenant-1',
+          location_id: null,
+          invoice_number: 'INV-000046',
+          estimate_id: 'est-link-1',
+          created_at: '2026-07-06T00:00:00.000Z',
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(onPatchMock).toHaveBeenCalledWith('invoice', 'inv-2', {
+      title: 'New invoice · INV-000046',
+      body: 'Unassigned · From EST-000123',
+    });
+    expect(onNewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: 'Unassigned · From EST-000123',
+      }),
+    );
+  });
+
+  it('suppresses out-of-scope location notifications', async () => {
+    renderHook(() =>
+      useSellerRealtime({
+        tenantId: 'tenant-1',
+        locationIds: ['loc-1'],
+        locationNamesById: { 'loc-1': 'Mumbai HQ', 'loc-2': 'Pune Depot' },
+        onNew: onNewMock,
+      }),
+    );
+
+    await act(async () => {
+      invoiceInsertCallbacks[0]?.({
+        new: {
+          id: 'inv-3',
+          tenant_id: 'tenant-1',
+          location_id: 'loc-2',
+          invoice_number: 'INV-000047',
+          created_at: '2026-07-06T00:00:00.000Z',
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(onNewMock).not.toHaveBeenCalled();
+  });
+
   it('invalidates broadcast queries and patches grouped broadcast progress notifications', () => {
     renderHook(() =>
       useSellerRealtime({
         tenantId: 'tenant-1',
         locationIds: null,
+        locationNamesById: {},
         onNew: onNewMock,
         onPatch: onPatchMock,
       }),

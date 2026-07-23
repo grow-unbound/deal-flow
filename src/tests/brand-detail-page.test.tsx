@@ -43,10 +43,11 @@ vi.mock('@/components/seller/brands/AddBrandCommand', () => ({
 }));
 
 describe('brand-detail-page integration', () => {
-  it('loads performance by default and allows switching tabs', () => {
+  it('loads details by default and allows switching tabs', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
     fireEvent.click(screen.getByRole('tab', { name: /Buyers/i }));
     expect(screen.getByText('Singh Hospitality')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const requireBuyerAccessProfileMock = vi.fn();
 const sendImmediateTransactionNotificationsMock = vi.fn();
 const insertSingleMock = vi.fn();
+const orderInsertPayloads: Array<Record<string, unknown>> = [];
 const orderSelectMock = {
   eq: vi.fn(() => ({
     eq: vi.fn(() => ({
@@ -67,7 +68,10 @@ vi.mock('@/lib/supabase', () => ({
         if (table === 'orders') {
           return {
             select: vi.fn(() => orderSelectMock),
-            insert: vi.fn(() => ({ select: vi.fn(() => ({ single: insertSingleMock })) })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              orderInsertPayloads.push(payload);
+              return { select: vi.fn(() => ({ single: insertSingleMock })) };
+            }),
             update: vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) })),
           };
         }
@@ -115,6 +119,7 @@ function withNextUrl(request: Request): Request {
 describe('buyer orders route', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    orderInsertPayloads.length = 0;
     const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
     vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(false);
     insertSingleMock.mockResolvedValue({
@@ -190,6 +195,10 @@ describe('buyer orders route', () => {
         documentNumber: 'ORD-2026-0001',
       }),
     );
+    expect(orderInsertPayloads[0]).toMatchObject({
+      source: 'buyer_app',
+      is_buyer_app_order: true,
+    });
   });
 
   it('defers whatsapp and returns the pending note when outbound integration owns numbering', async () => {

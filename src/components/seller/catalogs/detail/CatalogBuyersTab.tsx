@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag, type FilterBarGroup } from '@/components/seller/layout';
+import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
 import {
   MemberToggle,
   MembershipBulkActionBar,
@@ -12,8 +14,15 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
-import { useCatalogBuyers, type CatalogDetailResponse } from '@/hooks/useCatalogs';
+import {
+  useAddCampaignBuyers,
+  useCatalogBuyers,
+  useRemoveCampaignBuyers,
+  useSaveSimpleCatalog,
+  type CatalogDetailResponse,
+} from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
+import type { BuyerMembershipRules } from '@/lib/zod';
 import { formatDate, formatNumberValue } from '@/lib/utils';
 
 type SortOption =
@@ -31,6 +40,9 @@ interface CatalogBuyersTabProps {
   catalogId: string;
   buyers: CatalogDetailResponse['buyers'];
   selectedCohort: CatalogDetailResponse['header']['selected_cohort'];
+  composer?: CatalogDetailResponse['composer'];
+  headerName: string;
+  heroImageUrl: string | null;
 }
 
 const MEMBER_OPTIONS = [
@@ -111,7 +123,7 @@ function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string | undef
   return `${formatNumberValue(count, 'COUNT')} ${label}`;
 }
 
-export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogBuyersTabProps) {
+export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, headerName, heroImageUrl }: CatalogBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
   const [status, setStatus] = useState<string[]>([]);
@@ -152,6 +164,43 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
     selection.clearSelection();
   }, [debouncedSearch, sortBy, member, status, lastSale, sales90d, buyerApp, selection.clearSelection]);
 
+  const addBuyers = useAddCampaignBuyers(catalogId);
+  const removeBuyers = useRemoveCampaignBuyers(catalogId);
+  const buyerTargetMode = composer?.buyer_target_mode ?? 'manual';
+  const canEditMembership = buyerTargetMode === 'manual';
+
+  // Automatic-mode rule editing (requirement 5); "customer_group" targeting has no rules to
+  // edit here -- that's a cohort pick, changed via Edit only.
+  const savedBuyerRules = composer?.buyer_rules ?? {};
+  const [draftBuyerRules, setDraftBuyerRules] = useState<BuyerMembershipRules>(savedBuyerRules);
+  useEffect(() => {
+    setDraftBuyerRules(savedBuyerRules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId, composer?.buyer_rules]);
+  const saveCatalog = useSaveSimpleCatalog(catalogId);
+  const buyerRulesDirty = JSON.stringify(draftBuyerRules) !== JSON.stringify(savedBuyerRules);
+
+  function saveBuyerRules() {
+    if (!composer) return;
+    saveCatalog.mutate({
+      form_mode: 'simple',
+      name: headerName,
+      description: composer.description ?? '',
+      valid_from: new Date(composer.valid_from),
+      valid_to: composer.valid_to ? new Date(composer.valid_to) : undefined,
+      buyer_note: composer.message ?? '',
+      hero_image_url: heroImageUrl ?? '',
+      target_mode: 'individual_buyers',
+      target_cohort_id: null,
+      pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
+      price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
+      buyer_target_mode: 'automatic',
+      buyer_rules: draftBuyerRules,
+      product_membership_mode: composer.product_membership_mode,
+      product_rules: composer.product_rules,
+    });
+  }
+
   const filterGroups: FilterBarGroup[] = [
     { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
     { key: 'status', label: 'Status', options: STATUS_OPTIONS, values: status, onChange: setStatus },
@@ -186,10 +235,44 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
             </div>
           </div>
         </div>
+
+        {buyerTargetMode === 'automatic' ? (
+          <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+            <MembershipFilterPanel entityType="campaign_buyers" rules={draftBuyerRules} onRulesChange={(next) => setDraftBuyerRules(next as BuyerMembershipRules)} />
+            <div className="flex items-center justify-end gap-2">
+              {buyerRulesDirty ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setDraftBuyerRules(savedBuyerRules)} disabled={saveCatalog.isPending}>
+                  Discard
+                </Button>
+              ) : null}
+              <Button type="button" size="sm" disabled={!buyerRulesDirty || saveCatalog.isPending} onClick={saveBuyerRules}>
+                {saveCatalog.isPending ? 'Saving…' : 'Save filters'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </article>
 
       <div>
-        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
+        <MembershipBulkActionBar
+          selectedCount={selection.selectedIds.length}
+          onClear={selection.clearSelection}
+          isPending={addBuyers.isPending || removeBuyers.isPending}
+          onInclude={() => {
+            if (!canEditMembership) {
+              toast.info('This campaign is not Manual — edit its targeting from Edit instead of picking buyers here.');
+              return;
+            }
+            addBuyers.mutate(selection.selectedIds, { onSuccess: () => selection.clearSelection() });
+          }}
+          onRemove={() => {
+            if (!canEditMembership) {
+              toast.info('This campaign is not Manual — edit its targeting from Edit instead of picking buyers here.');
+              return;
+            }
+            removeBuyers.mutate(selection.selectedIds, { onSuccess: () => selection.clearSelection() });
+          }}
+        />
         <FilterBar
           count={`${rows.length} of ${total} buyers${isTransitioning ? ' · Updating' : ''}`}
           searchPlaceholder="Search buyer or geography…"

@@ -125,6 +125,15 @@ export async function enqueueWhatsAppMessage(
     });
 
     if (error) {
+      console.error('[whatsapp-enqueue] rpc failed', {
+        triggerSource: input.triggerSource,
+        tenantId: input.tenantId,
+        buyerId: input.buyerId ?? null,
+        relatedEntityType: input.relatedEntityType ?? null,
+        relatedEntityId: input.relatedEntityId ?? null,
+        metaTemplateName: input.sendPayload.meta_template_name,
+        error: error.message,
+      });
       return { messageId: null, enqueued: false, skipped: 'no_db' };
     }
 
@@ -140,8 +149,28 @@ export async function enqueueWhatsAppMessage(
       enqueued: result.enqueued === true,
       skipped: result.skipped,
     };
+    console.info('[whatsapp-enqueue] enqueue result', {
+      triggerSource: input.triggerSource,
+      tenantId: input.tenantId,
+      buyerId: input.buyerId ?? null,
+      relatedEntityType: input.relatedEntityType ?? null,
+      relatedEntityId: input.relatedEntityId ?? null,
+      metaTemplateName: input.sendPayload.meta_template_name,
+      messageId: output.messageId,
+      enqueued: output.enqueued,
+      skipped: output.skipped ?? null,
+    });
     return output;
   } catch (err) {
+    console.error('[whatsapp-enqueue] unexpected failure', {
+      triggerSource: input.triggerSource,
+      tenantId: input.tenantId,
+      buyerId: input.buyerId ?? null,
+      relatedEntityType: input.relatedEntityType ?? null,
+      relatedEntityId: input.relatedEntityId ?? null,
+      metaTemplateName: input.sendPayload.meta_template_name,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { messageId: null, enqueued: false, skipped: 'no_db' };
   }
 }
@@ -181,12 +210,25 @@ export async function triggerWhatsAppDispatch(
 
     const text = await res.text();
     if (!res.ok) {
+      console.error('[whatsapp-enqueue] dispatch worker http failure', {
+        messageIds: ids,
+        status: res.status,
+        body: text,
+      });
       return null;
     }
 
     const result = (text ? JSON.parse(text) : null) as WhatsAppDispatchResult | null;
+    console.info('[whatsapp-enqueue] dispatch result', {
+      messageIds: ids,
+      result,
+    });
     return result;
   } catch (err) {
+    console.error('[whatsapp-enqueue] dispatch worker request failed', {
+      messageIds: ids,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

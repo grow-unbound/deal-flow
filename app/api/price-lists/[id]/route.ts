@@ -59,10 +59,33 @@ async function ensureTenantProducts(
   return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
 }
 
+async function getTenantProductBasePrices(
+  db: any,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) return [] as Array<{ id: string; base_selling_price: number | null }>;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id, base_selling_price')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to load selected products');
+  }
+
+  return (data ?? []) as Array<{ id: string; base_selling_price: number | null }>;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
@@ -90,7 +113,7 @@ export async function GET(
   const { data: priceList, error: plError } = await db
     .schema('app')
     .from('price_lists')
-    .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by, updated_by')
+    .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, membership_mode, created_at, updated_at, created_by, updated_by')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -109,10 +132,12 @@ export async function GET(
   }
 
   const [detailV2Res, itemsRes, assignmentsRes, activityRes] = await Promise.all([
-    db.schema('app').rpc('get_seller_pricelist_detail_v2', {
-      p_tenant_id: claims.tenant_id,
-      p_price_list_id: id,
-    }),
+    includePerformance
+      ? db.schema('app').rpc('get_seller_pricelist_detail_v2', {
+          p_tenant_id: claims.tenant_id,
+          p_price_list_id: id,
+        })
+      : Promise.resolve({ data: null, error: null }),
     db
       .schema('app')
       .from('price_list_items')
@@ -293,7 +318,7 @@ export async function GET(
     cohortIds.length > 0
       ? db
           .schema('app')
-          .from('cohort_members')
+          .from('cohort_members_active')
           .select('cohort_id, buyer_id')
           .in('cohort_id', cohortIds)
       : Promise.resolve({ data: [], error: null }),
@@ -336,8 +361,8 @@ export async function GET(
   const detailV2 = detailV2Res.error ? null : detailV2Res.data as any;
 
   return NextResponse.json({
-    performance_cards: detailV2?.performance_cards ?? [],
-    detail_v2: detailV2,
+    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
+    detail_v2: includePerformance ? detailV2 : null,
     price_list: {
       ...priceList,
       status,
@@ -367,8 +392,8 @@ export async function GET(
         };
       }),
       activity: events,
-      performance_cards: detailV2?.performance_cards ?? [],
-      detail_v2: detailV2,
+      performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
+      detail_v2: includePerformance ? detailV2 : null,
       stats: {
         products_covered: enrichedItems.length,
         brands_covered: brandSet.size,
@@ -488,6 +513,8 @@ export async function PATCH(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
+  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
+
   if (!isSimpleForm) {
     const tenantProductIds = payload.item_prices.map((item: any) => item.tenant_product_id);
 
@@ -501,9 +528,18 @@ export async function PATCH(
     if (validProductIds.size !== tenantProductIds.length) {
       return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
     }
-  }
+  } else if (simpleMembershipMode === 'manual') {
+    let validProductIds: Set<string>;
+    try {
+      validProductIds = await ensureTenantProducts(db, claims.tenant_id, payload.selected_product_ids);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+    }
 
-  const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
+    if (validProductIds.size !== payload.selected_product_ids.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+    }
+  }
 
   const { error: updateError } = await db
     .schema('app')
@@ -553,6 +589,94 @@ export async function PATCH(
 
     if (updatedPriceListError) {
       return NextResponse.json({ error: 'Price list updated but refresh failed' }, { status: 500 });
+    }
+
+    if (simpleMembershipMode === 'manual') {
+      let selectedProducts: Array<{ id: string; base_selling_price: number | null }>;
+      try {
+        selectedProducts = await getTenantProductBasePrices(db, claims.tenant_id, payload.selected_product_ids);
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to load selected products' }, { status: 500 });
+      }
+
+      if (selectedProducts.some((product) => Number(product.base_selling_price ?? 0) <= 0)) {
+        return NextResponse.json({ error: 'Every selected product needs a base selling price before it can be added.' }, { status: 422 });
+      }
+
+      const { data: existingSimpleItems, error: existingSimpleItemsError } = await db
+        .schema('app')
+        .from('price_list_items')
+        .select('id, tenant_product_id, min_qty, deleted_at')
+        .eq('price_list_id', id);
+
+      if (existingSimpleItemsError) {
+        return NextResponse.json({ error: 'Failed to sync selected products', detail: existingSimpleItemsError.message }, { status: 500 });
+      }
+
+      const existingSimpleByKey = new Map<string, { id: string; tenant_product_id: string; min_qty: number; deleted_at: string | null }>(
+        (existingSimpleItems ?? []).map((item: { id: string; tenant_product_id: string; min_qty: number; deleted_at: string | null }) => [
+          `${item.tenant_product_id}:${item.min_qty}`,
+          item,
+        ]),
+      );
+
+      const nextSet = new Set(payload.selected_product_ids);
+      const idsToSoftDelete = (existingSimpleItems ?? [])
+        .filter((item: { tenant_product_id: string; min_qty: number; deleted_at: string | null }) => item.min_qty === 1 && !item.deleted_at && !nextSet.has(item.tenant_product_id))
+        .map((item: { id: string }) => item.id);
+
+      if (idsToSoftDelete.length > 0) {
+        const { error: softDeleteError } = await db
+          .schema('app')
+          .from('price_list_items')
+          .update({
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            updated_by: claims.sub,
+          })
+          .in('id', idsToSoftDelete);
+        if (softDeleteError) {
+          return NextResponse.json({ error: 'Failed to remove unselected products', detail: softDeleteError.message }, { status: 500 });
+        }
+      }
+
+      for (const product of selectedProducts) {
+        const existingItem = existingSimpleByKey.get(`${product.id}:1`);
+        if (existingItem) {
+          const { error: itemUpdateError } = await db
+            .schema('app')
+            .from('price_list_items')
+            .update({
+              price: Number(product.base_selling_price ?? 0),
+              max_qty: null,
+              deleted_at: null,
+              updated_at: new Date().toISOString(),
+              updated_by: claims.sub,
+            })
+            .eq('id', existingItem.id);
+          if (itemUpdateError) {
+            return NextResponse.json({ error: 'Failed to update selected products', detail: itemUpdateError.message }, { status: 500 });
+          }
+          continue;
+        }
+
+        const { error: itemInsertError } = await db
+          .schema('app')
+          .from('price_list_items')
+          .insert({
+            price_list_id: id,
+            tenant_product_id: product.id,
+            price: Number(product.base_selling_price ?? 0),
+            min_qty: 1,
+            max_qty: null,
+            created_by: claims.sub,
+            updated_by: claims.sub,
+            deleted_at: null,
+          });
+        if (itemInsertError) {
+          return NextResponse.json({ error: 'Failed to add selected products', detail: itemInsertError.message }, { status: 500 });
+        }
+      }
     }
 
     return NextResponse.json({ price_list: updatedPriceList as Record<string, unknown> & { id: string } });

@@ -69,9 +69,15 @@ export function RowSelectCheckbox({
 export function MembershipBulkActionBar({
   selectedCount,
   onClear,
+  onInclude,
+  onRemove,
+  isPending,
 }: {
   selectedCount: number;
   onClear: () => void;
+  onInclude?: () => void;
+  onRemove?: () => void;
+  isPending?: boolean;
 }) {
   if (selectedCount <= 0) return null;
 
@@ -83,10 +89,10 @@ export function MembershipBulkActionBar({
     <div className="mt-4 flex items-center gap-3 rounded-[12px] border border-teal-200 bg-teal-50 px-4 py-2.5">
       <span className="text-sm font-medium text-teal-800">{selectedCount} selected</span>
       <div className="h-4 w-px bg-teal-200" />
-      <Button type="button" size="sm" onClick={announceDeferred}>
+      <Button type="button" size="sm" disabled={isPending} onClick={onInclude ?? announceDeferred}>
         Include selected
       </Button>
-      <Button type="button" size="sm" variant="outline" onClick={announceDeferred}>
+      <Button type="button" size="sm" variant="outline" disabled={isPending} onClick={onRemove ?? announceDeferred}>
         Remove selected
       </Button>
       <button

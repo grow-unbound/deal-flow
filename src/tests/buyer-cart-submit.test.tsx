@@ -24,6 +24,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   markBuyerNavigationBack: (...args: unknown[]) => markBuyerNavigationBackMock(...args),
+  navigateBuyerBack: vi.fn(),
 }));
 
 vi.mock('@/contexts/BuyerCartContext', () => ({

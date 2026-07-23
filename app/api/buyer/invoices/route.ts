@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
-import { effectiveInvoiceStatus } from '@/lib/invoice-status';
+import { effectiveInvoiceStatus, hasInvoiceReceivableExposure } from '@/lib/invoice-status';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 export interface BuyerInvoice {
@@ -94,7 +94,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
 
     const rawRows = (data ?? []) as InvoiceRow[];
     const hasNextPage = rawRows.length > reqLimit;
-    const rows = hasNextPage ? rawRows.slice(0, reqLimit) : rawRows;
+    let rows = hasNextPage ? rawRows.slice(0, reqLimit) : rawRows;
+    // The DB-level `.gt('outstanding_balance', 0)` above is a cheap pre-filter only;
+    // it doesn't check status, so a `void` invoice with a stray positive balance
+    // would otherwise slip through. Apply the canonical receivable predicate too.
+    if (unpaidOnly) {
+      rows = rows.filter((inv) => hasInvoiceReceivableExposure({ status: inv.status, outstanding_balance: inv.outstanding_balance }));
+    }
     const lastRow = rows.at(-1);
     const nextCursor = hasNextPage && lastRow
       ? encodeCursor({ created_at: lastRow.invoice_date, id: lastRow.id })

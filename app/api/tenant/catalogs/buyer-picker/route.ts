@@ -229,7 +229,7 @@ export async function GET(request: NextRequest) {
       cohortFilters.length > 0
         ? db
             .schema('app')
-            .from('cohort_members')
+            .from('cohort_members_active')
             .select('buyer_id')
             .in('cohort_id', cohortFilters)
         : Promise.resolve({ data: [], error: null }),
