@@ -2,12 +2,30 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
+import { FilterBar, LandingTable, StatusTag, type FilterBarGroup } from '@/components/seller/layout';
+import {
+  MemberToggle,
+  MembershipBulkActionBar,
+  RowSelectCheckbox,
+  SelectableRow,
+  SelectAllCheckbox,
+  TableBodySkeleton,
+  useSelectableRows,
+} from '@/components/seller/shared/SelectableMembershipTable';
 import { useCatalogBuyers, type CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDate, formatNumberValue } from '@/lib/utils';
 
-type SortOption = 'GMV (high → low)' | 'Conversions (high → low)' | 'Recently opened' | 'Buyer name (A → Z)';
+type SortOption =
+  | 'Demand Value (high → low)'
+  | 'Demand Count (high → low)'
+  | 'Orders (high → low)'
+  | 'Estimates (high → low)'
+  | 'Order Count (high → low)'
+  | 'Estimate Count (high → low)'
+  | 'Recently opened'
+  | 'Buyer name (A → Z)';
+type CampaignBuyer = CatalogDetailResponse['buyers'][number];
 
 interface CatalogBuyersTabProps {
   catalogId: string;
@@ -15,60 +33,132 @@ interface CatalogBuyersTabProps {
   selectedCohort: CatalogDetailResponse['header']['selected_cohort'];
 }
 
-function statusTone(status: CatalogDetailResponse['buyers'][number]['opened_status']) {
-  if (status === 'Converted') return 'success';
-  if (status === 'Opened') return 'success';
-  return 'warning';
-}
+const MEMBER_OPTIONS = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'all', label: 'All' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'NOT YET OPENED', label: 'NOT YET OPENED' },
+  { value: 'OPENED', label: 'OPENED' },
+  { value: 'CONVERTED', label: 'CONVERTED' },
+];
+
+const LAST_SALE_OPTIONS = [
+  { value: 'within_30_days', label: 'Last 30d' },
+  { value: 'within_90_days', label: 'Last 90d' },
+  { value: 'dormant_90_plus_days', label: 'Dormant 90d+' },
+  { value: 'never_ordered', label: 'Never ordered' },
+];
+
+const SALES_OPTIONS = [
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+  { value: 'none', label: 'None' },
+];
+
+const BUYER_APP_OPTIONS = [
+  { value: 'enabled', label: 'Enabled' },
+  { value: 'not_enabled', label: 'Not enabled' },
+  { value: 'inactive', label: 'Inactive' },
+];
 
 const sortValue: Record<SortOption, string> = {
-  'GMV (high → low)': 'gmv_desc',
-  'Conversions (high → low)': 'conversions_desc',
+  'Demand Value (high → low)': 'gmv_desc',
+  'Demand Count (high → low)': 'conversions_desc',
+  'Orders (high → low)': 'gmv_desc',
+  'Estimates (high → low)': 'gmv_desc',
+  'Order Count (high → low)': 'conversions_desc',
+  'Estimate Count (high → low)': 'conversions_desc',
   'Recently opened': 'recently_opened',
   'Buyer name (A → Z)': 'name_asc',
 };
 
+function normalizeStatus(status: CampaignBuyer['opened_status']): 'NOT YET OPENED' | 'OPENED' | 'CONVERTED' {
+  if (status === 'Converted' || status === 'CONVERTED') return 'CONVERTED';
+  if (status === 'Opened' || status === 'OPENED') return 'OPENED';
+  return 'NOT YET OPENED';
+}
+
+function statusTone(status: CampaignBuyer['opened_status']) {
+  const normalized = normalizeStatus(status);
+  if (normalized === 'CONVERTED' || normalized === 'OPENED') return 'success';
+  return 'warning';
+}
+
+function buyerAppLabel(status?: string) {
+  if (status === 'enabled') return 'Buyer App enabled';
+  if (status === 'inactive') return 'Buyer inactive';
+  return 'Buyer App not enabled';
+}
+
+function demandLabel(kind: 'orders' | 'estimates' | 'none' | string | undefined) {
+  if (kind === 'orders') return 'Orders';
+  if (kind === 'estimates') return 'Estimates';
+  return 'Demand';
+}
+
+function demandSingularLabel(kind: 'orders' | 'estimates' | 'none' | string | undefined) {
+  if (kind === 'orders') return 'Order';
+  if (kind === 'estimates') return 'Estimate';
+  return 'Demand';
+}
+
+function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string | undefined, count: number) {
+  const label = kind === 'orders' ? 'orders' : kind === 'estimates' ? 'estimates' : 'docs';
+  return `${formatNumberValue(count, 'COUNT')} ${label}`;
+}
+
 export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogBuyersTabProps) {
   const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState('All buyers');
-  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
+  const [member, setMember] = useState('yes');
+  const [status, setStatus] = useState<string[]>([]);
+  const [lastSale, setLastSale] = useState<string[]>([]);
+  const [sales90d, setSales90d] = useState<string[]>([]);
+  const [buyerApp, setBuyerApp] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortOption>('Demand Value (high → low)');
   const [page, setPage] = useState(0);
   const debouncedSearch = useDebounce(search, 300);
-  const status = activeChip === 'All buyers' ? undefined : activeChip.toLowerCase().replace(/ /g, '_');
-  const query = useCatalogBuyers(catalogId, { query: debouncedSearch, status, sort: sortValue[sortBy], page });
+  const query = useCatalogBuyers(catalogId, {
+    query: debouncedSearch,
+    member,
+    status,
+    lastSale,
+    sales90d,
+    buyerApp,
+    sort: sortValue[sortBy],
+    page,
+  });
 
-  useEffect(() => setPage(0), [debouncedSearch, sortBy, status]);
+  useEffect(() => setPage(0), [debouncedSearch, sortBy, member, status, lastSale, sales90d, buyerApp]);
 
   const fallbackTotals = useMemo(() => ({
-    opens: buyers.filter((buyer) => buyer.opened_status !== 'Not yet').length,
-    converted: buyers.filter((buyer) => buyer.opened_status === 'Converted').length,
+    opens: buyers.filter((buyer) => normalizeStatus(buyer.opened_status) !== 'NOT YET OPENED').length,
+    converted: buyers.filter((buyer) => normalizeStatus(buyer.opened_status) === 'CONVERTED').length,
     gmv: buyers.reduce((sum, buyer) => sum + buyer.spend, 0),
   }), [buyers]);
   const totals = query.data?.totals ?? fallbackTotals;
-  const authoritative = query.data?.rows ?? buyers;
+  const rows = query.data?.rows ?? buyers;
+  const primaryDemandKind = rows.find((buyer) => buyer.primary_demand_kind && buyer.primary_demand_kind !== 'none')?.primary_demand_kind ?? rows[0]?.primary_demand_kind ?? 'none';
+  const primaryDemandLabel = demandLabel(primaryDemandKind);
+  const selection = useSelectableRows(rows, (buyer) => buyer.buyer_id);
+  const isInitialLoading = !query.data && query.isLoading;
   const isTransitioning = query.isFetching || search !== debouncedSearch;
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!isTransitioning) return authoritative;
-    return authoritative
-      .filter((buyer) => {
-        if (activeChip === 'Converted') return buyer.opened_status === 'Converted';
-        if (activeChip === 'Opened') return buyer.opened_status === 'Opened';
-        if (activeChip === 'Not yet') return buyer.opened_status === 'Not yet';
-        return true;
-      })
-      .filter((buyer) => !query || buyer.buyer_name.toLowerCase().includes(query) || buyer.city.toLowerCase().includes(query))
-      .sort((a, b) => {
-        if (sortBy === 'Conversions (high → low)') return b.orders - a.orders;
-        if (sortBy === 'Recently opened') {
-          return new Date(b.last_opened_at ?? 0).getTime() - new Date(a.last_opened_at ?? 0).getTime();
-        }
-        if (sortBy === 'Buyer name (A → Z)') return a.buyer_name.localeCompare(b.buyer_name);
-        return b.spend - a.spend;
-      });
-  }, [activeChip, authoritative, isTransitioning, search, sortBy]);
   const total = query.data?.total ?? buyers.length;
+
+  useEffect(() => {
+    selection.clearSelection();
+  }, [debouncedSearch, sortBy, member, status, lastSale, sales90d, buyerApp, selection.clearSelection]);
+
+  const filterGroups: FilterBarGroup[] = [
+    { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
+    { key: 'status', label: 'Status', options: STATUS_OPTIONS, values: status, onChange: setStatus },
+    { key: 'last-sale', label: 'Last sale', options: LAST_SALE_OPTIONS, values: lastSale, onChange: setLastSale },
+    { key: 'sales-90d', label: 'Sales 90d', options: SALES_OPTIONS, values: sales90d, onChange: setSales90d },
+    { key: 'buyer-app', label: 'Buyer App', options: BUYER_APP_OPTIONS, values: buyerApp, onChange: setBuyerApp },
+  ];
 
   return (
     <section className="mt-5 space-y-4">
@@ -91,7 +181,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
               <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.converted}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Attributed GMV</p>
+              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Demand value</p>
               <p className="mt-1 font-display text-2xl leading-none text-cream-950">{formatNumberValue(totals.gmv, 'CURRENCY_THRESHOLD')}</p>
             </div>
           </div>
@@ -99,47 +189,73 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogB
       </article>
 
       <div>
+        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
         <FilterBar
-          count={`${filtered.length} of ${total} buyers${isTransitioning ? ' · Updating' : ''}`}
-          searchPlaceholder="Search buyer or city…"
-          chips={['All buyers', 'Converted', 'Opened', 'Not yet']}
-          activeChip={activeChip}
+          count={`${rows.length} of ${total} buyers${isTransitioning ? ' · Updating' : ''}`}
+          searchPlaceholder="Search buyer or geography…"
+          chips={[]}
+          activeChip=""
           sortBy={sortBy}
           hideViewToggle
+          groups={filterGroups}
           searchValue={search}
+          searchLoading={search.trim() !== debouncedSearch.trim()}
           onSearchChange={setSearch}
-          onChipChange={setActiveChip}
-          sortOptions={['GMV (high → low)', 'Conversions (high → low)', 'Recently opened', 'Buyer name (A → Z)']}
+          sortOptions={[
+            `${primaryDemandLabel} (high → low)`,
+            `${demandSingularLabel(primaryDemandKind)} Count (high → low)`,
+            'Recently opened',
+            'Buyer name (A → Z)',
+          ]}
           onSortChange={(value) => setSortBy(value as SortOption)}
         />
 
         <LandingTable
           columns={[
-            { label: 'Buyer', className: 'px-5' },
-            { label: 'Audience', className: 'px-5' },
-            { label: 'Opened', className: 'px-5' },
-            { label: 'Conversions', align: 'right', className: 'px-5' },
-            { label: 'GMV', align: 'right', className: 'px-5' },
+            { label: <SelectAllCheckbox checked={selection.allSelected} indeterminate={selection.someSelected} onChange={selection.toggleVisible} />, width: 48, className: 'px-5' },
+            { label: 'Buyer Name', width: 280, className: 'px-5' },
+            { label: 'Member', width: 150, className: 'px-5' },
+            { label: 'Geography', className: 'px-5' },
+            { label: 'Status', className: 'px-5' },
+            { label: primaryDemandLabel, align: 'right', className: 'px-5' },
+            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, className: 'px-5' },
             { label: 'Last opened', className: 'px-5' },
-            { label: 'Last conversion', className: 'px-5' },
+            { label: 'Last Conversion', className: 'px-5' },
           ]}
+          tableMinWidth={1180}
+          showEmptyState={!isInitialLoading && rows.length === 0}
+          emptyState={<div className="py-16 text-center text-sm text-cream-500">No buyers match these filters.</div>}
         >
-          {filtered.map((buyer) => (
-            <tr key={buyer.buyer_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-              <td className="px-5 py-3.5 text-cream-900">
-                <p className="text-base font-medium">{buyer.buyer_name}</p>
-                <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
-              </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">{buyer.cohort_label}</td>
-              <td className="px-5 py-3.5">
-                <StatusTag label={buyer.opened_status} tone={statusTone(buyer.opened_status)} />
-              </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders}</td>
-              <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{buyer.spend > 0 ? formatNumberValue(buyer.spend, 'CURRENCY_THRESHOLD') : '—'}</td>
-              <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
-              <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
-            </tr>
-          ))}
+          {isInitialLoading ? (
+            <TableBodySkeleton columns={8} />
+          ) : (
+            rows.map((buyer) => {
+              const isSelected = selection.selectedIds.includes(buyer.buyer_id);
+              const demandValue = buyer.demand_value ?? buyer.spend;
+              const demandCount = buyer.demand_count ?? buyer.orders;
+              const normalizedStatus = normalizeStatus(buyer.opened_status);
+              const lastConversionAt = buyer.last_conversion_at ?? buyer.last_order_at;
+              return (
+                <SelectableRow key={buyer.buyer_id} selected={isSelected}>
+                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
+                  <td className="px-5 py-3.5">
+                    <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
+                    <p className="mt-0.5 text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
+                  </td>
+                  <td className="px-5 py-3.5"><MemberToggle checked={Boolean(buyer.is_member)} label={`${buyer.buyer_name} campaign membership`} /></td>
+                  <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label ?? buyer.city ?? '—'}</td>
+                  <td className="px-5 py-3.5"><StatusTag label={normalizedStatus} tone={statusTone(buyer.opened_status)} /></td>
+                  <td className="px-5 py-3.5 text-right">
+                    <p className="font-display text-md text-cream-950">{demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}</p>
+                    <p className="mt-0.5 text-xs text-cream-600">{demandCount > 0 ? demandCountLabel(buyer.primary_demand_kind, demandCount) : '—'}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
+                  <td className="px-5 py-3.5 text-base text-cream-700">{lastConversionAt ? formatDate(lastConversionAt) : '—'}</td>
+                </SelectableRow>
+              );
+            })
+          )}
         </LandingTable>
         {total > 50 ? (
           <div className="mt-4 flex justify-end gap-2">

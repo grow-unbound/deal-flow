@@ -84,6 +84,11 @@ dealflow/
 - Stub/scaffolded pages (not yet fully implemented) still require a `loading.tsx`; use the detail-page template as the base and add a comment noting it should be updated when the page is complete.
 - Optimistic UI is mandatory for human-triggered CTAs where rollback is safe: show instant pending state, apply optimistic cache update, rollback on error, and revalidate in background.
 - Prefer targeted React Query cache updates/invalidation over `router.refresh()`. Use `router.refresh()` only when targeted invalidation cannot provide correct data.
+- **CLS budget: < 0.05.** A skeleton that's shorter than the content it precedes is a layout-shift bug, same severity as a missing `loading.tsx`.
+  - Any title/label that can wrap to 2 lines (product name, catalog name, buyer name) reserves that height in both the real component and its skeleton — use `BUYER_TWO_LINE_TITLE_CLASS` (`src/lib/buyer-ui.ts`) or an equivalent `line-clamp-2 min-h-[2.4em]` on both sides, never just on the real component.
+  - Conditional widgets fed by an async hook (recommendation rails, gap-fill banners, insight cards) render a same-footprint skeleton while loading — never nothing-then-pop-in.
+  - Use `dvh`, not `vh`, for any full-height mobile sheet/drawer/page shell — plain `vh` reflows when the mobile browser chrome collapses on scroll.
+  - When a table/landing page re-fetches in place (filter change, background refresh), don't swap in the full page-level skeleton over content that's already rendered — that duplicates KPI/header sections instead of just refreshing the row area.
 
 ---
 
@@ -144,6 +149,27 @@ follow them for all new development, not just when explicitly asked to optimize.
   historical stock trend, until an inventory movement ledger exists.
 - Metrics changes require targeted tests for status edges, canonical date fallbacks, sparse/no-data
   behavior, and multi-line order joins whenever those paths are touched.
+
+### Client-side query caching (TanStack Query)
+- Set `staleTime`/`gcTime` explicitly from `src/lib/query-navigation.ts`'s tiers — don't hardcode raw
+  millisecond values or rely on the `QueryClientProvider` default by omission. Use `REFERENCE_QUERY_*`
+  (seller) / `BUYER_REFERENCE_QUERY_*` (buyer) for rarely-changing data (brands, categories,
+  warehouses, locations, price lists, cohorts, catalogs list, buyer profile). Use the default
+  `NAVIGATION_QUERY_*` / `BUYER_QUERY_*` tier for transactional data (estimates, orders, invoices,
+  dashboard KPIs). A 60s staleTime on reference data is a bug, not a safe default.
+- Every filtered/paginated list hook (`useQuery`/`useInfiniteQuery` with a search/filter/cursor param)
+  sets `placeholderData: keepPreviousData` — a filter change or repeat page visit must keep showing
+  the previous rows while refetching, never flash a blank loading state.
+- Don't override the global retry policy (`noQueryRetry` — zero retries by default) unless the request
+  is genuinely worth retrying; if so use `transientQueryRetry` (`src/lib/query-retry.ts`), which
+  already distinguishes retryable 5xx/408/429 from non-retryable 4xx.
+- Prefetch route + detail-query data on `pointerdown`/`touchstart` (`usePointerPrefetch`), not
+  `onMouseEnter` — hover fires far more often and multiplies DB load for no benefit on touch devices.
+- Wrap a server-only read in React `cache()` (see `seller-page-bootstrap.ts`,
+  `seller-server-claims.ts`) only when it's called more than once in the same request tree and has no
+  need to persist across requests. Never reach for Next's shared fetch/data cache (`next: {revalidate}`)
+  on a tenant-scoped read unless the cache key explicitly includes `tenant_id`/`user_id` — an
+  under-scoped shared cache key is a cross-tenant data leak, not just a staleness bug.
 
 ### Caching
 - Every buyer-facing API GET route sets a `Cache-Control` header via

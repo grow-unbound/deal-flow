@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
 import { SellerSidebarSkeleton, SellerGlobalHeaderSkeleton } from './SellerShellSkeletons';
+import { resolveSellerSidebarLayout } from './seller-sidebar-layout';
 import { SellerRealtimeProvider } from '@/contexts/SellerRealtimeContext';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
@@ -20,23 +21,31 @@ interface SellerShellProps {
 }
 
 const LARGE_SCREEN_QUERY = '(min-width: 1536px)';
+const FORCED_COLLAPSE_QUERY = '(max-width: 1279px)';
 
 const SHELL_REVALIDATE_THROTTLE_MS = 15_000;
 
 export function SellerShell({ children, featureAvailabilityPromise, tenantBrandingPromise }: SellerShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
+  const [isForcedCollapsed, setIsForcedCollapsed] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(LARGE_SCREEN_QUERY);
-    const updateLayoutMode = () => setIsLargeScreen(mediaQuery.matches);
+    const largeScreenQuery = window.matchMedia(LARGE_SCREEN_QUERY);
+    const forcedCollapseQuery = window.matchMedia(FORCED_COLLAPSE_QUERY);
+    const updateLayoutMode = () => {
+      setIsLargeScreen(largeScreenQuery.matches);
+      setIsForcedCollapsed(forcedCollapseQuery.matches);
+    };
 
     updateLayoutMode();
-    mediaQuery.addEventListener('change', updateLayoutMode);
+    largeScreenQuery.addEventListener('change', updateLayoutMode);
+    forcedCollapseQuery.addEventListener('change', updateLayoutMode);
 
     return () => {
-      mediaQuery.removeEventListener('change', updateLayoutMode);
+      largeScreenQuery.removeEventListener('change', updateLayoutMode);
+      forcedCollapseQuery.removeEventListener('change', updateLayoutMode);
     };
   }, []);
 
@@ -56,17 +65,19 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [router]);
 
-  const effectiveSidebarCollapsed = isLargeScreen ? false : isSidebarCollapsed;
-  const canCollapseSidebar = !isLargeScreen;
-  const sidebarWidth = effectiveSidebarCollapsed ? '88px' : '248px';
+  const layout = resolveSellerSidebarLayout({
+    isUserCollapsed: isSidebarCollapsed,
+    isLargeScreen,
+    isForcedCollapsed,
+  });
 
   return (
     <SellerRealtimeProvider>
-      <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: sidebarWidth }}>
-        <Suspense fallback={<SellerSidebarSkeleton isCollapsed={effectiveSidebarCollapsed} />}>
+      <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: layout.sidebarWidth }}>
+        <Suspense fallback={<SellerSidebarSkeleton isCollapsed={layout.isCollapsed} />}>
           <SellerSidebar
-            isCollapsed={effectiveSidebarCollapsed}
-            canCollapse={canCollapseSidebar}
+            isCollapsed={layout.isCollapsed}
+            canCollapse={layout.canCollapse}
             onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
             featureAvailabilityPromise={featureAvailabilityPromise}
           />

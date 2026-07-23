@@ -96,7 +96,7 @@ describe('price-lists/[id] detail page', () => {
 
   it('renders edit and archive actions for seller admin', () => {
     render(<PriceListDetailPage />);
-    expect(screen.getByRole('link', { name: /Edit Pricelist/i })).toHaveAttribute('href', '/price-lists/pl-1/edit');
+    expect(screen.getByRole('button', { name: /Edit pricelist/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Archive Pricelist/i })).toBeInTheDocument();
   });
 

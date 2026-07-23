@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ExternalLink, Link2, PencilIcon, Send } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useRole } from '@/hooks/useRole';
 import {
+  type CatalogDetailResponse,
   type CatalogNotifyRecipientFilter,
-  useCatalogPublishPreview,
   useEnsureCatalogShareLink,
   useNotifyCatalogBuyers,
   usePublishCatalog,
@@ -26,6 +25,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
 import { PublishCampaignDialog } from './PublishCampaignDialog';
+import { CampaignFormSheet } from '../CampaignFormSheet';
 
 const CatalogPerformanceTab = dynamic(
   () => import('./CatalogPerformanceTab').then((m) => m.CatalogPerformanceTab),
@@ -79,30 +79,27 @@ function CatalogDetailSkeleton() {
   );
 }
 
+function normalizeBuyerNotifyStatus(status: CatalogDetailResponse['buyers'][number]['opened_status']) {
+  if (status === 'Converted' || status === 'CONVERTED') return 'CONVERTED';
+  if (status === 'Opened' || status === 'OPENED') return 'OPENED';
+  return 'NOT YET OPENED';
+}
+
 export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
-  const router = useRouter();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-catalog-detail-tab',
     scopeKey: id,
     initialState: 'performance',
   });
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'first_publish' | 'publish_updates' | 'notify_buyers'>('first_publish');
-  const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError } = useTenantCatalogDetail(id);
   const publishMutation = usePublishCatalog(id);
   const publishUpdatesMutation = usePublishCatalogUpdates(id);
   const notifyBuyersMutation = useNotifyCatalogBuyers(id);
   const ensureShareLinkMutation = useEnsureCatalogShareLink(id);
-  const publishPreviewQuery = useCatalogPublishPreview(
-    id,
-    {
-      notifyWhatsapp: dialogMode === 'notify_buyers' ? true : notifyWhatsappPreview,
-      mode: dialogMode === 'notify_buyers' ? 'notify_buyers' : 'first_publish',
-    },
-    publishConfirmOpen && isSellerAdmin && (dialogMode === 'first_publish' || dialogMode === 'notify_buyers'),
-  );
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -141,49 +138,46 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
   const publishUpdatesPreview = useMemo(() => {
     if (!data || dialogMode !== 'publish_updates') return undefined;
     return {
-      campaign: {
-        id: data.header.id,
-        name: data.composer?.name ?? data.header.name,
-        valid_from: data.composer?.valid_from ?? data.header.valid_until_iso ?? new Date().toISOString(),
-        valid_to: data.composer?.valid_to ?? data.header.valid_until_iso ?? null,
-        audience_label: data.header.selected_cohort.display_label,
-        products_count: data.products_summary.included_count,
-        pricing_scheme: data.composer?.price_source === 'price_list'
-          ? 'Price list'
-          : 'Manual campaign prices',
-        buyer_note: data.composer?.message ?? '',
-        hero_image_url: null,
-        header_image_url: data.header.share_url ?? '',
-        header_image_source: 'platform_default' as const,
-      },
-      whatsapp: {
-        feature_enabled: false,
-        notify_available: false,
-        can_notify: false,
-        blockers: [],
-        recipient_count: 0,
-        credits_per_message: 0,
-        estimated_credits: 0,
-        estimated_inr: 0,
-        credits_balance: 0,
-        credit_price_inr: 0,
-        template_approved: false,
-        tenant_phone_configured: false,
-        broadcast_sending_paused: false,
-        quality_rating_blocked: false,
-      },
-      template: {
-        seller_name: 'Your business',
-        seller_phone_display: 'Your business number',
-        footer_text: 'Powered by Yukti',
-        buttons: [
-          { label: 'View campaign', type: 'url' as const },
-          { label: 'Enquire now', type: 'url' as const },
-          { label: 'Unsubscribe', type: 'quick_reply' as const },
-        ],
-      },
+      name: data.composer?.name ?? data.header.name,
+      valid_from: data.composer?.valid_from ?? data.header.valid_until_iso ?? new Date().toISOString(),
+      valid_to: data.composer?.valid_to ?? data.header.valid_until_iso ?? null,
+      audience_label: data.header.selected_cohort.display_label,
+      products_count: data.products_summary.included_count,
+      pricing_scheme: data.composer?.price_source === 'price_list'
+        ? 'Price list'
+        : 'Manual campaign prices',
+      buyer_note: data.composer?.message ?? '',
+      hero_image_url: data.header.hero_image_url,
     };
   }, [data, dialogMode]);
+
+  const dialogCampaignSummary = useMemo(() => {
+    if (!data) return undefined;
+    return {
+      name: data.composer?.name ?? data.header.name,
+      valid_from: data.composer?.valid_from ?? new Date().toISOString(),
+      valid_to: data.composer?.valid_to ?? data.header.valid_until_iso ?? null,
+      audience_label: data.header.selected_cohort.display_label,
+      products_count: data.products_summary.included_count,
+      pricing_scheme: data.composer?.price_source === 'price_list'
+        ? 'Price list'
+        : 'Manual campaign prices',
+      buyer_note: data.composer?.message ?? '',
+      hero_image_url: data.header.hero_image_url,
+    };
+  }, [data]);
+
+  const dialogRecipientSegments = useMemo(() => {
+    if (!data) return undefined;
+    const allEligible = data.buyers.length || data.header.selected_cohort.member_count;
+    const notViewed = data.buyers.filter((buyer) => normalizeBuyerNotifyStatus(buyer.opened_status) === 'NOT YET OPENED').length;
+    const viewedNotOrdered = data.buyers.filter((buyer) => normalizeBuyerNotifyStatus(buyer.opened_status) === 'OPENED').length;
+    return {
+      all_eligible: allEligible,
+      not_viewed: notViewed,
+      viewed_not_ordered: viewedNotOrdered,
+    };
+  }, [data]);
 
   if (isLoading) return <SharedCatalogDetailSkeleton />;
   if (isError || !data) {
@@ -275,7 +269,6 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
   function openDialog(mode: 'first_publish' | 'publish_updates' | 'notify_buyers') {
     setDialogMode(mode);
-    setNotifyWhatsappPreview(true);
     setPublishConfirmOpen(true);
   }
 
@@ -286,7 +279,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
           { label: 'Campaigns', href: '/campaigns' },
           { label: data.header.name, current: true },
         ]}
-        avatar={{ kind: 'catalog', initials: data.header.initials }}
+        avatar={{ kind: 'catalog', initials: data.header.initials, imageUrl: data.header.hero_image_url }}
         title={data.header.name}
         status={{ label: data.header.status_label, tone: data.header.status_tone }}
         statusActions={
@@ -330,7 +323,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         actions={
           <div className="flex items-center gap-2 pt-1">
             {isSellerAdmin ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                 <PencilIcon size={14} />
                 Edit campaign
               </Button>
@@ -367,11 +360,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
               open={publishConfirmOpen}
               onOpenChange={setPublishConfirmOpen}
               mode={dialogMode}
-              preview={dialogMode === 'publish_updates' ? publishUpdatesPreview : publishPreviewQuery.data}
-              previewLoading={dialogMode === 'publish_updates' ? false : publishPreviewQuery.isLoading}
-              previewError={dialogMode === 'publish_updates' ? null : publishPreviewQuery.error instanceof Error ? publishPreviewQuery.error.message : null}
+              campaignSummary={dialogMode === 'publish_updates' ? publishUpdatesPreview : dialogCampaignSummary}
+              recipientSegments={dialogRecipientSegments}
               isPublishing={activeMutationPending}
-              onNotifyWhatsappChange={setNotifyWhatsappPreview}
               onPublish={handlePublishCatalog}
             />
           </div>
@@ -401,6 +392,26 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         <CatalogPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
+
+      <CampaignFormSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        mode="edit"
+        campaignId={id}
+        defaultValues={{
+          form_mode: 'simple',
+          name: data.header.name,
+          description: data.composer?.description ?? '',
+          valid_from: new Date(data.composer?.valid_from ?? new Date().toISOString()),
+          valid_to: data.composer?.valid_to ? new Date(data.composer.valid_to) : undefined,
+          buyer_note: data.composer?.message ?? '',
+          hero_image_url: '',
+          target_mode: data.composer?.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
+          target_cohort_id: data.composer?.scope_type === 'cohort' ? (data.composer.cohort_id ?? null) : null,
+          pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
+          price_list_id: data.composer?.price_source === 'price_list' ? (data.composer.price_list_id ?? null) : null,
+        }}
+      />
     </PageWrap>
   );
 }

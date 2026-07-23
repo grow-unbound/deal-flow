@@ -64,6 +64,26 @@ export interface CampaignPublishPreviewResult {
   };
 }
 
+export interface CampaignPublishVerificationResult {
+  whatsapp: {
+    feature_enabled: boolean;
+    notify_available: boolean;
+    credits_per_message: number;
+    credits_balance: number;
+    credit_price_inr: number;
+    template_approved: boolean;
+    tenant_phone_configured: boolean;
+    broadcast_sending_paused: boolean;
+    quality_rating_blocked: boolean;
+  };
+  template: {
+    seller_name: string;
+    seller_phone_display: string;
+    footer_text: string;
+    buttons: Array<{ label: string; type: 'url' | 'quick_reply' }>;
+  };
+}
+
 function buildScopeValue(input: {
   scope_type: CampaignScopeType;
   cohort_id?: string | null;
@@ -167,6 +187,70 @@ export async function buildCampaignPublishPreview(
       notify_available: input.whatsappFeatureEnabled && preflight.template_approved,
       ...preflight,
       recipient_segments: input.recipientSegments,
+    },
+    template: {
+      seller_name: sellerContext.sellerName,
+      seller_phone_display: formatSellerPhoneDisplay(sellerContext.sellerPhone),
+      footer_text: CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META.footer_text,
+      buttons: CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META.buttons,
+    },
+  };
+}
+
+export async function buildCampaignPublishVerification(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  input: {
+    tenantId: string;
+    whatsappFeatureEnabled: boolean;
+  },
+): Promise<CampaignPublishVerificationResult> {
+  const fallbackPreflight = {
+    can_notify: false,
+    blockers: [],
+    recipient_count: 0,
+    credits_per_message: 4,
+    estimated_credits: 0,
+    estimated_inr: 0,
+    credits_balance: 0,
+    credit_price_inr: 0.25,
+    template_approved: false,
+    tenant_phone_configured: false,
+    broadcast_sending_paused: false,
+    quality_rating_blocked: false,
+  };
+
+  const [{ data: tenant }, preflight] = await Promise.all([
+    db
+      .schema('app')
+      .from('tenants')
+      .select('business_name, settings')
+      .eq('id', input.tenantId)
+      .maybeSingle(),
+    input.whatsappFeatureEnabled
+      ? runCampaignPublishPreflight(db, {
+          tenantId: input.tenantId,
+          scopeType: 'all',
+          scopeValue: {},
+          notifyWhatsapp: false,
+          recipientBuyerIds: [],
+        })
+      : Promise.resolve(fallbackPreflight),
+  ]);
+
+  const sellerContext = buildSellerContextFromTenant(tenant);
+
+  return {
+    whatsapp: {
+      feature_enabled: input.whatsappFeatureEnabled,
+      notify_available: input.whatsappFeatureEnabled && preflight.template_approved,
+      credits_per_message: preflight.credits_per_message,
+      credits_balance: preflight.credits_balance,
+      credit_price_inr: preflight.credit_price_inr,
+      template_approved: preflight.template_approved,
+      tenant_phone_configured: preflight.tenant_phone_configured,
+      broadcast_sending_paused: preflight.broadcast_sending_paused,
+      quality_rating_blocked: preflight.quality_rating_blocked,
     },
     template: {
       seller_name: sellerContext.sellerName,

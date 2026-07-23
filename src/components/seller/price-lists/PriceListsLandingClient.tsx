@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Copy, Plus, ListOrdered } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -28,6 +29,7 @@ import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListsLandingSkeleton as SharedPriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { PriceListFormSheet } from './PriceListFormSheet';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
@@ -94,6 +96,7 @@ function PriceListsLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
+  const [formOpen, setFormOpen] = useState(false);
   const { isSellerAssistant } = useRole();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
@@ -185,9 +188,10 @@ function PriceListsLandingContent({
           horizon="Now"
           {...(isSellerAssistant ? {} : {
             primary: 'Add a price list',
-            onPrimaryClick: () => router.push('/price-lists/new'),
+            onPrimaryClick: () => setFormOpen(true),
           })}
         />
+        <PriceListFormSheet open={formOpen} onOpenChange={setFormOpen} mode="create" />
 
         <InsightStrip4
           tiles={[
@@ -280,11 +284,9 @@ function PriceListsLandingContent({
                     : 'Create a price list to set cohort pricing.'
               }
               action={!isSellerAssistant ? (
-                <Button variant="accent" asChild>
-                  <Link href="/price-lists/new" className="inline-flex items-center gap-1.5">
+                <Button variant="accent" onClick={() => setFormOpen(true)}>
                     <Plus size={13} />
                     Add a price list
-                  </Link>
                 </Button>
               ) : undefined}
             />
@@ -310,8 +312,9 @@ function PriceListsLandingContent({
             return (
               <tr
                 key={row.id}
-                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
                 onClick={() => router.push(`/price-lists/${row.id}`)}
+                onPointerDown={() => triggerHaptic()}
               >
                 <td className="px-5 py-3.5 text-base text-cream-900">
                   <div className="ent flex items-center gap-3">

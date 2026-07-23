@@ -1,31 +1,54 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layout';
-import type { CohortDetailBuyer } from '@/hooks/useCohorts';
+import { useEffect, useMemo, useState } from 'react';
+import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
+import {
+  MemberToggle,
+  MembershipBulkActionBar,
+  RowSelectCheckbox,
+  SelectableRow,
+  SelectAllCheckbox,
+  TableBodySkeleton,
+  useSelectableRows,
+} from '@/components/seller/shared/SelectableMembershipTable';
+import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCohortBuyersDetail } from '@/hooks/useDetailTabSearch';
-import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { formatDate, formatNumberValue } from '@/lib/utils';
 
 type SortOption =
-  | 'MTD spend (high → low)'
-  | 'Orders (high → low)'
-  | 'AOV (high → low)'
+  | 'Spend 90D (high → low)'
+  | 'Invoices 90D (high → low)'
+  | 'Orders 90D (high → low)'
+  | 'Estimates 90D (high → low)'
   | 'Buyer name (A → Z)'
-  | 'Last ordered (recent first)';
+  | 'Last invoice (recent first)';
 
-function lastOrderedBucket(lastOrderAt: string | null): 'ordered_mtd' | 'dormant' | 'other' {
-  if (!lastOrderAt) return 'dormant';
-  const now = new Date();
-  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const placed = new Date(lastOrderAt);
-  if (placed >= startOfMonth) return 'ordered_mtd';
-  const diffMs = Date.now() - placed.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays > 30) return 'dormant';
-  return 'other';
-}
+const MEMBER_OPTIONS = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'all', label: 'All' },
+];
+
+const LAST_SALE_OPTIONS = [
+  { value: 'within_30_days', label: 'Last 30d' },
+  { value: 'within_90_days', label: 'Last 90d' },
+  { value: 'dormant_90_plus_days', label: 'Dormant 90d+' },
+  { value: 'never_ordered', label: 'Never ordered' },
+];
+
+const SALES_OPTIONS = [
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+  { value: 'none', label: 'None' },
+];
+
+const BUYER_APP_OPTIONS = [
+  { value: 'enabled', label: 'Enabled' },
+  { value: 'not_enabled', label: 'Not enabled' },
+  { value: 'inactive', label: 'Inactive' },
+];
 
 interface CohortBuyersTabProps {
   cohortId: string;
@@ -33,50 +56,66 @@ interface CohortBuyersTabProps {
   activeMembersMtd: number;
 }
 
+function buyerAppLabel(status: string) {
+  if (status === 'enabled') return 'Buyer App enabled';
+  if (status === 'inactive') return 'Buyer inactive';
+  return 'Buyer App not enabled';
+}
+
+function demandLabel(kind: 'orders' | 'estimates' | 'none' | string) {
+  if (kind === 'orders') return 'Orders';
+  if (kind === 'estimates') return 'Estimates';
+  return 'Demand';
+}
+
+function demandSingularLabel(kind: 'orders' | 'estimates' | 'none' | string) {
+  if (kind === 'orders') return 'Order';
+  if (kind === 'estimates') return 'Estimate';
+  return 'Demand';
+}
+
+function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string, count: number) {
+  const label = kind === 'orders' ? 'orders' : kind === 'estimates' ? 'estimates' : 'docs';
+  return `${formatNumberValue(count, 'COUNT')} ${label}`;
+}
+
 export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: CohortBuyersTabProps) {
   const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState('All buyers');
-  const [sortBy, setSortBy] = useState<SortOption>('MTD spend (high → low)');
+  const [member, setMember] = useState('yes');
+  const [lastSale, setLastSale] = useState<string[]>([]);
+  const [sales90d, setSales90d] = useState<string[]>([]);
+  const [buyerApp, setBuyerApp] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortOption>('Spend 90D (high → low)');
 
   const debouncedSearch = useDebounce(search, 300);
-  const activity = activeChip === 'Ordered this month' ? 'ordered_mtd' : activeChip === 'Dormant' ? 'dormant' : null;
-  const sort = sortBy === 'Orders (high → low)' ? 'orders_desc' : sortBy === 'AOV (high → low)' ? 'aov_desc' : sortBy === 'Buyer name (A → Z)' ? 'name_asc' : sortBy === 'Last ordered (recent first)' ? 'last_order_desc' : 'spend_desc';
-  const result = useCohortBuyersDetail(cohortId, { query: debouncedSearch, filter: activity, sort });
+  const sort = sortBy === 'Invoices 90D (high → low)' ? 'invoices_desc' : sortBy === 'Orders 90D (high → low)' || sortBy === 'Estimates 90D (high → low)' ? 'demand_desc' : sortBy === 'Buyer name (A → Z)' ? 'name_asc' : sortBy === 'Last invoice (recent first)' ? 'last_invoice_desc' : 'spend_desc';
+  const result = useCohortBuyersDetail(cohortId, {
+    query: debouncedSearch,
+    sort,
+    params: { member, last_sale: lastSale, sales_90d: sales90d, buyer_app: buyerApp },
+  });
   const buyers = useMemo(() => flattenDetailRows(result.data), [result.data]);
+  const primaryDemandKind = buyers.find((buyer) => buyer.primary_demand_kind !== 'none')?.primary_demand_kind ?? buyers[0]?.primary_demand_kind ?? 'none';
+  const primaryDemandLabel = demandLabel(primaryDemandKind);
+  const selection = useSelectableRows(buyers, (buyer) => buyer.buyer_id);
+  const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
-  const filtered = useMemo(() => {
-    if (!isInterim) return buyers;
-    const query = search.trim().toLowerCase();
-    return buyers
-      .filter((buyer) => {
-        if (activeChip === 'Ordered this month') return buyer.orders_mtd > 0;
-        if (activeChip === 'Dormant') return lastOrderedBucket(buyer.last_order_at) === 'dormant';
-        return true;
-      })
-      .filter((buyer) => {
-        if (!query) return true;
-        return (
-          buyer.business_name.toLowerCase().includes(query) ||
-          (buyer.contact_name ?? '').toLowerCase().includes(query) ||
-          buyer.geography_label.toLowerCase().includes(query)
-        );
-      })
-      .sort((a, b) => {
-        if (sortBy === 'Orders (high → low)') return b.orders_mtd - a.orders_mtd;
-        if (sortBy === 'AOV (high → low)') return b.aov - a.aov;
-        if (sortBy === 'Buyer name (A → Z)') return a.business_name.localeCompare(b.business_name);
-        if (sortBy === 'Last ordered (recent first)') {
-          return new Date(b.last_order_at ?? 0).getTime() - new Date(a.last_order_at ?? 0).getTime();
-        }
-        return b.mtd_spend - a.mtd_spend;
-      });
-  }, [activeChip, buyers, isInterim, search, sortBy]);
+
+  useEffect(() => {
+    selection.clearSelection();
+  }, [member, lastSale, sales90d, buyerApp, debouncedSearch, sort, selection.clearSelection]);
+
+  const filterGroups: FilterBarGroup[] = [
+    { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
+    { key: 'last-sale', label: 'Last sale', options: LAST_SALE_OPTIONS, values: lastSale, onChange: setLastSale },
+    { key: 'sales-90d', label: 'Sales 90d', options: SALES_OPTIONS, values: sales90d, onChange: setSales90d },
+    { key: 'buyer-app', label: 'Buyer App', options: BUYER_APP_OPTIONS, values: buyerApp, onChange: setBuyerApp },
+  ];
 
   const rulesTitle = rules_summary.is_static ? 'Manual member list' : 'Filters applied';
   const rulesSub = rules_summary.is_static
     ? `${rules_summary.matched_of_total_label}. Buyers are explicitly assigned to this customer group.`
     : `${rules_summary.member_count} buyers match · ${rules_summary.matched_of_total_label}.`;
-
   const hasFilters = rules_summary.filters.length > 0;
 
   return (
@@ -119,61 +158,73 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd }: C
       </article>
 
       <div>
+        <MembershipBulkActionBar selectedCount={selection.selectedIds.length} onClear={selection.clearSelection} />
         <FilterBar
-          count={`${isInterim ? filtered.length : detailRowsTotal(result.data)} buyers${result.isFetching ? ' · Updating' : ''}`}
+          count={`${detailRowsTotal(result.data)} buyers${isInterim ? ' · Updating' : ''}`}
           searchPlaceholder="Search buyer, contact, or geography…"
-          chips={['All buyers', 'Ordered this month', 'Dormant']}
-          activeChip={activeChip}
+          chips={[]}
+          activeChip=""
           sortBy={sortBy}
           hideViewToggle
+          groups={filterGroups}
           searchValue={search}
+          searchLoading={search.trim() !== debouncedSearch.trim()}
           onSearchChange={setSearch}
-          onChipChange={setActiveChip}
           sortOptions={[
-            'MTD spend (high → low)',
-            'Orders (high → low)',
-            'AOV (high → low)',
+            'Spend 90D (high → low)',
+            'Invoices 90D (high → low)',
+            `${primaryDemandLabel} 90D (high → low)`,
             'Buyer name (A → Z)',
-            'Last ordered (recent first)',
+            'Last invoice (recent first)',
           ]}
           onSortChange={(value) => setSortBy(value as SortOption)}
         />
 
         <LandingTable
           columns={[
-            { label: 'Buyer', width: 260, className: 'px-5' },
+            { label: <SelectAllCheckbox checked={selection.allSelected} indeterminate={selection.someSelected} onChange={selection.toggleVisible} />, width: 48, className: 'px-5' },
+            { label: 'Buyer Name', width: 280, className: 'px-5' },
+            { label: 'Member', width: 150, className: 'px-5' },
             { label: 'Geography', className: 'px-5' },
-            { label: 'MTD spend', align: 'right', className: 'px-5' },
-            { label: 'Orders', align: 'right', className: 'px-5' },
-            { label: 'AOV', align: 'right', className: 'px-5' },
-            { label: 'Credit used', align: 'right', className: 'px-5' },
-            { label: 'Last ordered', className: 'px-5' },
+            { label: 'Spend · 90D', align: 'right', className: 'px-5' },
+            { label: 'Last invoice', className: 'px-5' },
+            { label: 'Outstanding due', align: 'right', className: 'px-5' },
+            { label: `${primaryDemandLabel} · 90D`, align: 'right', className: 'px-5' },
+            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, className: 'px-5' },
           ]}
+          tableMinWidth={1280}
+          showEmptyState={!isInitialLoading && buyers.length === 0}
+          emptyState={<div className="py-16 text-center text-sm text-cream-500">No buyers match these filters.</div>}
         >
-          {filtered.map((buyer) => {
-            const subline = buyer.contact_name ?? buyer.external_ref ?? 'No primary contact';
-            return (
-              <tr key={buyer.buyer_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-                <td className="px-5 py-3.5 text-cream-900">
-                  <div className="flex items-center gap-3">
-                    <EntityAvatar initials={buyer.business_name.split(' ').map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase()} hue="teal" size={32} className="rounded-[8px]" />
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-medium">{buyer.business_name}</p>
-                      <p className="mt-0.5 truncate text-xs text-cream-700">{subline}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label}</td>
-                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_EXACT')}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders_mtd}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
-                  {buyer.orders_mtd > 0 ? formatNumberValue(buyer.aov, 'CURRENCY_EXACT') : '—'}
-                </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_EXACT')}</td>
-                <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
-              </tr>
-            );
-          })}
+          {isInitialLoading ? (
+            <TableBodySkeleton columns={9} />
+          ) : (
+            buyers.map((buyer) => {
+              const isSelected = selection.selectedIds.includes(buyer.buyer_id);
+              return (
+                <SelectableRow key={buyer.buyer_id} selected={isSelected}>
+                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
+                  <td className="px-5 py-3.5">
+                    <p className="truncate text-base font-medium text-cream-950">{buyer.business_name}</p>
+                    <p className="mt-0.5 truncate text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
+                  </td>
+                  <td className="px-5 py-3.5"><MemberToggle checked={buyer.is_member} label={`${buyer.business_name} membership`} /></td>
+                  <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    <p className="font-display text-md text-cream-950">{formatNumberValue(buyer.spend_90d, 'CURRENCY_EXACT')}</p>
+                    <p className="mt-0.5 text-xs text-cream-600">{demandCountLabel('invoices', buyer.invoice_count_90d)}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_invoice_at ? formatDate(buyer.last_invoice_at) : '—'}</td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.outstanding_due, 'CURRENCY_EXACT')}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    <p className="font-display text-md text-cream-950">{buyer.primary_demand_kind === 'none' ? '—' : formatNumberValue(buyer.demand_value_90d, 'CURRENCY_EXACT')}</p>
+                    <p className="mt-0.5 text-xs text-cream-600">{buyer.primary_demand_kind === 'none' ? '—' : demandCountLabel(buyer.primary_demand_kind, buyer.demand_count_90d)}</p>
+                  </td>
+                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                </SelectableRow>
+              );
+            })
+          )}
         </LandingTable>
         {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>

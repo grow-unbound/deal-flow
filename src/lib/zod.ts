@@ -263,6 +263,71 @@ export type CohortUpdateInput = z.infer<typeof CohortUpdateSchema>;
 export type CohortRuleFilter = z.infer<typeof CohortRuleFilterSchema>;
 export type CohortRules = z.infer<typeof CohortRulesSchema>;
 
+// Unified Manual/Automatic membership model (Customer Groups, Pricelists, Campaigns).
+// Fixed single-value bucket filters -- not an open-ended rule builder.
+export const MembershipModeSchema = z.enum(['manual', 'automatic']);
+export type MembershipMode = z.infer<typeof MembershipModeSchema>;
+
+export const CampaignBuyerTargetModeSchema = z.enum(['manual', 'automatic', 'customer_group']);
+export type CampaignBuyerTargetMode = z.infer<typeof CampaignBuyerTargetModeSchema>;
+
+export const LastSaleBucketSchema = z.enum([
+  'within_30_days',
+  'within_90_days',
+  'dormant_90_plus_days',
+  'never_ordered',
+]);
+export type LastSaleBucket = z.infer<typeof LastSaleBucketSchema>;
+
+export const Sales90dLevelSchema = z.enum(['none', 'low', 'medium', 'high']);
+export type Sales90dLevel = z.infer<typeof Sales90dLevelSchema>;
+
+export const BuyerAppStatusSchema = z.enum(['enabled', 'not_enabled', 'inactive']);
+export type BuyerAppStatus = z.infer<typeof BuyerAppStatusSchema>;
+
+export const StockStatusSchema = z.enum(['new_stock', 'in_stock', 'low_stock', 'out_of_stock']);
+export type StockStatus = z.infer<typeof StockStatusSchema>;
+
+// Buyer-side automatic rules: Customer Groups, Campaign -> Buyers (when defined locally).
+export const BuyerMembershipRulesSchema = z.object({
+  last_sale_bucket: LastSaleBucketSchema.optional(),
+  sales_90d_level: Sales90dLevelSchema.optional(),
+  buyer_app_status: BuyerAppStatusSchema.optional(),
+});
+export type BuyerMembershipRules = z.infer<typeof BuyerMembershipRulesSchema>;
+
+// Product-side automatic rules: Pricelists, Campaign -> Products.
+export const ProductMembershipRulesSchema = z.object({
+  brand_names: z.array(z.string()).default([]),
+  category_names: z.array(z.string()).default([]),
+  stock_status: StockStatusSchema.optional(),
+});
+export type ProductMembershipRules = z.infer<typeof ProductMembershipRulesSchema>;
+
+export const MembershipEntityTypeSchema = z.enum(['cohort', 'price_list', 'campaign_buyers', 'campaign_products']);
+export type MembershipEntityType = z.infer<typeof MembershipEntityTypeSchema>;
+
+export const MembershipPreviewRequestSchema = z.object({
+  entity_type: MembershipEntityTypeSchema,
+  rules: z.union([BuyerMembershipRulesSchema, ProductMembershipRulesSchema]),
+});
+export type MembershipPreviewRequest = z.infer<typeof MembershipPreviewRequestSchema>;
+
+export const CustomerGroupFormPayloadSchema = z
+  .object({
+    form_mode: z.literal('simple'),
+    name: z.string().min(1, 'Customer group name is required'),
+    description: z.string().optional().or(z.literal('')),
+    allowed_tenant_brand_ids: z.array(z.string().uuid('Invalid brand')).optional().nullable(),
+    membership_mode: MembershipModeSchema.default('manual'),
+    rules: BuyerMembershipRulesSchema.optional(),
+  })
+  .refine((data) => data.membership_mode !== 'automatic' || Boolean(data.rules), {
+    message: 'Select at least one filter for automatic membership',
+    path: ['rules'],
+  });
+export type CustomerGroupFormPayload = z.infer<typeof CustomerGroupFormPayloadSchema>;
+
 // Price list schemas
 export const PriceListSchema = z
   .object({
@@ -356,6 +421,35 @@ export const PriceListComposerPayloadSchema = z
     },
   );
 export type PriceListComposerPayload = z.infer<typeof PriceListComposerPayloadSchema>;
+
+export const PriceListFormPayloadSchema = z
+  .object({
+    form_mode: z.literal('simple'),
+    name: z.string().min(1, 'Price list name is required'),
+    description: z.string().trim().optional().or(z.literal('')),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    priority: z.coerce.number().int().min(0).default(0),
+    membership_mode: MembershipModeSchema.default('manual'),
+    rules: ProductMembershipRulesSchema.optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  )
+  .refine((data) => data.membership_mode !== 'automatic' || Boolean(data.rules), {
+    message: 'Select at least one filter for automatic membership',
+    path: ['rules'],
+  });
+export type PriceListFormPayload = z.infer<typeof PriceListFormPayloadSchema>;
 
 export const PriceListItemSchema = z.object({
   price: z.coerce.number().positive('Price must be positive'),
@@ -479,6 +573,58 @@ export const CatalogComposerPayloadSchema = z
     },
   );
 export type CatalogComposerPayload = z.infer<typeof CatalogComposerPayloadSchema>;
+
+export const CampaignFormPayloadSchema = z
+  .object({
+    form_mode: z.literal('simple'),
+    name: z.string().min(1, 'Campaign name is required'),
+    description: z.string().optional().or(z.literal('')),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional().or(z.literal('')),
+    hero_image_url: z.string().url('Enter a valid image URL').optional().or(z.literal('')),
+    target_mode: z.enum(['customer_group', 'individual_buyers']).default('customer_group'),
+    target_cohort_id: z.string().uuid('Select a customer group').nullable().optional(),
+    pricing_mode: z.enum(['pricelist', 'individual_prices']).default('individual_prices'),
+    price_list_id: z.string().uuid('Select a pricelist').nullable().optional(),
+    // Two independent membership axes (requirement 2), on top of the legacy target_mode/
+    // pricing_mode fields above -- optional so existing UI (not yet updated) keeps working;
+    // when omitted, the route infers buyer_target_mode from target_mode and defaults
+    // product_membership_mode to 'manual', matching the Phase 1 backfill logic.
+    buyer_target_mode: CampaignBuyerTargetModeSchema.optional(),
+    buyer_rules: BuyerMembershipRulesSchema.optional(),
+    product_membership_mode: MembershipModeSchema.optional(),
+    product_rules: ProductMembershipRulesSchema.optional(),
+  })
+  .refine((data) => data.target_mode !== 'customer_group' || Boolean(data.target_cohort_id), {
+    message: 'Select a customer group',
+    path: ['target_cohort_id'],
+  })
+  .refine((data) => data.pricing_mode !== 'pricelist' || Boolean(data.price_list_id), {
+    message: 'Select a pricelist',
+    path: ['price_list_id'],
+  })
+  .refine((data) => data.buyer_target_mode !== 'automatic' || Boolean(data.buyer_rules), {
+    message: 'Select at least one filter for automatic buyer targeting',
+    path: ['buyer_rules'],
+  })
+  .refine((data) => data.product_membership_mode !== 'automatic' || Boolean(data.product_rules), {
+    message: 'Select at least one filter for automatic product membership',
+    path: ['product_rules'],
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
+export type CampaignFormPayload = z.infer<typeof CampaignFormPayloadSchema>;
 
 // Order schemas
 export const OrderSchema = z.object({

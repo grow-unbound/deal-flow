@@ -13,6 +13,7 @@ interface DetailAvatar {
   kind: 'brand' | 'product' | 'catalog' | 'customer' | 'warehouse' | 'location' | 'category' | 'cohort' | 'price-list' | 'campaign' | 'generic';
   initials?: string;
   hue?: EntityAvatarHue;
+  imageUrl?: string | null;
 }
 
 interface DetailStatus {
@@ -32,15 +33,11 @@ interface DetailHeaderProps {
 
 function renderAvatar(avatar: DetailAvatar) {
   if (avatar.kind !== 'product' && avatar.kind !== 'catalog') {
-    return <EntityAvatar initials={avatar.initials ?? 'BR'} hue={avatar.hue ?? 'cream'} size={48} className="rounded-[14px]" />;
+    return <EntityAvatar initials={avatar.initials ?? 'BR'} hue={avatar.hue ?? 'cream'} imageUrl={avatar.imageUrl} size={48} className="rounded-[14px]" />;
   }
 
   if (avatar.kind === 'catalog') {
-    return (
-      <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border border-ember-200 bg-ember-100 font-display text-md font-semibold uppercase text-ember-800">
-        {avatar.initials ?? 'CT'}
-      </div>
-    );
+    return <EntityAvatar initials={avatar.initials ?? 'CT'} hue="ember" imageUrl={avatar.imageUrl} size={48} className="rounded-[14px]" />;
   }
 
   return (

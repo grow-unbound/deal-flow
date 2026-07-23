@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { triggerHaptic } from '@/lib/haptics';
 import { ChevronRight, Layers } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntityAvatar, FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
@@ -78,8 +79,9 @@ export function CategoryBrandsTab({ brands }: CategoryBrandsTabProps) {
         {filtered.map((b) => (
           <tr
             key={b.id}
-            className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+            className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
             onClick={() => router.push(`/brands/${b.id}`)}
+            onPointerDown={() => triggerHaptic()}
           >
             <td className="px-5 py-3.5">
               <div className="flex items-center gap-3">

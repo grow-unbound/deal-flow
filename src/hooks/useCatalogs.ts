@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
@@ -12,8 +12,9 @@ import type {
 } from '@/lib/campaign-workflow-status';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
+  CampaignFormPayload,
   CatalogComposerFilterState,
   CatalogComposerPayload,
   CatalogComposerPriceSource,
@@ -106,6 +107,7 @@ export interface CatalogDetailResponse {
     valid_from_label: string;
     valid_until_label: string;
     valid_until_iso: string | null;
+    hero_image_url: string | null;
     published_by: string;
     share_token: string | null;
     share_url: string | null;
@@ -230,12 +232,20 @@ export interface CatalogDetailResponse {
     buyer_id: string;
     buyer_name: string;
     city: string;
+    geography_label?: string;
     cohort_label: string;
-    opened_status: 'Opened' | 'Converted' | 'Not yet';
+    opened_status: 'NOT YET OPENED' | 'OPENED' | 'CONVERTED' | 'Opened' | 'Converted' | 'Not yet';
     spend: number;
     orders: number;
+    demand_value?: number;
+    demand_count?: number;
     last_opened_at: string | null;
     last_order_at: string | null;
+    last_conversion_at?: string | null;
+    last_primary_demand_at?: string | null;
+    is_member?: boolean;
+    buyer_app_status?: 'enabled' | 'not_enabled' | 'inactive';
+    primary_demand_kind?: 'orders' | 'estimates' | 'none';
   }>;
   permissions: {
     can_extend_validity: boolean;
@@ -243,6 +253,7 @@ export interface CatalogDetailResponse {
   };
   composer?: {
     name: string;
+    description?: string;
     status: CampaignWorkflowStatus;
     live_status: CampaignWorkflowStatus;
     has_unpublished_changes: boolean;
@@ -264,6 +275,16 @@ export interface CatalogDetailResponse {
       price_override?: number | null;
     }>;
   };
+}
+
+function campaignInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export interface CatalogBuyerPage {
@@ -455,7 +476,16 @@ export function useTenantCatalogDetail(id: string) {
   });
 }
 
-export function useCatalogBuyers(id: string, filters: { query?: string; status?: string; sort?: string; page?: number }, enabled = true) {
+export function useCatalogBuyers(id: string, filters: {
+  query?: string;
+  status?: string[];
+  member?: string;
+  lastSale?: string[];
+  sales90d?: string[];
+  buyerApp?: string[];
+  sort?: string;
+  page?: number;
+}, enabled = true) {
   return useQuery<CatalogBuyerPage>({
     queryKey: ['tenant-catalog-buyers', id, filters],
     enabled: Boolean(id) && enabled,
@@ -463,14 +493,19 @@ export function useCatalogBuyers(id: string, filters: { query?: string; status?:
       const params = new URLSearchParams({ limit: '50' });
       params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
       if (filters.query?.trim()) params.set('q', filters.query.trim());
-      if (filters.status) params.set('status', filters.status);
+      if (filters.member) params.set('member', filters.member);
+      filters.status?.forEach((value) => params.append('status', value));
+      filters.lastSale?.forEach((value) => params.append('last_sale', value));
+      filters.sales90d?.forEach((value) => params.append('sales_90d', value));
+      filters.buyerApp?.forEach((value) => params.append('buyer_app', value));
       if (filters.sort) params.set('sort', filters.sort);
       const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch catalog buyers');
       return res.json();
     },
     placeholderData: (previous) => previous,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 
@@ -627,6 +662,138 @@ export function useSaveCatalogComposer(catalogId?: string) {
   });
 }
 
+export function useSaveSimpleCatalog(catalogId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: CampaignFormPayload): Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }> => {
+      const url = catalogId ? `/api/tenant/catalogs/${catalogId}` : '/api/tenant/catalogs';
+      const method = catalogId ? 'PATCH' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save campaign');
+      }
+      return res.json();
+    },
+    onMutate: async (payload) => {
+      const keys: (readonly unknown[])[] = [['tenant-catalogs']];
+      if (catalogId) keys.push(['tenant-catalog-detail', catalogId]);
+      const snapshots = await takeSnapshots(queryClient, keys);
+      const optimisticId = catalogId ?? `optimistic-${Date.now()}`;
+      const optimisticCreatedAt = new Date().toISOString();
+
+      if (catalogId) {
+        queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', catalogId], (old) =>
+          old
+            ? {
+                ...old,
+                header: {
+                  ...old.header,
+                  name: payload.name,
+                  scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+                },
+                composer: old.composer
+                  ? {
+                      ...old.composer,
+                      name: payload.name,
+                      description: payload.description ?? '',
+                      valid_from: payload.valid_from.toISOString(),
+                      valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+                      message: payload.buyer_note ?? '',
+                      scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+                      cohort_id: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
+                      price_source: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
+                      price_list_id: payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null,
+                    }
+                  : old.composer,
+              }
+            : old,
+        );
+      }
+
+      queryClient.setQueriesData<InfiniteData<CatalogsLandingResponse, number>>(
+        { queryKey: ['tenant-catalogs'] },
+        (old) => {
+          if (!old || old.pages.length === 0) return old;
+
+          const firstPage = old.pages[0];
+          const matchingExisting = firstPage.catalogs.find((catalog) => catalog.id === catalogId);
+          const cohortOptions = queryClient.getQueryData<Array<{ id: string; name: string }>>(['tenant-cohort-options']) ?? [];
+          const cohortName = payload.target_mode === 'customer_group'
+            ? (cohortOptions.find((cohort) => cohort.id === payload.target_cohort_id)?.name ?? matchingExisting?.cohort_name ?? 'Selected customer group')
+            : 'Individual buyers';
+
+          const nextRow: CatalogLandingRow = {
+            id: optimisticId,
+            name: payload.name,
+            initials: matchingExisting?.initials ?? campaignInitials(payload.name),
+            hue: matchingExisting?.hue ?? 'ember',
+            status: matchingExisting?.status ?? {
+              value: 'draft',
+              label: 'Draft',
+              tone: 'warning',
+            },
+            cohort_name: cohortName,
+            audience_count: matchingExisting?.audience_count ?? (payload.target_mode === 'customer_group' ? null : 0),
+            products_count: matchingExisting?.products_count ?? 0,
+            brands_count: matchingExisting?.brands_count ?? 0,
+            gmv: matchingExisting?.gmv ?? 0,
+            orders: matchingExisting?.orders ?? 0,
+            order_count: matchingExisting?.order_count ?? 0,
+            estimate_count: matchingExisting?.estimate_count ?? 0,
+            conversions: matchingExisting?.conversions ?? 0,
+            demand_customers: matchingExisting?.demand_customers ?? 0,
+            views: matchingExisting?.views ?? 0,
+            view_pct: matchingExisting?.view_pct ?? 0,
+            conversion_pct: matchingExisting?.conversion_pct ?? 0,
+            valid_from: payload.valid_from.toISOString(),
+            valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+            valid_until_label: matchingExisting?.valid_until_label ?? 'Not set',
+            days_left: matchingExisting?.days_left ?? null,
+            created_at: matchingExisting?.created_at ?? optimisticCreatedAt,
+            growth_pct: matchingExisting?.growth_pct ?? 0,
+          };
+
+          const updatedFirstPage: CatalogsLandingResponse = {
+            ...firstPage,
+            total: (firstPage.total ?? firstPage.catalogs.length) + (catalogId ? 0 : 1),
+            kpis: {
+              ...firstPage.kpis,
+              draft_catalogs: firstPage.kpis.draft_catalogs + (catalogId ? 0 : 1),
+            },
+            catalogs: catalogId
+              ? firstPage.catalogs.map((catalog) => (catalog.id === catalogId ? { ...catalog, ...nextRow, id: catalogId } : catalog))
+              : [nextRow, ...firstPage.catalogs],
+          };
+
+          return {
+            ...old,
+            pages: [updatedFirstPage, ...old.pages.slice(1)],
+          };
+        },
+      );
+
+      return { snapshots };
+    },
+    onError: (error, _payload, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Failed to save campaign');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      if (catalogId) {
+        queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      }
+      toast.success(catalogId ? 'Campaign updated' : 'Campaign created');
+    },
+  });
+}
+
 export function useExtendCatalogValidity(id: string) {
   const queryClient = useQueryClient();
 
@@ -724,6 +891,26 @@ export interface CatalogPublishPreviewResponse {
   };
 }
 
+export interface CatalogPublishVerificationResponse {
+  whatsapp: {
+    feature_enabled: boolean;
+    notify_available: boolean;
+    credits_per_message: number;
+    credits_balance: number;
+    credit_price_inr: number;
+    template_approved: boolean;
+    tenant_phone_configured: boolean;
+    broadcast_sending_paused: boolean;
+    quality_rating_blocked: boolean;
+  };
+  template: {
+    seller_name: string;
+    seller_phone_display: string;
+    footer_text: string;
+    buttons: Array<{ label: string; type: 'url' | 'quick_reply' }>;
+  };
+}
+
 export type CatalogDetailDialogMode = 'first_publish' | 'publish_updates' | 'notify_buyers';
 export type CatalogNotifyRecipientFilter = 'all_eligible' | 'not_viewed' | 'viewed_not_ordered';
 
@@ -753,6 +940,22 @@ export function useCatalogPublishPreview(
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Failed to load publish preview');
+      }
+      return res.json();
+    },
+    enabled: enabled && Boolean(campaignId),
+    staleTime: 0,
+  });
+}
+
+export function useCatalogPublishVerification(campaignId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['catalog-publish-verification', campaignId],
+    queryFn: async (): Promise<CatalogPublishVerificationResponse> => {
+      const res = await apiFetch(`/api/tenant/catalogs/${campaignId}/publish-verification`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to load WhatsApp verification');
       }
       return res.json();
     },

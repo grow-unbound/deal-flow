@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 const mockPathname = vi.fn(() => '/dashboard');
@@ -52,6 +52,7 @@ function makeAuth(role: string) {
 }
 
 import { SellerSidebar, collectPrefetchHrefs, navGroups } from '@/components/layout/SellerSidebar';
+import { resolveSellerSidebarLayout } from '@/components/layout/seller-sidebar-layout';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): SellerShellFeatureAvailability {
@@ -211,13 +212,75 @@ describe('SellerSidebar', () => {
     expect(logo).toHaveAttribute('src', expect.stringContaining('mark-copper.svg'));
   });
 
-  it('keeps collapsed nav links left-aligned without justify-center', async () => {
+  it('centers collapsed nav links in the narrower rail', async () => {
     await act(async () => {
       render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
     });
     const dashboardLink = screen.getByRole('link', { name: 'Dashboard' });
-    expect(dashboardLink.className).not.toContain('justify-center');
-    expect(dashboardLink.className).toContain('gap-3');
+    expect(dashboardLink.className).toContain('justify-center');
+    expect(dashboardLink.className).toContain('px-0');
+  });
+
+  it('reveals expanded content when the collapsed sidebar is hovered', async () => {
+    let container: HTMLElement;
+    await act(async () => {
+      ({ container } = render(
+        <SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />
+      ));
+    });
+
+    const aside = container!.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(aside!);
+
+    expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+  });
+});
+
+describe('resolveSellerSidebarLayout', () => {
+  it('keeps the sidebar expanded and non-collapsible on large screens', () => {
+    expect(
+      resolveSellerSidebarLayout({
+        isUserCollapsed: true,
+        isLargeScreen: true,
+        isForcedCollapsed: false,
+      })
+    ).toEqual({
+      isCollapsed: false,
+      canCollapse: false,
+      sidebarWidth: '248px',
+    });
+  });
+
+  it('forces the sidebar collapsed below the responsive breakpoint', () => {
+    expect(
+      resolveSellerSidebarLayout({
+        isUserCollapsed: false,
+        isLargeScreen: false,
+        isForcedCollapsed: true,
+      })
+    ).toEqual({
+      isCollapsed: true,
+      canCollapse: false,
+      sidebarWidth: '72px',
+    });
+  });
+
+  it('uses the user preference in the middle breakpoint range', () => {
+    expect(
+      resolveSellerSidebarLayout({
+        isUserCollapsed: true,
+        isLargeScreen: false,
+        isForcedCollapsed: false,
+      })
+    ).toEqual({
+      isCollapsed: true,
+      canCollapse: true,
+      sidebarWidth: '72px',
+    });
   });
 });
 

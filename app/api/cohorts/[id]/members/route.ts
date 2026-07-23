@@ -41,7 +41,7 @@ export async function GET(
 
   const { data: members, error } = await db
     .schema('app')
-    .from('cohort_members')
+    .from('cohort_members_active')
     .select('buyer_id, buyers!inner(id, business_name, tier, is_active)')
     .eq('cohort_id', id);
 
@@ -102,22 +102,32 @@ export async function POST(
       { status: 400 },
     );
 
-  // Upsert members (ignore duplicates)
-  const rows = parsed.data.buyer_ids.map((buyer_id) => ({ cohort_id: id, buyer_id }));
-  const { error: insertError } = await db
+  // SCD2: cohort_members only enforces uniqueness on the active (valid_until IS NULL) row via
+  // a partial index, which ON CONFLICT upsert can't target directly. Open a new window only
+  // for pairs that aren't already active; already-active pairs are left untouched.
+  const { data: existingActive } = await db
     .schema('app')
-    .from('cohort_members')
-    .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+    .from('cohort_members_active')
+    .select('buyer_id')
+    .eq('cohort_id', id)
+    .in('buyer_id', parsed.data.buyer_ids);
+  const alreadyActive = new Set((existingActive ?? []).map((row: { buyer_id: string }) => row.buyer_id));
+  const rows = parsed.data.buyer_ids
+    .filter((buyer_id) => !alreadyActive.has(buyer_id))
+    .map((buyer_id) => ({ cohort_id: id, buyer_id }));
 
-  if (insertError) {
-    console.error('[POST /api/cohorts/[id]/members]', insertError.message);
-    return NextResponse.json({ error: 'Failed to add members' }, { status: 500 });
+  if (rows.length > 0) {
+    const { error: insertError } = await db.schema('app').from('cohort_members').insert(rows);
+    if (insertError) {
+      console.error('[POST /api/cohorts/[id]/members]', insertError.message);
+      return NextResponse.json({ error: 'Failed to add members' }, { status: 500 });
+    }
   }
 
   // Update cached_member_count
   const { count } = await db
     .schema('app')
-    .from('cohort_members')
+    .from('cohort_members_active')
     .select('*', { count: 'exact', head: true })
     .eq('cohort_id', id);
   await db
@@ -162,12 +172,19 @@ export async function DELETE(
     .maybeSingle();
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  await db.schema('app').from('cohort_members').delete().eq('cohort_id', id).eq('buyer_id', buyerId);
+  // Close the active membership window instead of deleting the row (SCD2: never hard-delete).
+  await db
+    .schema('app')
+    .from('cohort_members')
+    .update({ valid_until: new Date().toISOString() })
+    .eq('cohort_id', id)
+    .eq('buyer_id', buyerId)
+    .is('valid_until', null);
 
   // Update cached_member_count
   const { count } = await db
     .schema('app')
-    .from('cohort_members')
+    .from('cohort_members_active')
     .select('*', { count: 'exact', head: true })
     .eq('cohort_id', id);
   await db

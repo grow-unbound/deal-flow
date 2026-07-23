@@ -10,6 +10,7 @@ import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
 import { prefetchEstimateComposer } from '@/hooks/useEstimates';
 import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
 import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
+import { triggerHaptic } from '@/lib/haptics';
 import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 
 export type TransactionTableKind = 'estimate' | 'order' | 'invoice';
@@ -154,9 +155,18 @@ export function TransactionTable({
         return (
           <tr
             key={row.id}
-            className={cn('cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50', rowClassName)}
+            className={cn(
+              // active:bg (not scale) — CSS transform on a <tr> renders inconsistently
+              // across browsers (Safari in particular), so press feedback here is a
+              // background flash instead of Pressable's usual scale-down.
+              'cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              rowClassName,
+            )}
             onClick={() => click(row)}
-            onPointerDown={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
+            onPointerDown={() => {
+              triggerHaptic();
+              prefetchOnPress(row.href, composerPrefetchFor(row.id))();
+            }}
             onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
             <td className="px-5 py-3.5">

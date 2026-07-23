@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { CohortUpdateSchema } from '@/lib/zod';
+import { CohortUpdateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { buildCohortMemberBuyerRows, resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('cohort_members')
+      .from('cohort_members_active')
       .select('cohort_id, buyer_id')
       .eq('cohort_id', id),
   ]);
@@ -547,8 +547,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const parsed = CohortUpdateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message ?? 'Validation failed' }, { status: 422 });
+  const simpleParsed = CustomerGroupFormPayloadSchema.safeParse(body);
+  const composerParsed = simpleParsed.success ? null : CohortUpdateSchema.safeParse(body);
+  if (!simpleParsed.success && !composerParsed?.success) {
+    return NextResponse.json({ error: composerParsed?.error.errors[0]?.message ?? simpleParsed.error.errors[0]?.message ?? 'Validation failed' }, { status: 422 });
+  }
 
   const db = supabaseAdmin as DbClient as any;
 
@@ -562,13 +565,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .maybeSingle();
   if (!existing) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  if (parsed.data.name) {
+  const isSimpleForm = simpleParsed.success;
+  const payload: any = isSimpleForm
+    ? {
+        name: simpleParsed.data.name,
+        description: simpleParsed.data.description,
+        allowed_tenant_brand_ids: simpleParsed.data.allowed_tenant_brand_ids,
+      }
+    : composerParsed!.data;
+
+  if (payload.name) {
     const { data: nameMatch } = await db
       .schema('app')
       .from('cohorts')
       .select('id')
       .eq('tenant_id', claims.tenant_id)
-      .eq('name', parsed.data.name)
+      .eq('name', payload.name)
       .is('deleted_at', null)
       .neq('id', id)
       .maybeSingle();
@@ -576,21 +588,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const nextRules =
-    parsed.data.rules !== undefined ? parsed.data.rules : existing.rules;
+    !isSimpleForm && payload.rules !== undefined ? payload.rules : existing.rules;
   const nextIsStatic =
-    parsed.data.is_static !== undefined ? parsed.data.is_static : existing.is_static;
+    !isSimpleForm && payload.is_static !== undefined ? payload.is_static : existing.is_static;
 
   const normalizedAllowedBrandIds =
-    parsed.data.allowed_tenant_brand_ids === undefined
+    payload.allowed_tenant_brand_ids === undefined
       ? undefined
-      : parsed.data.allowed_tenant_brand_ids && parsed.data.allowed_tenant_brand_ids.length > 0
-        ? parsed.data.allowed_tenant_brand_ids
+      : payload.allowed_tenant_brand_ids && payload.allowed_tenant_brand_ids.length > 0
+        ? payload.allowed_tenant_brand_ids
         : null;
 
   const { data: cohort, error: updateError } = await db
     .schema('app')
     .from('cohorts')
-    .update({ ...parsed.data, allowed_tenant_brand_ids: normalizedAllowedBrandIds, updated_at: new Date().toISOString(), updated_by: claims.sub })
+    .update({
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.description !== undefined ? { description: payload.description || null } : {}),
+      ...(!isSimpleForm && payload.is_static !== undefined ? { is_static: payload.is_static } : {}),
+      ...(!isSimpleForm && payload.rules !== undefined ? { rules: payload.rules } : {}),
+      ...(normalizedAllowedBrandIds !== undefined ? { allowed_tenant_brand_ids: normalizedAllowedBrandIds } : {}),
+      updated_at: new Date().toISOString(),
+      updated_by: claims.sub,
+    })
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -602,44 +622,61 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Failed to update cohort' }, { status: 500 });
   }
 
-  try {
-    const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, nextRules, nextIsStatic);
+  if (!isSimpleForm) {
+    try {
+      const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, nextRules, nextIsStatic);
 
-    const { error: clearError } = await db
-      .schema('app')
-      .from('cohort_members')
-      .delete()
-      .eq('cohort_id', id);
-
-    if (clearError) {
-      console.error('[PATCH /api/cohorts/[id]] member clear error:', clearError.message);
-      return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
-    }
-
-    if (memberIds.length > 0) {
-      const rows = memberIds.map((buyerId) => ({ cohort_id: id, buyer_id: buyerId }));
-      const { error: membersError } = await db
+      // SCD2: diff against the currently-active set instead of clear-and-rebuild -- close
+      // rows for buyers no longer matched, insert rows only for newly-matched buyers. Never
+      // hard-delete, and never touch rows for buyers whose membership hasn't changed (so
+      // their original valid_from is preserved for point-in-time attribution).
+      const { data: activeRows } = await db
         .schema('app')
-        .from('cohort_members')
-        .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+        .from('cohort_members_active')
+        .select('buyer_id')
+        .eq('cohort_id', id);
+      const currentlyActive = new Set<string>((activeRows ?? []).map((row: { buyer_id: string }) => row.buyer_id));
+      const nextSet = new Set<string>(memberIds);
 
-      if (membersError) {
-        console.error('[PATCH /api/cohorts/[id]] member sync error:', membersError.message);
-        return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+      const toClose = [...currentlyActive].filter((buyerId) => !nextSet.has(buyerId));
+      const toAdd = memberIds.filter((buyerId) => !currentlyActive.has(buyerId));
+
+      if (toClose.length > 0) {
+        const { error: closeError } = await db
+          .schema('app')
+          .from('cohort_members')
+          .update({ valid_until: new Date().toISOString() })
+          .eq('cohort_id', id)
+          .in('buyer_id', toClose)
+          .is('valid_until', null);
+        if (closeError) {
+          console.error('[PATCH /api/cohorts/[id]] member close error:', closeError.message);
+          return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+        }
       }
+
+      if (toAdd.length > 0) {
+        const rows = toAdd.map((buyerId) => ({ cohort_id: id, buyer_id: buyerId }));
+        const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
+
+        if (membersError) {
+          console.error('[PATCH /api/cohorts/[id]] member sync error:', membersError.message);
+          return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+        }
+      }
+
+      await db
+        .schema('app')
+        .from('cohorts')
+        .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('tenant_id', claims.tenant_id);
+
+      cohort.cached_member_count = memberIds.length;
+    } catch (error: any) {
+      console.error('[PATCH /api/cohorts/[id]] composer sync error:', error?.message);
+      return NextResponse.json({ error: 'Failed to rebuild cohort membership' }, { status: 500 });
     }
-
-    await db
-      .schema('app')
-      .from('cohorts')
-      .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .eq('tenant_id', claims.tenant_id);
-
-    cohort.cached_member_count = memberIds.length;
-  } catch (error: any) {
-    console.error('[PATCH /api/cohorts/[id]] composer sync error:', error?.message);
-    return NextResponse.json({ error: 'Failed to rebuild cohort membership' }, { status: 500 });
   }
 
   return NextResponse.json({ cohort });
