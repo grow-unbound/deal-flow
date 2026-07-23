@@ -26,7 +26,6 @@ export interface BroadcastTemplateEligibility {
   reason: string | null;
 }
 
-const BROADCAST_UNSUPPORTED_USE_CASES = new Set(['buyer_app_nudge']);
 const TRANSACTIONAL_TEMPLATE_VARIABLES: Record<string, string[]> = {
   order_received_seller: [
     'seller_location',
@@ -93,6 +92,30 @@ const TRANSACTIONAL_TEMPLATE_VARIABLES: Record<string, string[]> = {
     'buyer_note',
     'seller_phone_number',
   ],
+  beat_route_buyer: [
+    'buyer_name',
+    'seller_name',
+    'visit_date',
+    'visit_time',
+    'seller_phone_number',
+  ],
+  new_stock_buyer: [
+    'buyer_name',
+    'seller_name',
+    'buyer_note',
+  ],
+  buyer_app_dormant: [
+    'buyer_name',
+    'seller_name',
+  ],
+  buyer_app_adoption: [
+    'buyer_name',
+    'seller_name',
+  ],
+  buyer_app_enabled: [
+    'buyer_name',
+    'seller_name',
+  ],
 };
 
 function normalizeValue(value: string | null | undefined): string {
@@ -121,12 +144,6 @@ export function getBroadcastTemplateEligibility(
     return {
       supported: false,
       reason: 'OTP templates can only be used for login verification',
-    };
-  }
-  if (template.use_case && BROADCAST_UNSUPPORTED_USE_CASES.has(template.use_case)) {
-    return {
-      supported: false,
-      reason: 'This template is reserved for buyer app nudges',
     };
   }
   return { supported: true, reason: null };

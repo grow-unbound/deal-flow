@@ -47,6 +47,7 @@ export interface LocationsLandingKpis {
   dues_location_count: number;
   open_estimate_count: number;
   total_estimate_count: number;
+  conversion_pct: number;
   top_location_name: string | null;
   top_location_gmv_share_pct: number;
   linked_warehouse_count: number;

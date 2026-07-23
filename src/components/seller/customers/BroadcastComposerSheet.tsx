@@ -26,10 +26,24 @@ import {
 import { WHATSAPP_QUALITY_BANNER_COPY } from '@/constants/whatsapp-quality-banner';
 import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import type { WhatsAppBroadcastTargetType } from '@/lib/zod';
+import { formatWhatsAppTemplateLabel } from '@/lib/whatsapp-ui';
 
-const MANUAL_TEMPLATE_KEYS = new Set(['highlight_text', 'visit_window']);
-const CAMPAIGN_TEMPLATE_USE_CASES = new Set(['new_stock', 'campaign_announcement']);
+const BEAT_ROUTE_TEMPLATE = 'beat_route_buyer';
+const CAMPAIGN_TEMPLATE_USE_CASES = new Set(['campaigns']);
 const SELECT_BUYERS_VALUE = '__select_buyers__';
+
+const BEAT_ROUTE_FIELD_META: Record<string, { label: string; placeholder: string; helper: string }> = {
+  visit_date: {
+    label: 'Visit date',
+    placeholder: '26 July',
+    helper: 'Shown in the message as the visit date',
+  },
+  visit_time: {
+    label: 'Visit time',
+    placeholder: '3:30PM–5:30PM',
+    helper: 'Time window for the visit',
+  },
+};
 
 function combineScheduledAt(dateValue: string, timeValue: string) {
   if (!dateValue || !timeValue) return null;
@@ -42,8 +56,8 @@ function combineScheduledAt(dateValue: string, timeValue: string) {
 }
 
 function editableVariables(template: WhatsAppTemplateOption | null) {
-  if (!template) return [];
-  return template.variables.filter((variable) => MANUAL_TEMPLATE_KEYS.has(variable.key));
+  if (!template || template.meta_template_name !== BEAT_ROUTE_TEMPLATE) return [];
+  return template.variables.filter((variable) => variable.key === 'visit_date' || variable.key === 'visit_time');
 }
 
 export function BroadcastComposerSheet({
@@ -76,7 +90,10 @@ export function BroadcastComposerSheet({
     ? WHATSAPP_QUALITY_BANNER_COPY[platformStatus.quality_rating_state]
     : null;
 
-  const templates = useMemo(() => rawTemplates, [rawTemplates]);
+  const templates = useMemo(
+    () => rawTemplates.filter((template) => template.is_broadcast_template),
+    [rawTemplates],
+  );
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
@@ -93,9 +110,13 @@ export function BroadcastComposerSheet({
     ? (selectedTemplate.broadcast_support_reason ?? 'This template cannot be used for broadcasts')
     : null;
   const manualVariables = editableVariables(selectedTemplate);
+  const isBeatRouteTemplate = selectedTemplate?.meta_template_name === BEAT_ROUTE_TEMPLATE;
+  const beatRouteManualComplete = !isBeatRouteTemplate
+    || (Boolean(variableBindings.visit_date?.trim()) && Boolean(variableBindings.visit_time?.trim()));
   const scheduledFor = combineScheduledAt(scheduledDate, scheduledTime);
   const canPreview = Boolean(selectedTemplate)
     && !templateBlockedReason
+    && beatRouteManualComplete
     && ((targetType === 'cohort' && Boolean(targetCohortId)) || (targetType === 'buyer_selection' && selectedBuyerIds.length > 0))
     && (sendNow || Boolean(scheduledFor))
     && (!requiresCampaign || Boolean(linkedCampaignId));
@@ -150,7 +171,7 @@ export function BroadcastComposerSheet({
       return next;
     });
     if (template && !broadcastName.trim()) {
-      setBroadcastName(`${template.use_case.replace(/_/g, ' ')} broadcast`);
+      setBroadcastName(`${formatWhatsAppTemplateLabel(template.meta_template_name)} broadcast`);
     }
     if (!template || !CAMPAIGN_TEMPLATE_USE_CASES.has(template.use_case)) {
       setLinkedCampaignId(null);
@@ -166,7 +187,7 @@ export function BroadcastComposerSheet({
 
     createBroadcast.mutate(
       {
-        name: broadcastName.trim() || `${selectedTemplate.use_case.replace(/_/g, ' ')} broadcast`,
+        name: broadcastName.trim() || `${formatWhatsAppTemplateLabel(selectedTemplate.meta_template_name)} broadcast`,
         whatsapp_template_id: selectedTemplate.id,
         use_case: selectedTemplate.use_case,
         target_type: targetType,
@@ -265,7 +286,7 @@ export function BroadcastComposerSheet({
                   value={template.id}
                   disabled={template.broadcast_supported === false}
                 >
-                  {template.use_case.replace(/_/g, ' ')}
+                  {formatWhatsAppTemplateLabel(template.meta_template_name)}
                   {template.broadcast_supported === false && template.broadcast_support_reason
                     ? ` — ${template.broadcast_support_reason}`
                     : ''}
@@ -309,19 +330,26 @@ export function BroadcastComposerSheet({
 
           {manualVariables.length > 0 ? (
             <div className="space-y-3">
-              {manualVariables.map((variable) => (
-                <div key={variable.key} className="space-y-1.5">
-                  <label className="text-body-sm font-medium text-cream-800">{variable.key.replace(/_/g, ' ')}</label>
-                  <Input
-                    value={variableBindings[variable.key] ?? ''}
-                    onChange={(event) => updateVariableBinding(variable.key, event.target.value)}
-                    placeholder={variable.description ?? `Enter ${variable.key}`}
-                  />
-                  {variable.description ? (
-                    <p className="text-xs text-cream-500">{variable.description}</p>
-                  ) : null}
-                </div>
-              ))}
+              {manualVariables.map((variable) => {
+                const fieldMeta = BEAT_ROUTE_FIELD_META[variable.key];
+                return (
+                  <div key={variable.key} className="space-y-1.5">
+                    <label className="text-body-sm font-medium text-cream-800">
+                      {fieldMeta?.label ?? variable.key.replace(/_/g, ' ')}
+                    </label>
+                    <Input
+                      value={variableBindings[variable.key] ?? ''}
+                      onChange={(event) => updateVariableBinding(variable.key, event.target.value)}
+                      placeholder={fieldMeta?.placeholder ?? variable.description ?? `Enter ${variable.key}`}
+                    />
+                    {fieldMeta?.helper ? (
+                      <p className="text-xs text-cream-500">{fieldMeta.helper}</p>
+                    ) : variable.description ? (
+                      <p className="text-xs text-cream-500">{variable.description}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
 

@@ -246,19 +246,19 @@ function CatalogsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customers who opened campaigns',
+            label: `Campaigns opens · ${metricSuffix}`,
             value: `${landingData.kpis.opened_customers_mtd ?? 0}`,
-            sub: `unique customers who opened live campaigns in ${metricSuffix.toLowerCase()}`,
+            sub: `customers opened live campaigns`,
           },
           {
-            label: 'Customers with campaign-linked demand',
+            label: `Campaign demand · ${metricSuffix}`,
             value: `${landingData.kpis.conversions_mtd ?? 0}`,
-            sub: `unique customers with linked ${primaryDemandNoun}`,
+            sub: `customers raised ${primaryDemandKind}`,
           },
           {
             label: `Campaign-linked demand value · ${metricSuffix}`,
             value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
-            sub: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd} linked ${primaryDemandNoun}`,
+            sub: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd} linked ${primaryDemandKind}`,
             tone: 'accent',
           },
           {

@@ -132,7 +132,7 @@ export function useWhatsAppTemplates(enabled = true) {
       const res = await apiFetch('/api/whatsapp/templates');
       if (!res.ok) throw new Error('Failed to fetch WhatsApp templates');
       const data = (await res.json()) as { templates: WhatsAppTemplateOption[] };
-      return data.templates;
+      return data.templates.filter((template) => template.is_broadcast_template);
     },
     enabled,
     staleTime: NAVIGATION_QUERY_STALE_TIME,

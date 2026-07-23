@@ -277,8 +277,6 @@ export function WarehousesLandingClient({
           columns={[
             { label: 'Warehouse', width: 320, minWidth: 280, maxWidth: 360, className: 'px-5' },
             { label: 'Linked location', minWidth: 180, maxWidth: 220, className: 'px-5' },
-            { label: 'Status', width: 140, minWidth: 130, maxWidth: 200, className: 'px-5' },
-            { label: 'Stock status', width: 180, minWidth: 130, maxWidth: 200, className: 'px-5' },
             { label: 'Tracked SKUs', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
             { label: 'Sellable units', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
             { label: 'Stock risk SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
@@ -309,12 +307,6 @@ export function WarehousesLandingClient({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
-              <td className="px-5 py-3.5">
-                <StatusTag tone={row.status === 'active' ? 'success' : 'warning'} label={`${row.status === 'active' ? 'Active' : 'Inactive'}`} />
-              </td>
-              <td className="px-5 py-3.5">
-                <StatusTag tone={stockTone(row.stock_status)} label={`${stockLabel(row.stock_status)}`} />
-              </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>

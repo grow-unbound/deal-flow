@@ -63,6 +63,7 @@ const EMPTY_KPIS: LocationsLandingKpis = {
   dues_location_count: 0,
   open_estimate_count: 0,
   total_estimate_count: 0,
+  conversion_pct: 0,
   top_location_name: null,
   top_location_gmv_share_pct: 0,
   linked_warehouse_count: 0,
