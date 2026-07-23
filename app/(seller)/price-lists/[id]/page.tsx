@@ -167,6 +167,8 @@ export default function PriceListDetailPage() {
                   items={priceList.items}
                   brandsCovered={priceList.stats?.brands_covered ?? 0}
                   canViewFinancials={isSellerAdmin}
+                  pricingStrategy={priceList.pricing_strategy}
+                  strategyValue={priceList.strategy_value}
                 />
               ) : null}
 

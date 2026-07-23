@@ -12,7 +12,7 @@ import type {
 } from '@/lib/campaign-workflow-status';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import { NAVIGATION_QUERY_GC_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
   CampaignFormPayload,
   CatalogComposerFilterState,
@@ -231,12 +231,20 @@ export interface CatalogDetailResponse {
     buyer_id: string;
     buyer_name: string;
     city: string;
+    geography_label?: string;
     cohort_label: string;
-    opened_status: 'Opened' | 'Converted' | 'Not yet';
+    opened_status: 'NOT YET OPENED' | 'OPENED' | 'CONVERTED' | 'Opened' | 'Converted' | 'Not yet';
     spend: number;
     orders: number;
+    demand_value?: number;
+    demand_count?: number;
     last_opened_at: string | null;
     last_order_at: string | null;
+    last_conversion_at?: string | null;
+    last_primary_demand_at?: string | null;
+    is_member?: boolean;
+    buyer_app_status?: 'enabled' | 'not_enabled' | 'inactive';
+    primary_demand_kind?: 'orders' | 'estimates' | 'none';
   }>;
   permissions: {
     can_extend_validity: boolean;
@@ -467,7 +475,16 @@ export function useTenantCatalogDetail(id: string) {
   });
 }
 
-export function useCatalogBuyers(id: string, filters: { query?: string; status?: string; sort?: string; page?: number }, enabled = true) {
+export function useCatalogBuyers(id: string, filters: {
+  query?: string;
+  status?: string[];
+  member?: string;
+  lastSale?: string[];
+  sales90d?: string[];
+  buyerApp?: string[];
+  sort?: string;
+  page?: number;
+}, enabled = true) {
   return useQuery<CatalogBuyerPage>({
     queryKey: ['tenant-catalog-buyers', id, filters],
     enabled: Boolean(id) && enabled,
@@ -475,14 +492,19 @@ export function useCatalogBuyers(id: string, filters: { query?: string; status?:
       const params = new URLSearchParams({ limit: '50' });
       params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
       if (filters.query?.trim()) params.set('q', filters.query.trim());
-      if (filters.status) params.set('status', filters.status);
+      if (filters.member) params.set('member', filters.member);
+      filters.status?.forEach((value) => params.append('status', value));
+      filters.lastSale?.forEach((value) => params.append('last_sale', value));
+      filters.sales90d?.forEach((value) => params.append('sales_90d', value));
+      filters.buyerApp?.forEach((value) => params.append('buyer_app', value));
       if (filters.sort) params.set('sort', filters.sort);
       const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch catalog buyers');
       return res.json();
     },
     placeholderData: (previous) => previous,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 

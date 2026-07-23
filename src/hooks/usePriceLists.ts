@@ -603,6 +603,7 @@ export function useUpdatePriceListItem(priceListId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('List price updated');
     },
