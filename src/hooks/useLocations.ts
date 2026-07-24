@@ -41,6 +41,7 @@ export type PrimaryDemandKind = 'orders' | 'estimates' | 'none';
 
 export interface LocationsLandingKpis {
   active_locations: number;
+  total_locations: number;
   unpaid_invoice_count: number;
   total_invoice_count: number;
   outstanding_dues_total: number;
@@ -55,6 +56,8 @@ export interface LocationsLandingKpis {
   linked_warehouse_count: number;
   open_primary_demand_kind: PrimaryDemandKind;
   open_primary_demand_value: number;
+  invoiced_sales_90d: number;
+  purchasing_buyers_90d: number;
 }
 
 export interface LocationsLandingRow {

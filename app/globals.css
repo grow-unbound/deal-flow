@@ -257,6 +257,17 @@
     scrollbar-gutter: stable;
   }
 
+  /* Radix Dialog/Sheet scroll-lock (react-remove-scroll) measures scrollbar width via
+     innerWidth - clientWidth and adds its own body padding-right on open/close — but
+     `scrollbar-gutter: stable` above already reserves that space permanently, so the
+     browser never actually reclaims it. The two compensations stack, producing a small
+     horizontal layout shift every time a Sheet/Dialog (e.g. SeeAllSheet) opens or closes.
+     Neutralize Radix's redundant padding since the CSS gutter already does the job. */
+  body[data-scroll-locked] {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

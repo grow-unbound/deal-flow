@@ -6,10 +6,9 @@ import { MailCheck, Pencil, Plus, Trash2, UserRound, UserRoundX } from 'lucide-r
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { apiDelete, apiFetch, apiPost } from '@/lib/api-fetch';
-import { LandingTable } from '@/components/seller/layout';
+import { LandingTable, StatusTag } from '@/components/seller/layout';
 import { BuyerUserDialog, type BuyerUserRow } from './BuyerUserDialog';
 
 interface BuyerUsersSectionProps {
@@ -19,12 +18,12 @@ interface BuyerUsersSectionProps {
 
 function StatusPill({ status }: { status: BuyerUserRow['status'] }) {
   if (status === 'Active') {
-    return <Badge className="rounded-sm border-0 bg-success-50 text-caption font-medium text-success-700 hover:bg-success-50">Active</Badge>;
+    return <StatusTag label="Active" tone="success" className="text-caption" />;
   }
   if (status === 'Pending invite') {
-    return <Badge className="rounded-sm border-0 bg-amber-100 text-caption font-medium text-amber-700 hover:bg-amber-100">Pending invite</Badge>;
+    return <StatusTag label="Pending invite" tone="warning" className="text-caption" />;
   }
-  return <Badge className="rounded-sm border-0 bg-cream-200 text-caption font-medium text-cream-700 hover:bg-cream-200">Inactive</Badge>;
+  return <StatusTag label="Inactive" tone="neutral" className="text-caption" />;
 }
 
 export function BuyerUsersSection({ buyerId, users }: BuyerUsersSectionProps) {

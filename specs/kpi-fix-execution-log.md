@@ -36,7 +36,7 @@ live verification: `d601c35c-1a78-4506-a556-a82118d72893`.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 9 | Reframe Brands/Cohorts/Catalogs to demand+conversion | TODO | Buyer App Home reframe **descoped 2026-07-23** — stays invoice-based (Spend/Dues/Credit); demand may become a separate future 4th tile, not a reframe |
+| 9 | Reframe Brands/Cohorts/Catalogs to demand+conversion | PARTIAL — Brands DONE 2026-07-24, Cohorts/Catalogs still TODO | Buyer App Home reframe **descoped 2026-07-23** — stays invoice-based (Spend/Dues/Credit); demand may become a separate future 4th tile, not a reframe. **Brands portion (2026-07-24):** relabeled the mislabeled "Invoiced sales · 90D" tile to a dynamic "Estimate demand value · 90D" / "Order demand value · 90D" based on `primary_demand_kind` (added to `app/api/tenant/brands/route.ts`'s response) — see session notes below for full detail. Cohorts/Catalogs not touched this pass. |
 | 10 | **Revised 2026-07-23: remove, don't fix.** Growth%/trend/top-risers sweep — Locations, Categories, Products (`revenue_growth_pct`), Brands (`growth_pct` + top-risers callout + `gmv_decline` alerts), Cohorts (`growth_pct` + top-risers callout — remove the no-op just built), Orders (`orders_growth_pct`), Buyer App Home (trend card). Estimates' `expiring_soon` stays a straight fix (not growth-related). | DONE (landing pages) — detail-page growth% also swept, 3 items deferred as explicit follow-up, see note below | Rule 12: no trend without ≥180d ops history<br><br>**Buyer App Home portion — DONE 2026-07-23.** Straight removal, not a fix, per explicit instruction (a stubbed/computed-but-meaningless trend number is exactly the trust bug this effort exists to eliminate). No DB migration — all TypeScript.<br><br>**Files touched:**<br>`app/(buyer)/buy/home/page.tsx` — removed the `trendLabel(value: number)` helper function entirely (rendered `+X% vs last month` / `X% vs last month` / `Flat vs last month`) and its call site. The "Spend this year" card's sub-line changed from `` `${trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · ${summary?.invoice_count_ytd ?? 0} invoices this year` `` to just `` `${summary?.invoice_count_ytd ?? 0} invoices this year` `` — card itself, gmv figure, and invoice count untouched.<br>`app/api/buyer/home/route.ts` — removed `gmvPreviousMonth` (the previous-calendar-month GMV sum used only for the trend ratio) and `trendVsLastMonthPct` (the `(gmvMtd - gmvPreviousMonth)/gmvPreviousMonth` computation) entirely. Removed `trend_vs_last_month_pct` from both the real `payload.summary_card` and the no-buyer `previewPayload.summary_card` fallback. **Kept** `previousMonthStart` and the `financialWindowStart` widening logic (`previousMonthStart < currentYearStart ? previousMonthStart : currentYearStart`) — checked and confirmed this date bound also back-stops `openInvoiceRows`/`earliestDueDateFromWindow` (the dues-card fallback lookup), a separate concern from trend, so narrowing the window would have silently regressed dues-card correctness for buyers whose earliest open invoice falls in December of the prior year. Only the trend-specific computation built from these dates was removed, not the dates themselves.<br>`src/lib/buyer-home-types.ts` — removed `trend_vs_last_month_pct: number` from `BuyerHomeResponse['summary_card']`.<br>`src/tests/buyer-home-route.test.ts` — removed the `expect(body.summary_card.trend_vs_last_month_pct).toBe(25)` assertion.<br>`src/tests/buyer-home-page.test.tsx` — removed `trend_vs_last_month_pct: 12` from the mocked `summary_card` fixture.<br><br>Repo-wide grep for `trend_vs_last_month_pct`, `trendLabel`, `trendVsLastMonthPct`, `gmvPreviousMonth` confirms zero remaining references anywhere.<br><br>**Migration:** (none) — TypeScript-only change, per task scope.<br><br>**Verified how:** `npx tsc --noEmit -p /Users/phanikrovvidi/projects/deal-flow` clean, no errors. `npx vitest run src/tests/buyer-home-route.test.ts src/tests/buyer-home-page.test.tsx` — `buyer-home-page.test.tsx` passes; `buyer-home-route.test.ts`'s one test fails with `500` instead of `200` (`Unexpected query: app.cohort_members_active` inside `resolveBuyerAllowedTenantBrandIds`), confirmed via `git stash`/re-run to be a **pre-existing failure unrelated to this change** — fails identically on the unmodified tree (a parallel, in-flight change to buyer-brand-visibility's cohort query, not something this task touched or introduced). Date: 2026-07-23 |
 | 11 | **New 2026-07-23.** Sweep for other V1 metrics tables still referenced by a live RPC; drop-and-migrate whatever's found | DONE | Rule 11 — same class of bug as `kpi_buyers_daily`. **Files touched:** none — audit found no other live consumer. Migration `supabase/migrations/20260723131707_sweep_remaining_v1_metrics_tables.sql` left empty (0 bytes), matching the item-8 precedent for "audited, no fix needed."<br><br>**V1 table inventory (from `20260717080952_metrics_v2_stop_legacy_tenant_refresh.sql`'s own comment + `20260709000001_prod_bootstrap.sql`'s function bodies, one `INSERT INTO`/`UPDATE` target per named refresh function):** `refresh_orders_snapshot`→`app.orders_snapshot`; `refresh_invoices_snapshot`→`app.invoices_snapshot`; `refresh_estimates_snapshot`→`app.estimates_snapshot`; `refresh_kpi_orders_daily`→`app.kpi_orders_daily`; `refresh_kpi_invoices_daily`→`app.kpi_invoices_daily`; `refresh_kpi_estimates_daily`→`app.kpi_estimates_daily`; `refresh_kpi_tenant_daily`→`app.kpi_tenant_daily`; `refresh_kpi_location_daily`→`app.kpi_location_daily`; `refresh_locations_snapshot`→`app.locations_snapshot`; `refresh_buyer_app_daily`→`app.kpi_buyer_app_daily` (note table name doesn't match function name). `refresh_kpi_buyers_daily`→`app.kpi_buyers_daily` already handled (dropped in `20260723125928_drop_kpi_buyers_daily_v1_table.sql`). Also confirmed via `20260719065025_v1_snapshot_retirement.sql`: `app.buyers_snapshot`/`app.buyer_current_snapshot` are V1 tables too, but already fully `DROP TABLE ... CASCADE`'d in that same migration — not a concern.<br><br>**Per-table live-consumer check:** grepped every `supabase/migrations/*.sql` for `FROM app.<table>`/`JOIN app.<table>` on all 10 remaining tables. Hits fell into two buckets: (1) internal maintenance/diagnostic functions never called from application code — `app.get_tenant_aggregate_freshness`, `app._run_metrics_analysis_for_tenant_range`/`run_metrics_analysis_for_tenant`, `app.rebuild_metrics_for_tenant_range`, `app.prune_kpi_daily_old_rows`, `app.post_sync_rebuild` (all defined in `20260709112450_metrics_phase7_repair_and_freshness.sql`, `20260710070719_metrics_phase8_cleanup.sql`, `20260712072733_fix_rebuild_metrics_for_tenant_range.sql`, `20260709055452_buyer_home_phase6_completion.sql`) — confirmed via repo-wide grep of `app/` and `src/` that none of these RPC names are ever called via `.rpc(...)`, only referenced inside migration-content assertion tests (`src/tests/settings/metrics-phase*.test.ts`); (2) three seller-facing landing RPCs that *did* read V1 tables in an earlier definition — `app.get_seller_locations_landing_summary`, `app.get_seller_location_landing_row_metrics`, `app.search_seller_location_landing_ids` (all originally defined in `20260714102906_seller_entity_landing_search_rpcs.sql`/`20260714113035_locations_warehouses_landing_runtime_summaries.sql`, reading `locations_snapshot`/`kpi_location_daily`/`kpi_estimates_daily`) and `app.get_seller_warehouses_landing_summary`(`_v2`)/`get_seller_warehouse_landing_row_metrics_v2`/`search_seller_warehouse_landing_ids_v2` — but each was superseded by a strictly later `CREATE OR REPLACE FUNCTION` (`20260716110313_metrics_v2_phase_6_wave_c_completion.sql` onward, through `20260723121903_fix_locations_overdue_kpi_field.sql` for Locations specifically, confirmed the true latest via repo-wide grep of `CREATE OR REPLACE FUNCTION app.<name>(` and timestamp ordering) that fully rewrote them onto V2 `metrics_location_daily`/`metrics_location_snapshot` with zero remaining references to any V1 table name — confirmed with a direct grep of the latest migration bodies (no hits), and cross-checked against `src/tests/seller-entity-landing-rpcs-sql-contract.test.ts`, which already asserts the Wave-C completion migration does **not** contain `app.locations_snapshot`/`app.kpi_location_daily`. Confirmed via `app/api/tenant/locations/landing/route.ts` and `app/api/tenant/warehouses/landing/route.ts` that these are exactly the RPC names the live routes call (`get_seller_locations_landing_summary`, `get_seller_warehouses_landing_summary_v2`).<br><br>**Application-code check:** grepped `app/` and `src/` for `.from('<v1-table>')`/direct Supabase client reads of all 10 tables plus the 3 already-retired ones (13 total) — zero hits outside test files.<br><br>**Conclusion:** unlike `kpi_buyers_daily`, no other V1 table has a live seller-facing or buyer-facing consumer today — the 2026-07-17 migration's "zero seller-facing routes read any V1 snapshot/KPI table directly anymore" claim holds for all of them except the one already fixed. No drop/migrate performed this pass (nothing to migrate). **Related finding, not fixed (flagged as background task, out of scope for this item):** `app.get_tenant_aggregate_freshness` (`20260709112450_metrics_phase7_repair_and_freshness.sql`) still has a `FROM app.kpi_buyers_daily` branch; since that table was dropped in `20260723125928`, this function will error if ever invoked. It has zero live callers today (diagnostic-only, referenced solely in migration-content tests), so left alone rather than patched under this item's scope — surfaced for a future cleanup pass if this diagnostic function is ever wired up. **Verified how:** `npx tsc --noEmit -p /Users/phanikrovvidi/projects/deal-flow` clean. Date: 2026-07-23 |
 | Estimates-note | Estimates `expiring_soon` stub in `app.metrics_v2_transaction_landing` (audit §7 P2 item 10 note — a due-date-window count, explicitly **not** part of the growth/trend removal in scope of item 10 above) | DONE | Rule 9-adjacent (missing/stubbed field silently defaulting to 0, §5 pattern 9), not rule 12. **Files touched:** `supabase/migrations/20260723132022_fix_estimates_expiring_soon_stub.sql` (new). **Traced the full data flow first:** `app.metrics_v2_transaction_landing(p_kind='estimates')`'s jsonb hardcoded `'expiring_soon', 0`; the real value was computed separately, downstream, in `app/api/tenant/estimates/route.ts` via a live `app.estimates` query (`status IN ('draft','sent','accepted') AND expires_at <= now()+7d`), exposed to the frontend as `pulse_aggregates.expiring_soon_count`/`expiring_soon_value`. Confirmed `src/components/seller/estimates/EstimatesLandingClient.tsx`'s "Expiring in 7 days" tile (and the `expiring_soon` V3CalloutPanel card) reads `pulseAggregates?.expiring_soon_value`/`expiring_soon_count`, **never** `kpis.expiring_soon` — so the estimates landing page itself was never displaying the dead stub. However, `app/api/tenant/estimates/summary/route.ts` forwards `kpis.expiring_soon` directly as its own top-level `expiring_soon` field (no current in-repo caller found via grep, but it's a live, unguarded pass-through — any future/external consumer of that summary endpoint, or of the RPC directly, would surface the stub 0). Chose **option (a)** (move the logic into the RPC) over just deleting the field, so every current and future consumer of `kpis.expiring_soon` gets the real number, not just the one page that happened to route around it via `pulse_aggregates`. Migration is a verbatim copy of the current function body (`20260723123409_kill_calendar_mtd_transaction_landing.sql`) with one addition confined to the `p_kind='estimates'` branch: new `v_expiring_soon_count` variable, computed via a live `SELECT COUNT(*) FROM app.estimates WHERE ... status IN ('draft','sent','accepted') AND expires_at IS NOT NULL AND expires_at <= (p_as_of + interval '7 days')` (location-scoped when applicable), mirroring the API route's own predicate exactly; `'expiring_soon', 0` → `'expiring_soon', v_expiring_soon_count` in the returned jsonb. No other query logic, window computation, or `growth_pct` field touched — those are explicitly out of scope for this fix (parallel growth/trend removal workstream owns those). Not pushed — `supabase db push` not run per instructions. **Verified how:** `npx tsc --noEmit -p /Users/phanikrovvidi/projects/deal-flow` clean. Confirmed via grep that no later `CREATE OR REPLACE FUNCTION app.metrics_v2_transaction_landing` exists in the repo (this migration is the new latest). Confirmed parens/dollar-quoting balanced (198 open = 198 close parens, 2×`$$`). `npx vitest run src/tests/estimates-landing-page.test.ts src/tests/invoices-landing-page.test.ts` both pass (estimates test mocks the RPC response directly, so it wasn't exercising the stub either way — the fix is only live-verifiable after `supabase db push`, which is out of scope for this pass). Live re-verification against tenant `d601c35c-1a78-4506-a556-a82118d72893` (`kpis.expiring_soon` should move from `0` to a positive count matching `pulse_aggregates.expiring_soon_count`) still needs to happen after the push. Date: 2026-07-23 |
@@ -356,3 +356,271 @@ either the 15s tick's dirty-marking or an appropriately-paced standalone cron (t
 
 **Verification method throughout:** live SQL against project `hcpzbnmumbykdqveyjhr`, read-only,
 no migrations, no code changes — this was a verification pass only, per the task.
+
+### 2026-07-24 — user-reported number discrepancies investigated (read-only, no fixes yet)
+
+User compared live numbers across pages post-backfill and reported several mismatches, plus 4
+UI/UX observations on the callout SeeAllSheet (layout shift on open/close, count showing a
+placeholder before refreshing to real value, no infinite-scroll pagination in the sheet, primary
+text truncated despite available width — **logged, not investigated this pass**, user's own
+framing pointed the deep-dive at the number mismatches specifically).
+
+**Confirmed real bugs, not yet fixed (code-read + live SQL, no browser access — auth-gated,
+tried and blocked):**
+
+1. **Dashboard "Overdue receivables" customer count wildly undercounts (7 vs the correct 60).**
+   `src/lib/server/seller-dashboard.ts` fetches `app.invoices` with `.eq('tenant_id',...)
+   .is('deleted_at', null)` and **no `.limit()`, no date filter** — this tenant has 16,957
+   invoices all-time. Supabase/PostgREST silently caps unbounded selects at its default row
+   limit, so `overdueCustomerCountAll` (`new Set(overdueInvoicesAll.map(row => row.buyer_id))
+   .size`, computed client-side in JS over whatever partial slice came back) is counting
+   distinct buyers within an arbitrary ~1000-row prefix of a 16,957-row table, not the true
+   set. `overdue_sum` (the ₹ figure) is unaffected — it's not a `.reduce()` over this same
+   truncated array for the *headline* number (that comes from the canonical RPC, already
+   verified correct) — only the **customer-count sub-label** is wrong. **Fix direction:** stop
+   computing this in JS from an unbounded fetch; use a bounded `COUNT(DISTINCT buyer_id)` SQL
+   aggregate (or read it off `metrics_tenant_commercial_snapshot`/an equivalent canonical
+   source) the same way every other page's overdue figure already does.
+
+2. **Locations "active_locations = 0" ripples into 3 separate tiles' subtext**, not just the
+   one already flagged in the original audit. Confirmed via direct code read
+   (`LocationsLandingClient.tsx` lines 260-291): "Invoiced sales 90D" sub = `"${active_locations}
+   active locations"` → 0; "Customers who bought" sub = `"across ${active_locations}
+   locations"` → 0; "Open estimate value" sub = `"across ${active_locations} locations"` → 0.
+   Root cause unchanged from earlier this session (all 9 of this tenant's locations have
+   `status = 'inactive'` in the DB, a data-hygiene question, not a query bug — the RPC is
+   faithfully reading what's in the column) — but now visibly confirmed to be corrupting 3
+   separate tiles' supporting text, not 1. **Fix direction:** either resolve the underlying
+   data (locations that are clearly trading — has invoices, buyers, GMV — probably shouldn't be
+   `status='inactive'`), or stop using `active_locations` as the universal subtext denominator
+   for tiles that aren't actually about location-active-status (e.g. "Customers who bought"
+   should use total location count or a real active-buyer-location count, not this field).
+
+3. **Locations "Customers who bought" (3,320) double-counts buyers across locations.**
+   Confirmed via live SQL: `3,320 = SUM(purchasing_buyers_90d)` across all of this tenant's
+   rows in `metrics_location_snapshot` — a buyer who purchased at 2+ locations gets counted
+   once per location in that sum. This is the same "cross-entity SUM instead of true dedup"
+   bug class as the original audit's client-side-page-sum finding, just at the RPC layer this
+   time rather than the client. Explains why it sits between Customers landing's
+   `invoiced_customer_count` (2,810, correctly deduplicated tenant-wide) and `active` (3,955,
+   also deduplicated but a broader any-demand definition) without matching either — it's not
+   supposed to match, it's a different (and inflated-by-overlap) computation. **Fix
+   direction:** either compute a true `COUNT(DISTINCT buyer_id)` across all locations in the
+   RPC (one more CTE, not expensive), or relabel the tile to make clear it's a sum of
+   per-location activity, not a tenant-wide customer headcount.
+
+4. **Brands "Invoiced sales · 90D" is mislabeled — the value is demand, not invoices.**
+   Confirmed via code read (`BrandsLandingClient.tsx` line 288, literal string `'Invoiced sales
+   · 90D'`) bound to `portfolio_gmv_mtd`, which — since this session's primary-demand-kind fix
+   — is computed from live `app.estimates`/`app.estimate_items` for this estimate-primary
+   tenant (₹21,79,03,522.04 live-verified, matches the user's reported ₹21.79cr exactly). This
+   is squarely **P2 item 9** ("reframe Brands/Cohorts/Catalogs to demand+conversion, per audit
+   doc §6 rule 7"), already identified and logged as TODO earlier this session, now confirmed
+   as a real, currently-visible mislabel via the user's own live comparison rather than just
+   code inspection. No new fix needed beyond executing the already-planned item 9.
+
+**Investigated, could not resolve — needs either a fresh repro or live app access:**
+
+5. **Locations "Open estimate value" shows ₹7.51cr; Dashboard/Invoices show the correct
+   ₹30,68,96,260 (₹30.69cr) for the conceptually-same figure.** Traced the full server-side
+   computation (`app/api/tenant/locations/landing/route.ts` lines 255-287) and verified via
+   live SQL that if this code runs as written, it computes ₹30,68,96,260 — matching Dashboard
+   exactly (all 3,884 open estimates for this tenant have a non-null `location_id`, so the
+   route's `.not('location_id','is',null)` filter excludes nothing). Ruled out: (a)
+   `primary_demand_kind` flip-flopping — it's a deterministic tenant-settings lookup
+   (`app.metrics_v2_primary_demand_kind`), confirmed stable at `'estimates'`, not
+   threshold/volume-based; (b) pagination/`include_summary=false` reverting the KPI object on
+   scroll — `mergeSellerLandingPages` correctly spreads `firstPage`'s kpis and only merges the
+   rows array, confirmed by reading the merge function; (c) confusing the point-in-time "open
+   estimate value" KPI with the row table's *trailing-90d* `estimate_value_90d` column — summed
+   across locations that's ₹29.4cr, not ₹7.51cr either, so that's not the source of the number.
+   Attempted to reproduce live in a browser to inspect the actual network response, but the
+   local dev server (already running on :3000) requires WhatsApp-OTP login this session has no
+   way to complete on the user's behalf. **The reported ₹7.51cr doesn't match any query this
+   session could construct from the current code or data — flagging as unresolved rather than
+   guessing further.** Suggest a fresh screenshot after a hard reload, and if it persists,
+   share the Network tab's actual JSON response for `/api/tenant/locations/landing` so the
+   exact field values reaching the browser can be inspected directly.
+
+**Investigated, confirmed NOT bugs (expected behavior, already covered by earlier rules):**
+
+- Categories (₹7.88cr) / Products (line-item basis) vs Locations/Invoices/Customers/Dashboard
+  (₹9.41cr, `total_amount` basis) — expected ~15% structural gap per rule 4, unchanged from the
+  item-5 verification above.
+- Customers "Active" (3,955, any invoice+estimate+order activity) vs "Invoiced" (2,810,
+  invoices only) — legitimately different predicates (`is_active AND (invoice_count_90d +
+  estimate_count_90d + order_count_90d) > 0` vs `invoice_count_90d > 0`), both internally
+  correct. Worth a label-clarity pass later (the "X% purchased at least once" sub-text under
+  "Active Customers" implies invoicing when the definition is broader) but not a data bug.
+- Small invoice-count drift across the session's live checks (13,311 → 13,420) — confirmed via
+  the "as of 05:24 IST" freshness stamp matching the DB's actual `computed_at` timestamp
+  exactly, i.e. genuine new invoices created in the gap between snapshots, not staleness or a
+  bug.
+
+**Nothing pushed or changed this pass — investigation only, per the user's ask.** Items 1-4
+above are ready to become new P2/P3 execution items once the user confirms priority; item 5
+needs a repro before it can be fixed.
+
+### 2026-07-24 — user authorized fixes; all 5 items above fixed + pushed, plus SeeAllSheet UX
+
+User sent 6 screenshots confirming the same numbers from the read-only pass above, one new
+observation (Dashboard "7 overdue customers" — already found and root-caused above), an explicit
+instruction to **not** investigate the tax/line-item basis gap for Categories/Products/Brands
+right now (will validate with WineYard separately), and authorization to fix everything with two
+hard constraints: **all KPIs and supporting text must come only from metrics_v2 tables, never raw
+aggregations**, and **callout counts/experience must align with the KPI tiles on the same page**.
+
+**Item 5 (Locations "Open Estimate value" ₹7.51cr) — root cause found.** The prior pass's SQL
+trace was correct that the code, if unbounded, computes the right number — the missing piece was
+that it isn't unbounded. Re-ran the exact live query the route issues
+(`.from('estimates').select('total_amount')...in('status',['draft','sent']).limit(10000)`) and it
+returned **exactly 1000 rows summing to ₹75,09,154** — Supabase's `db-max-rows` project setting
+silently caps any `.select()` returning rows at 1000, *regardless of a larger `.limit()`
+requested*. Same failure mode as item 1 (Dashboard overdue count), confirmed independently. Fixed
+by reading `app.metrics_tenant_commercial_snapshot.open_estimate_value`/`open_order_value`
+instead (a single pre-aggregated row per tenant — no row-count cap can apply). Live-verified:
+`open_estimate_value = 306896260`, `open_estimate_count = 3884` — exact match to
+Dashboard/Estimates.
+
+**Fixes made, in order:**
+
+1. **Dashboard overdue-customer-count (7 → 60).** `src/lib/server/seller-dashboard.ts`: replaced
+   the JS `new Set(overdueInvoicesAll.map(...buyer_id)).size` (computed over the same
+   1000-row-truncated `app.invoices` fetch) with a bounded query against
+   `app.metrics_buyer_snapshot` — `count:'exact', head:true` filtered `overdue_amount > 0` for
+   tenant-wide (non-scoped) sellers, since `head:true` issues a `SELECT count(*)` server-side and
+   is immune to the row-return cap; for location-scoped (`seller_assistant`, subset mode) sellers,
+   reads `app.metrics_buyer_location_snapshot` filtered by `location_id IN (...)` and dedupes
+   buyer_id in JS (bounded `.limit(5000)`, generous safety margin — this tenant only has 60
+   overdue buyers tenant-wide). Live-verified: 60, matches Invoices/Customers landing exactly.
+   **Also fixed the "Collections" callout** (same root cause, one level deeper than originally
+   scoped): its own hint count (`overdueByBuyer.size`) and row list were independently
+   re-aggregated from the same truncated `invoices` array, so it still would have shown a
+   wrong/inconsistent number even after the KPI tile was fixed — exactly the
+   callout-vs-KPI-alignment problem the user flagged. Added a second bounded query
+   (`overdueBuyerRowsQuery` — same tables, `buyer_id, overdue_amount, oldest_due_at`, ordered
+   `overdue_amount DESC`, `.limit(500)`) and rebuilt `collectionsRowsAll` from it instead of
+   aggregating raw invoices; the callout's `hint` now reads the same `overdueCustomerCountAll`
+   value as the KPI tile, so they can never drift apart again. Dropped the per-buyer invoice-count
+   from the row's reason text (`"${daysOverdue}d overdue"` instead of `"N invoices · Xd
+   overdue"`) since that granularity isn't in `metrics_buyer_snapshot` and adding a live
+   `GROUP BY` count query would reintroduce a raw aggregation.
+
+2. **Locations "Open estimate/order value" (₹7.51cr → ₹30.69cr).**
+   `app/api/tenant/locations/landing/route.ts`: removed the live
+   `.from('estimates')`/`.from('orders')` fetch-and-reduce entirely; now reads
+   `open_estimate_value`/`open_order_value` off a single `metrics_tenant_commercial_snapshot` row
+   fetched alongside the existing queries in the same `Promise.all`. Deleted the now-dead
+   `OPEN_ESTIMATE_STATUSES`/`OPEN_ORDER_STATUSES` local constants.
+
+3. **Locations "Customers who bought" (3,320 double-count → 2,810).** Same
+   `metrics_tenant_commercial_snapshot` row also carries `purchasing_buyers_90d` (already
+   deduplicated tenant-wide) — wired into the response as `kpis.purchasing_buyers_90d`, and
+   `LocationsLandingClient.tsx`'s tile now reads it instead of
+   `filtered.reduce((sum,row)=>sum+row.active_buyers,0)` (which both double-counted
+   cross-location buyers *and* only summed the current page).
+
+4. **Locations `active_locations`-as-denominator ripple (3 tiles + page header).** Root cause
+   (all 9 of this tenant's locations have `status='inactive'` — a real data fact, not touched)
+   left alone, but stopped using that field as the count for tiles that aren't about
+   active/inactive status. Added `total_locations` (`COUNT(*)`, no status filter) to
+   `get_seller_locations_landing_summary`'s `totals` CTE and `kpis` output (migration
+   `20260724033158_fix_locations_landing_total_gmv_and_count.sql`, function body copied verbatim
+   from `20260723121903_fix_locations_overdue_kpi_field.sql` with only `totals`/`kpis` changed).
+   "Invoiced sales 90D", "Customers who bought", and "Open estimate/order value" tile subtexts,
+   plus the page header subtitle (previously `${filtered.length} active locations`, wrongly
+   implying an active-status count when it was really just the loaded-page row count), now all
+   read `kpis.total_locations` (= 9 for this tenant) instead.
+
+5. **Locations "Invoiced sales 90D" client-side page-sum.** Same migration also exposes
+   `totals.total_gmv` (already computed server-side in this RPC from
+   `app.metrics_location_daily`, trailing-90d window, just never returned) as
+   `kpis.invoiced_sales_90d`. Client now reads it instead of
+   `filtered.reduce((sum,row)=>sum+row.gmv_mtd,0)` (page-limited — correct only by coincidence for
+   this 9-location tenant, would under-report for any tenant with more locations than fit on one
+   page). Live-verified: ₹95,06,2198 (₹9.51cr) — a proper tenant-wide trailing-90d figure, close
+   to but not byte-identical with Customers landing's ₹9.41cr; flagging that small residual gap
+   as a follow-up (likely a minor date-boundary/precision difference between
+   `metrics_location_daily` and the invoices-direct computation Customers landing uses) rather
+   than chasing it further this pass — it's a large improvement over the prior page-sum bug and
+   not one of the numbers the user flagged.
+
+6. **Brands "Invoiced sales · 90D" mislabel.** `portfolio_gmv_mtd` is order/estimate demand value
+   for this estimate-primary tenant (live-verified ₹21,79,03,522.04, matches user's report
+   exactly), not invoiced sales — this is P2 item 9, executed now for Brands specifically (not
+   Cohorts/Catalogs, which are unaffected/already correct). Added `primary_demand_kind` to
+   `app/api/tenant/brands/route.ts`'s response (same `metrics_v2_primary_demand_kind` RPC every
+   other page already calls) and `TenantBrandsResponse` type; `BrandsLandingClient.tsx` now
+   labels the tile "Estimate demand value · 90D" / "Order demand value · 90D" dynamically instead
+   of the hardcoded, incorrect "Invoiced sales · 90D".
+
+7. **SeeAllSheet callout UX — 3 of 4 issues fixed at the shared-component level** (applies to
+   every page using `V3CalloutPanel`/`SeeAllSheet` at once, not per-page):
+   - **Layout shift on open/close**: `app/globals.css` already sets `scrollbar-gutter: stable` on
+     `html`, but Radix Dialog's scroll-lock (`react-remove-scroll`) measures scrollbar width via
+     `innerWidth - clientWidth` — a value that stays nonzero even with the gutter permanently
+     reserved — and adds its own redundant `padding-right` to `<body>` on open/removes it on
+     close, on top of the space the CSS gutter already reserved. Added
+     `body[data-scroll-locked] { padding-right: 0 !important; margin-right: 0 !important; }` to
+     neutralize Radix's redundant compensation.
+   - **Count shows a placeholder before refreshing to the real value (sometimes capped, sometimes
+     not)**: `V3CalloutPanel.tsx` was showing `activeItem.rows.length` (the 2-row homepage
+     preview array) as the sheet subtitle count while `loadRows()` was still in flight for
+     callouts that have one, then swapping to the true count once it resolved. Now shows
+     "Loading…" instead of any count until the authoritative list (`loadRows()`'s result, or the
+     synchronous `rows` array for callouts with no `loadRows`) is known. Removed the now-dead
+     `loadingItemId` state (folded into a derived `isLoadingFullList` boolean).
+   - **Primary text truncated despite available space**: sheet table columns were `68%`/`32%`
+     name-vs-value split; the value column rarely needs that much room (usually a short currency
+     figure). Widened to `72%`/`28%`.
+   - **No pagination/infinite-scroll past the first page**: **not fixed** —
+     `SeeAllSheet.tsx` already implements client-side infinite-scroll correctly (IntersectionObserver
+     sentinel + `visibleCount` paging over the full `items` array, `useInfiniteScroll` hook
+     verified correct, `SheetBody`'s ref forwarding + `overflow-y-auto` verified correct). The
+     complaint is more likely that many pages' callout `rows` arrays are themselves capped
+     server-side (found `LIMIT 100` in several read-model RPCs —
+     `20260714113113_seller_brand_category_landing_read_models.sql`,
+     `20260714113035_locations_warehouses_landing_runtime_summaries.sql`,
+     `20260716110313_metrics_v2_phase_6_wave_c_completion.sql`,
+     `20260723070839_fix_brand_landing_rows_cohort_scd2.sql`, among others) with no `loadRows`
+     counterpart to fetch beyond that cap — only 3 of the 14 pages using `V3CalloutPanel`
+     (Customers, Dashboard, Buyer App) implement `loadRows` at all; the other 11 pass a single
+     static array with whatever the landing RPC happened to include. Auditing which of those 11
+     pages' callouts can realistically exceed their cap (most look like genuinely small lists —
+     e.g. "8 locations with overdue balances" — where the cap is moot) is a per-page task that
+     needs its own pass; flagging as a follow-up rather than guessing which ones are actually
+     affected.
+
+**Not touched, flagged as follow-ups:**
+- The residual ₹9.51cr vs ₹9.41cr gap between Locations' new `invoiced_sales_90d` and Customers
+  landing's invoiced-sales figure (item 5 above) — small, likely a date-boundary/precision
+  difference between two different source tables, not a page-sum bug anymore.
+- `BrandsLandingClient.tsx`'s `portfolioGmv` still has a client-side `brands.reduce(...)` fallback
+  used only if `summaryData?.kpis?.portfolio_gmv_mtd` is unavailable — same raw-aggregation
+  anti-pattern as a defensive fallback, low risk (rarely hit), not fixed this pass.
+- The `LIMIT 100`-without-`loadRows` audit described in item 7 above.
+- Dashboard's `currentGmv90d`/`invoicedCustomers90d` (the "Invoiced sales · Last 90 days" tile)
+  and the recent-activity/feed row fetches (`orders`/`estimates`/`invoices` raw arrays) are still
+  subject to the same 1000-row Supabase cap in principle — confirmed live (`.from('invoices')`
+  with no limit returned exactly 1000 of 16,957 rows) — but were **not reported as visibly wrong**
+  by the user and the KPI *value* itself already comes from the RPC-backed `portfolio` object
+  (the raw arrays only feed a fallback path and the recent-activity/feed lists, which only ever
+  render the top 4-5 most-recently-updated rows — order/correctness risk there is much lower than
+  the two confirmed-wrong counts fixed this pass). Not touched to keep this batch scoped to
+  confirmed, user-reported bugs; worth a dedicated pass given the "metrics_v2 only" directive is
+  a standing rule now, not a one-time request.
+
+**Migration pushed:** `20260724033158_fix_locations_landing_total_gmv_and_count.sql` (dry-run
+confirmed it was the only pending migration before push). All other fixes were TypeScript-only
+(no new SQL needed — `metrics_tenant_commercial_snapshot`/`metrics_buyer_snapshot`/
+`metrics_buyer_location_snapshot` already had every column needed).
+
+**Verified how:** `npx tsc --noEmit` clean after every edit (checked repeatedly through the
+batch, final check clean). Every numeric fix live-verified against tenant
+`d601c35c-1a78-4506-a556-a82118d72893` via direct Supabase JS client queries (the Supabase MCP
+tool required re-authorization mid-session; fell back to a `node -e` script reading
+`.env.local`'s service-role key directly, same effect). Could not verify the SeeAllSheet UI fixes
+in a browser — local dev server requires WhatsApp-OTP login this session can't complete on the
+user's behalf (same blocker as the prior read-only pass); recommend the user click through the
+Locations/Dashboard pages and a callout "see all" sheet to visually confirm before considering
+this batch fully closed.

@@ -188,6 +188,10 @@ function BrandLandingContent({
     () => summaryData?.kpis?.portfolio_gmv_mtd ?? brands.reduce((sum, brand) => sum + brand.gmv, 0),
     [brands, summaryData?.kpis?.portfolio_gmv_mtd]
   );
+  // portfolio_gmv_mtd is order/estimate demand value (spec §6 rule 7), not invoiced sales —
+  // label accordingly instead of the previous hardcoded, misleading "Invoiced sales" text.
+  const primaryDemandKind = summaryData?.primary_demand_kind ?? 'orders';
+  const portfolioGmvLabel = primaryDemandKind === 'estimates' ? 'Estimate demand value · 90D' : 'Order demand value · 90D';
   const updatedBrands = useMemo(
     () => brands.map((brand) => ({ ...brand, share: portfolioGmv > 0 ? Math.round((brand.gmv / portfolioGmv) * 100) : 0 })),
     [brands, portfolioGmv]
@@ -285,7 +289,7 @@ function BrandLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Invoiced sales · 90D',
+            label: portfolioGmvLabel,
             value: formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD'),
             tone: 'accent',
           },

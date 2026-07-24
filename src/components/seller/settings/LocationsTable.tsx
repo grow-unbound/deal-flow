@@ -2,6 +2,7 @@
 
 import { Building2, MapPin, Pencil, RotateCcw, UserX } from 'lucide-react';
 
+import { StatusTag } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TenantLocation } from '@/types/tenant-locations';
@@ -68,13 +69,9 @@ export function LocationsTableRows({
             </td>
             <td className="px-4 py-3.5 align-top whitespace-nowrap">
               {inactive ? (
-                <span className="rounded-sm bg-cream-200 px-2 py-0.5 text-sm font-medium text-cream-700">
-                  Inactive
-                </span>
+                <StatusTag label="Inactive" tone="neutral" />
               ) : (
-                <span className="rounded-sm bg-success-50 px-2 py-0.5 text-sm font-medium text-success-800">
-                  Active
-                </span>
+                <StatusTag label="Active" tone="success" />
               )}
             </td>
             {isAdmin ? (
