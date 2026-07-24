@@ -56,6 +56,7 @@ type LocationsSummary = Pick<LocationsLandingResponse, 'kpis' | 'callouts'>;
 
 const EMPTY_KPIS: LocationsLandingKpis = {
   active_locations: 0,
+  total_locations: 0,
   unpaid_invoice_count: 0,
   total_invoice_count: 0,
   outstanding_dues_total: 0,
@@ -70,21 +71,9 @@ const EMPTY_KPIS: LocationsLandingKpis = {
   linked_warehouse_count: 0,
   open_primary_demand_kind: 'none',
   open_primary_demand_value: 0,
+  invoiced_sales_90d: 0,
+  purchasing_buyers_90d: 0,
 };
-
-/** Statuses mirroring app.estimate_status_is_open / app.order_status_is_open (SQL, prod_bootstrap migration). */
-const OPEN_ESTIMATE_STATUSES = ['draft', 'sent'];
-const OPEN_ORDER_STATUSES = [
-  'draft',
-  'open',
-  'accepted',
-  'received',
-  'confirmed',
-  'partially_dispatched',
-  'dispatched',
-  'partially_invoiced',
-  'overdue',
-];
 
 const EMPTY_SUMMARY: LocationsSummary = {
   kpis: EMPTY_KPIS,
@@ -230,14 +219,28 @@ export async function GET(request: NextRequest) {
           .not('location_id', 'is', null)
           .is('deleted_at', null)
       : Promise.resolve({ count: 0, error: null });
+    // Open primary demand value + tenant-wide purchasing-buyer count: both read from the
+    // pre-materialized app.metrics_tenant_commercial_snapshot row (one row per tenant) rather
+    // than a live app.estimates/app.orders fetch. The live fetch used to hit Supabase's
+    // db-max-rows cap (silently truncates any .select() past 1000 rows, regardless of a
+    // requested .limit(10000)) — for this tenant's 3,884 open estimates that undercounted
+    // ₹30,68,96,260 down to ₹75,09,154 (first 1000 rows only). The snapshot value is exact.
+    const commercialSnapshotQuery = includeSummary
+      ? db.schema('app').from('metrics_tenant_commercial_snapshot')
+          .select('open_estimate_value, open_order_value, purchasing_buyers_90d')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null });
 
-    const [summaryRes, seedsRes, rowMetricsRes, locationSnapshotRes, demandKindRes, linkedWarehouseCountRes] = await Promise.all([
+    const [summaryRes, seedsRes, rowMetricsRes, locationSnapshotRes, demandKindRes, linkedWarehouseCountRes, commercialSnapshotRes] = await Promise.all([
       summaryQuery,
       seedsQuery,
       rowMetricsQuery,
       locationSnapshotQuery,
       demandKindQuery,
       linkedWarehouseCountQuery,
+      commercialSnapshotQuery,
     ]);
     if (summaryRes.error) throw summaryRes.error;
     if (seedsRes.error) throw seedsRes.error;
@@ -245,46 +248,25 @@ export async function GET(request: NextRequest) {
     if (locationSnapshotRes.error) throw locationSnapshotRes.error;
     if (demandKindRes.error) throw demandKindRes.error;
     if (linkedWarehouseCountRes.error) throw linkedWarehouseCountRes.error;
+    if (commercialSnapshotRes.error) throw commercialSnapshotRes.error;
 
     const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
       | 'orders'
       | 'estimates'
       | 'none';
     const linkedWarehouseCount = Number(linkedWarehouseCountRes.count ?? 0);
-
-    // "Open primary demand value" (doc line 801): open estimate value for Estimate-primary tenants,
-    // open order value for Order-primary tenants. Reuses app.estimates/app.orders directly, scoped to
-    // location-linked rows and the exact open-status sets from app.estimate_status_is_open /
-    // app.order_status_is_open (supabase/migrations/20260709000001_prod_bootstrap.sql). Bounded with a
-    // generous safety .limit() per the SUM-aggregate exception to the list-page row cap.
-    let openPrimaryDemandValue = 0;
-    if (includeSummary && primaryDemandKind === 'estimates') {
-      const { data, error } = await db.schema('app')
-        .from('estimates')
-        .select('total_amount')
-        .eq('tenant_id', tenantId)
-        .not('location_id', 'is', null)
-        .is('deleted_at', null)
-        .in('status', OPEN_ESTIMATE_STATUSES)
-        .limit(10000);
-      if (error) throw error;
-      openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
-        (sum, row) => sum + Number(row.total_amount ?? 0), 0,
-      );
-    } else if (includeSummary && primaryDemandKind === 'orders') {
-      const { data, error } = await db.schema('app')
-        .from('orders')
-        .select('total_amount')
-        .eq('tenant_id', tenantId)
-        .not('location_id', 'is', null)
-        .is('deleted_at', null)
-        .in('status', OPEN_ORDER_STATUSES)
-        .limit(10000);
-      if (error) throw error;
-      openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
-        (sum, row) => sum + Number(row.total_amount ?? 0), 0,
-      );
-    }
+    const commercialSnapshot = commercialSnapshotRes.data as
+      | { open_estimate_value: number | string | null; open_order_value: number | string | null; purchasing_buyers_90d: number | string | null }
+      | null;
+    const openPrimaryDemandValue = primaryDemandKind === 'estimates'
+      ? Number(commercialSnapshot?.open_estimate_value ?? 0)
+      : primaryDemandKind === 'orders'
+        ? Number(commercialSnapshot?.open_order_value ?? 0)
+        : 0;
+    // Tenant-wide distinct purchasing-buyer count (rule: never SUM per-location buyer counts —
+    // a buyer who bought at 2 locations would be double-counted; this is already deduplicated
+    // tenant-wide in the snapshot).
+    const purchasingBuyers90d = Number(commercialSnapshot?.purchasing_buyers_90d ?? 0);
 
     const seedsById = new Map(((seedsRes.data ?? []) as LocationSeedRow[]).map((row) => [row.id, row]));
     const rowMetricsById = new Map(
@@ -336,6 +318,7 @@ export async function GET(request: NextRequest) {
       summary.kpis.linked_warehouse_count = linkedWarehouseCount;
       summary.kpis.open_primary_demand_kind = primaryDemandKind;
       summary.kpis.open_primary_demand_value = openPrimaryDemandValue;
+      summary.kpis.purchasing_buyers_90d = purchasingBuyers90d;
     }
     const response: LocationsLandingResponse = {
       ...summary,

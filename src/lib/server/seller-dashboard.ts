@@ -373,7 +373,52 @@ async function fetchSellerDashboardData(
     inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
   }
 
-  const [portfolioRes, invoiceLandingRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes] = await Promise.all([
+  // Overdue-customer count: always sourced from metrics_v2 buyer snapshots (never from a raw,
+  // unbounded app.invoices fetch — Supabase's db-max-rows cap silently truncates those to 1000
+  // rows, which previously undercounted this tenant's 60 overdue customers down to 7).
+  const overdueCustomerCountQuery = scope.mode === 'subset'
+    ? db
+        .schema('app')
+        .from('metrics_buyer_location_snapshot')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .in('location_id', scopedLocationIds)
+        .is('deleted_at', null)
+        .gt('overdue_amount', 0)
+        .limit(5000)
+    : db
+        .schema('app')
+        .from('metrics_buyer_snapshot')
+        .select('buyer_id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('overdue_amount', 0);
+  // Per-buyer overdue rows for the "Collections" callout — same metrics_v2 source as the
+  // count above, so the callout's own hint count and row list can never drift from the
+  // "Overdue receivables" KPI tile the way the old truncated-invoices-derived version did.
+  // Ordered by amount so a generous bound never drops the buyers that matter most.
+  const overdueBuyerRowsQuery = scope.mode === 'subset'
+    ? db
+        .schema('app')
+        .from('metrics_buyer_location_snapshot')
+        .select('buyer_id, overdue_amount, oldest_due_at')
+        .eq('tenant_id', tenantId)
+        .in('location_id', scopedLocationIds)
+        .is('deleted_at', null)
+        .gt('overdue_amount', 0)
+        .order('overdue_amount', { ascending: false })
+        .limit(500)
+    : db
+        .schema('app')
+        .from('metrics_buyer_snapshot')
+        .select('buyer_id, overdue_amount, oldest_due_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('overdue_amount', 0)
+        .order('overdue_amount', { ascending: false })
+        .limit(500);
+
+  const [portfolioRes, invoiceLandingRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes, overdueCustomerCountRes, overdueBuyerRowsRes] = await Promise.all([
     db
       .schema('app')
       .rpc('get_metrics_v2_seller_dashboard', {
@@ -427,7 +472,29 @@ async function fetchSellerDashboardData(
       .select('buyer_id, invoice_count_90d, invoice_value_90d, app_invoice_value_90d')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
+    overdueCustomerCountQuery,
+    overdueBuyerRowsQuery,
   ]);
+
+  if (overdueCustomerCountRes.error) throw overdueCustomerCountRes.error;
+  if (overdueBuyerRowsRes.error) throw overdueBuyerRowsRes.error;
+  const overdueCustomerCountAll = scope.mode === 'subset'
+    ? new Set(((overdueCustomerCountRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id)).size
+    : Number(overdueCustomerCountRes.count ?? 0);
+  // For subset scope, the same buyer can appear once per scoped location — dedupe and keep
+  // the largest overdue_amount seen (the metrics_buyer_snapshot / 'all' scope path is already
+  // one row per buyer, so this collapses to a no-op there).
+  const overdueBuyerRows = (() => {
+    const byBuyer = new Map<string, { buyer_id: string; overdue_amount: number; oldest_due_at: string | null }>();
+    for (const row of (overdueBuyerRowsRes.data ?? []) as Array<{ buyer_id: string; overdue_amount: number | string | null; oldest_due_at: string | null }>) {
+      const amount = Number(row.overdue_amount ?? 0);
+      const existing = byBuyer.get(row.buyer_id);
+      if (!existing || amount > existing.overdue_amount) {
+        byBuyer.set(row.buyer_id, { buyer_id: row.buyer_id, overdue_amount: amount, oldest_due_at: row.oldest_due_at });
+      }
+    }
+    return Array.from(byBuyer.values()).sort((a, b) => b.overdue_amount - a.overdue_amount);
+  })();
 
   const rawBuyers = (buyersRes.data ?? []) as BuyerRow[];
   const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
@@ -463,7 +530,6 @@ async function fetchSellerDashboardData(
   const invoicedCustomers90d = new Set(invoices90d.map((row) => row.buyer_id)).size;
   const currentGmv90d = sumNumbers(invoices90d, (row) => Number(row.total_amount ?? 0));
   const overdueInvoicesAll = invoices.filter((invoice) => isInvoiceOverdue(invoice));
-  const overdueCustomerCountAll = new Set(overdueInvoicesAll.map((row) => row.buyer_id)).size;
   const invoiceLandingKpis = ((invoiceLandingRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
     invoices_this_period: 0,
     invoices_prev_period: 0,
@@ -546,37 +612,23 @@ async function fetchSellerDashboardData(
             href: `/sales-orders/${row.id}`,
           }));
 
-    // Collections: overdue invoices aggregated per buyer (amount, invoice
-    // count, oldest-due age) — ranked by amount, not the first 3 unsorted rows.
-    const overdueByBuyer = new Map<string, { amount: number; count: number; oldestDue: string | null; buyerName: string | null }>();
-    for (const invoice of overdueInvoices) {
-      const agg = overdueByBuyer.get(invoice.buyer_id) ?? { amount: 0, count: 0, oldestDue: null, buyerName: null };
-      const resolvedBuyerName = buyerNameFor(invoice, buyersById);
-      agg.amount += Number(invoice.outstanding_balance ?? 0);
-      agg.count += 1;
-      if (!agg.buyerName && resolvedBuyerName !== 'Unknown buyer') {
-        agg.buyerName = resolvedBuyerName;
-      }
-      if (invoice.due_date && (!agg.oldestDue || new Date(invoice.due_date) < new Date(agg.oldestDue))) {
-        agg.oldestDue = invoice.due_date;
-      }
-      overdueByBuyer.set(invoice.buyer_id, agg);
-    }
-    const collectionsRowsAll: SellerDashboardCalloutRow[] = Array.from(overdueByBuyer.entries())
-      .sort((a, b) => b[1].amount - a[1].amount)
-      .map(([buyerId, agg], index) => {
-        const daysOverdue = agg.oldestDue ? Math.max(0, Math.round((Date.now() - new Date(agg.oldestDue).getTime()) / DAY_MS)) : null;
-        const buyerName = agg.buyerName ?? buyersById.get(buyerId)?.business_name ?? 'Unknown buyer';
-        return {
-          id: buyerId,
-          initials: formatInitials(buyerName === 'Unknown buyer' ? 'Buyer' : buyerName),
-          hue: hueByIndex(index),
-          name: buyerName,
-          reason: `${formatNumberValue(agg.count, 'COUNT')} invoice${agg.count === 1 ? '' : 's'}${daysOverdue != null ? ` · ${daysOverdue}d overdue` : ''}`,
-          trailing: formatNumberValue(agg.amount, 'CURRENCY_THRESHOLD'),
-          href: `/customers/${buyerId}`,
-        };
-      });
+    // Collections: overdue amount per buyer, sourced from metrics_buyer_snapshot (see
+    // overdueBuyerRowsQuery above) rather than aggregating the raw, truncation-prone
+    // invoices fetch — keeps this callout's hint count and row list from drifting away
+    // from the "Overdue receivables" KPI tile, which reads the same table.
+    const collectionsRowsAll: SellerDashboardCalloutRow[] = overdueBuyerRows.map((agg, index) => {
+      const daysOverdue = agg.oldest_due_at ? Math.max(0, Math.round((Date.now() - new Date(agg.oldest_due_at).getTime()) / DAY_MS)) : null;
+      const buyerName = buyersById.get(agg.buyer_id)?.business_name ?? 'Unknown buyer';
+      return {
+        id: agg.buyer_id,
+        initials: formatInitials(buyerName === 'Unknown buyer' ? 'Buyer' : buyerName),
+        hue: hueByIndex(index),
+        name: buyerName,
+        reason: daysOverdue != null ? `${daysOverdue}d overdue` : 'Overdue',
+        trailing: formatNumberValue(agg.overdue_amount, 'CURRENCY_THRESHOLD'),
+        href: `/customers/${agg.buyer_id}`,
+      };
+    });
 
     // Buyer App activation: valuable customers (real invoiced value in the
     // last 90 days) who are either not on the Buyer App or enabled but not
@@ -616,7 +668,7 @@ async function fetchSellerDashboardData(
         id: 'collections',
         kind: 'risk',
         eyebrow: 'Collections',
-        hint: `${formatNumberValue(overdueByBuyer.size, 'COUNT')}`,
+        hint: `${formatNumberValue(overdueCustomerCountAll, 'COUNT')}`,
         rows: previewRows('collections', collectionsRowsAll),
       },
       {

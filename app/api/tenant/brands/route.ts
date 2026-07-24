@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     const pageBrandIds = pageResult.flatMap((row) => row.id ? [row.id] : []);
     const total = Number(pageResult[0]?.total_count ?? 0);
 
-    const [rowsResult, summaryResult, productBrandingResult] = await Promise.all([
+    const [rowsResult, summaryResult, productBrandingResult, demandKindResult] = await Promise.all([
       pageBrandIds.length > 0
         ? db.schema('app').rpc('get_seller_brand_landing_rows', {
             p_tenant_id: tenantId,
@@ -144,6 +144,12 @@ export async function GET(req: NextRequest) {
               .eq('tenant_id', tenantId).is('deleted_at', null).eq('is_active', true).not('tenant_brand_id', 'is', null),
           ])
         : Promise.resolve(null),
+      // Portfolio GMV is order/estimate demand value, not invoiced sales (spec §6 rule 7) —
+      // primary_demand_kind lets the client label the tile correctly instead of the
+      // previous hardcoded, misleading "Invoiced sales" label.
+      includeSummary
+        ? db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId })
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
     if (rowsResult.error || summaryResult.error) {
@@ -165,11 +171,15 @@ export async function GET(req: NextRequest) {
     const nextOffset = pageBrandIds.length > 0 && offset + pageBrandIds.length < total
       ? offset + pageBrandIds.length
       : null;
+    const primaryDemandKind = (typeof demandKindResult.data === 'string' ? demandKindResult.data : 'orders') as
+      | 'orders'
+      | 'estimates'
+      | 'none';
 
     return NextResponse.json({
       period,
       ...(includeSummary && summary ? summary : {}),
-      ...(includeSummary ? { active_product_count: activeProductCount, branded_product_count: brandedProductCount } : {}),
+      ...(includeSummary ? { active_product_count: activeProductCount, branded_product_count: brandedProductCount, primary_demand_kind: primaryDemandKind } : {}),
       brands,
       total,
       limit,

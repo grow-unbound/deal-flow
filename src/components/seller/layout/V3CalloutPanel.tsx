@@ -51,15 +51,21 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [loadedRowsByItemId, setLoadedRowsByItemId] = useState<Record<string, CalloutRow[]>>({});
-  const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
   const activeItem = activeIndex == null ? null : items[activeIndex] ?? null;
-  const activeRows = activeItem ? (loadedRowsByItemId[activeItem.id] ?? activeItem.rows) : [];
+  // When an item defines loadRows, activeItem.rows is only the 2-row homepage preview —
+  // its .length is not the true total, so showing it as a count while loadRows() is still
+  // in flight flashes a wrong number (previously: sometimes 2/3, sometimes a stale 100-row
+  // cap) that then jumps to the real count once the full list resolves. Only surface a
+  // count once we know it's the authoritative one.
+  const isLoadingFullList = Boolean(activeItem?.loadRows) && !loadedRowsByItemId[activeItem?.id ?? ''];
+  const activeRows = activeItem
+    ? (loadedRowsByItemId[activeItem.id] ?? (activeItem.loadRows ? [] : activeItem.rows))
+    : [];
 
   useEffect(() => {
     if (!activeItem?.loadRows || loadedRowsByItemId[activeItem.id]) return;
 
     let cancelled = false;
-    setLoadingItemId(activeItem.id);
 
     activeItem.loadRows()
       .then((rows) => {
@@ -68,11 +74,6 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
       })
       .catch((error) => {
         console.error(`[V3CalloutPanel] Failed to load callout rows for ${activeItem.id}`, error);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingItemId((current) => (current === activeItem.id ? null : current));
-        }
       });
 
     return () => {
@@ -183,17 +184,23 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
 
       <SeeAllSheet
         title={activeItem?.eyebrow ?? ''}
-        subtitle={activeItem ? `${activeRows.length} item${activeRows.length === 1 ? '' : 's'}` : undefined}
+        subtitle={
+          activeItem
+            ? isLoadingFullList
+              ? 'Loading…'
+              : `${activeRows.length} item${activeRows.length === 1 ? '' : 's'}`
+            : undefined
+        }
         open={activeItem != null}
         onOpenChange={(open) => {
           if (!open) setActiveIndex(null);
         }}
         columns={[
-          { width: '68%' },
-          { align: 'right', width: '32%' },
+          { width: '72%' },
+          { align: 'right', width: '28%' },
         ]}
         items={activeRows}
-        loading={activeItem != null && loadingItemId === activeItem.id && !loadedRowsByItemId[activeItem.id]}
+        loading={isLoadingFullList}
         pageSize={20}
         renderRow={(row, index) => {
           const href = row.href ?? activeItem?.getHref?.(row);

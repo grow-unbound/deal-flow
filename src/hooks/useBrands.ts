@@ -92,6 +92,8 @@ export interface TenantBrandsResponse {
   /** Active products with a tenant_brand_id assigned. */
   branded_product_count?: number;
   period?: SellerLandingPeriodMeta;
+  /** portfolio_gmv_mtd is order/estimate demand value, not invoiced sales — used to label the tile correctly. */
+  primary_demand_kind?: 'orders' | 'estimates' | 'none';
 }
 
 export interface TenantBrandsLandingFilters {
