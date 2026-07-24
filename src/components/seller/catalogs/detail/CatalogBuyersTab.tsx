@@ -195,8 +195,12 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
       pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
       price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
       buyer_target_mode: 'automatic',
+      buyer_ids: [],
       buyer_rules: draftBuyerRules,
       product_membership_mode: composer.product_membership_mode,
+      selected_product_ids: composer.product_membership_mode === 'manual'
+        ? composer.items.map((item) => item.tenant_product_id)
+        : [],
       product_rules: composer.product_rules,
     });
   }

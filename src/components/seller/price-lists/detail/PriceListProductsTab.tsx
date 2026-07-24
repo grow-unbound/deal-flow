@@ -194,6 +194,7 @@ export function PriceListProductsTab({
                     valid_to: validTo ? new Date(validTo) : undefined,
                     priority,
                     membership_mode: 'automatic',
+                    selected_product_ids: [],
                     rules: draftRules,
                   })
                 }

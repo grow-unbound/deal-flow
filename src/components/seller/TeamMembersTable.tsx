@@ -20,7 +20,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DialogBody } from '@/components/ui/dialog';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { InviteUserDialog } from './InviteUserDialog';
-import { FilterBar, LandingTable } from '@/components/seller/layout';
+import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { apiFetch } from '@/lib/api-fetch';
 import { cn } from '@/lib/utils';
 import type { TeamMember } from '@/types/team';
@@ -446,24 +446,12 @@ function RoleChip({ role }: { role: 'seller_admin' | 'seller_assistant' }) {
 
 function StatusChip({ status }: { status: TeamMember['status'] }) {
   if (status === 'pending') {
-    return (
-      <span className="inline-flex items-center rounded-sm bg-amber-100 px-2 py-0.5 text-caption font-medium text-amber-700">
-        Invited
-      </span>
-    );
+    return <StatusTag label="Invited" tone="warning" className="text-caption" />;
   }
   if (status === 'inactive') {
-    return (
-      <span className="inline-flex items-center rounded-sm bg-cream-200 px-2 py-0.5 text-caption font-medium text-cream-700">
-        Deactivated
-      </span>
-    );
+    return <StatusTag label="Deactivated" tone="neutral" className="text-caption" />;
   }
-  return (
-    <span className="inline-flex items-center rounded-sm bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
-      Active
-    </span>
-  );
+  return <StatusTag label="Active" tone="success" className="text-caption" />;
 }
 
 interface RowActionButtonProps {

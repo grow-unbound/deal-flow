@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Percent, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { EntityAvatar, PageWrap } from '@/components/seller/layout';
+import { EntityAvatar, PageWrap, StatusTag } from '@/components/seller/layout';
 import {
   ComposerBasicsField,
   ComposerBasicsStrip,
@@ -892,9 +892,11 @@ export function CatalogComposer({
                     <SelectItem key={priceList.id} value={priceList.id}>
                       <div className="flex min-w-0 items-center justify-between gap-3 pr-6">
                         <span className="min-w-0 truncate font-medium">{priceList.name}</span>
-                        <span className={cn('inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-[0.06em]', priceListStatusPillClasses(priceList.status))}>
-                          {priceList.status === 'active' ? 'Active' : 'Draft'}
-                        </span>
+                        <StatusTag
+                          label={priceList.status === 'active' ? 'Active' : 'Draft'}
+                          tone={priceList.status === 'active' ? 'success' : 'warning'}
+                          className={cn('shrink-0', priceListStatusPillClasses(priceList.status))}
+                        />
                       </div>
                     </SelectItem>
                   ))}
