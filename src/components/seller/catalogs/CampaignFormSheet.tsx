@@ -174,7 +174,11 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
     const first = buyerMap.get(selectedBuyerIds[0]);
     return `${first?.business_name ?? 'Selected buyer'}${selectedBuyerIds.length > 1 ? ` +${selectedBuyerIds.length - 1} more` : ''}`;
   }, [buyerMap, selectedBuyerIds]);
-  const productQuery = useCatalogComposerProducts({ query: productSearch, limit: 30 }, productPickerOpen && productMembershipMode === 'manual');
+  const productQuery = useCatalogComposerProducts({
+    query: productSearch,
+    limit: 30,
+    enabled: productPickerOpen && productMembershipMode === 'manual',
+  });
   const productRows = useMemo(
     () => productQuery.data?.pages.flatMap((page) => page.products) ?? [],
     [productQuery.data?.pages],

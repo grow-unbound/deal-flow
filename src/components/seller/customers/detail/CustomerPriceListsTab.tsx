@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useCustomerPriceLists } from '@/hooks/useCustomersLanding';
 import { Button } from '@/components/ui/button';
+import { StatusTag } from '@/components/seller/layout';
 
 function formatValidityWindow(validFrom: string | null, validTo: string | null) {
   const formatDate = (value: string | null) =>
@@ -12,17 +13,9 @@ function formatValidityWindow(validFrom: string | null, validTo: string | null) 
 }
 
 function PriceListStatusPill({ status }: { status: 'active' | 'draft' | 'expired' }) {
-  const classes = status === 'active'
-    ? 'bg-teal-50 text-teal-700'
-    : status === 'expired'
-      ? 'bg-cream-200 text-cream-700'
-      : 'bg-amber-50 text-amber-700';
-
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${classes}`}>
-      {status}
-    </span>
-  );
+  if (status === 'active') return <StatusTag label="Active" tone="success" />;
+  if (status === 'draft') return <StatusTag label="Draft" tone="warning" />;
+  return <StatusTag label="Expired" tone="neutral" />;
 }
 
 export function CustomerPriceListsTab({ buyerId }: { buyerId: string }) {

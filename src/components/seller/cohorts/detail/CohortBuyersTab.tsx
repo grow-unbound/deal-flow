@@ -180,6 +180,7 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
                     description: details_rules.description,
                     allowed_tenant_brand_ids: details_rules.allowed_tenant_brand_ids ?? [],
                     membership_mode: 'automatic',
+                    selected_buyer_ids: [],
                     rules: draftRules,
                   })
                 }

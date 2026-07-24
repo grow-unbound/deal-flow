@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { StatusGlyph, type StatusTone } from '@/components/ui/status-pill';
 import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import type {
   IntegrationCatalogItem,
@@ -394,9 +395,19 @@ function StatusPill({
     danger: 'border-danger-50 bg-danger-50 text-danger-700',
   };
 
+  const fallbackTone: Record<typeof variant, StatusTone> = {
+    success: 'success',
+    info: 'info',
+    warning: 'warning',
+    outline: 'neutral',
+    danger: 'danger',
+  };
+
   return (
     <span className={cn(base, icon ? 'gap-1.5' : '', variants[variant])} {...props}>
-      {icon ? <span className="shrink-0">{icon}</span> : null}
+      <span className="shrink-0">
+        {icon ?? <StatusGlyph tone={fallbackTone[variant]} className="h-3.5 w-3.5" />}
+      </span>
       <span className="leading-none">{label}</span>
     </span>
   );

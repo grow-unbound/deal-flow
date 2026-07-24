@@ -241,7 +241,7 @@ function LocationsLandingContent({
       <PageHeader
         eyebrow="Operations"
         title="Locations"
-        subtitle={`${filtered.length} active locations · ${kpis.linked_warehouse_count} linked warehouses.`}
+        subtitle={`${kpis.total_locations} location${kpis.total_locations === 1 ? '' : 's'} · ${kpis.linked_warehouse_count} linked warehouses.`}
         horizon={horizonLabel}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -261,8 +261,8 @@ function LocationsLandingContent({
             tiles={[
               {
                 label: 'Invoiced sales 90D',
-                value: formatNumberValue(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
-                sub: `${kpis.active_locations} active locations`,
+                value: formatNumberValue(kpis.invoiced_sales_90d, 'CURRENCY_THRESHOLD'),
+                sub: `across ${kpis.total_locations} location${kpis.total_locations === 1 ? '' : 's'}`,
               },
               {
                 label: 'Overdue amount',
@@ -272,8 +272,8 @@ function LocationsLandingContent({
               },
               {
                 label: 'Customers who bought',
-                value: formatNumberValue(filtered.reduce((sum, row) => sum + row.active_buyers, 0), 'COUNT'),
-                sub: `across ${kpis.active_locations} locations`,
+                value: formatNumberValue(kpis.purchasing_buyers_90d, 'COUNT'),
+                sub: `across ${kpis.total_locations} location${kpis.total_locations === 1 ? '' : 's'}`,
               },
               {
                 label:
@@ -286,7 +286,7 @@ function LocationsLandingContent({
                 sub:
                   kpis.open_primary_demand_kind === 'none'
                     ? 'Enable Estimates or Sales Orders'
-                    : `across ${kpis.active_locations} locations`,
+                    : `across ${kpis.total_locations} location${kpis.total_locations === 1 ? '' : 's'}`,
                 tone: kpis.open_primary_demand_kind === 'none' ? 'warn' : undefined,
               },
             ]}

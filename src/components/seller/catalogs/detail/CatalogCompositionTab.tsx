@@ -112,8 +112,10 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
       pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
       price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
       buyer_target_mode: composer.buyer_target_mode,
+      buyer_ids: composer.buyer_target_mode === 'manual' ? (composer.buyer_ids ?? []) : [],
       buyer_rules: composer.buyer_rules,
       product_membership_mode: 'automatic',
+      selected_product_ids: [],
       product_rules: draftProductRules,
     });
   }

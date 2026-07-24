@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
-import { FilterBar, LandingTable } from '@/components/seller/layout';
+import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import { useTenantCategories } from '@/hooks/useTenantCategories';
 import { useRole } from '@/hooks/useRole';
 import { r2Url } from '@/lib/r2-url';
@@ -190,13 +190,9 @@ export function CategoriesSettingsClient() {
                     </td>
                     <td className="px-4 py-3.5 align-middle">
                       {inactive ? (
-                        <span className="rounded-sm bg-cream-200 px-2 py-0.5 text-sm font-medium text-cream-700">
-                          Inactive
-                        </span>
+                        <StatusTag label="Inactive" tone="neutral" />
                       ) : (
-                        <span className="rounded-sm bg-success-50 px-2 py-0.5 text-sm font-medium text-success-800">
-                          Active
-                        </span>
+                        <StatusTag label="Active" tone="success" />
                       )}
                     </td>
                     {isSellerAdmin ? (

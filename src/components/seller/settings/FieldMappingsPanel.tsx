@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { StatusTag } from '@/components/seller/layout';
 
 interface FieldMappingRow {
   id: string;
@@ -85,15 +86,11 @@ export function FieldMappingsPanel({ tenantIntegrationId }: { tenantIntegrationI
                     <td className="px-3 py-2 font-mono text-xs text-cream-800">{row.zoho_field_name}</td>
                     <td className="px-3 py-2 font-mono text-xs text-cream-800">{row.target_column}</td>
                     <td className="px-3 py-2">
-                      <span
-                        className={
-                          row.is_active
-                            ? 'inline-flex items-center rounded-full border border-success-50 bg-success-50 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-success-700'
-                            : 'inline-flex items-center rounded-full border border-cream-300 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-700'
-                        }
-                      >
-                        {row.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      <StatusTag
+                        label={row.is_active ? 'Active' : 'Inactive'}
+                        tone={row.is_active ? 'success' : 'neutral'}
+                        className="text-[11px]"
+                      />
                     </td>
                   </tr>
                 ))}

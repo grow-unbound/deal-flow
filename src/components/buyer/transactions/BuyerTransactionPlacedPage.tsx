@@ -7,6 +7,7 @@ import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from '
 
 import { useCart } from '@/contexts/BuyerCartContext';
 import { Button } from '@/components/ui/button';
+import { StatusPill } from '@/components/ui/status-pill';
 import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { supabaseBrowser } from '@/lib/supabase-browser';
@@ -266,14 +267,7 @@ export function BuyerTransactionPlacedPage({
 }
 
 function StatusChip({ label }: { label: string }) {
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
-      style={{ background: '#FEF3C7', color: '#92400E' }}
-    >
-      {label}
-    </span>
-  );
+  return <StatusPill label={label} tone="warning" className="text-[11px]" />;
 }
 
 function ReceiptRow({
