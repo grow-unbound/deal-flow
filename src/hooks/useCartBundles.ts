@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import type { CartBundlesResponse } from '@/types/buyer-reco';
+import { BUYER_PRICE_QUERY_STALE_TIME, BUYER_PRICE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export type { CartBundle, CartBundleSlot, CartBundlesResponse } from '@/types/buyer-reco';
 
@@ -14,7 +15,7 @@ export function useCartBundles() {
       if (!res.ok) return { bundles: [] };
       return res.json() as Promise<CartBundlesResponse>;
     },
-    staleTime: 30 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 }

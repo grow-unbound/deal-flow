@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import type { BuyerCatalogItem } from '@/types/buyer';
+import { BUYER_PRICE_QUERY_STALE_TIME, BUYER_PRICE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export function useBuyerCategoryRecos(categoryId: string) {
   return useQuery<BuyerCatalogItem[]>({
@@ -12,8 +13,8 @@ export function useBuyerCategoryRecos(categoryId: string) {
       if (!res.ok) return [];
       return res.json() as Promise<BuyerCatalogItem[]>;
     },
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
     enabled: Boolean(categoryId),
   });
 }
@@ -26,8 +27,8 @@ export function useBuyerBrandRecos(brandId: string) {
       if (!res.ok) return [];
       return res.json() as Promise<BuyerCatalogItem[]>;
     },
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
     enabled: Boolean(brandId),
   });
 }

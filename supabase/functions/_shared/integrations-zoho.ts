@@ -212,12 +212,17 @@ function collectOrganizations(payload: Record<string, unknown>): Record<string, 
 
 async function parseZohoResponse(response: Response): Promise<Record<string, unknown>> {
   const contentType = response.headers.get('content-type') ?? '';
-  const parsed = contentType.includes('application/json')
-    ? await response.json().catch(() => null)
-    : null;
-  const payload = isRecord(parsed) ? parsed : {};
+  const isJson = contentType.includes('application/json');
 
+  let payload: Record<string, unknown> = {};
   if (!response.ok) {
+    // Non-ok responses only ever surface as a generic statusText (e.g. "Bad
+    // Request") to callers/sync_jobs.error_log — log the raw body here since
+    // it's the only place that ever sees what Zoho actually said.
+    const rawText = await response.text().catch(() => '');
+    const parsed = isJson ? (() => { try { return JSON.parse(rawText); } catch { return null; } })() : null;
+    payload = isRecord(parsed) ? parsed : {};
+    console.error(`[zoho] ${response.status} ${response.statusText} on ${response.url}`, rawText ? rawText.slice(0, 2000) : '(empty body)');
     throw new ZohoApiError(
       (asString(payload.message) ?? response.statusText ?? 'Zoho request failed'),
       response.status,
@@ -225,6 +230,9 @@ async function parseZohoResponse(response: Response): Promise<Record<string, unk
       payload,
     );
   }
+
+  const parsed = isJson ? await response.json().catch(() => null) : null;
+  payload = isRecord(parsed) ? parsed : {};
 
   if (typeof payload.code === 'number' && payload.code !== 0) {
     throw new ZohoApiError(
@@ -653,7 +661,12 @@ export function createZohoAdapter(
       const payload = await request({ path: `/pricebooks/${pricebookId}` });
       const book = payload.pricebook;
       return isRecord(book) ? book : null;
-    } catch {
+    } catch (error) {
+      // Raw Zoho response body is already logged by parseZohoResponse — this just
+      // ties the failure to which pricebook got skipped (see stale-item-deletion
+      // guard in integrations-persist.ts, which relies on detail fetches failing
+      // loudly rather than silently here).
+      console.warn(`[fetchPricebookDetail] skipping pricebook ${pricebookId}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
