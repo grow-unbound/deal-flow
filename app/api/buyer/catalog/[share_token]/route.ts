@@ -6,7 +6,7 @@ import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
-import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 
 export async function GET(
   request: NextRequest,
@@ -73,7 +73,7 @@ export async function GET(
       name: catalog.name,
       products_count: 0,
       items: [],
-    }, { headers: BUYER_CACHE_CATALOG });
+    }, { headers: BUYER_CACHE_PRICED });
   }
 
   const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
@@ -115,5 +115,5 @@ export async function GET(
     valid_until: catalog.valid_to,
     products_count: guestItems.length,
     items: guestItems,
-  }, { headers: BUYER_CACHE_CATALOG });
+  }, { headers: BUYER_CACHE_PRICED });
 }

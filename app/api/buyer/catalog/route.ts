@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
-import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { fetchBuyerCatalogPage, resolveBuyerCatalogContext } from '@/lib/server/buyer-product-data';
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       ...response,
       catalogs: context.catalogs,
-    } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_CATALOG });
+    } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_PRICED });
   } catch (error) {
     console.error('[GET /api/buyer/catalog]', error);
     return NextResponse.json({ error: 'Failed to fetch catalog' }, { status: 500 });

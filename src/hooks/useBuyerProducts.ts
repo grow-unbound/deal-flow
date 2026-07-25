@@ -13,7 +13,12 @@ import type {
   BuyerResolvedProductsResponse,
 } from '@/types/buyer';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
-import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import {
+  BUYER_REFERENCE_QUERY_STALE_TIME,
+  BUYER_REFERENCE_QUERY_GC_TIME,
+  BUYER_PRICE_QUERY_STALE_TIME,
+  BUYER_PRICE_QUERY_GC_TIME,
+} from '@/lib/query-navigation';
 
 type FilterMode = 'category' | 'brand' | 'list';
 
@@ -156,6 +161,8 @@ export function useBuyerCatalogSearchInfinite(
       return loaded;
     },
     placeholderData: keepPreviousData,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 }
 
@@ -183,6 +190,8 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
       return loaded;
     },
     placeholderData: keepPreviousData,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 }
 
@@ -191,6 +200,8 @@ export function useBuyerProductRecommendations(tenantProductId: string) {
     queryKey: ['buyer-product-recommendations', tenantProductId],
     queryFn: async () =>
       fetchJson<BuyerProductPageRecos>(`/api/buyer/recommendations?product_id=${encodeURIComponent(tenantProductId)}`),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 }
 
@@ -201,6 +212,8 @@ export function useBuyerProductDetail(tenantProductId: string) {
     queryKey: ['buyer-product-detail', tenantProductId, stockSignature],
     queryFn: async () =>
       fetchJson<{ items?: BuyerCatalogItem[] }>(`/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 
   const item = productQuery.data?.items?.[0] ?? null;
@@ -239,5 +252,8 @@ export function useBuyerResolvedProducts(
       if (!response.ok) throw new Error('Failed to resolve buyer products');
       return response.json() as Promise<BuyerResolvedProductsResponse>;
     },
+    // Cart/checkout price resolution — shortest tier, refetch on every remount.
+    staleTime: 0,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 }
