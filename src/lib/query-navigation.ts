@@ -20,3 +20,11 @@ export const BUYER_QUERY_GC_TIME = 2 * 60_000;
 // buyer profile/business policy): changes rarely within a session, safe to cache long.
 export const BUYER_REFERENCE_QUERY_STALE_TIME = 15 * 60 * 1000;
 export const BUYER_REFERENCE_QUERY_GC_TIME = 60 * 60 * 1000;
+
+// Buyer PWA price tier — any response carrying a per-item selling price (catalog
+// grid/search/product-detail, recommendations, cart bundles, resolved cart items):
+// distributors edit prices directly and buyers must see the change immediately, so
+// this stays far shorter than BUYER_QUERY_STALE_TIME. Pair with BUYER_CACHE_PRICED
+// on the API route (buyer-cache-headers.ts) so the HTTP layer doesn't add its own lag.
+export const BUYER_PRICE_QUERY_STALE_TIME = 15_000;
+export const BUYER_PRICE_QUERY_GC_TIME = 60_000;
