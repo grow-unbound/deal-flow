@@ -499,7 +499,7 @@ export async function PATCH(
   const { data: existingPriceList, error: existingError } = await db
     .schema('app')
     .from('price_lists')
-    .select('id')
+    .select('id, external_ref')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -511,6 +511,16 @@ export async function PATCH(
 
   if (!existingPriceList) {
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
+  }
+
+  // Externally-sourced price lists (Zoho import): membership and pricing come
+  // exclusively from the sync — the manual product-picker save path would
+  // overwrite Zoho items/rates with locally-computed ones.
+  if (existingPriceList.external_ref) {
+    return NextResponse.json(
+      { error: 'This price list is managed by your Zoho integration. Products and prices sync automatically — edit them in Zoho.' },
+      { status: 409 },
+    );
   }
 
   const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;

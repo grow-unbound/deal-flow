@@ -208,7 +208,7 @@ export async function POST(
   const { data: pl } = await db
     .schema('app')
     .from('price_lists')
-    .select('id')
+    .select('id, external_ref')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -216,6 +216,14 @@ export async function POST(
 
   if (!pl) {
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
+  }
+
+  // Externally-sourced (Zoho) price lists: membership/pricing come from the sync only.
+  if (pl.external_ref) {
+    return NextResponse.json(
+      { error: 'This price list is managed by your Zoho integration. Products and prices sync automatically — edit them in Zoho.' },
+      { status: 409 },
+    );
   }
 
   // Verify the tenant_product belongs to this tenant

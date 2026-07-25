@@ -57,7 +57,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       items,
       missing_ids: missingIds,
-    } satisfies BuyerResolvedProductsResponse);
+    } satisfies BuyerResolvedProductsResponse, {
+      // Cart/checkout price resolution — never cache, distributor price edits
+      // must be reflected on the buyer's very next resolve call.
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (error) {
     console.error('[POST /api/buyer/products/resolve]', error);
     return NextResponse.json({ error: 'Failed to resolve buyer products' }, { status: 500 });

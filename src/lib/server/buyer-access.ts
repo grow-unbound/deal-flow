@@ -386,19 +386,67 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
 }
 
 async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Promise<{ user: User; email: string }> {
-  if (!candidate.user_id || !supabaseAdmin) {
-    throw new Error('Buyer delegate principal is missing an auth user');
+  if (!supabaseAdmin) {
+    throw new Error('Server configuration error');
   }
 
-  const { data, error } = await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
-  if (error || !data.user) {
-    throw new Error(error?.message ?? 'Buyer delegate auth user not found');
+  if (candidate.user_id) {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
+    if (error || !data.user) {
+      throw new Error(error?.message ?? 'Buyer delegate auth user not found');
+    }
+
+    return {
+      user: data.user,
+      email: data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id),
+    };
   }
 
-  return {
-    user: data.user,
-    email: data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id),
-  };
+  // Delegate rows synced in from an integration (e.g. Zoho contact_persons) have no
+  // linked auth user until they first log in — provision one now, same as the buyer
+  // owner path already does, and link it back onto the buyer_users row.
+  if (!candidate.buyer_user_id) {
+    throw new Error('Buyer delegate principal is missing a buyer_users row to link');
+  }
+
+  const password = randomPassword();
+  const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
+  const fullName = candidate.contact_name?.trim() || candidate.business_name;
+  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: fullName,
+      first_name: firstNameFromValue(fullName),
+      phone: candidate.phone,
+      buyer_id: candidate.buyer_id,
+      tenant_id: candidate.tenant_id,
+    },
+    app_metadata: {
+      current_tenant_id: candidate.tenant_id,
+      current_buyer_id: candidate.buyer_id,
+    },
+  });
+
+  if (createError || !created.user) {
+    throw new Error(createError?.message ?? 'Failed to create buyer delegate auth user');
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .schema('app')
+    .from('buyer_users')
+    .update({
+      user_id: created.user.id,
+      updated_by: created.user.id,
+    })
+    .eq('id', candidate.buyer_user_id);
+
+  if (updateError) {
+    throw new Error(`Failed to link buyer delegate auth user: ${updateError.message}`);
+  }
+
+  return { user: created.user, email };
 }
 
 async function createBuyerSessionForUser(

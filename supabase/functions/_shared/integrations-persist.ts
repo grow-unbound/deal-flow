@@ -2621,6 +2621,10 @@ async function persistPricelists(
       is_active: (asStr(pricebook.status) ?? 'active') === 'active',
       pricing_strategy: normalizeZohoStrategy(pricebook.pricebook_type),
       pricebook_type: asStr(pricebook.pricebook_type),
+      // Zoho item rates come from pricebook_items, not the local rule engine — never
+      // let evaluate_product_for_price_lists_v2() recompute them (see membership_mode
+      // guard migration 20260725120113).
+      membership_mode: 'manual',
       source_updated_at: asDate(pricebook.last_modified_time ?? pricebook.updated_time ?? pricebook.updated_at),
       created_by: actorId,
       updated_by: actorId,
@@ -2806,13 +2810,18 @@ async function persistPricelists(
   // list count per tenant is small (well under 100), so one UPDATE per
   // touched price list is cheap and avoids loading the full item set into
   // memory.
-  const importedPriceListIds = priceListMapPairs.map((row) => row.internalId);
-  for (const priceListId of importedPriceListIds) {
+  for (const { internalId: priceListId, externalId } of priceListMapPairs) {
     const desiredRefs = [...(desiredExternalRefsByPriceListId.get(priceListId) ?? new Set<string>())];
 
     if (desiredRefs.length === 0) {
-      // No items desired for this price list in this sync page — every
-      // existing non-deleted item is stale.
+      // Only wipe items if the detail fetch succeeded for this pricebook.
+      // If the fetch was skipped (deadline hit) or the API returned null (error/rate-limit),
+      // preserve existing items — the pricebook may not truly be empty.
+      const detailSucceeded = detailedPricebooks.has(externalId);
+      if (!detailSucceeded) {
+        console.warn(`[persistPricelists] skipping stale-item deletion for ${externalId}: detail fetch failed or not attempted`);
+        continue;
+      }
       await admin
         .schema('app')
         .from('price_list_items')

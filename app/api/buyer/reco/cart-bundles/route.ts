@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
-import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import type { CartBundle, CartBundleSlot, CartBundlesResponse } from '@/types/buyer-reco';
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
     if (rpcErr) throw new Error(rpcErr.message);
 
     const rawBundles = (rpcData as { bundles?: any[] } | null)?.bundles ?? [];
-    if (rawBundles.length === 0) return NextResponse.json(EMPTY, { headers: BUYER_CACHE_CATALOG });
+    if (rawBundles.length === 0) return NextResponse.json(EMPTY, { headers: BUYER_CACHE_PRICED });
 
     // Collect all top_product_ids across all slots for a single enrichment round-trip
     const allProductIds = Array.from(
@@ -77,10 +77,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
       })),
     }));
 
-    return NextResponse.json({ bundles }, { headers: BUYER_CACHE_CATALOG });
+    return NextResponse.json({ bundles }, { headers: BUYER_CACHE_PRICED });
   } catch (error) {
     console.error('[GET /api/buyer/reco/cart-bundles]', error);
     // Non-critical — return empty rather than 500
-    return NextResponse.json(EMPTY, { headers: BUYER_CACHE_CATALOG });
+    return NextResponse.json(EMPTY, { headers: BUYER_CACHE_PRICED });
   }
 }
