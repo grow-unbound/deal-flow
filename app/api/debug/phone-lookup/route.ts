@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const normalized = normalizeIndianPhone(phone);
 
   try {
-    const [buyersRes, buyerUsersRes] = await Promise.all([
+    const [buyersRes, buyerUsersRes, sellerInvitesRes] = await Promise.all([
       supabaseAdmin
         .schema('app')
         .from('buyers')
@@ -60,6 +60,25 @@ export async function GET(request: NextRequest) {
           )
         `)
         .eq('phone', normalized),
+      supabaseAdmin
+        .schema('app')
+        .from('tenant_users')
+        .select(`
+          id,
+          tenant_id,
+          user_id,
+          role,
+          full_name,
+          email,
+          phone,
+          is_active,
+          invited_at,
+          joined_at,
+          deleted_at,
+          created_at,
+          tenants!tenant_id(id, business_name, slug)
+        `)
+        .eq('phone', normalized),
     ]);
 
     return NextResponse.json({
@@ -74,6 +93,11 @@ export async function GET(request: NextRequest) {
         count: buyerUsersRes.data?.length ?? 0,
         data: buyerUsersRes.data ?? [],
         error: buyerUsersRes.error?.message,
+      },
+      seller_invites: {
+        count: sellerInvitesRes.data?.length ?? 0,
+        data: sellerInvitesRes.data ?? [],
+        error: sellerInvitesRes.error?.message,
       },
     });
   } catch (err) {

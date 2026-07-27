@@ -11,11 +11,11 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
-import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
+import { markBuyerNavigationForward, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-;
+import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
@@ -159,6 +159,11 @@ export default function CartPage() {
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
 
+  function openOutletSelector(): void {
+    markBuyerNavigationForward();
+    router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
+  }
+
   function buildLineItems(): CartLineItem[] {
     return availableItems.map((i) => ({
       tenant_product_id: i.tenant_product_id,
@@ -185,11 +190,11 @@ export default function CartPage() {
   const placeOrderMutation = useMutation({
     mutationFn: async (): Promise<string> => {
       if (!selectedDelivery) {
-        throw new Error('Select a delivery location before placing an order.');
+        throw new Error('Choose an outlet before placing an order.');
       }
       const { location_id, place_of_supply } = await resolveFulfillmentPayload();
       if (!location_id) {
-        throw new Error('Select a delivery location that can be routed to a warehouse.');
+        throw new Error('Choose an outlet that can be routed to a warehouse.');
       }
       const raw = await apiFetch('/api/buyer/orders', {
         method: 'POST',
@@ -237,11 +242,11 @@ export default function CartPage() {
   const requestQuoteMutation = useMutation({
     mutationFn: async (): Promise<string> => {
       if (!selectedDelivery) {
-        throw new Error('Select a delivery location before requesting a quote.');
+        throw new Error('Choose an outlet before requesting a quote.');
       }
       const { location_id, place_of_supply } = await resolveFulfillmentPayload();
       if (!location_id) {
-        throw new Error('Select a delivery location that can be routed to a warehouse.');
+        throw new Error('Choose an outlet that can be routed to a warehouse.');
       }
       const raw = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
@@ -289,7 +294,13 @@ export default function CartPage() {
   function handlePlaceOrder() {
     if (isBusy || availableItems.length === 0) return;
     if (!selectedDelivery) {
-      setError('Select a delivery location before placing an order.');
+      openOutletSelector();
+      setError('Choose an outlet before placing an order.');
+      return;
+    }
+    if (!selectedDelivery.routed_location_id) {
+      openOutletSelector();
+      setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
     placeOrderMutation.mutate();
@@ -298,7 +309,13 @@ export default function CartPage() {
   function handleRequestQuote() {
     if (isBusy || availableItems.length === 0) return;
     if (!selectedDelivery) {
-      setError('Select a delivery location before requesting a quote.');
+      openOutletSelector();
+      setError('Choose an outlet before requesting a quote.');
+      return;
+    }
+    if (!selectedDelivery.routed_location_id) {
+      openOutletSelector();
+      setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
     requestQuoteMutation.mutate();
@@ -396,37 +413,40 @@ export default function CartPage() {
             not a loading state, so there's no space left to reserve for it. */}
         {cartBundlesLoading ? (
           <div
-            className="flex animate-pulse items-center gap-3 rounded-[12px] px-4 py-3"
+            className="overflow-hidden rounded-[12px]"
             style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
             aria-hidden
           >
-            <div className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
-            <div className="h-3.5 w-40 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+            <div
+              className="flex animate-pulse items-center gap-2 px-3 py-2"
+              style={{ borderBottom: '1px solid var(--teal-100, #ccfbf1)' }}
+            >
+              <div className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+              <div className="h-3.5 w-40 rounded-full" style={{ background: 'var(--teal-200, #99f6e4)' }} />
+            </div>
+            <div className="px-3 py-2">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <div key={index}>
+                  {index > 0 ? (
+                    <div className="border-t border-teal-100" style={{ borderColor: 'var(--teal-100, #ccfbf1)' }} />
+                  ) : null}
+                  <div className="flex animate-pulse gap-3 py-3">
+                    <div className="h-14 w-14 shrink-0 rounded-lg bg-teal-200/80" />
+                    <div className="flex flex-1 flex-col justify-center gap-1.5">
+                      <div className="h-3.5 w-3/4 rounded-full bg-teal-200/80" />
+                      <div className="h-3 w-1/2 rounded-full bg-teal-200/60" />
+                    </div>
+                    <div className="h-9 w-9 shrink-0 self-center rounded-lg bg-teal-200/80" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : cartBundlesData && tenantId ? (
           <CartGapWidget
             bundles={cartBundlesData.bundles}
             items={items}
             tenantId={tenantId}
-            onAddToCart={(product: BuyerCatalogItem) => {
-              addItem({
-                tenant_product_id: product.tenant_product_id,
-                name: product.display_name,
-                brand: product.brand_name ?? undefined,
-                internal_sku: product.internal_sku,
-                image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
-                unit_price: product.price,
-                resolved_price: product.resolved_price,
-                has_campaign_price: product.has_campaign_price,
-                gst_rate: product.gst_rate ?? gstRate,
-                unit: product.default_uom ?? undefined,
-                quantity: 1,
-                line_total: product.price,
-                tenant_category_id: product.category_id ?? undefined,
-                stock_status: product.stock_status,
-                on_hand: product.on_hand,
-              }, product.campaign_id ?? resolvedCampaignId);
-            }}
           />
         ) : null}
 
@@ -449,7 +469,7 @@ export default function CartPage() {
 
         {/* Delivery row */}
         <button
-          onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'))}
+          onClick={openOutletSelector}
           className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
@@ -459,19 +479,23 @@ export default function CartPage() {
           <div className="flex-1 min-w-0">
             {delivery?.selected ? (
               <>
-                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
+                  {delivery.selected.selection_source === 'outlet' ? `${meData?.tenant.name ?? 'Seller'} outlet` : 'Deliver to'}
+                </p>
                 <p className="font-semibold truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
                   {formatBuyerSelectedLocationLabel(delivery.selected)}
                 </p>
                 <p className="truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
-                  {[delivery.selected.city, delivery.selected.pincode].filter(Boolean).join(' · ')}{' · 2–3 days'}
+                  {delivery.selected.selection_source === 'maps'
+                    ? [delivery.selected.label, delivery.selected.city].filter(Boolean).join(' · ')
+                    : [delivery.selected.city, delivery.selected.pincode].filter(Boolean).join(' · ')}
                 </p>
               </>
             ) : (
               <>
-                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Choose seller outlet</p>
                 <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
-                  Set delivery location
+                  Choose outlet
                 </p>
               </>
             )}
@@ -482,19 +506,15 @@ export default function CartPage() {
           </div>
         </button>
 
-        {/* Fulfillment location note */}
-        {delivery?.selected && (
+        {/* Manual-location pickup note */}
+        {delivery?.selected?.selection_source === 'maps' && delivery.selected.routed_location_name ? (
           <div className="rounded-[12px] px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--teal-500)' }} />
             <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)', lineHeight: '1.45' }}>
-              {delivery.selected.nearest_warehouse_name && !delivery.selected.nearest_warehouse_fallback
-                ? `Your order will be fulfilled from ${delivery.selected.nearest_warehouse_name} — the nearest warehouse, ~${delivery.selected.nearest_warehouse_distance_km} km from your delivery address.`
-                : delivery.selected.nearest_warehouse_name && delivery.selected.nearest_warehouse_fallback
-                  ? `No warehouse found near your delivery address. Your order will be fulfilled from ${delivery.selected.nearest_warehouse_name} (default warehouse).`
-                  : 'Change your delivery address to refresh the fulfillment warehouse.'}
+              {`You can pick up your order from the ${delivery.selected.routed_location_name} outlet.`}
             </p>
           </div>
-        )}
+        ) : null}
 
         {/* Error */}
         {error && (
@@ -505,8 +525,8 @@ export default function CartPage() {
       </div>
 
       {/* Sticky footer */}
-      <div
-        className="fixed bottom-0 left-1/2 z-20 w-full px-4 pt-2.5"
+      <BuyerFixedFooter
+        className="left-1/2 w-full px-4 pt-2.5"
         style={{
           transform: 'translateX(-50%)',
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
@@ -551,7 +571,7 @@ export default function CartPage() {
           {allowRequestQuote && (
             <button
               onClick={handleRequestQuote}
-              disabled={isBusy || !selectedDelivery || availableItems.length === 0}
+              disabled={isBusy || availableItems.length === 0}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
@@ -562,7 +582,7 @@ export default function CartPage() {
           {allowPlaceOrder && (
             <button
               onClick={handlePlaceOrder}
-              disabled={isBusy || !selectedDelivery || availableItems.length === 0}
+              disabled={isBusy || availableItems.length === 0}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
             >
@@ -571,7 +591,7 @@ export default function CartPage() {
             </button>
           )}
         </div>
-      </div>
+      </BuyerFixedFooter>
 
     </>
   );

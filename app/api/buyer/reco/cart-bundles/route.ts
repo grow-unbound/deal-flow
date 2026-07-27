@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
   const buyerId = profile.buyer?.id ?? null;
 
   try {
-    // Fetch bundle definitions with top_product_id per slot from the pre-computed RPC
+    // Fetch bundle definitions with top_product_ids per slot from the pre-computed RPC
     const { data: rpcData, error: rpcErr } = await supabaseAdmin
       .schema('app')
       .rpc('reco_get_cart_bundles', { p_tenant_id: tenantId });
@@ -42,8 +42,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
       new Set(
         rawBundles
           .flatMap((b: any) => b.slots ?? [])
-          .map((s: any) => s.top_product_id)
-          .filter(Boolean),
+          .flatMap((s: any) => {
+            const ids = s.top_product_ids;
+            if (Array.isArray(ids)) return ids.filter(Boolean);
+            if (s.top_product_id) return [s.top_product_id];
+            return [];
+          }),
       ),
     );
 
@@ -73,7 +77,16 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
         slot_label: s.slot_label ?? null,
         is_required: s.is_required ?? true,
         display_order: s.display_order ?? 0,
-        top_product: s.top_product_id ? (enriched.get(s.top_product_id) ?? null) : null,
+        top_products: (() => {
+          const ids: string[] = Array.isArray(s.top_product_ids)
+            ? s.top_product_ids.filter(Boolean)
+            : s.top_product_id
+              ? [s.top_product_id]
+              : [];
+          return ids
+            .map((id: string) => enriched.get(id))
+            .filter((x): x is BuyerCatalogItem => x != null);
+        })(),
       })),
     }));
 

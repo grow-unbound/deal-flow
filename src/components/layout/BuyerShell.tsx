@@ -20,7 +20,6 @@ import { BuyerTabBar } from './BuyerTabBar';
 import { CartBar } from '@/components/buyer/cart/CartBar';
 import { BuyerSearchOverlay } from '@/components/buyer/layout/BuyerSearchOverlay';
 import { BuyerPullToRefresh } from '@/components/buyer/layout/BuyerPullToRefresh';
-
 interface BuyerShellProps {
   children: ReactNode;
 }

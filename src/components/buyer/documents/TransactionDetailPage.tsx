@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -269,8 +270,8 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
 
 function TransactionDetailStickyFooter({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="fixed bottom-0 left-1/2 z-20 w-full -translate-x-1/2 px-4 py-3"
+    <BuyerFixedFooter
+      className="left-1/2 w-full -translate-x-1/2 px-4 py-3"
       style={{
         maxWidth: BUYER_PREVIEW_MAX_WIDTH,
         paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
@@ -281,7 +282,7 @@ function TransactionDetailStickyFooter({ children }: { children: React.ReactNode
       }}
     >
       {children}
-    </div>
+    </BuyerFixedFooter>
   );
 }
 

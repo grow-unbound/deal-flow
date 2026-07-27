@@ -22,6 +22,8 @@ interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
   showPromotionBadge?: boolean;
+  /** Smaller tile for secondary surfaces (e.g. cart gap carousel). */
+  variant?: 'default' | 'compact';
 }
 
 function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
@@ -56,7 +58,9 @@ export function ProductCard({
   item,
   className,
   showPromotionBadge = true,
+  variant = 'default',
 }: ProductCardProps): React.ReactNode {
+  const isCompact = variant === 'compact';
   const { items, addItem, updateQty } = useCart();
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
@@ -122,8 +126,9 @@ export function ProductCard({
       className={cn(
         BUYER_CARD_RADIUS_CLASS,
         'relative flex h-full flex-col overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)]',
-        'shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]',
-        'transition-all hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(34,30,26,0.08),0_2px_6px_rgba(34,30,26,0.05)]',
+        isCompact
+          ? 'shadow-[0_1px_2px_rgba(34,30,26,0.05)]'
+          : 'shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)] transition-all hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(34,30,26,0.08),0_2px_6px_rgba(34,30,26,0.05)]',
         className,
       )}
     >
@@ -157,8 +162,8 @@ export function ProductCard({
                     src={productImg}
                     alt=""
                     fill
-                    className="object-contain p-3.5"
-                    sizes="(max-width: 640px) 50vw, 200px"
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
+                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
                     onError={() => setProductImgError(true)}
                     unoptimized
                   />
@@ -167,8 +172,8 @@ export function ProductCard({
                     src={categoryImg}
                     alt=""
                     fill
-                    className="object-contain p-3.5"
-                    sizes="(max-width: 640px) 50vw, 200px"
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
+                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
                     onError={() => setCategoryImgError(true)}
                     unoptimized
                   />
@@ -177,39 +182,55 @@ export function ProductCard({
                     src={brandImg}
                     alt=""
                     fill
-                    className="object-contain p-3.5"
-                    sizes="(max-width: 640px) 50vw, 200px"
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
+                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
                     onError={() => setBrandImgError(true)}
                     unoptimized
                   />
                 ) : null}
               </>
             ) : (
-              <Package className="h-10 w-10 text-[var(--fg-3)]" />
+              <Package className={cn('text-[var(--fg-3)]', isCompact ? 'h-6 w-6' : 'h-10 w-10')} />
             )}
           </Link>
         </Pressable>
 
         {cartItem ? (
-          <div className="absolute bottom-2 right-2 z-[2] flex h-9 items-center overflow-hidden rounded-lg bg-[#1C1C1E] shadow-md">
+          <div
+            className={cn(
+              'absolute bottom-1.5 right-1.5 z-[2] flex items-center overflow-hidden rounded-md bg-[#1C1C1E] shadow-md',
+              isCompact ? 'h-7' : 'h-9 bottom-2 right-2 rounded-lg',
+            )}
+          >
             <button
               type="button"
               onClick={handleDecrement}
-              className="flex h-9 w-8 items-center justify-center text-white active:opacity-70"
+              className={cn(
+                'flex items-center justify-center text-white active:opacity-70',
+                isCompact ? 'h-7 w-6' : 'h-9 w-8',
+              )}
               aria-label="Decrease quantity"
             >
-              <Minus className="h-3.5 w-3.5" />
+              <Minus className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
             </button>
-            <span className="min-w-[1.5rem] text-center text-sm font-semibold tabular-nums text-white">
+            <span
+              className={cn(
+                'min-w-[1.25rem] text-center font-semibold tabular-nums text-white',
+                isCompact ? 'text-xs' : 'min-w-[1.5rem] text-sm',
+              )}
+            >
               {cartItem.quantity}
             </span>
             <button
               type="button"
               onClick={handleIncrement}
-              className="flex h-9 w-8 items-center justify-center text-white active:opacity-70"
+              className={cn(
+                'flex items-center justify-center text-white active:opacity-70',
+                isCompact ? 'h-7 w-6' : 'h-9 w-8',
+              )}
               aria-label="Increase quantity"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
             </button>
           </div>
         ) : (
@@ -218,12 +239,13 @@ export function ProductCard({
             disabled={isOos}
             onClick={handleQuickAdd}
             className={cn(
-              'absolute bottom-2 right-2 z-[2] flex h-8 w-8 items-center justify-center rounded-md bg-[#1C1C1E] text-white shadow-md',
+              'absolute z-[2] flex items-center justify-center rounded-md bg-[#1C1C1E] text-white shadow-md',
               'active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
+              isCompact ? 'bottom-1.5 right-1.5 h-6 w-6' : 'bottom-2 right-2 h-8 w-8',
             )}
             aria-label="Add to cart"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className={isCompact ? 'h-3 w-3' : 'h-4 w-4'} />
           </button>
         )}
       </div>
@@ -234,27 +256,34 @@ export function ProductCard({
           onClick={() => markBuyerNavigationForward()}
           className="flex flex-1 flex-col no-underline"
         >
-          <div className="flex h-full flex-1 flex-col bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+          <div
+            className={cn(
+              'flex h-full flex-1 flex-col bg-[var(--cream-50)]',
+              isCompact ? 'px-2 pb-2 pt-1.5' : 'px-3 pb-3 pt-2.5',
+            )}
+          >
             <p
               className={cn(BUYER_TWO_LINE_TITLE_CLASS, 'font-medium text-[var(--fg-1)]')}
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--b-text-body)',
+                fontSize: isCompact ? 'var(--b-text-label)' : 'var(--b-text-body)',
                 fontWeight: 500,
                 letterSpacing: '-0.005em',
               }}
             >
               {item.display_name}
             </p>
-            <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
-              {item.internal_sku}
-            </p>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            {!isCompact ? (
+              <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+                {item.internal_sku}
+              </p>
+            ) : null}
+            <div className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5', isCompact ? 'mt-1' : 'mt-2')}>
               <span
                 className="font-medium tabular-nums text-[var(--fg-1)]"
                 style={{
                   fontFamily: 'var(--font-display)',
-                  fontSize: 'var(--b-text-price)',
+                  fontSize: isCompact ? 'var(--b-text-sub)' : 'var(--b-text-price)',
                   fontVariantNumeric: 'tabular-nums',
                   fontWeight: 500,
                   letterSpacing: '-0.01em',
@@ -263,12 +292,12 @@ export function ProductCard({
                 {formatNumberValue(item.price, 'CURRENCY_EXACT')}
               </span>
               {showCampaignPrice ? (
-                <span className="text-xs line-through text-[var(--fg-3)]">
+                <span className={cn('line-through text-[var(--fg-3)]', isCompact ? 'text-[10px]' : 'text-xs')}>
                   {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                 </span>
               ) : null}
             </div>
-            {item.has_campaign_price && item.campaign_valid_until ? (
+            {!isCompact && item.has_campaign_price && item.campaign_valid_until ? (
               <p className="mt-1 text-[11px] text-amber-700">
                 Valid until {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
               </p>

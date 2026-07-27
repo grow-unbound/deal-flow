@@ -7,6 +7,7 @@ export interface BuyerResolvedRouting {
   warehouseId: string | null;
   locationId: string | null;
   locationName: string | null;
+  warehouseName: string | null;
   distanceKm: number | null;
   fallback: boolean;
   placeOfSupply: string;
@@ -29,7 +30,7 @@ async function loadWarehouseLocations(db: SupabaseClient, tenantId: string) {
   const { data: warehouses } = await (db as any)
     .schema('app')
     .from('warehouses')
-    .select('id, name, lat, lng, is_default, location_id')
+    .select('id, name, lat, lng, is_default, location_id, locations(id, name)')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .not('lat', 'is', null)
@@ -42,6 +43,7 @@ async function loadWarehouseLocations(db: SupabaseClient, tenantId: string) {
     lng: number;
     is_default: boolean;
     location_id: string | null;
+    locations?: { id: string; name: string | null } | { id: string; name: string | null }[] | null;
   }>;
 }
 
@@ -62,13 +64,18 @@ async function loadDefaultWarehouse(db: SupabaseClient, tenantId: string) {
   const { data: defaultWarehouses } = await (db as any)
     .schema('app')
     .from('warehouses')
-    .select('id, name, location_id')
+    .select('id, name, location_id, locations(id, name)')
     .eq('tenant_id', tenantId)
     .eq('is_default', true)
     .is('deleted_at', null)
     .limit(1);
 
-  return (defaultWarehouses as Array<{ id: string; name: string; location_id: string | null }> | null)?.[0] ?? null;
+  return (defaultWarehouses as Array<{
+    id: string;
+    name: string;
+    location_id: string | null;
+    locations?: { id: string; name: string | null } | { id: string; name: string | null }[] | null;
+  }> | null)?.[0] ?? null;
 }
 
 export async function resolveNearestBuyerLocation(
@@ -93,10 +100,12 @@ export async function resolveNearestBuyerLocation(
 
   if (nearest) {
     const warehouse = warehouses.find((candidate) => candidate.id === nearest?.id) ?? null;
+    const linkedLocation = Array.isArray(warehouse?.locations) ? warehouse?.locations[0] : warehouse?.locations;
     return {
       warehouseId: nearest.id,
       locationId: warehouse?.location_id ?? null,
-      locationName: nearest.name,
+      locationName: linkedLocation?.name ?? nearest.name,
+      warehouseName: nearest.name,
       distanceKm: Math.round(nearest.distanceKm),
       fallback: false,
     };
@@ -104,10 +113,14 @@ export async function resolveNearestBuyerLocation(
 
   const fallbackWarehouse = await loadDefaultWarehouse(db, tenantId);
   if (fallbackWarehouse) {
+    const linkedLocation = Array.isArray(fallbackWarehouse.locations)
+      ? fallbackWarehouse.locations[0]
+      : fallbackWarehouse.locations;
     return {
       warehouseId: fallbackWarehouse.id,
       locationId: fallbackWarehouse.location_id,
-      locationName: fallbackWarehouse.name,
+      locationName: linkedLocation?.name ?? fallbackWarehouse.name,
+      warehouseName: fallbackWarehouse.name,
       distanceKm: null,
       fallback: true,
     };
@@ -122,6 +135,7 @@ export async function resolveNearestBuyerLocation(
     warehouseId: null,
     locationId: fallbackLocation.id,
     locationName: fallbackLocation.name,
+    warehouseName: null,
     distanceKm: null,
     fallback: true,
   };

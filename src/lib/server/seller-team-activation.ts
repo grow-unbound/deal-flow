@@ -18,6 +18,26 @@ export interface PendingSellerActivationRow {
   invited_at: string | null;
 }
 
+export interface SellerPasswordResetRow {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  tenant_slug: string;
+  user_id: string;
+  role: 'seller_admin' | 'seller_assistant';
+  full_name: string | null;
+  email: string;
+  phone: string;
+}
+
+interface SellerSessionCandidate {
+  user_id: string;
+  tenant_id: string;
+  full_name: string | null;
+  email: string;
+  phone: string;
+}
+
 interface EnsureSellerAuthIdentityInput {
   email: string;
   fullName: string;
@@ -204,7 +224,65 @@ export async function findPendingSellerActivationsByPhone(
     .filter((row): row is PendingSellerActivationRow => row !== null);
 }
 
-export async function mintSellerActivationSession(candidate: PendingSellerActivationRow): Promise<{
+export async function findSellerPasswordResetCandidatesByPhone(
+  phone: string,
+): Promise<SellerPasswordResetRow[]> {
+  if (!supabaseAdmin) {
+    throw new Error('Server configuration error');
+  }
+
+  const normalizedPhone = normalizeIndianPhone(phone);
+  const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_users')
+    .select(`
+      id,
+      tenant_id,
+      user_id,
+      role,
+      full_name,
+      email,
+      phone,
+      tenants!tenant_id (
+        business_name,
+        slug
+      )
+    `)
+    .eq('phone', normalizedPhone)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to load seller password reset candidates: ${error.message}`);
+  }
+
+  const dedupedByUserId = new Map<string, SellerPasswordResetRow>();
+  for (const row of ((data ?? []) as Array<Record<string, unknown>>)) {
+    const tenant = row.tenants as Record<string, unknown> | null;
+    const email = typeof row.email === 'string' ? row.email.trim().toLowerCase() : '';
+    const rowPhone = typeof row.phone === 'string' ? normalizeIndianPhone(row.phone) : '';
+    const userId = String(row.user_id ?? '');
+    if (!email || !rowPhone || !userId || dedupedByUserId.has(userId)) continue;
+
+    dedupedByUserId.set(userId, {
+      id: String(row.id),
+      tenant_id: String(row.tenant_id),
+      tenant_name: String(tenant?.business_name ?? ''),
+      tenant_slug: String(tenant?.slug ?? ''),
+      user_id: userId,
+      role: row.role as 'seller_admin' | 'seller_assistant',
+      full_name: typeof row.full_name === 'string' && row.full_name.trim().length > 0 ? row.full_name.trim() : null,
+      email,
+      phone: rowPhone,
+    });
+  }
+
+  return Array.from(dedupedByUserId.values());
+}
+
+async function mintSellerRecoverySession(candidate: SellerSessionCandidate): Promise<{
   session: Session;
   user: User;
 }> {
@@ -261,4 +339,18 @@ export async function mintSellerActivationSession(candidate: PendingSellerActiva
     session: refreshError || !refreshData.session ? verifyData.session : refreshData.session,
     user: verifyData.user,
   };
+}
+
+export async function mintSellerActivationSession(candidate: PendingSellerActivationRow): Promise<{
+  session: Session;
+  user: User;
+}> {
+  return mintSellerRecoverySession(candidate);
+}
+
+export async function mintSellerPasswordResetSession(candidate: SellerPasswordResetRow): Promise<{
+  session: Session;
+  user: User;
+}> {
+  return mintSellerRecoverySession(candidate);
 }

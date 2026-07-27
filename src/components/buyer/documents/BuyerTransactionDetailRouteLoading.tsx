@@ -1,4 +1,6 @@
 /** Shared route-level skeleton for order / estimate / invoice detail pages. */
+import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
+
 export function BuyerTransactionDetailRouteLoading({ label }: { label: string }) {
   return (
     <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]" role="status" aria-label={`Loading ${label}`}>
@@ -31,12 +33,12 @@ export function BuyerTransactionDetailRouteLoading({ label }: { label: string })
         <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
       </div>
 
-      <div
-        className="fixed bottom-0 left-0 right-0 border-t border-cream-200 bg-cream-100/95 px-4 py-3"
+      <BuyerFixedFooter
+        className="left-0 right-0 border-t border-cream-200 bg-cream-100/95 px-4 py-3"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <div className="mx-auto h-11 max-w-[840px] animate-pulse rounded-xl bg-cream-200" />
-      </div>
+      </BuyerFixedFooter>
     </div>
   );
 }

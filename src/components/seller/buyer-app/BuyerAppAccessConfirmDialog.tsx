@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 
+import { cn } from '@/lib/cn';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,115 @@ function affectedBuyersLabel(selectedCount: number, singleBuyerLabel: string | n
   return `${selectedCount} buyer${selectedCount === 1 ? '' : 's'}`;
 }
 
+/** Matches `buildBuyerAppEnabledPreviewMessage` line count for stable dialog height while loading. */
+const ENABLE_WHATSAPP_PREVIEW_FOOTPRINT = [
+  'Hi Buyer,',
+  '',
+  'Your distributor has enabled the catalog app for you.',
+  '',
+  'You can now explore their latest stock, check prices, and place orders anytime.',
+].join('\n');
+
+const ENABLE_PREVIEW_PANEL_CLASS =
+  'rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800';
+
+const ENABLE_CREDITS_PANEL_MIN_H = 'min-h-[5.25rem]';
+
+function EnablePreviewPanel({
+  preview,
+  previewLoading,
+}: {
+  preview: BuyerAppEnablePreviewResponse | null;
+  previewLoading: boolean;
+}) {
+  const isLoading = previewLoading || !preview;
+
+  return (
+    <div className={cn(ENABLE_PREVIEW_PANEL_CLASS, 'min-h-[13.5rem]')}>
+      <div className="mb-3 min-h-[1.25rem]">
+        {isLoading ? (
+          <Skeleton className="h-3 w-52" />
+        ) : (
+          <>
+            <span className="text-cream-600">Notifiable buyers: </span>
+            {preview.recipient_count} of {preview.selected_count} selected
+          </>
+        )}
+      </div>
+
+      {!isLoading && preview.recipient_count === 0 ? (
+        <p className="mb-3 text-cream-600">
+          No WhatsApp will be sent — selected buyers need a valid mobile number on file, must not
+          already have app access, and must be active on your customer list.
+        </p>
+      ) : null}
+
+      <p className="mb-2 text-cream-600">Template preview</p>
+
+      <div className="relative min-h-[6.5em]">
+        {isLoading ? (
+          <>
+            <pre
+              className="pointer-events-none invisible whitespace-pre-wrap font-sans text-body-sm"
+              aria-hidden
+            >
+              {ENABLE_WHATSAPP_PREVIEW_FOOTPRINT}
+            </pre>
+            <div className="absolute inset-0 space-y-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-[92%]" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-[88%]" />
+              <Skeleton className="h-3 w-[95%]" />
+            </div>
+          </>
+        ) : (
+          <pre className="whitespace-pre-wrap font-sans text-body-sm text-cream-800">
+            {preview.preview_message}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EnableCreditsPanel({
+  preview,
+  previewLoading,
+}: {
+  preview: BuyerAppEnablePreviewResponse | null;
+  previewLoading: boolean;
+}) {
+  const isLoading = previewLoading || !preview;
+
+  return (
+    <div className={cn(ENABLE_PREVIEW_PANEL_CLASS, ENABLE_CREDITS_PANEL_MIN_H)}>
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-48" />
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-3 w-44" />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div>
+            <span className="text-cream-600">WhatsApp credits per buyer: </span>
+            {preview.credits_per_buyer}
+          </div>
+          <div>
+            <span className="text-cream-600">Total credits required: </span>
+            {preview.total_credits}
+          </div>
+          <div>
+            <span className="text-cream-600">Credits available: </span>
+            {preview.credits_balance}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BuyerAppAccessConfirmDialog({
   open,
   mode,
@@ -85,7 +195,12 @@ export function BuyerAppAccessConfirmDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <AlertDialogContent className="border-cream-200 bg-cream-50">
+      <AlertDialogContent
+        className={cn(
+          'border-cream-200 bg-cream-50',
+          isEnable && 'max-w-lg',
+        )}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display text-cream-900">
             {isEnable ? 'Enable buyer app access?' : 'Disable buyer app access?'}
@@ -111,54 +226,8 @@ export function BuyerAppAccessConfirmDialog({
                 </Alert>
               ) : null}
 
-              <div className="rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
-                {previewLoading || !preview ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-32" />
-                    <Skeleton className="h-20 w-full" />
-                  </div>
-                ) : (
-                  <>
-                    <div className="mb-3">
-                      <span className="text-cream-600">Notifiable buyers: </span>
-                      {preview.recipient_count} of {preview.selected_count} selected
-                    </div>
-                    {preview.recipient_count === 0 ? (
-                      <p className="mb-3 text-cream-600">
-                        No WhatsApp will be sent — selected buyers are missing a valid phone number or have opted out.
-                      </p>
-                    ) : null}
-                    <p className="mb-2 text-cream-600">Template preview</p>
-                    <pre className="whitespace-pre-wrap font-sans text-body-sm text-cream-800">
-                      {preview.preview_message}
-                    </pre>
-                  </>
-                )}
-              </div>
-
-              <div className="rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
-                {previewLoading || !preview ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-40" />
-                    <Skeleton className="h-3 w-36" />
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <span className="text-cream-600">WhatsApp credits per buyer: </span>
-                      {preview.credits_per_buyer}
-                    </div>
-                    <div>
-                      <span className="text-cream-600">Total credits required: </span>
-                      {preview.total_credits}
-                    </div>
-                    <div>
-                      <span className="text-cream-600">Credits available: </span>
-                      {preview.credits_balance}
-                    </div>
-                  </>
-                )}
-              </div>
+              <EnablePreviewPanel preview={preview} previewLoading={previewLoading} />
+              <EnableCreditsPanel preview={preview} previewLoading={previewLoading} />
             </>
           ) : null}
 

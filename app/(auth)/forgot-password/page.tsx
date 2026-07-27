@@ -1,43 +1,106 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
+import { OtpForm } from '@/components/buyer/auth/OtpForm';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
-const inputCls =
-  'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
-const labelCls =
-  'block text-cream-700 font-semibold mb-1.5 uppercase tracking-wide';
+interface ResetSendResponse {
+  success?: boolean;
+  ref_id?: string;
+  phone?: string;
+  full_name?: string | null;
+  email?: string | null;
+  error?: string;
+}
 
-export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+interface ResetVerifyResponse {
+  success?: boolean;
+  redirect?: string;
+  session?: {
+    access_token: string;
+    refresh_token: string;
+  };
+  context?: {
+    full_name?: string | null;
+    email?: string | null;
+  };
+  error?: string;
+}
+
+function ForgotPasswordForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const existingRefId = searchParams.get('ref_id') ?? '';
+  const existingPhone = searchParams.get('phone') ?? '';
+
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  const step = useMemo(() => (existingRefId ? 'otp' : 'phone'), [existingRefId]);
 
+  async function handleSendOtp(phone: string) {
+    setSendingOtp(true);
+    setError('');
+    let shouldResetLoading = true;
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const response = await fetch('/api/auth/reset/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ phoneNumber: phone }),
       });
 
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? 'Something went wrong. Please try again.');
+      const data = await response.json() as ResetSendResponse;
+      if (!response.ok || !data.success || !data.ref_id) {
+        setError(data.error ?? 'Could not send password reset OTP. Please try again.');
         return;
       }
 
-      setSent(true);
+      shouldResetLoading = false;
+      router.replace(`/forgot-password?ref_id=${encodeURIComponent(data.ref_id)}&phone=${encodeURIComponent(data.phone ?? phone)}`);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (shouldResetLoading) setSendingOtp(false);
+    }
+  }
+
+  async function handleVerifyOtp(otp: string) {
+    setVerifyingOtp(true);
+    setError('');
+    let shouldResetLoading = true;
+    try {
+      const response = await fetch('/api/auth/reset/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref_id: existingRefId, otp }),
+      });
+
+      const data = await response.json() as ResetVerifyResponse;
+      if (!response.ok || !data.success || !data.session) {
+        setError(data.error ?? 'Could not verify OTP. Please try again.');
+        return;
+      }
+
+      await supabaseBrowser.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+
+      const params = new URLSearchParams();
+      if (data.context?.full_name) params.set('full_name', data.context.full_name);
+      if (data.context?.email) params.set('email', data.context.email);
+
+      shouldResetLoading = false;
+      router.replace(`${data.redirect ?? '/reset-password'}${params.toString() ? `?${params.toString()}` : ''}`);
+    } catch {
+      setError('Network error. Please check your connection and try again.');
+    } finally {
+      if (shouldResetLoading) setVerifyingOtp(false);
     }
   }
 
@@ -47,85 +110,69 @@ export default function ForgotPasswordPage() {
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      {sent ? (
-        <div className="flex flex-col items-center text-center pt-2">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cream-100">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                stroke="var(--teal-500)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <h2 className="text-h3 font-display text-cream-900 mb-1">Check your inbox</h2>
-          <p className="text-body-sm text-cream-600 mb-6">
-            If <strong>{email}</strong> is registered, you&apos;ll receive a password reset link
-            shortly.
-          </p>
-          <Link
-            href="/login"
-            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-          >
-            ← Back to login
-          </Link>
-        </div>
+      <h1 className="text-h3 font-display text-cream-900 mb-1">Reset your password</h1>
+      <p className="text-body-sm text-cream-600 mb-6">
+        {step === 'phone'
+          ? 'Enter your WhatsApp number to receive a password reset OTP.'
+          : 'Enter the 6-digit OTP we sent to your WhatsApp.'}
+      </p>
+
+      {step === 'phone' ? (
+        <PhoneInput
+          onSubmit={handleSendOtp}
+          loading={sendingOtp}
+          error={error}
+        />
       ) : (
-        <>
-          <h1 className="text-h3 font-display text-cream-900 mb-1">Forgot your password?</h1>
-          <p className="text-body-sm text-cream-600 mb-6">
-            Enter your email and we&apos;ll send you a reset link.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="email"
-                className={labelCls}
-                style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                disabled={loading}
-                required
-                autoComplete="email"
-                className={inputCls}
-              />
-            </div>
-
-            {error && (
-              <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending…' : 'Send reset link'}
-            </button>
-          </form>
-
-          <div className="mt-4 text-right">
-            <Link
-              href="/login"
-              className="text-caption text-cream-500 hover:text-cream-700 transition-colors"
-            >
-              ← Back to login
-            </Link>
-          </div>
-        </>
+        <OtpForm
+          phone={existingPhone}
+          onSubmit={handleVerifyOtp}
+          loading={verifyingOtp}
+          error={error}
+        />
       )}
+
+      <div className="mt-6 pt-4 border-t border-cream-200 flex items-center justify-between">
+        <Link
+          href="/login"
+          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+        >
+          ← Back to login
+        </Link>
+        {step === 'otp' ? (
+          <button
+            type="button"
+            onClick={() => router.replace('/forgot-password')}
+            className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
+          >
+            Change number
+          </button>
+        ) : null}
+      </div>
     </div>
+  );
+}
+
+function ForgotPasswordFallback() {
+  return (
+    <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
+      <div className="mb-7 flex justify-center">
+        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
+      </div>
+      <div className="space-y-3 mb-6">
+        <div className="h-5 w-44 rounded bg-cream-200 animate-pulse" />
+        <div className="h-4 w-64 rounded bg-cream-200 animate-pulse" />
+      </div>
+      <div className="mt-4 h-11 w-full rounded bg-cream-200 animate-pulse" />
+      <div className="mt-4 h-11 w-full rounded bg-cream-200 animate-pulse" />
+    </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<ForgotPasswordFallback />}>
+      <ForgotPasswordForm />
+    </Suspense>
   );
 }

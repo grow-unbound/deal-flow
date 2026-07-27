@@ -1,6 +1,5 @@
 import { firstNameFromValue, formatWhatsappDestination, isValidIndianMobile } from '@/lib/phone';
 import { buildSellerContextFromTenant } from '@/lib/server/whatsapp-seller-context';
-import { resolveBroadcastAudience } from '@/lib/server/whatsapp-broadcast-audience';
 import {
   enqueueWhatsAppMessage,
   lookupApprovedTemplateMeta,
@@ -68,17 +67,48 @@ async function loadMarketingCreditsPerMessage(db: DbClient): Promise<number> {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
-async function resolveEligibleRecipientIds(
+interface ResolveBuyerAppEnableNotifyRecipientsOptions {
+  /** Preview runs before PATCH; send runs after buyers are already enabled. */
+  requireNotYetEnabled?: boolean;
+}
+
+/**
+ * buyer_app_enabled WhatsApp bypasses broadcast consent/opt-out gates — buyers need
+ * the enable notice before they can log in and record consent.
+ */
+async function resolveBuyerAppEnableNotifyRecipientIds(
   db: DbClient,
   tenantId: string,
   buyerIds: string[],
+  options: ResolveBuyerAppEnableNotifyRecipientsOptions = {},
 ): Promise<string[]> {
   if (buyerIds.length === 0) return [];
-  return resolveBroadcastAudience(db, {
-    tenantId,
-    targetType: 'buyer_selection',
-    targetBuyerIds: buyerIds,
-  });
+
+  const requireNotYetEnabled = options.requireNotYetEnabled ?? true;
+
+  let query = db
+    .schema('app')
+    .from('buyers')
+    .select('id, phone')
+    .eq('tenant_id', tenantId)
+    .in('id', buyerIds)
+    .eq('is_active', true)
+    .is('deleted_at', null);
+
+  if (requireNotYetEnabled) {
+    query = query.eq('buyer_app_enabled', false);
+  }
+
+  const { data: buyers, error } = await query;
+
+  if (error) {
+    console.error('[buyer-app-enable-notify] recipient resolve failed', error);
+    return [];
+  }
+
+  return ((buyers ?? []) as Array<{ id: string; phone: string | null }>)
+    .filter((buyer) => buyer.phone && isValidIndianMobile(buyer.phone))
+    .map((buyer) => buyer.id);
 }
 
 function buildSendPayload(
@@ -102,7 +132,7 @@ export async function buildBuyerAppEnablePreview(
   buyerIds: string[],
 ): Promise<BuyerAppEnablePreviewResponse> {
   const selectedCount = buyerIds.length;
-  const recipientIds = await resolveEligibleRecipientIds(db, tenantId, buyerIds);
+  const recipientIds = await resolveBuyerAppEnableNotifyRecipientIds(db, tenantId, buyerIds);
   const creditsPerBuyer = await loadMarketingCreditsPerMessage(db);
 
   const { data: tenant, error: tenantError } = await db
@@ -161,7 +191,9 @@ export async function queueBuyerAppEnabledMessages(
     return { sent_count: 0, eligible_count: 0, skipped_count: buyerIds.length };
   }
 
-  const eligibleIds = await resolveEligibleRecipientIds(db, tenantId, buyerIds);
+  const eligibleIds = await resolveBuyerAppEnableNotifyRecipientIds(db, tenantId, buyerIds, {
+    requireNotYetEnabled: false,
+  });
   if (eligibleIds.length === 0) {
     return { sent_count: 0, eligible_count: 0, skipped_count: buyerIds.length };
   }

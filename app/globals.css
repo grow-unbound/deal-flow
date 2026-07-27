@@ -329,6 +329,13 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 
+  /* Buyer deep-route CTAs: portaled + fixed to the layout viewport */
+  .buyer-sticky-footer {
+    position: fixed;
+    bottom: 0;
+    z-index: 30;
+  }
+
   /* Campaign / lookbook card hero — exact campaign hero ratio (1125 × 600) */
   .buyer-lookbook-preview {
     aspect-ratio: 15 / 8;
