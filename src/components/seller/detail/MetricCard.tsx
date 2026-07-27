@@ -38,7 +38,7 @@ export function MetricCard({
       <p className={cn('eyebrow text-cream-600', tone === 'warn' && 'text-ember-700')}>{label}</p>
       <p
         className={cn(
-          'mt-2 font-display text-2xl font-medium leading-[1.05] text-[#4A3F35] tabular-nums',
+          'mt-2 font-display text-xl font-medium leading-[1.05] text-[#4A3F35] tabular-nums',
           tone === 'warn' && 'text-ember-500',
         )}
       >

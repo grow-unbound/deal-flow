@@ -86,109 +86,118 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
   useEffect(() => {
     if (!tenantId || !buyerId) return;
 
+    // Single consolidated channel — app.realtime_notifications is the only table left
+    // in the supabase_realtime publication. entity_type/event_type/payload/old_payload
+    // replace direct postgres_changes on campaigns/orders/estimates/invoices; the
+    // notification logic below is unchanged, just re-plumbed. Realtime's column filter
+    // is tenant-wide (buyer_id is nullable/shared across campaigns), so this buyer's
+    // own rows are picked out client-side same as campaigns' cohort/buyer scope check
+    // already was.
     const channel = supabaseBrowser
       .channel(`buyer:${tenantId}:${buyerId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'app', table: 'campaigns', filter: `tenant_id=eq.${tenantId}` },
+        { event: 'INSERT', schema: 'app', table: 'realtime_notifications', filter: `tenant_id=eq.${tenantId}` },
         (payload) => {
-          const record = payload.new as CatalogRecord | undefined;
-          if (!record || record.status !== 'published') return;
-          if (!isBuyerInScope(record, buyerId, buyerCohortIds)) return;
-          const entityId = record.id;
-          onNewRef.current({
-            id: `${entityId}_new_catalog_${record.updated_at}`,
-            kind: 'new_catalog',
-            title: `New catalog: ${record.name}`,
-            body: 'Tap to browse products',
-            entityType: 'catalog',
-            entityId,
-            href: `/buy/catalog?share_token=${encodeURIComponent(record.share_token)}`,
-            readAt: null,
-            createdAt: record.updated_at,
-          });
-          setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'new'));
-          onRefreshRef.current?.();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'orders', filter: `buyer_id=eq.${buyerId}` },
-        (payload) => {
-          const record = payload.new as Record<string, unknown>;
-          const entityId = record.id as string;
-          const orderNumber = (record.order_number as string | null) ?? '';
-          const status = (record.status as string) ?? '';
-          onNewRef.current({
-            id: `${entityId}_order_updated_${record.updated_at as string}`,
-            kind: 'order_updated',
-            title: `Order updated · ${orderNumber}`,
-            body: `Status: ${status}`,
-            entityType: 'order',
-            entityId,
-            href: `/buy/orders?highlight=${entityId}`,
-            readAt: null,
-            createdAt: (record.updated_at as string) ?? new Date().toISOString(),
-          });
-          setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'updated'));
-          onRefreshRef.current?.();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'estimates', filter: `buyer_id=eq.${buyerId}` },
-        (payload) => {
-          const record = payload.new as Record<string, unknown>;
-          const previous = payload.old as Record<string, unknown> | undefined;
-          if (!didEstimateNotificationFieldsChange(record, previous)) return;
-          const entityId = record.id as string;
-          const estimateNumber = (record.estimate_number as string | null) ?? '';
-          const status = (record.status as string) ?? '';
-          const eventKey = `estimate:${entityId}:${estimateNumber}:${status}`;
-          if (!shouldProcessBuyerRealtimeEvent(eventKey)) return;
-          const title = `Estimate updated · ${estimateNumber}`;
-          const body = `Status: ${status}`;
-          onPatchRef.current?.('estimate', entityId, {
-            title,
-            body,
-          });
-          onNewRef.current({
-            id: `${entityId}_estimate_updated`,
-            kind: 'estimate_updated',
-            title,
-            body,
-            entityType: 'estimate',
-            entityId,
-            href: `/buy/orders?tab=enquiries&highlight=${entityId}`,
-            readAt: null,
-            createdAt: (record.updated_at as string) ?? new Date().toISOString(),
-          });
-          setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'updated'));
-          onRefreshRef.current?.();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'app', table: 'invoices', filter: `buyer_id=eq.${buyerId}` },
-        (payload) => {
-          const record = payload.new as Record<string, unknown>;
-          const entityId = record.id as string;
-          const invoiceNumber = (record.invoice_number as string | null) ?? '';
-          const isInsert = payload.eventType === 'INSERT';
-          const total = Number(record.total_amount ?? 0);
-          onNewRef.current({
-            id: `${entityId}_invoice_${isInsert ? 'new' : 'updated'}_${record.updated_at as string}`,
-            kind: 'invoice_updated',
-            title: `Invoice ${isInsert ? 'issued' : 'updated'} · ${invoiceNumber}`,
-            body: formatNumberValue(total, 'CURRENCY_EXACT'),
-            entityType: 'invoice',
-            entityId,
-            href: `/buy/orders?tab=invoices&highlight=${entityId}`,
-            readAt: null,
-            createdAt: (record.updated_at as string) ?? new Date().toISOString(),
-          });
-          setUpdatedEntityIds((prev) => new Map(prev).set(entityId, isInsert ? 'new' : 'updated'));
-          onRefreshRef.current?.();
+          const row = payload.new as {
+            entity_type: string;
+            event_type: string;
+            buyer_id: string | null;
+            payload: Record<string, unknown>;
+            old_payload: Record<string, unknown> | null;
+          };
+          const record = row.payload;
+          const isUpdate = row.event_type === 'update';
+
+          if (row.entity_type === 'campaigns') {
+            const catalog = record as unknown as CatalogRecord;
+            if (catalog.status !== 'published') return;
+            if (!isBuyerInScope(catalog, buyerId, buyerCohortIds)) return;
+            const entityId = catalog.id;
+            onNewRef.current({
+              id: `${entityId}_new_catalog_${catalog.updated_at}`,
+              kind: 'new_catalog',
+              title: `New catalog: ${catalog.name}`,
+              body: 'Tap to browse products',
+              entityType: 'catalog',
+              entityId,
+              href: `/buy/catalog?share_token=${encodeURIComponent(catalog.share_token)}`,
+              readAt: null,
+              createdAt: catalog.updated_at,
+            });
+            setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'new'));
+            onRefreshRef.current?.();
+            return;
+          }
+
+          if (row.buyer_id !== buyerId) return;
+
+          if (row.entity_type === 'orders' && isUpdate) {
+            const entityId = record.id as string;
+            const orderNumber = (record.order_number as string | null) ?? '';
+            const status = (record.status as string) ?? '';
+            onNewRef.current({
+              id: `${entityId}_order_updated_${record.updated_at as string}`,
+              kind: 'order_updated',
+              title: `Order updated · ${orderNumber}`,
+              body: `Status: ${status}`,
+              entityType: 'order',
+              entityId,
+              href: `/buy/orders?highlight=${entityId}`,
+              readAt: null,
+              createdAt: (record.updated_at as string) ?? new Date().toISOString(),
+            });
+            setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'updated'));
+            onRefreshRef.current?.();
+            return;
+          }
+
+          if (row.entity_type === 'estimates' && isUpdate) {
+            const previous = row.old_payload ?? undefined;
+            if (!didEstimateNotificationFieldsChange(record, previous)) return;
+            const entityId = record.id as string;
+            const estimateNumber = (record.estimate_number as string | null) ?? '';
+            const status = (record.status as string) ?? '';
+            const eventKey = `estimate:${entityId}:${estimateNumber}:${status}`;
+            if (!shouldProcessBuyerRealtimeEvent(eventKey)) return;
+            const title = `Estimate updated · ${estimateNumber}`;
+            const body = `Status: ${status}`;
+            onPatchRef.current?.('estimate', entityId, { title, body });
+            onNewRef.current({
+              id: `${entityId}_estimate_updated`,
+              kind: 'estimate_updated',
+              title,
+              body,
+              entityType: 'estimate',
+              entityId,
+              href: `/buy/orders?tab=enquiries&highlight=${entityId}`,
+              readAt: null,
+              createdAt: (record.updated_at as string) ?? new Date().toISOString(),
+            });
+            setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'updated'));
+            onRefreshRef.current?.();
+            return;
+          }
+
+          if (row.entity_type === 'invoices') {
+            const entityId = record.id as string;
+            const invoiceNumber = (record.invoice_number as string | null) ?? '';
+            const isInsert = !isUpdate;
+            const total = Number(record.total_amount ?? 0);
+            onNewRef.current({
+              id: `${entityId}_invoice_${isInsert ? 'new' : 'updated'}_${record.updated_at as string}`,
+              kind: 'invoice_updated',
+              title: `Invoice ${isInsert ? 'issued' : 'updated'} · ${invoiceNumber}`,
+              body: formatNumberValue(total, 'CURRENCY_EXACT'),
+              entityType: 'invoice',
+              entityId,
+              href: `/buy/orders?tab=invoices&highlight=${entityId}`,
+              readAt: null,
+              createdAt: (record.updated_at as string) ?? new Date().toISOString(),
+            });
+            setUpdatedEntityIds((prev) => new Map(prev).set(entityId, isInsert ? 'new' : 'updated'));
+            onRefreshRef.current?.();
+          }
         },
       )
       .subscribe();

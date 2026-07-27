@@ -1,38 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
-  if (!token) {
+  // Fast path reads middleware-verified JWT claims (no Auth network call); only falls
+  // back to a live auth.getUser() + RPC round-trip when the claims are incomplete
+  // (e.g. hook not configured yet) — same pattern already used elsewhere (team/members).
+  const claims = await getVerifiedClaims(request);
+  if (!claims.sub) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !user) {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
   }
 
   if (!supabaseAdmin) {
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
-  const { data: rows, error: rpcError } = await supabaseAdmin.rpc('get_user_workspace', {
-    p_user_id: user.id,
-  });
+  let tenantId = claims.tenant_id;
+  let workspaceRole = claims.role;
+  let workspaceType: string | null = tenantId ? (claims.buyer_id ? 'buyer' : 'seller') : null;
+  let workspaceTenantName: string | null = null;
+  let workspaceTenantSlug: string | null = null;
 
-  if (rpcError || !rows || (rows as unknown[]).length === 0) {
-    return NextResponse.json({ error: 'No workspace found' }, { status: 404 });
+  if (!tenantId) {
+    const { data: rows, error: rpcError } = await supabaseAdmin.rpc('get_user_workspace', {
+      p_user_id: claims.sub,
+    });
+
+    if (rpcError || !rows || (rows as unknown[]).length === 0) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const workspace = (rows as any[])[0];
+    if (!workspace?.tenant_id) {
+      return NextResponse.json({ error: 'No tenant associated with this account' }, { status: 404 });
+    }
+
+    tenantId = workspace.tenant_id as string;
+    workspaceRole = workspace.role as string;
+    workspaceType = workspace.workspace_type as string;
+    workspaceTenantName = workspace.tenant_name as string | null;
+    workspaceTenantSlug = workspace.tenant_slug as string | null;
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const workspace = (rows as any[])[0];
-  if (!workspace?.tenant_id) {
-    return NextResponse.json({ error: 'No tenant associated with this account' }, { status: 404 });
-  }
-
-  const tenantId = workspace.tenant_id as string;
 
   const [{ data: tRow }, { data: tsRow }] = await Promise.all([
     supabaseAdmin
@@ -53,11 +63,11 @@ export async function GET(request: NextRequest) {
 
   const tenant = {
     id: tenantId,
-    slug: (workspace.tenant_slug ?? tenantId) as string,
-    business_name: ((workspace.tenant_name as string | undefined) ??
+    slug: (workspaceTenantSlug ?? tenantId) as string,
+    business_name: (workspaceTenantName ??
       (tRow?.business_name as string | undefined) ??
       'My Business') as string,
-    subdomain: `${workspace.tenant_slug ?? tenantId}.yukti.so`,
+    subdomain: `${workspaceTenantSlug ?? tenantId}.yukti.so`,
     plan: plan as 'starter' | 'growth' | 'scale',
     gstin: (tRow?.gstin as string | null | undefined) ?? null,
     primary_state: (tRow?.primary_state as string | null | undefined) ?? null,
@@ -68,7 +78,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     tenant,
-    role: workspace.role as string,
-    workspace_type: workspace.workspace_type as string,
+    role: workspaceRole,
+    workspace_type: workspaceType,
   }, { headers: SELLER_CACHE_PERSONAL });
 }

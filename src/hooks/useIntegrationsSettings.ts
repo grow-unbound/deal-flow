@@ -4,8 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
 
-import { supabase } from '@/lib/supabase';
-
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
@@ -842,7 +840,9 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     retry: transientQueryRetry,
   });
 
-  // Realtime: invalidate query whenever any active sync job updates
+  // integration_sync_jobs realtime was decommissioned (Realtime consolidated onto a
+  // single app.realtime_notifications table this backend-only job table was never
+  // part of) — poll instead while any integration has an active job.
   const activeIntegrationIds = (query.data?.integrations ?? [])
     .map((i) => (i.tenant_integration?.active_job ? i.tenant_integration.id : null))
     .filter((id): id is string => Boolean(id));
@@ -850,20 +850,11 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
   useEffect(() => {
     if (activeIntegrationIds.length === 0) return;
 
-    const channels = activeIntegrationIds.map((tiId) =>
-      supabase
-        .channel(`sync-job-main-${tiId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'app', table: 'integration_sync_jobs', filter: `tenant_integration_id=eq.${tiId}` },
-          () => { void queryClient.invalidateQueries({ queryKey }); },
-        )
-        .subscribe(),
-    );
+    const interval = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey });
+    }, 4000);
 
-    return () => {
-      channels.forEach((ch) => supabase.removeChannel(ch));
-    };
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIntegrationIds.join(','), queryClient]);
 

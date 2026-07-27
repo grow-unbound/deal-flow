@@ -11,7 +11,7 @@ export interface NumberFormatOptions {
   fallback?: string;
 }
 
-const DEFAULT_THRESHOLD = 10_000;
+const DEFAULT_THRESHOLD = 1_000_000_000;
 const DEFAULT_FALLBACK = '—';
 
 const inrWholeFormatter = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });

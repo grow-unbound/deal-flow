@@ -13,18 +13,6 @@ interface UseSellerRealtimeOptions {
   onPatch?: (entityType: AppNotification['entityType'], entityId: string, patch: Pick<AppNotification, 'title' | 'body'>) => void;
 }
 
-interface BroadcastRecord {
-  id: string;
-  name: string;
-  status: string;
-  actual_recipient_count: number | null;
-  estimated_recipient_count: number | null;
-  sent_count: number | null;
-  delivered_count: number | null;
-  failed_count: number | null;
-  updated_at: string;
-}
-
 type LinkedNumberTable = 'estimates' | 'orders';
 
 interface TransactionRecord {
@@ -52,26 +40,6 @@ interface InvoiceRecord extends TransactionRecord {
 
 interface LocationScopedRecord {
   location_id: string | null;
-}
-
-function toBroadcastRecord(record: Record<string, unknown>): BroadcastRecord | null {
-  const id = typeof record.id === 'string' ? record.id : null;
-  const name = typeof record.name === 'string' ? record.name : null;
-  const status = typeof record.status === 'string' ? record.status : null;
-  const updatedAt = typeof record.updated_at === 'string' ? record.updated_at : new Date().toISOString();
-  if (!id || !name || !status) return null;
-
-  return {
-    id,
-    name,
-    status,
-    actual_recipient_count: typeof record.actual_recipient_count === 'number' ? record.actual_recipient_count : null,
-    estimated_recipient_count: typeof record.estimated_recipient_count === 'number' ? record.estimated_recipient_count : null,
-    sent_count: typeof record.sent_count === 'number' ? record.sent_count : null,
-    delivered_count: typeof record.delivered_count === 'number' ? record.delivered_count : null,
-    failed_count: typeof record.failed_count === 'number' ? record.failed_count : null,
-    updated_at: updatedAt,
-  };
 }
 
 function passesLocationFilter(
@@ -168,32 +136,6 @@ function numberBecameAvailable(
   return Boolean(newNumber && oldNumber !== newNumber);
 }
 
-function buildBroadcastProgress(record: BroadcastRecord) {
-  const total = record.actual_recipient_count ?? record.estimated_recipient_count ?? 0;
-  const sent = record.sent_count ?? 0;
-  const delivered = record.delivered_count ?? 0;
-  const failed = record.failed_count ?? 0;
-
-  if (delivered > 0) return `${delivered}/${total} delivered`;
-  if (sent > 0) return `${sent}/${total} sent`;
-  if (failed > 0) return `${failed}/${total} failed`;
-  if (record.status === 'scheduled') return 'Scheduled';
-  return total > 0 ? `0/${total} queued` : 'Queued';
-}
-
-function buildBroadcastNotification(record: BroadcastRecord): AppNotification {
-  return {
-    id: `broadcast:${record.id}`,
-    kind: 'broadcast_updated',
-    title: `Broadcast update · ${record.name}`,
-    body: buildBroadcastProgress(record),
-    entityType: 'broadcast',
-    entityId: record.id,
-    href: '/customers/broadcasts',
-    readAt: null,
-    createdAt: record.updated_at ?? new Date().toISOString(),
-  };
-}
 
 async function fetchLinkedNumber(
   table: LinkedNumberTable,
@@ -339,80 +281,38 @@ export function useSellerRealtime({ tenantId, locationIds, locationNamesById, on
       void queryClient.invalidateQueries({ queryKey: ['seller-dashboard'] });
     };
 
-    const handleBroadcastUpdate = (record: Record<string, unknown>) => {
-      const parsed = toBroadcastRecord(record);
-      if (!parsed) return;
-      const notification = buildBroadcastNotification(parsed);
-      if (onPatchRef.current) {
-        onPatchRef.current('broadcast', notification.entityId, {
-          title: notification.title,
-          body: notification.body,
-        });
-      }
-      onNewRef.current(notification);
-      void queryClient.invalidateQueries({ queryKey: ['whatsapp-broadcasts'] });
-    };
-
+    // Single consolidated channel — app.realtime_notifications is the only table left
+    // in the supabase_realtime publication. Each row's entity_type/event_type/payload/
+    // old_payload replace what used to be direct postgres_changes on estimates/orders/
+    // invoices/whatsapp_broadcasts; the notification-building/dedupe logic below is
+    // unchanged from before, just re-plumbed to read from payload instead of payload.new.
     const channel = supabaseBrowser
       .channel(`seller:${tenantId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'app', table: 'estimates', filter: `tenant_id=eq.${tenantId}` },
+        { event: 'INSERT', schema: 'app', table: 'realtime_notifications', filter: `tenant_id=eq.${tenantId}` },
         (payload) => {
-          handleEstimateReady(payload.new as Record<string, unknown>, false);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'estimates', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          const oldRecord = payload.old as Record<string, unknown> | undefined;
-          const newRecord = payload.new as Record<string, unknown>;
-          if (!numberBecameAvailable(oldRecord, newRecord, 'estimate_number')) return;
-          handleEstimateReady(newRecord, true);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'app', table: 'orders', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          void handleOrderReady(payload.new as Record<string, unknown>, false);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'orders', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          const oldRecord = payload.old as Record<string, unknown> | undefined;
-          const newRecord = payload.new as Record<string, unknown>;
-          if (!numberBecameAvailable(oldRecord, newRecord, 'order_number')) return;
-          void handleOrderReady(newRecord, true);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'app', table: 'invoices', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          void handleInvoiceReady(payload.new as Record<string, unknown>, false);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'invoices', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          const oldRecord = payload.old as Record<string, unknown> | undefined;
-          const newRecord = payload.new as Record<string, unknown>;
-          const oldNumber = (oldRecord?.invoice_number as string | null | undefined)?.trim() ?? '';
-          const newNumber = (newRecord.invoice_number as string | null | undefined)?.trim() ?? '';
-          if (!newNumber || oldNumber === newNumber) return;
-          void handleInvoiceReady(newRecord, true);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table: 'whatsapp_broadcasts', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          handleBroadcastUpdate(payload.new as Record<string, unknown>);
+          const row = payload.new as { entity_type: string; event_type: string; payload: Record<string, unknown>; old_payload: Record<string, unknown> | null };
+          const isUpdate = row.event_type === 'update';
+
+          if (row.entity_type === 'estimates') {
+            if (isUpdate && !numberBecameAvailable(row.old_payload ?? undefined, row.payload, 'estimate_number')) return;
+            handleEstimateReady(row.payload, isUpdate);
+            return;
+          }
+          if (row.entity_type === 'orders') {
+            if (isUpdate && !numberBecameAvailable(row.old_payload ?? undefined, row.payload, 'order_number')) return;
+            void handleOrderReady(row.payload, isUpdate);
+            return;
+          }
+          if (row.entity_type === 'invoices') {
+            if (isUpdate) {
+              const oldNumber = (row.old_payload?.invoice_number as string | null | undefined)?.trim() ?? '';
+              const newNumber = (row.payload.invoice_number as string | null | undefined)?.trim() ?? '';
+              if (!newNumber || oldNumber === newNumber) return;
+            }
+            void handleInvoiceReady(row.payload, isUpdate);
+          }
         },
       )
       .subscribe();

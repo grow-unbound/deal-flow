@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/ui/status-pill';
 import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 ;
 
@@ -123,35 +122,9 @@ export function BuyerTransactionPlacedPage({
     };
   }, [detailEndpoint, id, kind]);
 
-  useEffect(() => {
-    if (!id) return;
-
-    const table = kind === 'estimate' ? 'estimates' : 'orders';
-    const numberField = kind === 'estimate' ? 'estimate_number' : 'order_number';
-    const urlField = kind === 'estimate' ? 'estimate_url' : 'order_url';
-
-    const channel = supabaseBrowser
-      .channel(`buyer-transaction-placed:${kind}:${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'app', table, filter: `id=eq.${id}` },
-        (payload) => {
-          const record = payload.new as Record<string, unknown>;
-          const nextNumber = record[numberField] as string | null | undefined;
-          const nextUrl = (record.document_url ?? record[urlField]) as string | null | undefined;
-          if (nextNumber?.trim()) {
-            setDocumentNumber(nextNumber);
-            setDocumentStatusNote('');
-          }
-          if (nextUrl?.trim()) setDocumentUrl(nextUrl);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabaseBrowser.removeChannel(channel);
-    };
-  }, [id, kind]);
+  // Realtime subscription removed (whatsapp/document realtime consolidation) — the
+  // loadCanonicalDetail polling retry loop above already covers "wait for the
+  // number/PDF to be ready" for this page.
 
   const linkLabel = useMemo(
     () => (kind === 'estimate' ? 'View Estimate PDF' : 'View Order PDF'),

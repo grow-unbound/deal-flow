@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
     .insert({
       tenant_id: claims.tenant_id,
       user_id: inviteData.user.id,
+      email,
+      phone,
       role,
       location_ids: locationIds,
       is_active: false,

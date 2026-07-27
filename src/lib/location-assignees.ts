@@ -90,45 +90,56 @@ export async function syncLocationAssignees(
   if (desiredUsers.length === 0) return [];
 
   const now = new Date().toISOString();
-  const { data: authUsers } = await admin.auth.admin.listUsers();
-  const authByEmail = new Map<string, { id: string; email: string; user_name: string | null }>();
-  for (const user of (authUsers?.users ?? []) as Array<{
-    id: string;
-    email: string | null;
-    user_metadata?: Record<string, unknown>;
-  }>) {
-    const email = normalizeEmail(user.email ?? '');
-    if (!email) continue;
-    authByEmail.set(email, {
-      id: user.id,
-      email,
-      user_name: asString((user.user_metadata ?? {})['full_name']) ?? user.email ?? null,
-    });
-  }
+
+  // Previously fetched every user in the whole project (listUsers()) up front to check
+  // for an existing account before inviting. Invite directly instead — it's the common
+  // case (these are almost always brand-new invites) — and only fall back to a lookup
+  // (lazily, once, cached across this loop) when an invite collides with an existing
+  // account.
+  let authByEmail: Map<string, { id: string; email: string; user_name: string | null }> | null = null;
 
   const resolved: LocationAssociatedUser[] = [];
   for (const user of desiredUsers) {
-    const existingAuth = authByEmail.get(user.email);
-    let userId = existingAuth?.id ?? null;
-    let userName = user.user_name ?? existingAuth?.user_name ?? null;
+    const email = normalizeEmail(user.email);
+    let userId: string | null = null;
+    let userName = user.user_name ?? null;
 
-    if (!userId) {
-      const email = normalizeEmail(user.email);
-      const { data: inviteData, error } = await admin.auth.admin.inviteUserByEmail(email, {
-        data: {
-          tenant_id: tenantId,
-          role: 'seller_assistant',
-          full_name: user.user_name ?? user.email,
-        },
-      });
+    const { data: inviteData, error } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: {
+        tenant_id: tenantId,
+        role: 'seller_assistant',
+        full_name: user.user_name ?? user.email,
+      },
+    });
 
-      if (error || !inviteData?.user?.id) {
-        continue;
+    if (!error && inviteData?.user?.id) {
+      userId = inviteData.user.id;
+      userName = userName ?? asString((inviteData.user.user_metadata ?? {})['full_name']) ?? user.email;
+    } else if (error && /already.*(registered|exists)/i.test(error.message ?? '')) {
+      if (!authByEmail) {
+        const { data: authUsers } = await admin.auth.admin.listUsers();
+        authByEmail = new Map();
+        for (const authUser of (authUsers?.users ?? []) as Array<{
+          id: string;
+          email: string | null;
+          user_metadata?: Record<string, unknown>;
+        }>) {
+          const authEmail = normalizeEmail(authUser.email ?? '');
+          if (!authEmail) continue;
+          authByEmail.set(authEmail, {
+            id: authUser.id,
+            email: authEmail,
+            user_name: asString((authUser.user_metadata ?? {})['full_name']) ?? authUser.email ?? null,
+          });
+        }
       }
 
-      userId = inviteData.user.id;
-      userName = userName ?? user.email;
-      authByEmail.set(email, { id: userId as string, email, user_name: userName });
+      const existingAuth = authByEmail.get(email);
+      if (!existingAuth) continue;
+      userId = existingAuth.id;
+      userName = userName ?? existingAuth.user_name;
+    } else {
+      continue;
     }
 
     if (!userId) continue;
@@ -145,6 +156,7 @@ export async function syncLocationAssignees(
       await admin.schema('app').from('tenant_users').insert({
         tenant_id: tenantId,
         user_id: userId,
+        email: user.email,
         role: 'seller_assistant',
         location_ids: [locationId],
         is_active: true,
