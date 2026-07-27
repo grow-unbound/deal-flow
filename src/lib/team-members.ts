@@ -1,9 +1,9 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { getAuthUserDisplayNameMap, getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 
 type TenantMemberRow = {
   id: string;
   user_id: string;
+  full_name: string | null;
   email: string | null;
   phone: string | null;
   role: 'seller_admin' | 'seller_assistant';
@@ -45,7 +45,7 @@ export async function getTenantMemberDirectory(tenantId: string): Promise<Tenant
   const { data: rows, error } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id, user_id, email, phone, role, location_ids, is_active, invited_at, joined_at')
+    .select('id, user_id, full_name, email, phone, role, location_ids, is_active, invited_at, joined_at')
     .eq('tenant_id', tenantId);
 
   if (error) {
@@ -53,24 +53,12 @@ export async function getTenantMemberDirectory(tenantId: string): Promise<Tenant
   }
 
   const memberRows = (rows ?? []) as TenantMemberRow[];
-  const userIds = memberRows.map((row) => row.user_id);
-  const missingEmailIds = memberRows.filter((row) => !row.email).map((row) => row.user_id);
-
-  // email/phone are domain-owned on tenant_users now — only full_name still needs
-  // Auth (tenant_users has no full_name column). Rows without a persisted email yet
-  // (created before the column existed) fall back to Auth for that one field. Both
-  // helpers below are TTL-cached, so repeated loads of this same roster (team page,
-  // then an invite/edit re-checking uniqueness) don't re-hit Auth every time.
-  const [displayNameMap, fallbackEmailMap] = await Promise.all([
-    getAuthUserDisplayNameMap(userIds),
-    missingEmailIds.length > 0 ? getAuthUserEmailMap(missingEmailIds) : Promise.resolve(new Map<string, string>()),
-  ]);
 
   return memberRows.map((row) => ({
     id: row.id,
     user_id: row.user_id,
-    email: row.email ?? fallbackEmailMap.get(row.user_id) ?? '',
-    full_name: displayNameMap.get(row.user_id) ?? null,
+    email: row.email ?? '',
+    full_name: row.full_name ?? null,
     phone: row.phone ?? null,
     role: row.role,
     location_ids: row.location_ids ?? null,

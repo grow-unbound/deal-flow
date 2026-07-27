@@ -156,6 +156,7 @@ export async function syncLocationAssignees(
       await admin.schema('app').from('tenant_users').insert({
         tenant_id: tenantId,
         user_id: userId,
+        full_name: userName,
         email: user.email,
         role: 'seller_assistant',
         location_ids: [locationId],
@@ -171,6 +172,7 @@ export async function syncLocationAssignees(
         : [];
       if (!currentLocations.includes(locationId)) {
         await admin.schema('app').from('tenant_users').update({
+          full_name: userName,
           location_ids: [...currentLocations, locationId],
           updated_at: now,
           updated_by: actorId,

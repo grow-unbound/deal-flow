@@ -20,6 +20,9 @@ export interface LoginOtpCandidate extends LoginOtpContext {
   phone: string;
   business_name: string;
   contact_name: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  membership_id?: string | null;
 }
 
 // Legacy aliases — kept for callers that haven't been migrated yet

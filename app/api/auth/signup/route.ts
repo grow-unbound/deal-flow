@@ -129,6 +129,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       p_initial_settings: initialSettings,
       p_user_email: email,
       p_user_phone: phone ?? null,
+      p_user_full_name: full_name ?? null,
     });
 
   if (rpcError) {

@@ -3,9 +3,14 @@
  * Mocks supabaseAdmin and verifies insert / update / resend behaviour.
  */
 
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 type TenantUsersRow = {
   id: string;
   user_id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
   role: 'seller_admin' | 'seller_assistant';
   location_ids?: string[] | null;
   is_active: boolean;
@@ -13,61 +18,65 @@ type TenantUsersRow = {
   joined_at: string | null;
 };
 
-const mockInsert = jest.fn();
-const mockUpdate = jest.fn();
-const mockSelect = jest.fn();
+const mockInsert = vi.fn();
+const mockUpdate = vi.fn();
+const mockSelect = vi.fn();
 
-const mockListUsers = jest.fn();
-const mockInviteUserByEmail = jest.fn();
-const mockGetUserById = jest.fn();
-const mockUpdateUserById = jest.fn();
-const mockGetUser = jest.fn();
+const mockUpdateUserById = vi.fn();
+const mockGetRouteUser = vi.fn();
+const mockEnsureSellerAuthIdentity = vi.fn();
+const mockSendSellerTeamActivationInvite = vi.fn();
 
 const supabaseAdminMock = {
   auth: {
     admin: {
-      listUsers: mockListUsers,
-      inviteUserByEmail: mockInviteUserByEmail,
-      getUserById: mockGetUserById,
       updateUserById: mockUpdateUserById,
     },
   },
-  schema: jest.fn(() => ({
-    from: jest.fn(() => ({
+  schema: vi.fn(() => ({
+    from: vi.fn(() => ({
       select: mockSelect,
       insert: mockInsert,
       update: mockUpdate,
-      delete: jest.fn(),
+      delete: vi.fn(),
     })),
   })),
 };
 
-const supabaseMock = {
-  auth: {
-    getUser: mockGetUser,
-  },
-};
-
-jest.mock('../../lib/supabase', () => ({
+vi.mock('../../lib/supabase', () => ({
   get supabaseAdmin() {
     return supabaseAdminMock;
   },
-  get supabase() {
-    return supabaseMock;
-  },
 }));
 
-jest.mock('../../lib/flags', () => ({
-  getFlag: jest.fn().mockResolvedValue(true),
+vi.mock('../../lib/flags', () => ({
+  getFlag: vi.fn().mockResolvedValue(true),
 }));
 
-jest.mock('../../lib/posthog-server', () => ({
-  getPostHogClient: () => ({ isFeatureEnabled: jest.fn().mockResolvedValue(true) }),
+vi.mock('../../lib/posthog-server', () => ({
+  getPostHogClient: () => ({ isFeatureEnabled: vi.fn().mockResolvedValue(true) }),
+}));
+
+vi.mock('../../lib/server/seller-team-activation', () => ({
+  ensureSellerAuthIdentity: (...args: unknown[]) => mockEnsureSellerAuthIdentity(...args),
+  sendSellerTeamActivationInvite: (...args: unknown[]) => mockSendSellerTeamActivationInvite(...args),
+}));
+
+vi.mock('@supabase/auth-helpers-nextjs', () => ({
+  createRouteHandlerClient: vi.fn(() => ({
+    auth: {
+      getUser: mockGetRouteUser,
+    },
+  })),
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({})),
 }));
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}) {
   return {
-    json: jest.fn().mockResolvedValue(body),
+    json: vi.fn().mockResolvedValue(body),
     headers: {
       get: (key: string) =>
         ({
@@ -82,16 +91,27 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}) {
 
 function mockDirectoryQuery(rows: TenantUsersRow[]) {
   mockSelect.mockImplementationOnce(() => ({
-    eq: jest.fn().mockResolvedValue({ data: rows, error: null }),
+    eq: vi.fn().mockResolvedValue({ data: rows, error: null }),
+  }));
+}
+
+function mockTenantLookup(businessName: string) {
+  mockSelect.mockImplementationOnce(() => ({
+    eq: vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { business_name: businessName },
+        error: null,
+      }),
+    }),
   }));
 }
 
 function mockMemberLookup(row: TenantUsersRow | null) {
   mockSelect.mockImplementationOnce(() => ({
-    eq: jest.fn().mockReturnValue({
-      eq: jest.fn().mockReturnValue({
-        single: jest.fn().mockResolvedValue({ data: row, error: row ? null : { message: 'not found' } }),
-        maybeSingle: jest.fn().mockResolvedValue({ data: row, error: row ? null : { message: 'not found' } }),
+    eq: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({ data: row, error: row ? null : { message: 'not found' } }),
+        maybeSingle: vi.fn().mockResolvedValue({ data: row, error: row ? null : { message: 'not found' } }),
       }),
     }),
   }));
@@ -103,9 +123,9 @@ function mockInsertChain() {
 
 function mockLocationValidation(ids: string[]) {
   mockSelect.mockImplementationOnce(() => ({
-    eq: jest.fn().mockReturnValue({
-      is: jest.fn().mockReturnValue({
-        in: jest.fn().mockResolvedValue({
+    eq: vi.fn().mockReturnValue({
+      is: vi.fn().mockReturnValue({
+        in: vi.fn().mockResolvedValue({
           data: ids.map((id) => ({ id })),
           error: null,
         }),
@@ -116,24 +136,21 @@ function mockLocationValidation(ids: string[]) {
 
 describe('POST /api/team/invite', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('inserts a tenant_users row with invited metadata on successful invite', async () => {
-    mockListUsers.mockResolvedValue({ data: { users: [] } });
     mockDirectoryQuery([]);
     mockLocationValidation(['loc-1']);
-    mockInsertChain();
-    mockInviteUserByEmail.mockResolvedValue({
-      data: { user: { id: 'new-user-id', email: 'newuser@example.com' } },
-      error: null,
-    });
+    mockEnsureSellerAuthIdentity.mockResolvedValue({ userId: 'new-user-id' });
+    mockSendSellerTeamActivationInvite.mockResolvedValue(undefined);
 
     let insertedData: unknown = null;
     mockInsert.mockImplementationOnce((data) => {
       insertedData = data;
       return Promise.resolve({ error: null });
     });
+    mockTenantLookup('Acme Traders');
 
     const { POST } = await import('../../../app/api/team/invite/route');
     const req = makeRequest({
@@ -146,21 +163,24 @@ describe('POST /api/team/invite', () => {
     const res = await POST(req as unknown as import('next/server').NextRequest);
 
     expect(res.status).toBe(201);
-    expect(mockInviteUserByEmail).toHaveBeenCalledWith(
-      'newuser@example.com',
-      expect.objectContaining({
-        data: {
-          tenant_id: 'tenant-abc',
-          role: 'seller_assistant',
-          full_name: 'New User',
-          phone: '9876543210',
-          location_ids: ['loc-1'],
-        },
-      }),
-    );
+    expect(mockEnsureSellerAuthIdentity).toHaveBeenCalledWith({
+      email: 'newuser@example.com',
+      fullName: 'New User',
+      phone: '9876543210',
+      tenantId: 'tenant-abc',
+    });
+    expect(mockSendSellerTeamActivationInvite).toHaveBeenCalledWith({
+      tenantId: 'tenant-abc',
+      tenantName: 'Acme Traders',
+      fullName: 'New User',
+      phone: '9876543210',
+    });
     expect(insertedData).toMatchObject({
       tenant_id: 'tenant-abc',
       user_id: 'new-user-id',
+      full_name: 'New User',
+      email: 'newuser@example.com',
+      phone: '9876543210',
       role: 'seller_assistant',
       location_ids: ['loc-1'],
       is_active: false,
@@ -169,13 +189,12 @@ describe('POST /api/team/invite', () => {
   });
 
   it('returns 409 when email is already used within the tenant', async () => {
-    mockListUsers.mockResolvedValue({
-      data: { users: [{ id: 'existing-user', email: 'active@example.com', user_metadata: { phone: '9876543210' } }] },
-    });
     mockDirectoryQuery([
       {
         id: 'row-id',
         user_id: 'existing-user',
+        email: 'active@example.com',
+        phone: '9876543210',
         role: 'seller_admin',
         is_active: true,
         invited_at: null,
@@ -199,17 +218,12 @@ describe('POST /api/team/invite', () => {
   });
 
   it('returns 409 when phone number is already used within the tenant', async () => {
-    mockListUsers.mockResolvedValue({
-      data: {
-        users: [
-          { id: 'existing-user', email: 'someone@company.com', user_metadata: { phone: '9876543210' } },
-        ],
-      },
-    });
     mockDirectoryQuery([
       {
         id: 'row-id',
         user_id: 'existing-user',
+        email: 'someone@company.com',
+        phone: '9876543210',
         role: 'seller_admin',
         is_active: true,
         invited_at: null,
@@ -234,7 +248,7 @@ describe('POST /api/team/invite', () => {
 
   it('returns the feature flag error when onboarding is disabled', async () => {
     const flags = await import('../../lib/flags');
-    (flags.getFlag as jest.Mock).mockResolvedValueOnce(false);
+    vi.mocked(flags.getFlag).mockResolvedValueOnce(false);
 
     const { POST } = await import('../../../app/api/team/invite/route');
     const req = makeRequest({
@@ -269,7 +283,7 @@ describe('POST /api/team/invite', () => {
 
 describe('PUT /api/team/members/[id]', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('updates the auth profile and tenant role', async () => {
@@ -282,7 +296,6 @@ describe('PUT /api/team/members/[id]', () => {
       invited_at: null,
       joined_at: null,
     });
-    mockListUsers.mockResolvedValue({ data: { users: [] } });
     mockDirectoryQuery([]);
     mockLocationValidation(['loc-2']);
     mockUpdateUserById.mockResolvedValue({ error: null });
@@ -291,8 +304,8 @@ describe('PUT /api/team/members/[id]', () => {
     mockUpdate.mockImplementationOnce((data) => {
       updatedData = data;
       return {
-        eq: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ error: null }),
+        eq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
         }),
       };
     });
@@ -306,7 +319,7 @@ describe('PUT /api/team/members/[id]', () => {
       location_ids: null,
     });
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
-      params: { id: 'row-id' },
+      params: Promise.resolve({ id: 'row-id' }),
     });
 
     expect(res.status).toBe(200);
@@ -324,32 +337,54 @@ describe('PUT /api/team/members/[id]', () => {
   });
 
   it('returns 409 on duplicate email or phone in the tenant', async () => {
-    mockMemberLookup({
-      id: 'row-id',
-      user_id: 'user-xyz',
-      role: 'seller_assistant',
-      location_ids: ['loc-1'],
-      is_active: true,
-      invited_at: null,
-      joined_at: null,
-    });
-    mockDirectoryQuery([
-      {
-        id: 'other-row',
-        user_id: 'other-user',
-        role: 'seller_admin',
-        is_active: true,
-        invited_at: null,
-        joined_at: null,
-      },
-    ]);
+    const tenantUsersQb = {
+      select: vi.fn().mockImplementation((columns?: string) => {
+        if (columns?.includes('id, user_id, role, location_ids, is_active')) {
+          return {
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    id: 'row-id',
+                    user_id: 'user-xyz',
+                    role: 'seller_assistant',
+                    location_ids: ['loc-1'],
+                    is_active: true,
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
 
-    mockListUsers.mockResolvedValue({
-      data: {
-        users: [
-          { id: 'other-user', email: 'updated@example.com', user_metadata: { phone: '9123456780' } },
-        ],
-      },
+        return {
+          eq: vi.fn().mockResolvedValue({
+            data: [
+              {
+                id: 'other-row',
+                user_id: 'other-user',
+                email: 'updated@example.com',
+                phone: '9123456780',
+                role: 'seller_admin',
+                is_active: true,
+                invited_at: null,
+                joined_at: null,
+              },
+            ],
+            error: null,
+          }),
+        };
+      }),
+    };
+    supabaseAdminMock.schema.mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'tenant_users') {
+          return tenantUsersQb;
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
     });
 
     const { PUT } = await import('../../../app/api/team/members/[id]/route');
@@ -361,7 +396,7 @@ describe('PUT /api/team/members/[id]', () => {
       location_ids: null,
     });
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
-      params: { id: 'row-id' },
+      params: Promise.resolve({ id: 'row-id' }),
     });
 
     expect(res.status).toBe(409);
@@ -390,7 +425,7 @@ describe('PUT /api/team/members/[id]', () => {
       location_ids: [],
     });
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
-      params: { id: 'row-id' },
+      params: Promise.resolve({ id: 'row-id' }),
     });
 
     expect(res.status).toBe(400);
@@ -399,27 +434,27 @@ describe('PUT /api/team/members/[id]', () => {
 
 describe('POST /api/auth/accept-invite', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('sets is_active = true and joined_at when pending row found', async () => {
-    mockGetUser.mockResolvedValue({
+    mockGetRouteUser.mockResolvedValue({
       data: { user: { id: 'user-xyz' } },
       error: null,
     });
 
     const qb = {
-      select: jest.fn().mockReturnThis(),
-      update: jest.fn().mockImplementation((data) => {
-        return { eq: jest.fn().mockReturnThis() };
+      select: vi.fn().mockReturnThis(),
+      update: vi.fn().mockImplementation((data) => {
+        return { eq: vi.fn().mockReturnThis() };
       }),
-      eq: jest.fn().mockReturnThis(),
-      maybeSingle: jest.fn().mockResolvedValue({
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
         data: { id: 'row-id', tenant_id: 'tenant-abc', role: 'seller_assistant' },
         error: null,
       }),
     };
-    supabaseAdminMock.schema.mockReturnValue({ from: jest.fn().mockReturnValue(qb) });
+    supabaseAdminMock.schema.mockReturnValue({ from: vi.fn().mockReturnValue(qb) });
 
     const { POST } = await import('../../../app/api/auth/accept-invite/route');
     const res = await POST({} as import('next/server').NextRequest);
@@ -430,45 +465,61 @@ describe('POST /api/auth/accept-invite', () => {
 
 describe('PUT /api/team/members/[id]/resend-invite', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
-  it('calls inviteUserByEmail again and updates invited_at', async () => {
-    mockGetUserById.mockResolvedValue({
-      data: { user: { email: 'pending@example.com' } },
-      error: null,
-    });
-    mockInviteUserByEmail.mockResolvedValue({ error: null });
+  it('resends the WhatsApp invite and updates invited_at', async () => {
+    mockSendSellerTeamActivationInvite.mockResolvedValue(undefined);
 
     let updatedData: unknown = null;
-    const qb = {
-      select: jest.fn().mockReturnThis(),
-      update: jest.fn().mockImplementation((data) => {
+    const tenantUsersQb = {
+      select: vi.fn().mockReturnThis(),
+      update: vi.fn().mockImplementation((data) => {
         updatedData = data;
-        return { eq: jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) }) };
+        return { eq: vi.fn().mockResolvedValue({ error: null }) };
       }),
-      eq: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: 'row-id', user_id: 'user-xyz', is_active: false, role: 'seller_assistant' },
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: {
+              id: 'row-id',
+              user_id: 'user-xyz',
+              is_active: false,
+              role: 'seller_assistant',
+              full_name: 'Pending User',
+              phone: '9876543210',
+            },
             error: null,
           }),
         }),
       }),
     };
-    supabaseAdminMock.schema.mockReturnValue({ from: jest.fn().mockReturnValue(qb) });
+    const tenantsQb = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { business_name: 'Acme Traders' },
+          error: null,
+        }),
+      }),
+    };
+    supabaseAdminMock.schema.mockReturnValue({
+      from: vi.fn((table: string) => (table === 'tenant_users' ? tenantUsersQb : tenantsQb)),
+    });
 
     const { PUT } = await import('../../../app/api/team/members/[id]/resend-invite/route');
     const req = makeRequest(null);
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
-      params: { id: 'row-id' },
+      params: Promise.resolve({ id: 'row-id' }),
     });
 
     expect(res.status).toBe(200);
-    expect(mockInviteUserByEmail).toHaveBeenCalledWith(
-      'pending@example.com',
-      expect.objectContaining({ redirectTo: expect.stringContaining('/accept-invite') }),
-    );
+    expect(mockSendSellerTeamActivationInvite).toHaveBeenCalledWith({
+      tenantId: 'tenant-abc',
+      tenantName: 'Acme Traders',
+      fullName: 'Pending User',
+      phone: '9876543210',
+    });
     expect(updatedData).toHaveProperty('invited_at');
   });
 });

@@ -1,12 +1,15 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import type { Database } from '@/types/database';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(_request: NextRequest) {
-  // The user is authenticated at this point (Supabase magic link confirmed)
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: async () => cookieStore,
+  });
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -31,7 +34,7 @@ export async function POST(_request: NextRequest) {
   }
 
   if (!pendingRow) {
-    return NextResponse.json({ error: 'No pending invite found' }, { status: 404 });
+    return NextResponse.json({ success: true }, { status: 200 });
   }
 
   const { error: updateError } = await db
