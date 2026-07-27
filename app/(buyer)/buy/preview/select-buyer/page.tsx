@@ -111,12 +111,22 @@ export default function PreviewSelectBuyerPage() {
               const isSubmitting = submittingId === buyer.buyer_id;
 
               return (
-                <button
+                <div
                   key={buyer.buyer_id}
-                  type="button"
-                  disabled={Boolean(submittingId)}
-                  onClick={() => void handleSelect(buyer.buyer_id)}
-                  className="flex w-full items-center justify-between rounded-[12px] border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-cream-50 disabled:opacity-60"
+                  role="button"
+                  tabIndex={submittingId ? -1 : 0}
+                  aria-disabled={Boolean(submittingId)}
+                  onClick={() => {
+                    if (!submittingId) void handleSelect(buyer.buyer_id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (submittingId) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      void handleSelect(buyer.buyer_id);
+                    }
+                  }}
+                  className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-cream-50 aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:pointer-events-none"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-cream-900">{label}</p>
@@ -125,10 +135,10 @@ export default function PreviewSelectBuyerPage() {
                       <p className="mt-1 text-[11px] text-cream-500">Buyer app access off (preview only)</p>
                     ) : null}
                   </div>
-                  <Button type="button" size="sm" disabled={isSubmitting} className="ml-3 shrink-0">
+                  <Button type="button" size="sm" disabled={isSubmitting} className="ml-3 shrink-0" tabIndex={-1}>
                     {isSubmitting ? 'Opening…' : 'Open'}
                   </Button>
-                </button>
+                </div>
               );
             })
           )}

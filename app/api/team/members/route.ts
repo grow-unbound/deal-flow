@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getTenantMemberDirectory } from '@/lib/team-members';
 import type { TeamMember } from '@/types/team';
 
 export type { TeamMember };
@@ -29,77 +30,39 @@ export async function GET(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
-  const { data: rows, error } = await db
-    .schema('app')
-    .from('tenant_users')
-    .select('id, user_id, role, location_ids, is_active, invited_at, joined_at')
-    .eq('tenant_id', claims.tenant_id)
-    .order('invited_at', { ascending: false });
 
-  if (error) {
-    return NextResponse.json({ error: 'Failed to fetch team members' }, { status: 500 });
-  }
+  const [directory, locationsRes] = await Promise.all([
+    getTenantMemberDirectory(claims.tenant_id),
+    db
+      .schema('app')
+      .from('locations')
+      .select('id, name, deleted_at')
+      .eq('tenant_id', claims.tenant_id),
+  ]);
 
-  // Fetch auth user details for all user_ids
-  const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-  const { data: locationRows, error: locationsError } = await db
-    .schema('app')
-    .from('locations')
-    .select('id, name, deleted_at')
-    .eq('tenant_id', claims.tenant_id);
-
-  if (locationsError) {
+  if (locationsRes.error) {
     return NextResponse.json({ error: 'Failed to fetch location assignments' }, { status: 500 });
   }
 
-  const authMap = new Map(
-    (authUsers?.users ?? []).map((u) => [
-      u.id,
-      {
-        email: u.email ?? '',
-        full_name: (u.user_metadata?.full_name as string) ?? null,
-        phone: (u.user_metadata?.phone as string) ?? u.phone ?? null,
-      },
-    ]),
-  );
   const locationMap = new Map(
-    ((locationRows ?? []) as Array<{ id: string; name: string; deleted_at: string | null }>).map((location) => [
+    ((locationsRes.data ?? []) as Array<{ id: string; name: string; deleted_at: string | null }>).map((location) => [
       location.id,
       location,
     ]),
   );
 
-  const members: TeamMember[] = (rows ?? []).map(
-    (row: {
-      id: string;
-      user_id: string;
-      role: 'seller_admin' | 'seller_assistant';
-      location_ids: string[] | null;
-      is_active: boolean;
-      invited_at: string | null;
-      joined_at: string | null;
-    }) => {
-      const auth = authMap.get(row.user_id);
-      const status = row.is_active ? 'active' : (row.joined_at ? 'inactive' : 'pending');
+  const members: TeamMember[] = [...directory]
+    .sort((a, b) => (b.invited_at ?? '').localeCompare(a.invited_at ?? ''))
+    .map((row) => {
       const resolvedLocations = (row.location_ids ?? [])
         .map((id) => locationMap.get(id))
         .filter((location): location is { id: string; name: string; deleted_at: string | null } => Boolean(location));
 
       return {
-        id: row.id,
-        user_id: row.user_id,
-        email: auth?.email ?? '',
-        full_name: auth?.full_name ?? null,
-        phone: auth?.phone ?? null,
-        role: row.role,
-        location_ids: row.location_ids ?? null,
+        ...row,
         locations: resolvedLocations,
-        status,
-        invited_at: row.invited_at,
-        joined_at: row.joined_at,
       };
-    },
-  );
+    });
 
   return NextResponse.json({ members }, { headers: SELLER_CACHE_PERSONAL });
 }

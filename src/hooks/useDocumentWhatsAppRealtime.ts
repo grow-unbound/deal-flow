@@ -1,16 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 
 import {
   patchEstimateComposerFromRow,
-  patchEstimateComposerSentOptimistic,
   patchEstimateDetailFromRow,
-  patchEstimateSentOptimistic,
   patchInvoiceDetailFromRow,
-  patchInvoiceSentOptimistic,
   patchSalesOrderDetailFromRow,
 } from '@/lib/documents/document-detail-cache-patches';
 import { supabaseBrowser } from '@/lib/supabase-browser';
@@ -44,8 +40,6 @@ const DOCUMENT_CONFIG = {
     listQueryKeys: [['tenant-orders']] as const,
   },
 } as const;
-
-const TERMINAL_WHATSAPP_STATUSES = new Set(['sent', 'delivered', 'read', 'failed']);
 
 function invalidateDocumentListQueries(qc: QueryClient, kind: TransactionalDocumentKind) {
   const cfg = DOCUMENT_CONFIG[kind];
@@ -89,41 +83,6 @@ function patchDocumentCachesFromRow(
   }
 }
 
-function patchSentCachesFromWhatsApp(
-  qc: QueryClient,
-  kind: TransactionalDocumentKind,
-  documentId: string,
-  sentAt: string,
-) {
-  const cfg = DOCUMENT_CONFIG[kind];
-
-  if (kind === 'estimate') {
-    const detail = qc.getQueryData<TenantEstimateDetailResponse>(cfg.detailQueryKey(documentId));
-    if (detail) {
-      qc.setQueryData(
-        cfg.detailQueryKey(documentId),
-        patchEstimateSentOptimistic(detail, 'whatsapp', sentAt),
-      );
-    }
-
-    const composer = qc.getQueryData<EstimateComposerDocument>(cfg.composerQueryKey(documentId));
-    if (composer) {
-      qc.setQueryData(
-        cfg.composerQueryKey(documentId),
-        patchEstimateComposerSentOptimistic(composer, 'whatsapp', sentAt),
-      );
-    }
-    return;
-  }
-
-  if (kind === 'invoice') {
-    const detail = qc.getQueryData<InvoiceDetailResponse>(cfg.detailQueryKey(documentId));
-    if (detail) {
-      qc.setQueryData(cfg.detailQueryKey(documentId), patchInvoiceSentOptimistic(detail, sentAt));
-    }
-  }
-}
-
 function handleDocumentRowUpdate(
   qc: QueryClient,
   kind: TransactionalDocumentKind,
@@ -137,43 +96,11 @@ function handleDocumentRowUpdate(
   invalidateDocumentListQueries(qc, kind);
 }
 
-function handleWhatsAppMessageUpdate(
-  qc: QueryClient,
-  kind: TransactionalDocumentKind,
-  documentId: string,
-  tenantId: string,
-  record: Record<string, unknown>,
-  handledKeys: Set<string>,
-) {
-  if (record.tenant_id !== tenantId) return;
-  if (record.related_entity_id !== documentId) return;
-  if (record.related_entity_type !== DOCUMENT_CONFIG[kind].relatedEntityType) return;
-
-  const messageId = typeof record.id === 'string' ? record.id : null;
-  const status = typeof record.status === 'string' ? record.status : null;
-  if (!messageId || !status || !TERMINAL_WHATSAPP_STATUSES.has(status)) return;
-
-  const dedupeKey = `${messageId}:${status}`;
-  if (handledKeys.has(dedupeKey)) return;
-  handledKeys.add(dedupeKey);
-
-  if (status === 'failed') {
-    const reason = typeof record.failure_reason === 'string'
-      ? record.failure_reason
-      : 'WhatsApp send failed';
-    toast.error(reason);
-    invalidateDocumentListQueries(qc, kind);
-    return;
-  }
-
-  const sentAt = typeof record.sent_at === 'string' ? record.sent_at : new Date().toISOString();
-  if (kind === 'estimate' || kind === 'invoice') {
-    patchSentCachesFromWhatsApp(qc, kind, documentId, sentAt);
-  }
-
-  invalidateDocumentListQueries(qc, kind);
-}
-
+// WhatsApp delivery-status realtime (whatsapp_messages) was decommissioned along with
+// the rest of the whatsapp/integration realtime path — no more live "sent/delivered"
+// toast or optimistic patch here; the next manual refresh of the document shows the
+// current status. Document-row-update realtime is kept, re-plumbed onto the single
+// consolidated app.realtime_notifications table.
 export function useDocumentWhatsAppRealtime({
   kind,
   documentId,
@@ -186,51 +113,25 @@ export function useDocumentWhatsAppRealtime({
   enabled?: boolean;
 }) {
   const qc = useQueryClient();
-  const handledKeysRef = useRef(new Set<string>());
 
   useEffect(() => {
     if (!enabled || !tenantId || !documentId) return;
-
-    const cfg = DOCUMENT_CONFIG[kind];
-    const handledKeys = handledKeysRef.current;
 
     const channel = supabaseBrowser
       .channel(`document-whatsapp:${kind}:${documentId}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: 'INSERT',
           schema: 'app',
-          table: cfg.table,
-          filter: `id=eq.${documentId}`,
+          table: 'realtime_notifications',
+          filter: `tenant_id=eq.${tenantId}`,
         },
         (payload) => {
-          handleDocumentRowUpdate(
-            qc,
-            kind,
-            documentId,
-            tenantId,
-            payload.new as Record<string, unknown>,
-          );
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'app',
-          table: 'whatsapp_messages',
-          filter: `related_entity_id=eq.${documentId}`,
-        },
-        (payload) => {
-          handleWhatsAppMessageUpdate(
-            qc,
-            kind,
-            documentId,
-            tenantId,
-            payload.new as Record<string, unknown>,
-            handledKeys,
-          );
+          const row = payload.new as { entity_type: string; entity_id: string; payload: Record<string, unknown> };
+          if (row.entity_type !== DOCUMENT_CONFIG[kind].table) return;
+          if (row.entity_id !== documentId) return;
+          handleDocumentRowUpdate(qc, kind, documentId, tenantId, row.payload);
         },
       )
       .subscribe();

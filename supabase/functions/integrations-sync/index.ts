@@ -115,16 +115,10 @@ Deno.serve(async (req: Request) => {
       console.warn(`[integrations-sync] run_kind not provided, derived '${runKind}' from job_type='${jobType}'`);
     }
 
-    // Best-effort: drop sync-heavy tables from supabase_realtime for the
-    // run's duration (see app.pause_sync_realtime — the WAL-decode consumer
-    // was the single biggest cumulative DB cost during a bulk sync). Failure
-    // here must not block the sync itself; sync-coordinator resumes it on
-    // every terminal path (mark_complete/halt_failed) regardless.
-    try {
-      await admin.schema('app').rpc('pause_sync_realtime');
-    } catch (err) {
-      console.warn('[integrations-sync] pause_sync_realtime failed, continuing without it:', err);
-    }
+    // integration_sync_jobs/tenant_integrations were dropped from supabase_realtime
+    // permanently (app.pause_sync_realtime/resume_sync_realtime decommissioned) —
+    // Realtime is now consolidated onto a single app.realtime_notifications table
+    // that these two backend-only tables never needed to be part of.
 
     const masterJobId = await createMasterJob(admin, {
       tenantId: integration.tenant_id,

@@ -397,11 +397,14 @@ async function fetchSellerDashboardData(
   // count above, so the callout's own hint count and row list can never drift from the
   // "Overdue receivables" KPI tile the way the old truncated-invoices-derived version did.
   // Ordered by amount so a generous bound never drops the buyers that matter most.
+  // metrics_buyer_location_snapshot has no oldest_due_at column (only the tenant-wide
+  // metrics_buyer_snapshot tracks that) — subset mode omits it and the row simply
+  // carries oldest_due_at: null downstream.
   const overdueBuyerRowsQuery = scope.mode === 'subset'
     ? db
         .schema('app')
         .from('metrics_buyer_location_snapshot')
-        .select('buyer_id, overdue_amount, oldest_due_at')
+        .select('buyer_id, overdue_amount')
         .eq('tenant_id', tenantId)
         .in('location_id', scopedLocationIds)
         .is('deleted_at', null)
@@ -418,7 +421,58 @@ async function fetchSellerDashboardData(
         .order('overdue_amount', { ascending: false })
         .limit(500);
 
-  const [portfolioRes, invoiceLandingRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes, overdueCustomerCountRes, overdueBuyerRowsRes] = await Promise.all([
+  // Trailing-90d invoiced-customers count for the "Invoiced sales" tile's sub-label —
+  // same metrics_v2-snapshot-not-raw-table rule as the overdue queries above, and same
+  // location-scope split (assistants must only see their scoped locations' figures
+  // here too). Uses count:'exact', head:true (no rows transferred) so it isn't subject
+  // to PostgREST's default 1000-row cap the way a row-fetch-then-.length would be —
+  // that cap is exactly what silently turned this into "1000 customers" when this was
+  // first written as a plain row select.
+  // Subset mode fetches rows (a buyer can have one row per scoped location, so the
+  // distinct count needs a client-side dedupe) — 'all' mode uses a head-only exact
+  // count since there's exactly one row per buyer there, no dedupe needed.
+  const invoiceCustomerCount90dQuery = scope.mode === 'subset'
+    ? db
+        .schema('app')
+        .from('metrics_buyer_location_snapshot')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .in('location_id', scopedLocationIds)
+        .is('deleted_at', null)
+        .gt('invoice_count_90d', 0)
+        .limit(5000)
+    : db
+        .schema('app')
+        .from('metrics_buyer_snapshot')
+        .select('buyer_id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('invoice_count_90d', 0);
+
+  // GMV sum still needs actual rows (PostgREST has no server-side SUM aggregate) — this
+  // remains subject to the 1000-row cap, but it's fallback-only: the tile's rendered
+  // dollar value reads the snapshot-driven RPC's portfolio value first, this is only
+  // the default if that's missing.
+  const invoiceGmv90dQuery = scope.mode === 'subset'
+    ? db
+        .schema('app')
+        .from('metrics_buyer_location_snapshot')
+        .select('buyer_id, invoice_value_90d')
+        .eq('tenant_id', tenantId)
+        .in('location_id', scopedLocationIds)
+        .is('deleted_at', null)
+        .gt('invoice_count_90d', 0)
+        .limit(1000)
+    : db
+        .schema('app')
+        .from('metrics_buyer_snapshot')
+        .select('buyer_id, invoice_value_90d')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('invoice_count_90d', 0)
+        .limit(1000);
+
+  const [portfolioRes, invoiceLandingRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes, overdueCustomerCountRes, overdueBuyerRowsRes, invoiceCustomerCount90dRes, invoiceGmv90dRes] = await Promise.all([
     db
       .schema('app')
       .rpc('get_metrics_v2_seller_dashboard', {
@@ -445,7 +499,16 @@ async function fetchSellerDashboardData(
         .from('orders')
         .select('id, location_id, buyer_id, order_number, status, total_amount, order_date, placed_at, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+        .is('deleted_at', null)
+        // Bounded to the most recently touched rows — this feeds "recent activity"
+        // callouts (previewRows only ever shows 3 unless a specific full-callout is
+        // requested via a separate, already-bounded path) plus a fallback-only 90d
+        // GMV computation; the primary "Invoiced sales" tile reads the snapshot-driven
+        // RPC (portfolioNumber) first. Was previously unbounded — for a tenant with
+        // thousands of orders this transferred and JS-sorted the entire table on
+        // every dashboard load.
+        .order('updated_at', { ascending: false })
+        .limit(300),
       claims,
     ),
     applySellerLocationScope(
@@ -454,7 +517,9 @@ async function fetchSellerDashboardData(
         .from('estimates')
         .select('id, location_id, buyer_id, estimate_number, status, total_amount, estimate_date, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(300),
       claims,
     ),
     applySellerLocationScope(
@@ -463,7 +528,9 @@ async function fetchSellerDashboardData(
         .from('invoices')
         .select('id, location_id, buyer_id, invoice_number, status, total_amount, outstanding_balance, invoice_date, due_date, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(300),
       claims,
     ),
     db
@@ -474,10 +541,14 @@ async function fetchSellerDashboardData(
       .is('deleted_at', null),
     overdueCustomerCountQuery,
     overdueBuyerRowsQuery,
+    invoiceCustomerCount90dQuery,
+    invoiceGmv90dQuery,
   ]);
 
   if (overdueCustomerCountRes.error) throw overdueCustomerCountRes.error;
   if (overdueBuyerRowsRes.error) throw overdueBuyerRowsRes.error;
+  if (invoiceCustomerCount90dRes.error) throw invoiceCustomerCount90dRes.error;
+  if (invoiceGmv90dRes.error) throw invoiceGmv90dRes.error;
   const overdueCustomerCountAll = scope.mode === 'subset'
     ? new Set(((overdueCustomerCountRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id)).size
     : Number(overdueCustomerCountRes.count ?? 0);
@@ -527,8 +598,16 @@ async function fetchSellerDashboardData(
   // fallback/sub-label never reverts to calendar-MTD even though `period` itself is MTD.
   const ninetyDaysAgoMs = Date.now() - 90 * DAY_MS;
   const invoices90d = invoices.filter((row) => new Date(invoiceEventAt(row)).getTime() >= ninetyDaysAgoMs);
-  const invoicedCustomers90d = new Set(invoices90d.map((row) => row.buyer_id)).size;
-  const currentGmv90d = sumNumbers(invoices90d, (row) => Number(row.total_amount ?? 0));
+  // Sourced from the (scope-aware) metrics_v2 snapshot queries above rather than the
+  // now-300-capped `invoices` array — a raw-array-based count/sum here would silently
+  // undercount for any tenant with >300 invoices touched in the last 90 days.
+  const invoicedCustomers90d = scope.mode === 'subset'
+    ? new Set(((invoiceCustomerCount90dRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id)).size
+    : Number(invoiceCustomerCount90dRes.count ?? 0);
+  const currentGmv90d = sumNumbers(
+    (invoiceGmv90dRes.data ?? []) as BuyerSnapshotRow[],
+    (row) => Number(row.invoice_value_90d ?? 0),
+  );
   const overdueInvoicesAll = invoices.filter((invoice) => isInvoiceOverdue(invoice));
   const invoiceLandingKpis = ((invoiceLandingRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
     invoices_this_period: 0,

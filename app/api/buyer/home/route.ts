@@ -78,7 +78,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     // truncates YTD/open-invoice figures for any buyer with more than N invoices/year).
     const financialWindowStart = previousMonthStart < currentYearStart ? previousMonthStart : currentYearStart;
 
-    const [buyerMetricsRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes, financialInvoicesRes] = await Promise.all([
+    const [buyerMetricsRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes, financialInvoicesRes, recoRes] = await Promise.all([
       supabaseAdmin
         .schema('app')
         .from('metrics_buyer_snapshot')
@@ -132,6 +132,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .is('deleted_at', null)
         .gte('invoice_date', financialWindowStart.toISOString())
         .lt('invoice_date', nextMonthStart.toISOString()),
+      // No data dependency on anything else in this batch — only needs tenantId/buyerId.
+      // Previously fired sequentially after the order/invoice/estimate-items waterfall
+      // below, adding a full extra round-trip to every home load for no reason.
+      supabaseAdmin
+        .schema('app')
+        .rpc('reco_get_home', { p_tenant_id: tenantId, p_buyer_id: buyerId })
+        .then((res) => res, () => ({ data: null, error: new Error('reco_get_home failed') })),
     ]);
 
     const queryError =
@@ -346,13 +353,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       priceOverrides: new Map(),
     });
 
-    // Fetch recommendation data (non-blocking — empty arrays on failure)
+    // Recommendation data was fetched in parallel with the initial batch above
+    // (non-blocking — empty arrays on failure).
     let bestsellers: import('@/types/buyer').BuyerCatalogItem[] = [];
     try {
-      const recoRes = await supabaseAdmin
-        .schema('app')
-        .rpc('reco_get_home', { p_tenant_id: tenantId, p_buyer_id: buyerId });
-
       if (!recoRes.error && recoRes.data) {
         const recoData = recoRes.data as { bestsellers?: string[] };
         const bestsellerIds = (recoData.bestsellers ?? []).slice(0, 12);

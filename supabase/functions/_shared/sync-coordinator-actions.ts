@@ -601,31 +601,8 @@ export async function updateCircuitBreakerState(
   await admin.schema('app').from('tenant_integrations').update(patch).eq('id', tenantIntegrationId);
 }
 
-/**
- * Best-effort pause of realtime on sync-heavy tables — see
- * app.pause_sync_realtime. Exported for reuse by manual/standalone sync
- * entry points (e.g. sync-transaction-line-items) that bypass the
- * integrations-sync/sync-coordinator orchestration entirely and so need to
- * call this themselves.
- */
-export async function pauseSyncRealtime(admin: AdminClient): Promise<void> {
-  try {
-    await admin.schema('app').rpc('pause_sync_realtime');
-  } catch (err) {
-    console.warn('[sync] pause_sync_realtime failed, continuing without it:', err);
-  }
-}
-
-/**
- * Best-effort re-enable of realtime on sync-heavy tables (see
- * app.resume_sync_realtime / integrations-sync/index.ts's pause call).
- * Called from both coordinator terminal paths (mark_complete AND
- * halt_failed) so a halted run never leaves realtime permanently off.
- */
-export async function resumeSyncRealtime(admin: AdminClient): Promise<void> {
-  try {
-    await admin.schema('app').rpc('resume_sync_realtime');
-  } catch (err) {
-    console.warn('[sync-coordinator] resume_sync_realtime failed:', err);
-  }
-}
+// pauseSyncRealtime/resumeSyncRealtime (and the app.pause_sync_realtime/
+// resume_sync_realtime RPCs they called) were removed — Realtime is now
+// consolidated onto a single app.realtime_notifications table that
+// integration_sync_jobs/tenant_integrations were never part of, so there's
+// nothing left to pause/resume around a sync run.

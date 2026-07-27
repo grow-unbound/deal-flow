@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 import type { IntegrationSyncJob } from '@/hooks/useIntegrationsSettings';
 import { formatIntegrationJobError } from '@/lib/integrations/job-error-log';
@@ -79,31 +78,21 @@ export function IntegrationJobLiveLog({
   const lastSignatureRef = useRef<string | null>(null);
   const seenErrorsRef = useRef(new Set<string>());
 
-  // Subscribe to Realtime updates for this job's tenant_integration_id
+  // integration_sync_jobs realtime was decommissioned (Realtime consolidated onto a
+  // single app.realtime_notifications table this backend-only job table was never
+  // part of) — poll instead while this job is active. Same user-visible "live-ish"
+  // progress, no realtime dependency.
   useEffect(() => {
     const tenantIntegrationId = (activeJob as { tenant_integration_id?: string }).tenant_integration_id;
     if (!tenantIntegrationId) return;
+    if (activeJob.status === 'completed' || activeJob.status === 'failed') return;
 
-    const channel = supabase
-      .channel(`sync-jobs-${tenantIntegrationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'app',
-          table: 'integration_sync_jobs',
-          filter: `tenant_integration_id=eq.${tenantIntegrationId}`,
-        },
-        () => {
-          onJobUpdate?.();
-        },
-      )
-      .subscribe();
+    const interval = setInterval(() => {
+      onJobUpdate?.();
+    }, 4000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [(activeJob as { tenant_integration_id?: string }).tenant_integration_id, onJobUpdate]);
+    return () => clearInterval(interval);
+  }, [(activeJob as { tenant_integration_id?: string }).tenant_integration_id, activeJob.status, onJobUpdate]);
 
   useEffect(() => {
     const signature = [
