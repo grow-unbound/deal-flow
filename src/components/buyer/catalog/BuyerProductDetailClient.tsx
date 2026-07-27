@@ -11,7 +11,7 @@ import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 
 interface BuyerProductDetailClientProps {
@@ -23,6 +23,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const { item, recos, isLoading: loading, isError: error } = useBuyerProductDetail(tenantProductId);
   const [imgError, setImgError] = React.useState(false);
+  const [categoryImgError, setCategoryImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
 
@@ -39,7 +40,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
-      image_url: item.image_urls[0],
+      image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
       unit_price: item.price,
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
@@ -85,8 +86,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     );
   }
 
-  const firstImage = !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
-  const brandLogo = !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const productImage = !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
+  const categoryImage = !productImage && !categoryImgError && item.category_image_url ? item.category_image_url : null;
+  const brandLogo = !productImage && !categoryImage && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const activeImage = productImage ?? categoryImage ?? brandLogo;
+  const showBrandBadge = Boolean(item.brand_logo_url && activeImage !== item.brand_logo_url && !brandImgError);
   const showCampaignPrice = hasBuyerCampaignPrice(item);
   const metaParts = [item.internal_sku, item.category_name].filter(Boolean);
   const stockLabel =
@@ -109,14 +113,18 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           style={{ paddingTop: '69%' }}
         >
           <div className="absolute inset-0">
-            {firstImage ? (
+            {activeImage ? (
               <Image
-                src={firstImage}
+                src={activeImage}
                 alt={item.display_name}
                 fill
                 className="object-contain p-6"
                 sizes="100vw"
-                onError={() => setImgError(true)}
+                onError={() => {
+                  if (productImage) setImgError(true);
+                  else if (categoryImage) setCategoryImgError(true);
+                  else setBrandImgError(true);
+                }}
                 unoptimized
               />
             ) : (
@@ -124,10 +132,10 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 <Package className="h-16 w-16" style={{ color: 'var(--fg-3)' }} />
               </div>
             )}
-            {brandLogo ? (
+            {showBrandBadge && item.brand_logo_url ? (
               <div className="absolute left-3 top-3 z-[2] flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white/90 p-1 shadow-sm">
                 <Image
-                  src={brandLogo}
+                  src={item.brand_logo_url}
                   alt={item.brand_name ?? 'Brand'}
                   width={32}
                   height={32}

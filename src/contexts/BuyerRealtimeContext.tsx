@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationStore, type AppNotification } from '@/hooks/useNotificationStore';
 import { useBuyerRealtime } from '@/hooks/useBuyerRealtime';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 
 interface BuyerRealtimeContextType {
   unreadCount: number;
@@ -21,9 +22,10 @@ const BuyerRealtimeContext = createContext<BuyerRealtimeContextType | undefined>
 
 export function BuyerRealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, currentTenantId, currentBuyerId } = useAuth();
+  const { data: buyerMe } = useBuyerMe();
   const userId = user?.id ?? null;
-  const tenantId = currentTenantId ?? '';
-  const buyerId = currentBuyerId ?? '';
+  const tenantId = currentTenantId ?? buyerMe?.tenant.id ?? '';
+  const buyerId = currentBuyerId ?? (buyerMe?.buyer_id && buyerMe.buyer_id !== 'preview' ? buyerMe.buyer_id : '') ?? '';
 
   const [refreshFn, setRefreshFnState] = React.useState<(() => Promise<void> | void) | null>(null);
   const setRefreshFn = useCallback((fn: (() => Promise<void> | void) | null) => setRefreshFnState(() => fn), []);
