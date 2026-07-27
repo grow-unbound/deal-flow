@@ -56,7 +56,6 @@ import {
 import { createZohoAdapter, ZOHO_DETAIL_FETCH_CONCURRENCY, ZOHO_DETAIL_FETCH_BATCH_PACE_MS } from '../_shared/integrations-zoho.ts';
 import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
 import { logCheckpoint, startTimer } from '../_shared/sync-log.ts';
-import { pauseSyncRealtime, resumeSyncRealtime } from '../_shared/sync-coordinator-actions.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type TransactionKind = 'estimates' | 'orders' | 'invoices';
@@ -401,19 +400,11 @@ Deno.serve(async (req: Request) => {
     };
     const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache, touchHeartbeat);
 
-    const isNewRun = !input.job_id;
     jobId = input.job_id ?? await createLineItemJob(admin, {
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
       sinceDate: input.since ?? null,
     });
-    // This function is invoked directly by standalone/manual backfills (see
-    // header docs) and never goes through integrations-sync/sync-coordinator
-    // — those pause/resume realtime themselves, but a caller hitting this
-    // function directly gets none of that automatically. Pause once, on the
-    // first page of a fresh run only (job_id omitted); every subsequent
-    // page-continuation call reuses the same job_id and must not re-pause.
-    if (isNewRun) await pauseSyncRealtime(admin);
     const job = await loadLineItemJob(admin, jobId);
     const sinceDate = input.since ?? job.since_date;
     // Unlike since_date, there's no until column on the job row — a
@@ -436,7 +427,6 @@ Deno.serve(async (req: Request) => {
     const startedMs = Date.now();
 
     if (await isSyncJobCancelled(admin, jobId)) {
-      await resumeSyncRealtime(admin);
       return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
     }
 
@@ -482,7 +472,6 @@ Deno.serve(async (req: Request) => {
     logCheckpoint(jobId, PHASE, 'detailFetchLoop:start', { rows: batch.rows.length });
     for (let i = 0; i < batch.rows.length; i += ZOHO_DETAIL_FETCH_CONCURRENCY) {
       if (await isSyncJobCancelled(admin, jobId)) {
-        await resumeSyncRealtime(admin);
         return jsonResponse({ ok: false, phase: PHASE, job_id: jobId, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
       }
 
@@ -616,7 +605,6 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    await resumeSyncRealtime(admin);
     return jsonResponse({
       ok: true,
       phase: PHASE,
@@ -636,7 +624,6 @@ Deno.serve(async (req: Request) => {
         error_message: message,
       }).catch(() => {});
     }
-    await resumeSyncRealtime(admin);
 
     return errorResponse(message);
   }

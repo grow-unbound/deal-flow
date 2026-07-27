@@ -151,16 +151,40 @@ async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<stri
   );
 }
 
-/** Phone on auth.users for seller preview buyer linking. */
+/** Seller's phone for buyer preview linking — domain-owned on app.tenant_users, not auth.users. */
 export async function resolveSellerAuthPhone(userId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
 
+  const { data } = await supabaseAdmin
+    .schema('app')
+    .from('tenant_users')
+    .select('id, phone')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  const row = data as { id: string; phone: string | null } | null;
+  if (row?.phone) return row.phone;
+
+  // Row exists but phone was never backfilled (or this tenant_users row predates the
+  // column) — fall back to Auth once and persist it so the next call skips Auth.
+  if (!row) return null;
+
   const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-  const user = authUser?.user;
-  const meta = user?.user_metadata as Record<string, unknown> | null | undefined;
-  return (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
-    ?? user?.phone
+  const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
+  const phone = (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
+    ?? authUser?.user?.phone
     ?? null;
+
+  if (phone) {
+    await supabaseAdmin
+      .schema('app')
+      .from('tenant_users')
+      .update({ phone })
+      .eq('id', row.id);
+  }
+
+  return phone;
 }
 
 /** Deduped buyer rows in a tenant that share the seller's phone (preview only). */
@@ -191,66 +215,43 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
   const normalizedPhone = normalizeIndianPhone(phone);
   const db = supabaseAdmin;
 
-  const [buyersRes, delegatesRes] = await Promise.all([
-    db
-      .schema('app')
-      .from('buyers')
-      .select(`
-        id,
-        tenant_id,
-        business_name,
-        contact_name,
-        phone,
-        buyer_app_enabled,
-        is_active,
-        deleted_at,
-        tenants!tenant_id ( id, business_name, slug )
-      `)
-      .eq('phone', normalizedPhone)
-      .eq('is_active', true)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('buyer_users')
-      .select(`
-        id,
-        buyer_id,
-        user_id,
-        role,
-        phone,
-        is_active,
-        deleted_at,
-        buyers!buyer_id (
-          id,
-          tenant_id,
-          business_name,
-          contact_name,
-          buyer_app_enabled,
-          is_active,
-          deleted_at,
-          tenants!tenant_id ( id, business_name, slug )
-        )
-      `)
-      .eq('phone', normalizedPhone)
-      .eq('is_active', true)
-      .is('deleted_at', null),
-  ]);
+  // Single RPC combining what used to be 2 sequential PostgREST round trips
+  // (app.buyers and app.buyer_users, each with a nested tenants embed) — see
+  // app.find_buyer_login_candidates.
+  const { data: rows, error } = await db
+    .schema('app')
+    .rpc('find_buyer_login_candidates', { p_phone: normalizedPhone });
 
-  if (buyersRes.error) {
-    throw new Error(`Buyer lookup failed: ${buyersRes.error.message}`);
+  if (error) {
+    throw new Error(`Buyer login candidate lookup failed: ${error.message}`);
   }
-  if (delegatesRes.error) {
-    throw new Error(`Buyer user lookup failed: ${delegatesRes.error.message}`);
-  }
+
+  type CandidateRow = {
+    kind: 'owner' | 'delegate';
+    id: string;
+    tenant_id: string;
+    business_name: string | null;
+    contact_name: string | null;
+    buyer_id: string;
+    role: string;
+    user_id: string | null;
+    buyer_app_enabled: boolean | null;
+    buyer_is_active: boolean | null;
+    buyer_deleted_at: string | null;
+    tenant_business_name: string | null;
+    tenant_slug: string | null;
+  };
 
   const tenantIds = new Set<string>();
-  const ownerCandidates = ((buyersRes.data ?? []) as Array<Record<string, unknown>>)
-    .map((row) => {
-      const tenant = row.tenants as Record<string, unknown>;
+  const ownerCandidates: BuyerLoginCandidate[] = [];
+  const delegateCandidates: BuyerLoginCandidate[] = [];
+
+  for (const row of (rows ?? []) as CandidateRow[]) {
+    if (row.kind === 'owner') {
       const candidate: BuyerLoginCandidate = {
         tenant_id: String(row.tenant_id),
-        tenant_name: String(tenant.business_name ?? ''),
-        tenant_slug: String(tenant.slug ?? ''),
+        tenant_name: String(row.tenant_business_name ?? ''),
+        tenant_slug: String(row.tenant_slug ?? ''),
         tenant_whatsapp_number: null,
         tenant_whatsapp_display_name: null,
         buyer_id: String(row.id),
@@ -260,42 +261,37 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         buyer_user_id: null,
         phone: normalizedPhone,
         business_name: String(row.business_name ?? ''),
-        contact_name: typeof row.contact_name === 'string' ? row.contact_name : null,
+        contact_name: row.contact_name,
         buyer_app_enabled: Boolean(row.buyer_app_enabled),
         tenant_app_enabled: false,
       };
       tenantIds.add(candidate.tenant_id);
-      return candidate;
-    });
+      ownerCandidates.push(candidate);
+      continue;
+    }
 
-  const delegateCandidates = ((delegatesRes.data ?? []) as Array<Record<string, unknown>>)
-    .filter((row) => {
-      const buyer = row.buyers as Record<string, unknown>;
-      return Boolean(buyer?.is_active) && !buyer?.deleted_at;
-    })
-    .map((row) => {
-      const buyer = row.buyers as Record<string, unknown>;
-      const tenant = buyer.tenants as Record<string, unknown>;
-      const candidate: BuyerLoginCandidate = {
-        tenant_id: String(buyer.tenant_id ?? ''),
-        tenant_name: String(tenant.business_name ?? ''),
-        tenant_slug: String(tenant.slug ?? ''),
-        tenant_whatsapp_number: null,
-        tenant_whatsapp_display_name: null,
-        buyer_id: String(row.buyer_id ?? ''),
-        role: (String(row.role ?? 'buyer_assistant') as 'buyer_admin' | 'buyer_assistant'),
-        principal_type: 'delegate',
-        user_id: String(row.user_id ?? ''),
-        buyer_user_id: String(row.id ?? ''),
-        phone: normalizedPhone,
-        business_name: String(buyer.business_name ?? ''),
-        contact_name: typeof buyer.contact_name === 'string' ? buyer.contact_name : null,
-        buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
-        tenant_app_enabled: false,
-      };
-      tenantIds.add(candidate.tenant_id);
-      return candidate;
-    });
+    if (!row.buyer_is_active || row.buyer_deleted_at) continue;
+
+    const candidate: BuyerLoginCandidate = {
+      tenant_id: String(row.tenant_id ?? ''),
+      tenant_name: String(row.tenant_business_name ?? ''),
+      tenant_slug: String(row.tenant_slug ?? ''),
+      tenant_whatsapp_number: null,
+      tenant_whatsapp_display_name: null,
+      buyer_id: String(row.buyer_id ?? ''),
+      role: (String(row.role ?? 'buyer_assistant') as 'buyer_admin' | 'buyer_assistant'),
+      principal_type: 'delegate',
+      user_id: String(row.user_id ?? ''),
+      buyer_user_id: String(row.id ?? ''),
+      phone: normalizedPhone,
+      business_name: String(row.business_name ?? ''),
+      contact_name: row.contact_name,
+      buyer_app_enabled: Boolean(row.buyer_app_enabled),
+      tenant_app_enabled: false,
+    };
+    tenantIds.add(candidate.tenant_id);
+    delegateCandidates.push(candidate);
+  }
 
   const metadataByTenant = await loadTenantBuyerAppMetadata(Array.from(tenantIds));
 
@@ -316,7 +312,7 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
   const { data: existingRows, error: existingError } = await db
     .schema('app')
     .from('buyer_users')
-    .select('id, user_id, role, phone')
+    .select('id, user_id, role, phone, email')
     .eq('buyer_id', candidate.buyer_id)
     .eq('role', 'buyer_admin')
     .eq('phone', candidate.phone)
@@ -328,16 +324,15 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
     throw new Error(`Failed to load buyer owner principal: ${existingError.message}`);
   }
 
-  const existing = (existingRows ?? [])[0] as { id: string; user_id: string } | undefined;
+  const existing = (existingRows ?? [])[0] as { id: string; user_id: string; email: string | null } | undefined;
   if (existing?.user_id) {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(existing.user_id);
-    if (error || !data.user) {
-      throw new Error(error?.message ?? 'Buyer owner auth user not found');
-    }
-
+    // email is persisted on buyer_users at creation time below — no Auth Admin API
+    // round-trip needed for a returning login. Rows created before this existed
+    // (pre-fix) fall back to the deterministic synthetic email.
+    const email = existing.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
     return {
-      user: data.user,
-      email: data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id),
+      user: { id: existing.user_id } as User,
+      email,
     };
   }
 
@@ -373,6 +368,7 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
       user_id: created.user.id,
       role: 'buyer_admin',
       phone: candidate.phone,
+      email,
       is_active: true,
       created_by: created.user.id,
       updated_by: created.user.id,
@@ -391,14 +387,40 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
   }
 
   if (candidate.user_id) {
+    // Same as the buyer-owner path: read the persisted email off buyer_users rather
+    // than round-tripping to the Auth Admin API on every returning login.
+    if (candidate.buyer_user_id) {
+      const { data: row } = await supabaseAdmin
+        .schema('app')
+        .from('buyer_users')
+        .select('email')
+        .eq('id', candidate.buyer_user_id)
+        .maybeSingle();
+      const persistedEmail = (row as { email: string | null } | null)?.email;
+      if (persistedEmail) {
+        return { user: { id: candidate.user_id } as User, email: persistedEmail };
+      }
+    }
+
+    // No persisted email yet (row created before this fix, or missing buyer_user_id) —
+    // fall back to the Auth Admin API once, and persist it so the next login skips it.
     const { data, error } = await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
     if (error || !data.user) {
       throw new Error(error?.message ?? 'Buyer delegate auth user not found');
     }
 
+    const email = data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
+    if (candidate.buyer_user_id) {
+      await supabaseAdmin
+        .schema('app')
+        .from('buyer_users')
+        .update({ email })
+        .eq('id', candidate.buyer_user_id);
+    }
+
     return {
       user: data.user,
-      email: data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id),
+      email,
     };
   }
 
@@ -438,6 +460,7 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
     .from('buyer_users')
     .update({
       user_id: created.user.id,
+      email,
       updated_by: created.user.id,
     })
     .eq('id', candidate.buyer_user_id);
@@ -783,15 +806,35 @@ export async function mintSellerSession(
     throw new Error('Server configuration error or missing user_id for seller');
   }
 
-  // Fetch the seller's email from auth.users
-  const { data: userData, error: userError } =
-    await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
-  if (userError || !userData.user?.email) {
-    throw new Error(userError?.message ?? 'Seller auth user not found');
+  // email is domain-owned on tenant_users — no Auth Admin API round-trip needed.
+  const { data: tenantUserRow, error: tenantUserError } = await supabaseAdmin
+    .schema('app')
+    .from('tenant_users')
+    .select('email')
+    .eq('user_id', candidate.user_id)
+    .eq('tenant_id', candidate.tenant_id)
+    .maybeSingle();
+
+  let email = (tenantUserRow as { email: string | null } | null)?.email ?? null;
+
+  if (tenantUserError || !email) {
+    // Rows created before this column existed may still be null — fall back once
+    // and backfill so the next login skips Auth entirely.
+    const { data: userData, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
+    if (userError || !userData.user?.email) {
+      throw new Error(userError?.message ?? 'Seller auth user not found');
+    }
+    email = userData.user.email;
+    await supabaseAdmin
+      .schema('app')
+      .from('tenant_users')
+      .update({ email })
+      .eq('user_id', candidate.user_id)
+      .eq('tenant_id', candidate.tenant_id);
   }
 
-  const sellerUser = userData.user;
-  const email = sellerUser.email!; // guarded above
+  const sellerUser = { id: candidate.user_id } as User;
 
   // Set app_metadata so the JWT hook embeds the correct tenant claim
   await supabaseAdmin.auth.admin.updateUserById(candidate.user_id, {

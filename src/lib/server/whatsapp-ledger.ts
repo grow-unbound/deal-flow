@@ -14,6 +14,7 @@ export type WhatsAppTriggerSource =
   | 'invoice_update'
   | 'payment_reminder'
   | 'otp_login'
+  | 'seller_team_invite'
   | 'dispatch_notice'
   | 'broadcast'
   | 'buyer_app_enabled';

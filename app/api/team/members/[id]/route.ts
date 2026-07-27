@@ -132,6 +132,9 @@ export async function PUT(
     .schema('app')
     .from('tenant_users')
     .update({
+      full_name: validation.data.full_name,
+      email: validation.data.email,
+      phone: validation.data.phone,
       role: validation.data.role,
       location_ids: locationIds,
       updated_by: claims.tenant_id,

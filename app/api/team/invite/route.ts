@@ -7,6 +7,7 @@ import {
   findDuplicateMember,
   getTenantMemberDirectory,
 } from '@/lib/team-members';
+import { ensureSellerAuthIdentity, sendSellerTeamActivationInvite } from '@/lib/server/seller-team-activation';
 
 export async function POST(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
@@ -97,22 +98,21 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Create/invite the Supabase Auth user
-  const { data: inviteData, error: inviteError } =
-    await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/setup-password`,
-      data: {
-        tenant_id: claims.tenant_id,
-        role,
-        full_name,
-        phone,
-        location_ids: locationIds,
-      },
-    });
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPhone = phone.trim();
 
-  if (inviteError || !inviteData.user) {
+  let userId: string;
+  try {
+    const authIdentity = await ensureSellerAuthIdentity({
+      email: normalizedEmail,
+      fullName: full_name,
+      phone: normalizedPhone,
+      tenantId: claims.tenant_id,
+    });
+    userId = authIdentity.userId;
+  } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to send invite', details: inviteError?.message },
+      { error: 'Failed to prepare user account', details: error instanceof Error ? error.message : String(error) },
       { status: 500 },
     );
   }
@@ -123,7 +123,10 @@ export async function POST(request: NextRequest) {
     .from('tenant_users')
     .insert({
       tenant_id: claims.tenant_id,
-      user_id: inviteData.user.id,
+      user_id: userId,
+      full_name,
+      email: normalizedEmail,
+      phone: normalizedPhone,
       role,
       location_ids: locationIds,
       is_active: false,
@@ -139,8 +142,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { data: tenantRow, error: tenantError } = await db
+    .schema('app')
+    .from('tenants')
+    .select('business_name')
+    .eq('id', claims.tenant_id)
+    .maybeSingle();
+
+  if (tenantError || !tenantRow?.business_name) {
+    return NextResponse.json(
+      { error: 'Failed to load tenant details for invite', details: tenantError?.message },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await sendSellerTeamActivationInvite({
+      tenantId: claims.tenant_id,
+      tenantName: tenantRow.business_name,
+      fullName: full_name,
+      phone: normalizedPhone,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to send WhatsApp invite', details: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
+  }
+
   return NextResponse.json(
-    { success: true, message: `Invite sent to ${email}` },
+    { success: true, message: `Invite sent to ${normalizedPhone}` },
     { status: 201 },
   );
 }

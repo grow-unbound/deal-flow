@@ -701,6 +701,15 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, false
 ),
 (
+  NULL, 'invite_user_seller', 'Invite seller user', 'utility', 'updates', 'en',
+  E'Hi {{seller_user}},\n\n{{seller_name}} has invited you to join Yukti.\n\nTo activate your account, tap the button below. You will verify your phone number and then create a password for alternate email login.\n\nIf you were not expecting this invite, please ignore this message.',
+  '[{"key":"seller_user","description":"Teammate first name or full name"},{"key":"seller_name","description":"Tenant or business name"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.useyukti.in/activate"}'::jsonb,
+  '{"format":"text","text":"You''ve been invited to Yukti"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/activate"}]'::jsonb,
+  'approved', true, false
+),
+(
   NULL, 'order_received_seller', 'Order received', 'utility', 'updates', 'en_IN',
   E'Hi {{seller_location}} team,\n\nThere is a new order for your location. Here are the details.\n\nCustomer Name: *{{buyer_name}}*\nPhone Number: {{buyer_phone_number}}\nOrder Number: {{order_number}}\nTotal Amount: *₹{{total_amount}} ({{item_count}} items)*\n\nPlease contact the buyer in the next {{eta}} hours.',
   '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
