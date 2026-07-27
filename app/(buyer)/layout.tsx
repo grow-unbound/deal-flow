@@ -7,6 +7,15 @@ import { BuyerCartProvider } from '@/contexts/BuyerCartContext';
 import { BuyerDeliveryProvider } from '@/contexts/BuyerDeliveryContext';
 import { DELIVERY_COOKIE_NAME } from '@/lib/buyer-delivery-location';
 
+import type { Viewport } from 'next';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-visual',
+};
+
 export default async function BuyerLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
   const initialDeliveryCookie = cookieStore.get(DELIVERY_COOKIE_NAME)?.value ?? null;

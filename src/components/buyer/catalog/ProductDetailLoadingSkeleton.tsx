@@ -1,4 +1,5 @@
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 
 export function ProductDetailLoadingSkeleton() {
   return (
@@ -38,15 +39,15 @@ export function ProductDetailLoadingSkeleton() {
           </div>
         ))}
       </div>
-      <div
-        className="fixed bottom-0 left-1/2 z-20 w-full -translate-x-1/2 border-t border-cream-200 bg-cream-100/95 px-4 py-3"
+      <BuyerFixedFooter
+        className="left-1/2 w-full -translate-x-1/2 border-t border-cream-200 bg-cream-100/95 px-4 py-3"
         style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
       >
         <div className="flex items-center justify-between">
           <div className="h-7 w-20 animate-pulse rounded bg-cream-200" />
           <div className="h-11 w-28 animate-pulse rounded-xl bg-cream-200" />
         </div>
-      </div>
+      </BuyerFixedFooter>
     </div>
   );
 }

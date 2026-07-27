@@ -8,11 +8,12 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
-import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
+import { markBuyerNavigationForward, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { apiFetch } from '@/lib/api-fetch';
 ;
 import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
 import posthog from 'posthog-js';
 
@@ -99,9 +100,15 @@ export default function CheckoutPage() {
     return null;
   }
 
+  function openOutletSelector(): void {
+    markBuyerNavigationForward();
+    router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/checkout'));
+  }
+
   async function handleSubmit(): Promise<void> {
     if (!selectedDelivery) {
-      setError('Select a delivery location before submitting.');
+      openOutletSelector();
+      setError('Choose an outlet before submitting.');
       return;
     }
     setSubmitting(true);
@@ -109,11 +116,12 @@ export default function CheckoutPage() {
     try {
       const locationId = selectedDelivery.routed_location_id ?? null;
       if (!locationId) {
-        setError('Select a delivery location that can be routed to a warehouse.');
+        openOutletSelector();
+        setError('Choose an outlet that can be routed to a warehouse.');
         return;
       }
       if (availableItems.length === 0) {
-        setError('Remove out-of-stock items or choose another delivery location before submitting.');
+        setError('Remove out-of-stock items or choose another outlet before submitting.');
         return;
       }
       const res = await apiFetch('/api/buyer/estimates', {
@@ -305,7 +313,7 @@ export default function CheckoutPage() {
 
         <button
           type="button"
-          onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/checkout'))}
+          onClick={openOutletSelector}
           className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
@@ -315,19 +323,21 @@ export default function CheckoutPage() {
           <div className="flex-1 min-w-0">
             {selectedDelivery ? (
               <>
-                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Ordering from</p>
                 <p className="font-semibold truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
-                  {selectedDelivery.label}
+                  {formatBuyerSelectedLocationLabel(selectedDelivery)}
                 </p>
                 <p className="truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
-                  {[selectedDelivery.city, selectedDelivery.pincode].filter(Boolean).join(' · ')}
+                  {selectedDelivery.selection_source === 'maps'
+                    ? [selectedDelivery.label, selectedDelivery.city].filter(Boolean).join(' · ')
+                    : [selectedDelivery.city, selectedDelivery.pincode].filter(Boolean).join(' · ')}
                 </p>
               </>
             ) : (
               <>
-                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Ordering from</p>
                 <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
-                  Set delivery location
+                  Choose outlet
                 </p>
               </>
             )}
@@ -354,7 +364,7 @@ export default function CheckoutPage() {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !selectedDelivery || availableItems.length === 0}
+          disabled={submitting || availableItems.length === 0}
           className="w-full h-12 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ background: 'var(--teal-500)' }}
         >

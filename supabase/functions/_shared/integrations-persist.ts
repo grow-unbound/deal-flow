@@ -175,6 +175,16 @@ function asBool(v: unknown, defaultVal = false): boolean {
   return defaultVal;
 }
 
+/** Zoho Books locations expose status as the string "active" | "inactive". */
+function mapZohoLocationStatus(rec: Record<string, unknown>): 'active' | 'inactive' {
+  const zohoStatus = asStr(rec.status)?.toLowerCase();
+  if (zohoStatus === 'active' || zohoStatus === 'inactive') return zohoStatus;
+  if (typeof rec.is_location_active === 'boolean') {
+    return rec.is_location_active ? 'active' : 'inactive';
+  }
+  return 'active';
+}
+
 export function sanitizeZohoPhone(value: unknown): string | null {
   if (typeof value !== 'string' && typeof value !== 'number') return null;
   const digits = String(value).replace(/\D/g, '');
@@ -1411,7 +1421,7 @@ async function persistLocations(
     const rawAddr = rec.address;
     const address = rawAddr && typeof rawAddr === 'object' ? rawAddr : null;
     const phoneNumber = sanitizeZohoPhone(rec.phone);
-    const status = asStr(rec.is_location_active) ?? asBool(rec.status) ? 'active' : 'inactive';
+    const status = mapZohoLocationStatus(rec);
     const sourceAssociatedUsers = getEmbeddedLocationAssociatedUsers(rec);
     // Fall back to users inferred from the Zoho /users reverse map when the location
     // list endpoint doesn't embed associated_users.

@@ -1,10 +1,115 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
 import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { chunkArray, POSTGREST_IN_CHUNK_SIZE } from '@/lib/server/warehouse-data';
+import { getPriceListStatus, type PriceListStatus } from '@/lib/utils';
 import { z } from 'zod';
+
+const PRODUCT_PRICELIST_ROWS_LIMIT = 200;
+
+type ProductPricingRow = {
+  price_list_id: string;
+  price_list_name: string;
+  item_id: string | null;
+  list_price: number | null;
+  effective_price: number | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  created_at: string;
+  is_active: boolean;
+  is_managed_externally: boolean;
+  status: PriceListStatus;
+  avg_discount_pct: number | null;
+  avg_margin_pct: number | null;
+};
+
+async function loadProductPricingRows(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  tenantId: string,
+  productId: string,
+): Promise<ProductPricingRow[]> {
+  const flagEnabled = await getFlag('df_pricing_engine', tenantId);
+  if (!flagEnabled) return [];
+
+  const { data: priceLists, error: listError } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id, name, valid_from, valid_to, is_active, external_ref, priority, created_at')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('priority', { ascending: false })
+    .order('name', { ascending: true })
+    .limit(PRODUCT_PRICELIST_ROWS_LIMIT);
+
+  if (listError || !priceLists?.length) return [];
+
+  const listIds = priceLists.map((row: { id: string }) => row.id);
+  const itemByListId = new Map<string, { id: string; price: number }>();
+
+  for (const idChunk of chunkArray(listIds, POSTGREST_IN_CHUNK_SIZE)) {
+    const { data: items } = await db
+      .schema('app')
+      .from('price_list_items')
+      .select('id, price_list_id, price')
+      .eq('tenant_product_id', productId)
+      .in('price_list_id', idChunk)
+      .is('deleted_at', null);
+
+    for (const item of items ?? []) {
+      itemByListId.set(item.price_list_id, { id: item.id, price: Number(item.price) });
+    }
+  }
+
+  const { data: aggregateData } = await db.schema('app').rpc('get_seller_price_list_landing_aggregates', {
+    p_tenant_id: tenantId,
+    p_page_ids: listIds,
+    p_include_summary: false,
+    p_now: new Date().toISOString(),
+  });
+  const metricsById = new Map<string, { avg_discount_pct: number | string | null; avg_margin_pct: number | string | null }>(
+    ((aggregateData as { row_metrics?: Array<{ id: string; avg_discount_pct: number | string | null; avg_margin_pct: number | string | null }> } | null)?.row_metrics ?? []).map(
+      (metric) => [metric.id, metric],
+    ),
+  );
+
+  return priceLists.map((pl: {
+    id: string;
+    name: string;
+    valid_from: string | null;
+    valid_to: string | null;
+    created_at: string;
+    is_active: boolean;
+    external_ref: string | null;
+  }) => {
+    const matched = itemByListId.get(pl.id);
+    const listPrice = matched != null ? matched.price : null;
+    const metric = metricsById.get(pl.id);
+    const status = getPriceListStatus({
+      is_active: Boolean(pl.is_active),
+      valid_from: pl.valid_from,
+      valid_to: pl.valid_to,
+    });
+    return {
+      price_list_id: pl.id,
+      price_list_name: pl.name ?? '',
+      item_id: matched?.id ?? null,
+      list_price: listPrice,
+      effective_price: listPrice,
+      valid_from: pl.valid_from,
+      valid_to: pl.valid_to,
+      created_at: pl.created_at,
+      is_active: Boolean(pl.is_active),
+      is_managed_externally: Boolean(pl.external_ref),
+      status,
+      avg_discount_pct: metric?.avg_discount_pct == null ? null : Number(metric.avg_discount_pct),
+      avg_margin_pct: metric?.avg_margin_pct == null ? null : Number(metric.avg_margin_pct),
+    };
+  });
+}
 
 const UpdateProductSchema = z.object({
   internal_sku: z.string().min(1, 'Internal SKU is required').optional(),
@@ -153,6 +258,7 @@ export async function GET(
     const invoiceUnits90d = Number(kpiByLabel.get('Units sold 90D') ?? 0);
     const invoiceValue90d = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
     const daysCover = kpiByLabel.get('Days cover') == null ? null : Number(kpiByLabel.get('Days cover'));
+    const pricingRows = await loadProductPricingRows(db, tenantId, id);
 
     const detailResponse = {
       header: {
@@ -210,7 +316,7 @@ export async function GET(
         cost_price: claims.role === 'seller_admin' ? product.cost_price : null,
         margin_pct: product.base_selling_price && product.cost_price ? Number((((product.base_selling_price - product.cost_price) / product.base_selling_price) * 100).toFixed(1)) : null,
       },
-      pricing: [],
+      pricing: pricingRows,
       activity: [],
       role: claims.role,
     };

@@ -2,8 +2,8 @@ import { randomInt } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
 import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
-import { findPendingSellerActivationsByPhone } from '@/lib/server/seller-team-activation';
-import { sendActivationOtpWhatsapp } from '@/lib/server/whatsapp';
+import { findSellerPasswordResetCandidatesByPhone } from '@/lib/server/seller-team-activation';
+import { sendResetOtpWhatsapp } from '@/lib/server/whatsapp';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -19,22 +19,22 @@ export async function POST(request: NextRequest) {
     const phone = normalizeIndianPhone(rawPhone);
     let candidates;
     try {
-      candidates = await findPendingSellerActivationsByPhone(phone);
+      candidates = await findSellerPasswordResetCandidatesByPhone(phone);
     } catch (error) {
-      console.error('[auth/activate/send] pending invite lookup failed:', error);
+      console.error('[auth/reset/send] password reset lookup failed:', error);
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Failed to look up pending seller invite' },
+        { error: error instanceof Error ? error.message : 'Failed to look up seller account' },
         { status: 500 },
       );
     }
 
     if (candidates.length === 0) {
-      return NextResponse.json({ error: 'No pending seller invite found for this number' }, { status: 404 });
+      return NextResponse.json({ error: 'No seller account found for this number' }, { status: 404 });
     }
 
     if (candidates.length > 1) {
       return NextResponse.json(
-        { error: 'Multiple pending invites found for this number. Contact support to continue.' },
+        { error: 'Multiple seller accounts found for this number. Contact support to continue.' },
         { status: 409 },
       );
     }
@@ -69,18 +69,15 @@ export async function POST(request: NextRequest) {
     });
 
     if (!ref_id) {
-      return NextResponse.json(
-        { error: 'Failed to create activation OTP session' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Failed to create password reset session' }, { status: 500 });
     }
 
     try {
-      await sendActivationOtpWhatsapp(phone, otp);
+      await sendResetOtpWhatsapp(phone, otp);
     } catch (error) {
-      console.error('[auth/activate/send] activation OTP send failed:', error);
+      console.error('[auth/reset/send] reset OTP send failed:', error);
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Failed to send activation OTP' },
+        { error: error instanceof Error ? error.message : 'Failed to send reset OTP' },
         { status: 500 },
       );
     }
@@ -91,10 +88,9 @@ export async function POST(request: NextRequest) {
       phone,
       full_name: candidate.full_name,
       email: candidate.email,
-      tenant_name: candidate.tenant_name,
     });
   } catch (error) {
-    console.error('[auth/activate/send] unexpected error:', error);
+    console.error('[auth/reset/send] unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

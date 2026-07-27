@@ -126,6 +126,36 @@ describe('whatsapp enqueue sender', () => {
       { text: 'Login to Yukti' },
       { text: '919876543210' },
     ]);
+    expect(input.sendPayload.button_params).toEqual([
+      { type: 'url', index: '0', text: '123456' },
+    ]);
+    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
+  });
+
+  it('enqueues activation otp with the same login_otp template shape and a short activation label', async () => {
+    const { sendActivationOtpWhatsapp } = await import('@/lib/server/whatsapp');
+
+    await sendActivationOtpWhatsapp('9490744841', '123456');
+
+    expect(enqueueWhatsAppMessageMock).toHaveBeenCalledTimes(1);
+    const input = enqueueWhatsAppMessageMock.mock.calls[0]?.[0] as {
+      tenantId: string;
+      metaCategory: string;
+      triggerSource: string;
+      sendPayload: { meta_template_name: string; body_params: Array<{ text: string }> };
+    };
+    expect(input.tenantId).toBe('platform-tenant-1');
+    expect(input.metaCategory).toBe('authentication');
+    expect(input.triggerSource).toBe('otp_login');
+    expect(input.sendPayload.meta_template_name).toBe('login_otp');
+    expect(input.sendPayload.body_params).toEqual([
+      { text: '123456' },
+      { text: 'Set up Yukti' },
+      { text: '919876543210' },
+    ]);
+    expect(input.sendPayload.button_params).toEqual([
+      { type: 'url', index: '0', text: '123456' },
+    ]);
     expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
 

@@ -58,6 +58,63 @@ export function BuyerDeliveryProvider({
     setState(readFromDocument());
   }, [initialPayload]);
 
+  React.useEffect(() => {
+    const selected = state.selected;
+    if (!selected) return;
+    if (selected.selection_source === 'outlet') return;
+    if (
+      selected.routed_location_id
+      && selected.routed_location_name
+      && (selected.nearest_warehouse_id || selected.nearest_warehouse_fallback)
+    ) {
+      return;
+    }
+    if (!Number.isFinite(selected.lat) || !Number.isFinite(selected.lng)) return;
+
+    let cancelled = false;
+
+    void fetch(`/api/buyer/nearest-location?lat=${selected.lat}&lng=${selected.lng}`, { credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<{
+          warehouse_id: string | null;
+          warehouse_name: string | null;
+          location_id: string | null;
+          location_name: string | null;
+          distance_km: number | null;
+          fallback: boolean;
+        }>;
+      })
+      .then((routing) => {
+        if (cancelled || !routing) return;
+        setState((prev) => {
+          if (!prev.selected) return prev;
+          const nextSelected = {
+            ...prev.selected,
+            selection_source: prev.selected.selection_source ?? 'maps',
+            nearest_warehouse_id: routing.warehouse_id,
+            routed_location_id: routing.location_id,
+            routed_location_name: routing.location_name,
+            nearest_warehouse_name: routing.warehouse_name,
+            nearest_warehouse_distance_km: routing.distance_km,
+            nearest_warehouse_fallback: routing.fallback,
+          };
+          const next = pushRecentLocation(
+            { ...prev, selected: nextSelected, recent: prev.recent ?? [] },
+            nextSelected,
+          );
+          next.selected = nextSelected;
+          writeToDocument(next);
+          return next;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.selected]);
+
   const refreshFromDocumentCookie = React.useCallback(() => {
     setState(readFromDocument());
   }, []);

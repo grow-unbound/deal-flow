@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatBuyerSelectedLocationLabel,
   parseDeliveryCookie,
   serializeDeliveryCookie,
   type BuyerDeliveryCookiePayload,
@@ -17,9 +18,11 @@ describe('buyer delivery cookie routing metadata', () => {
         pincode: '400058',
         lat: 19.12,
         lng: 72.84,
+        selection_source: 'maps',
         place_of_supply: 'Andheri West',
         nearest_warehouse_id: 'wh-1',
         routed_location_id: 'loc-1',
+        routed_location_name: 'Mumbai Central Outlet',
         nearest_warehouse_name: 'Mumbai Warehouse',
         nearest_warehouse_distance_km: 4,
         nearest_warehouse_fallback: false,
@@ -31,6 +34,7 @@ describe('buyer delivery cookie routing metadata', () => {
       place_of_supply: 'Andheri West',
       nearest_warehouse_id: 'wh-1',
       routed_location_id: 'loc-1',
+      routed_location_name: 'Mumbai Central Outlet',
       nearest_warehouse_name: 'Mumbai Warehouse',
       nearest_warehouse_distance_km: 4,
       nearest_warehouse_fallback: false,
@@ -54,5 +58,15 @@ describe('buyer delivery cookie routing metadata', () => {
 
     expect(parsed?.selected?.label).toBe('Bandra');
     expect(parsed?.selected?.nearest_warehouse_id).toBeUndefined();
+  });
+
+  it('prefers routed outlet name when formatting the selected label', () => {
+    expect(
+      formatBuyerSelectedLocationLabel({
+        label: 'Andheri West',
+        city: 'Mumbai',
+        routed_location_name: 'Mumbai Central Outlet',
+      }),
+    ).toBe('Mumbai Central Outlet');
   });
 });

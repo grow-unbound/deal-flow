@@ -10,6 +10,7 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
+import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
@@ -236,8 +237,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       </BuyerDetailShell>
 
       {/* Sticky footer — price + Add / qty stepper */}
-      <div
-        className="fixed bottom-0 left-1/2 z-20 w-full -translate-x-1/2 px-4 py-3"
+      <BuyerFixedFooter
+        className="left-1/2 w-full -translate-x-1/2 px-4 py-3"
         style={{
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
           paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
@@ -302,7 +303,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
             </button>
           )}
         </div>
-      </div>
+      </BuyerFixedFooter>
     </div>
   );
 }

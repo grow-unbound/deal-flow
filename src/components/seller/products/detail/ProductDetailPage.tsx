@@ -95,7 +95,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
     () => [
       { id: 'details', label: 'Details' },
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-      { id: 'pricing', label: 'Pricing & cohorts' },
+      { id: 'pricing', label: 'Pricelists' },
     ],
     [showPerformanceTab],
   );
@@ -123,7 +123,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       {
         label: 'On hand',
         value: m.on_hand,
-        sub: 'bottles',
+        sub: 'units',
       },
       {
         label: 'Sell-through',
