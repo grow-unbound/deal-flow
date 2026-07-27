@@ -16,6 +16,7 @@ import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 ;
+import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -110,7 +111,7 @@ export default function CartPage() {
         name: product.display_name,
         brand: product.brand_name ?? undefined,
         internal_sku: product.internal_sku,
-        image_url: product.image_urls[0],
+        image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
         unit_price: product.price,
         resolved_price: product.resolved_price,
         has_campaign_price: product.has_campaign_price,
@@ -413,7 +414,7 @@ export default function CartPage() {
                 name: product.display_name,
                 brand: product.brand_name ?? undefined,
                 internal_sku: product.internal_sku,
-                image_url: product.image_urls[0],
+                image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
                 unit_price: product.price,
                 resolved_price: product.resolved_price,
                 has_campaign_price: product.has_campaign_price,

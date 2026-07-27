@@ -149,7 +149,7 @@ describe('buyer product card', () => {
       />,
     );
 
-    expect(screen.getByText('Promotion')).toBeInTheDocument();
+    expect(screen.getByText('Special Price')).toBeInTheDocument();
   });
 
   it('can suppress the promotion badge on campaign detail views', () => {
@@ -212,6 +212,47 @@ describe('buyer product card', () => {
           brand_id: null,
           brand_name: 'CP Plus',
           brand_logo_url: null,
+          category_id: 'cat-1',
+          category_name: 'Cameras',
+          category_image_url: 'https://cdn.example.com/category-thumb.webp',
+          mrp: 10000,
+          price: 9000,
+          has_campaign_price: false,
+          resolved_price: null,
+          default_uom: 'box',
+          pack_size: null,
+          campaign_valid_until: null,
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 6,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('presentation')).toHaveAttribute('src', 'https://cdn.example.com/category-thumb.webp');
+  });
+
+  it('prefers the category image over the brand image when the product image is missing', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    render(
+      <ProductCard
+        item={{
+          id: '4',
+          tenant_product_id: 'tp-4',
+          campaign_id: null,
+          catalog_name: null,
+          catalog_valid_until: null,
+          internal_sku: 'CAT-BRAND-FALLBACK-001',
+          display_name: 'Category Before Brand Camera',
+          brand_id: 'brand-1',
+          brand_name: 'CP Plus',
+          brand_logo_url: 'https://cdn.example.com/brand-logo.webp',
           category_id: 'cat-1',
           category_name: 'Cameras',
           category_image_url: 'https://cdn.example.com/category-thumb.webp',

@@ -7,7 +7,12 @@ import { Minus, Plus, Package } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Pressable } from '@/components/ui/pressable';
 import { cn, formatNumberValue } from '@/lib/utils';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import {
+  BUYER_CARD_RADIUS_CLASS,
+  BUYER_TWO_LINE_TITLE_CLASS,
+  getBuyerProductPrimaryImageUrl,
+  hasBuyerCampaignPrice,
+} from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -64,9 +69,9 @@ export function ProductCard({
   const showCampaignPrice = hasBuyerCampaignPrice(item);
 
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
-  const brandImg = !productImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
-  const categoryImg = !productImg && !brandImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
-  const activeImg = productImg ?? brandImg ?? categoryImg;
+  const categoryImg = !productImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
+  const brandImg = !productImg && !categoryImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const activeImg = productImg ?? categoryImg ?? brandImg;
 
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
@@ -77,7 +82,7 @@ export function ProductCard({
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
-      image_url: item.image_urls[0],
+      image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
       unit_price: item.price,
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
@@ -157,16 +162,6 @@ export function ProductCard({
                     onError={() => setProductImgError(true)}
                     unoptimized
                   />
-                ) : brandImg ? (
-                  <Image
-                    src={brandImg}
-                    alt=""
-                    fill
-                    className="object-contain p-3.5"
-                    sizes="(max-width: 640px) 50vw, 200px"
-                    onError={() => setBrandImgError(true)}
-                    unoptimized
-                  />
                 ) : categoryImg ? (
                   <Image
                     src={categoryImg}
@@ -175,6 +170,16 @@ export function ProductCard({
                     className="object-contain p-3.5"
                     sizes="(max-width: 640px) 50vw, 200px"
                     onError={() => setCategoryImgError(true)}
+                    unoptimized
+                  />
+                ) : brandImg ? (
+                  <Image
+                    src={brandImg}
+                    alt=""
+                    fill
+                    className="object-contain p-3.5"
+                    sizes="(max-width: 640px) 50vw, 200px"
+                    onError={() => setBrandImgError(true)}
                     unoptimized
                   />
                 ) : null}
