@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
@@ -17,6 +18,8 @@ export default function ResetPasswordPage() {
   const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -72,6 +75,7 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
+    let shouldResetLoading = true;
     try {
       const { error: updateError } = await supabaseBrowser.auth.updateUser({ password });
       if (updateError) {
@@ -80,11 +84,12 @@ export default function ResetPasswordPage() {
       }
 
       await supabaseBrowser.auth.signOut();
+      shouldResetLoading = false;
       router.replace('/login?reset=success');
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
-      setLoading(false);
+      if (shouldResetLoading) setLoading(false);
     }
   }
 
@@ -106,32 +111,54 @@ export default function ResetPasswordPage() {
           <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
             Password
           </label>
-          <input
-            type="password"
-            placeholder="Min. 8 characters"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); setError(''); }}
-            disabled={loading || !sessionReady}
-            required
-            autoComplete="new-password"
-            className={inputCls}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Min. 8 characters"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(''); }}
+              disabled={loading || !sessionReady}
+              required
+              autoComplete="new-password"
+              className={`${inputCls} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              disabled={loading || !sessionReady}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-cream-500 transition-colors hover:text-cream-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <div>
           <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
             Confirm password
           </label>
-          <input
-            type="password"
-            placeholder="Repeat your password"
-            value={confirmPassword}
-            onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
-            disabled={loading || !sessionReady}
-            required
-            autoComplete="new-password"
-            className={inputCls}
-          />
+          <div className="relative">
+            <input
+              type={showConfirmPassword ? 'text' : 'password'}
+              placeholder="Repeat your password"
+              value={confirmPassword}
+              onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+              disabled={loading || !sessionReady}
+              required
+              autoComplete="new-password"
+              className={`${inputCls} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((current) => !current)}
+              disabled={loading || !sessionReady}
+              aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-cream-500 transition-colors hover:text-cream-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         {error && (

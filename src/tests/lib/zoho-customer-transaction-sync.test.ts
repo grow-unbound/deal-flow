@@ -988,9 +988,16 @@ describe('zoho customer and transaction persistence', () => {
         {
           location_id: 'LOC-MAP',
           location_name: 'Main Warehouse',
+          status: 'active',
         },
       ],
     );
+
+    const locationPersistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'locations'
+    ));
+    const persistedRows = locationPersistCall?.args.p_rows as Array<Record<string, unknown>> | undefined;
+    expect(persistedRows?.[0]?.status).toBe('active');
 
     const locationMapRow = getEntityMapRows(admin, 'locations')[0];
     expect(locationMapRow?.source_payload).toBeUndefined();
@@ -998,6 +1005,32 @@ describe('zoho customer and transaction persistence', () => {
       expect.stringMatching(/^integrations\/tenant-1\/entity-map\/.+\.json$/),
       expect.objectContaining({ location_id: 'LOC-MAP', location_name: 'Main Warehouse' }),
     );
+  });
+
+  it('persists Zoho location status inactive when payload says inactive', async () => {
+    const admin = createAdminStub();
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'locations',
+      'zoho_books',
+      [
+        {
+          location_id: 'LOC-OFF',
+          location_name: 'Closed Branch',
+          status: 'inactive',
+        },
+      ],
+    );
+
+    const locationPersistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'locations'
+    ));
+    const persistedRows = locationPersistCall?.args.p_rows as Array<Record<string, unknown>> | undefined;
+    expect(persistedRows?.[0]?.status).toBe('inactive');
   });
 
   it('does not soft-delete price list assignments when contact has no pricebook', async () => {

@@ -5,6 +5,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/cn';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -78,18 +79,21 @@ AlertDialogAction.displayName = 'AlertDialogAction';
 interface AlertDialogCancelProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
 
 const AlertDialogCancel = React.forwardRef<HTMLButtonElement, AlertDialogCancelProps>(
-  ({ className, ...props }, ref) => (
-    <button
-      ref={ref}
-      className={cn(
-        'inline-flex items-center justify-center rounded-md px-4 py-2 text-body-sm font-medium',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2',
-        'disabled:pointer-events-none disabled:opacity-50',
-        'border border-cream-300 bg-white text-cream-700 hover:bg-cream-50',
-        className,
-      )}
-      {...props}
-    />
+  ({ className, type = 'button', ...props }, ref) => (
+    <DialogClose asChild>
+      <button
+        ref={ref}
+        type={type}
+        className={cn(
+          'inline-flex items-center justify-center rounded-md px-4 py-2 text-body-sm font-medium',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2',
+          'disabled:pointer-events-none disabled:opacity-50',
+          'border border-cream-300 bg-white text-cream-700 hover:bg-cream-50',
+          className,
+        )}
+        {...props}
+      />
+    </DialogClose>
   ),
 );
 AlertDialogCancel.displayName = 'AlertDialogCancel';

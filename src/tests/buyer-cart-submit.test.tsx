@@ -120,7 +120,7 @@ function setupCartMocks(orderFeatures = { create_sales_orders: true, create_enqu
   useBuyerDeliveryOptionalMock.mockReturnValue({ selected: selectedDelivery });
   useBuyerMeMock.mockReturnValue({
     data: {
-      tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+      tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
       business_policy: { gst_inclusive: false, gst_rate: 18 },
       order_features: orderFeatures,
     },

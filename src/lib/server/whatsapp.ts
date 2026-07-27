@@ -29,7 +29,8 @@ interface WhatsappTemplateBodyParam {
 
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
-const WHATSAPP_ACTIVATION_PRODUCT_NAME = 'activating your Yukti account';
+const WHATSAPP_ACTIVATION_PRODUCT_NAME = 'Set up Yukti';
+const WHATSAPP_RESET_PRODUCT_NAME = 'Reset Yukti';
 const SELLER_TEAM_ACTIVATION_URL = 'https://app.useyukti.in/activate';
 const FALLBACK_TEMPLATE_LOCALE = 'en';
 const TRANSACTIONAL_TEMPLATE_SHAPES: Record<string, WhatsAppTemplateValidationShape> = {
@@ -477,6 +478,10 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<
 
 export async function sendActivationOtpWhatsapp(phone: string, otp: string): Promise<void> {
   await sendOtpWhatsapp(phone, otp, WHATSAPP_ACTIVATION_PRODUCT_NAME);
+}
+
+export async function sendResetOtpWhatsapp(phone: string, otp: string): Promise<void> {
+  await sendOtpWhatsapp(phone, otp, WHATSAPP_RESET_PRODUCT_NAME);
 }
 
 async function sendOtpWhatsapp(phone: string, otp: string, productName: string): Promise<void> {

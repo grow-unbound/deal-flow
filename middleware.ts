@@ -17,6 +17,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth',
   '/auth',
   '/login',
+  '/activate',
   '/verify',
   '/verify-account',
   '/signup',

@@ -16,7 +16,24 @@ export interface BuyerMeData {
   open_orders_count: number;
   seller_preview: boolean;
   support_whatsapp_number: string | null;
-  tenant: { id: string; name: string; slug: string };
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    outlets: Array<{
+      location_id: string;
+      name: string;
+      is_default: boolean;
+      city: string;
+      state: string;
+      pincode: string;
+      formatted_address: string;
+      lat: number | null;
+      lng: number | null;
+      warehouse_id: string;
+      warehouse_name: string;
+    }>;
+  };
   greeting_name?: string | null;
   order_features: {
     enquiries: boolean;

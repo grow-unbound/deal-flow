@@ -15,11 +15,20 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useProducts', () => ({
   useProductDetail: () => useProductDetailMock(),
   useUpdateProduct: () => useUpdateProductMock(),
+  useProductPriceListItemMutations: () => ({
+    updateItem: { mutateAsync: vi.fn(), isPending: false },
+    addItem: { mutateAsync: vi.fn(), isPending: false },
+    removeItem: { mutateAsync: vi.fn(), isPending: false },
+  }),
   useUpdateProductPriceOverride: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/useRole', () => ({
   useRole: () => useRoleMock(),
+}));
+
+vi.mock('@/components/seller/products/AddProductSheet', () => ({
+  AddProductSheet: () => null,
 }));
 
 describe('product detail page', () => {
@@ -189,5 +198,59 @@ describe('product detail page', () => {
 
     expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
+  });
+
+  it('exposes Pricelists tab in the detail tab strip', () => {
+    useProductDetailMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        detail: {
+          header: {
+            name: 'Cabernet',
+            brand: 'WineYard',
+            sku: 'SKU-1',
+            pack: '750 ml',
+            mrp: 2800,
+            status_label: 'On pace',
+            status_tone: 'success',
+          },
+          meta_strip_4: {
+            units_mtd: 120,
+            days_cover: 14,
+            on_hand: 96,
+            sell_through_pct: 34,
+          },
+          details: {
+            id: 'p1',
+            name: 'Cabernet',
+            sku: 'SKU-1',
+            category: 'Red wine',
+            pack_size: 750,
+            default_uom: 'ml',
+            mrp: 2800,
+            hsn_code: '2204',
+            gst_rate: 18,
+          },
+          performance: {
+            units_trend_12w: [],
+            sell_through_30d: [],
+            stock_cover_12w: [],
+          },
+          pricing_summary: {
+            mrp: 2800,
+            base_selling_price: 2400,
+            cost_price: 1800,
+            margin_pct: 25,
+          },
+          pricing: [],
+          activity: [],
+          role: 'seller_admin',
+        },
+      },
+    });
+
+    render(<ProductDetailPage id="p1" />);
+    expect(screen.getByRole('tab', { name: /Pricelists/i })).toBeInTheDocument();
   });
 });

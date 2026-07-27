@@ -24,6 +24,14 @@ describe('middleware auth redirects', () => {
     getSessionMock.mockReset();
   });
 
+  it('allows anonymous access to /activate without redirecting to /login', async () => {
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(new NextRequest('http://localhost/activate'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
   it('redirects to /login when the session is missing', async () => {
     getSessionMock.mockResolvedValue({
       data: { session: null },
