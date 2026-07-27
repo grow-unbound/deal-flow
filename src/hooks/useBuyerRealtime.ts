@@ -65,6 +65,23 @@ function didEstimateNotificationFieldsChange(record: Record<string, unknown>, pr
   );
 }
 
+function buildBuyerEstimateInsertNotification(record: Record<string, unknown>): AppNotification {
+  const entityId = record.id as string;
+  const estimateNumber = (record.estimate_number as string | null | undefined)?.trim() ?? '';
+  const status = (record.status as string | null | undefined)?.trim() ?? 'draft';
+  return {
+    id: `${entityId}_new_estimate`,
+    kind: 'new_estimate',
+    title: estimateNumber ? `New estimate · ${estimateNumber}` : 'New estimate',
+    body: `Status: ${status}`,
+    entityType: 'estimate',
+    entityId,
+    href: `/buy/orders?tab=enquiries&highlight=${entityId}`,
+    readAt: null,
+    createdAt: (record.created_at as string) ?? (record.updated_at as string) ?? new Date().toISOString(),
+  };
+}
+
 export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onPatch, onRefresh }: UseBuyerRealtimeOptions) {
   const [updatedEntityIds, setUpdatedEntityIds] = useState<Map<string, 'new' | 'updated'>>(new Map());
   const onNewRef = useRef(onNew);
@@ -148,6 +165,14 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
               createdAt: (record.updated_at as string) ?? new Date().toISOString(),
             });
             setUpdatedEntityIds((prev) => new Map(prev).set(entityId, 'updated'));
+            onRefreshRef.current?.();
+            return;
+          }
+
+          if (row.entity_type === 'estimates' && !isUpdate) {
+            const notification = buildBuyerEstimateInsertNotification(record);
+            onNewRef.current(notification);
+            setUpdatedEntityIds((prev) => new Map(prev).set(notification.entityId, 'new'));
             onRefreshRef.current?.();
             return;
           }
