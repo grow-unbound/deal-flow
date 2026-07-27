@@ -15,6 +15,7 @@ import {
   resolveBuyerZohoContactId,
   resolveProductZohoItemIds,
   resolveBuyerGstInfo,
+  resolveZohoLocationId,
   formatIstDate,
   recordPushSuccess,
   createEchoGuard,
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
   const { data: estimate, error: estErr } = await admin
     .schema('app')
     .from('estimates')
-    .select('id, tenant_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at, place_of_supply, is_buyer_app_estimate')
+    .select('id, tenant_id, location_id, buyer_id, estimate_number, source, external_ref, notes, status, total_amount, subtotal, tax_amount, currency, expires_at, place_of_supply, is_buyer_app_estimate')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -145,6 +146,11 @@ Deno.serve(async (req: Request) => {
 
   // Resolve buyer GST info
   const gstInfo = await resolveBuyerGstInfo(admin, buyerId);
+  const zohoLocationId = await resolveZohoLocationId(
+    admin,
+    tenantId,
+    (estimate.location_id as string | null | undefined) ?? null,
+  );
 
   // Build Zoho estimate payload (matches wineyard pattern exactly)
   const now = new Date();
@@ -172,8 +178,12 @@ Deno.serve(async (req: Request) => {
     notes: notesText,
   };
 
+  if (zohoLocationId) {
+    zohoBody.location_id = zohoLocationId;
+  }
+
   if (estimate.is_buyer_app_estimate === true) {
-    zohoBody.cf_catalog_estimate = true;
+    zohoBody.custom_fields = [{ api_name: 'cf_catalog_estimate', value: true }];
   }
 
   if (gstInfo.gstin && gstInfo.gst_treatment) {

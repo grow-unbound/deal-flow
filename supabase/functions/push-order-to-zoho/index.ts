@@ -15,6 +15,7 @@ import {
   resolveBuyerZohoContactId,
   resolveProductZohoItemIds,
   resolveBuyerGstInfo,
+  resolveZohoLocationId,
   formatIstDate,
   recordPushSuccess,
   createEchoGuard,
@@ -87,7 +88,7 @@ Deno.serve(async (req: Request) => {
   const { data: order, error: orderErr } = await admin
     .schema('app')
     .from('orders')
-    .select('id, tenant_id, buyer_id, order_number, status, source, external_ref, notes, placed_at, subtotal, tax_amount, total_amount, currency, place_of_supply, is_buyer_app_order')
+    .select('id, tenant_id, location_id, buyer_id, order_number, status, source, external_ref, notes, placed_at, subtotal, tax_amount, total_amount, currency, place_of_supply, is_buyer_app_order')
     .eq('id', id)
     .maybeSingle();
 
@@ -149,6 +150,11 @@ Deno.serve(async (req: Request) => {
 
   // Resolve buyer GST info
   const gstInfo = await resolveBuyerGstInfo(admin, buyerId);
+  const zohoLocationId = await resolveZohoLocationId(
+    admin,
+    tenantId,
+    (order.location_id as string | null | undefined) ?? null,
+  );
 
   // Build Zoho Sales Order payload
   const placedAt = order.placed_at ? new Date(order.placed_at as string) : new Date();
@@ -176,8 +182,12 @@ Deno.serve(async (req: Request) => {
     notes: notesText,
   };
 
+  if (zohoLocationId) {
+    zohoBody.location_id = zohoLocationId;
+  }
+
   if (order.is_buyer_app_order === true) {
-    zohoBody.cf_catalog_order = true;
+    zohoBody.custom_fields = [{ api_name: 'cf_catalog_order', value: true }];
   }
 
   if (gstInfo.gstin && gstInfo.gst_treatment) {

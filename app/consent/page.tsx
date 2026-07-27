@@ -54,7 +54,11 @@ export default function WhatsappConsentPage() {
       queryClient.setQueryData<BuyerMeData>(['buyer-me'], (old) =>
         old ? { ...old, whatsapp_consent_required: false } : old,
       );
-      await queryClient.refetchQueries({ queryKey: ['buyer-me'] });
+      const meRes = await apiFetch('/api/buyer/me', { fresh: true });
+      if (meRes.ok) {
+        const latestMe = await meRes.json() as BuyerMeData;
+        queryClient.setQueryData<BuyerMeData>(['buyer-me'], latestMe);
+      }
       router.replace('/buy/home');
     } catch {
       setError('Network error. Please check your connection and try again.');

@@ -121,6 +121,26 @@ export async function resolveBuyerGstInfo(
   };
 }
 
+export async function resolveZohoLocationId(
+  admin: AdminClient,
+  tenantId: string,
+  locationId: string | null | undefined,
+): Promise<string | null> {
+  if (!locationId) return null;
+
+  const { data } = await admin
+    .schema('app')
+    .from('locations')
+    .select('external_ref')
+    .eq('tenant_id', tenantId)
+    .eq('id', locationId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  const externalRef = (data?.external_ref as string | null | undefined) ?? null;
+  return externalRef?.trim() || null;
+}
+
 // ── Date formatting ─────────────────────────────────────────────────────────
 
 export function formatIstDate(date: Date): string {

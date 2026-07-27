@@ -6,19 +6,13 @@ const {
   onNewMock,
   onPatchMock,
   onRefreshMock,
-  campaignCallbacks,
-  orderUpdateCallbacks,
-  estimateUpdateCallbacks,
-  invoiceCallbacks,
+  realtimeCallbacks,
 } = vi.hoisted(() => ({
   removeChannelMock: vi.fn(),
   onNewMock: vi.fn(),
   onPatchMock: vi.fn(),
   onRefreshMock: vi.fn(),
-  campaignCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
-  orderUpdateCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
-  estimateUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
-  invoiceCallbacks: [] as Array<(payload: { eventType?: string; new: Record<string, unknown> }) => void>,
+  realtimeCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
 }));
 
 vi.mock('@/lib/supabase-browser', () => {
@@ -26,16 +20,10 @@ vi.mock('@/lib/supabase-browser', () => {
     on: vi.fn((
       _event: string,
       config: { table?: string; event?: string },
-      callback: (payload: { new: Record<string, unknown>; old?: Record<string, unknown>; eventType?: string }) => void,
+      callback: (payload: { new: Record<string, unknown> }) => void,
     ) => {
-      if (config.table === 'campaigns') {
-        campaignCallbacks.push(callback as (payload: { new: Record<string, unknown> }) => void);
-      } else if (config.table === 'orders' && config.event === 'UPDATE') {
-        orderUpdateCallbacks.push(callback as (payload: { new: Record<string, unknown> }) => void);
-      } else if (config.table === 'estimates' && config.event === 'UPDATE') {
-        estimateUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
-      } else if (config.table === 'invoices') {
-        invoiceCallbacks.push(callback as (payload: { eventType?: string; new: Record<string, unknown> }) => void);
+      if (config.table === 'realtime_notifications' && config.event === 'INSERT') {
+        realtimeCallbacks.push(callback);
       }
       return chain;
     }),
@@ -58,10 +46,47 @@ describe('useBuyerRealtime', () => {
     onNewMock.mockReset();
     onPatchMock.mockReset();
     onRefreshMock.mockReset();
-    campaignCallbacks.length = 0;
-    orderUpdateCallbacks.length = 0;
-    estimateUpdateCallbacks.length = 0;
-    invoiceCallbacks.length = 0;
+    realtimeCallbacks.length = 0;
+  });
+
+  it('notifies buyers when their estimate is first inserted', () => {
+    renderHook(() =>
+      useBuyerRealtime({
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        buyerCohortIds: [],
+        onNew: onNewMock,
+        onPatch: onPatchMock,
+        onRefresh: onRefreshMock,
+      }),
+    );
+
+    act(() => {
+      realtimeCallbacks[0]?.({
+        new: {
+          entity_type: 'estimates',
+          event_type: 'insert',
+          buyer_id: 'buyer-1',
+          payload: {
+            id: 'est-1',
+            status: 'draft',
+            created_at: '2026-07-27T06:51:54.449Z',
+          },
+          old_payload: null,
+        },
+      });
+    });
+
+    expect(onNewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'new_estimate',
+        id: 'est-1_new_estimate',
+        title: 'New estimate',
+        body: 'Status: draft',
+      }),
+    );
+    expect(onPatchMock).not.toHaveBeenCalled();
+    expect(onRefreshMock).toHaveBeenCalledTimes(1);
   });
 
   it('notifies once when an estimate changes to a new buyer-visible status', () => {
@@ -77,17 +102,22 @@ describe('useBuyerRealtime', () => {
     );
 
     act(() => {
-      estimateUpdateCallbacks[0]?.({
-        old: {
-          id: 'est-1',
-          status: 'draft',
-          estimate_number: null,
-        },
+      realtimeCallbacks[0]?.({
         new: {
-          id: 'est-1',
-          status: 'sent',
-          estimate_number: 'EST-001',
-          updated_at: '2026-07-20T10:00:00.000Z',
+          entity_type: 'estimates',
+          event_type: 'update',
+          buyer_id: 'buyer-1',
+          payload: {
+            id: 'est-1',
+            status: 'sent',
+            estimate_number: 'EST-001',
+            updated_at: '2026-07-20T10:00:00.000Z',
+          },
+          old_payload: {
+            id: 'est-1',
+            status: 'draft',
+            estimate_number: null,
+          },
         },
       });
     });
@@ -120,19 +150,24 @@ describe('useBuyerRealtime', () => {
     );
 
     act(() => {
-      estimateUpdateCallbacks[0]?.({
-        old: {
-          id: 'est-1',
-          status: 'sent',
-          estimate_number: 'EST-001',
-          document_url: null,
-        },
+      realtimeCallbacks[0]?.({
         new: {
-          id: 'est-1',
-          status: 'sent',
-          estimate_number: 'EST-001',
-          document_url: 'https://example.com/estimate.pdf',
-          updated_at: '2026-07-20T10:01:00.000Z',
+          entity_type: 'estimates',
+          event_type: 'update',
+          buyer_id: 'buyer-1',
+          payload: {
+            id: 'est-1',
+            status: 'sent',
+            estimate_number: 'EST-001',
+            document_url: 'https://example.com/estimate.pdf',
+            updated_at: '2026-07-20T10:01:00.000Z',
+          },
+          old_payload: {
+            id: 'est-1',
+            status: 'sent',
+            estimate_number: 'EST-001',
+            document_url: null,
+          },
         },
       });
     });
@@ -155,22 +190,27 @@ describe('useBuyerRealtime', () => {
     );
 
     const payload = {
-      old: {
-        id: 'est-dup',
-        status: 'draft',
-        estimate_number: null,
-      },
       new: {
-        id: 'est-dup',
-        status: 'sent',
-        estimate_number: 'EST-999',
-        updated_at: '2026-07-20T10:00:00.000Z',
+        entity_type: 'estimates',
+        event_type: 'update',
+        buyer_id: 'buyer-1',
+        payload: {
+          id: 'est-dup',
+          status: 'sent',
+          estimate_number: 'EST-999',
+          updated_at: '2026-07-20T10:00:00.000Z',
+        },
+        old_payload: {
+          id: 'est-dup',
+          status: 'draft',
+          estimate_number: null,
+        },
       },
     };
 
     act(() => {
-      estimateUpdateCallbacks[0]?.(payload);
-      estimateUpdateCallbacks[0]?.(payload);
+      realtimeCallbacks[0]?.(payload);
+      realtimeCallbacks[0]?.(payload);
     });
 
     expect(onNewMock).toHaveBeenCalledTimes(1);
