@@ -38,6 +38,7 @@ export interface EnqueueWhatsAppMessageResult {
 
 const TRANSACTIONAL_TRIGGER_SOURCES: ReadonlySet<WhatsAppTriggerSource> = new Set([
   'otp_login',
+  'seller_team_invite',
   'order_placed',
   'enquiry_received',
   'estimate_update',

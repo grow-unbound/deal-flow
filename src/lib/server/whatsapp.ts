@@ -29,6 +29,8 @@ interface WhatsappTemplateBodyParam {
 
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
+const WHATSAPP_ACTIVATION_PRODUCT_NAME = 'activating your Yukti account';
+const SELLER_TEAM_ACTIVATION_URL = 'https://app.useyukti.in/activate';
 const FALLBACK_TEMPLATE_LOCALE = 'en';
 const TRANSACTIONAL_TEMPLATE_SHAPES: Record<string, WhatsAppTemplateValidationShape> = {
   order_received_seller: {
@@ -116,6 +118,14 @@ const TRANSACTIONAL_TEMPLATE_SHAPES: Record<string, WhatsAppTemplateValidationSh
       { key: 'seller_phone_number' },
     ],
     buttons_config: [],
+  },
+  invite_user_seller: {
+    meta_template_name: 'invite_user_seller',
+    variables: [
+      { key: 'seller_user' },
+      { key: 'seller_name' },
+    ],
+    buttons_config: [{ type: 'url', index: '0', url_template: SELLER_TEAM_ACTIVATION_URL }],
   },
 };
 
@@ -462,6 +472,14 @@ export async function sendBuyerPaymentReminder(
  * Enqueues the login OTP template. Billed to WHATSAPP_PLATFORM_TENANT_ID.
  */
 export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<void> {
+  await sendOtpWhatsapp(phone, otp, WHATSAPP_LOGIN_PRODUCT_NAME);
+}
+
+export async function sendActivationOtpWhatsapp(phone: string, otp: string): Promise<void> {
+  await sendOtpWhatsapp(phone, otp, WHATSAPP_ACTIVATION_PRODUCT_NAME);
+}
+
+async function sendOtpWhatsapp(phone: string, otp: string, productName: string): Promise<void> {
   const adminNumber = process.env.WHATSAPP_ADMIN_NUMBER;
   const platformTenantId = getPlatformTenantId();
 
@@ -487,7 +505,7 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<
       locale: WHATSAPP_OTP_TEMPLATE_LOCALE,
       body_params: [
         { text: otp },
-        { text: WHATSAPP_LOGIN_PRODUCT_NAME },
+        { text: productName },
         { text: adminNumber },
       ],
       button_params: [{ type: 'url', index: '0', text: otp }],
@@ -504,4 +522,28 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<
       throw new Error('Failed to send OTP WhatsApp message');
     }
   }
+}
+
+export async function sendSellerTeamActivationInviteWhatsapp(input: {
+  tenantId: string;
+  phone: string;
+  fullName: string;
+  tenantName: string;
+}): Promise<boolean> {
+  const locale = await resolveTemplateLocale('invite_user_seller');
+  return enqueueWhatsappTemplate(
+    input.phone,
+    'invite_user_seller',
+    locale,
+    [
+      { text: input.fullName, parameterName: 'seller_user' },
+      { text: input.tenantName, parameterName: 'seller_name' },
+    ],
+    undefined,
+    {
+      tenantId: input.tenantId,
+      metaCategory: 'utility',
+      triggerSource: 'seller_team_invite',
+    },
+  );
 }

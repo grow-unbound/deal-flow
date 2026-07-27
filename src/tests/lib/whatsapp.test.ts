@@ -128,4 +128,31 @@ describe('whatsapp enqueue sender', () => {
     ]);
     expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
+
+  it('enqueues the seller activation invite with named params', async () => {
+    const { sendSellerTeamActivationInviteWhatsapp } = await import('@/lib/server/whatsapp');
+
+    await sendSellerTeamActivationInviteWhatsapp({
+      tenantId: 'tenant-1',
+      phone: '9490744841',
+      fullName: 'Ravi Kumar',
+      tenantName: 'Acme Traders',
+    });
+
+    const input = enqueueWhatsAppMessageMock.mock.calls[0]?.[0] as {
+      triggerSource: string;
+      metaCategory: string;
+      sendPayload: {
+        meta_template_name: string;
+        body_params: Array<{ text: string; parameter_name?: string }>;
+      };
+    };
+    expect(input.triggerSource).toBe('seller_team_invite');
+    expect(input.metaCategory).toBe('utility');
+    expect(input.sendPayload.meta_template_name).toBe('invite_user_seller');
+    expect(input.sendPayload.body_params).toEqual([
+      { text: 'Ravi Kumar', parameter_name: 'seller_user' },
+      { text: 'Acme Traders', parameter_name: 'seller_name' },
+    ]);
+  });
 });

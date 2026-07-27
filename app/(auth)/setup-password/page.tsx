@@ -14,6 +14,7 @@ const labelCls =
 export default function SetupPasswordPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [displayEmail, setDisplayEmail] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -23,6 +24,8 @@ export default function SetupPasswordPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const nameFromQuery = params.get('full_name');
+    const emailFromQuery = params.get('email');
 
     // Hash fragment from Supabase old-style email links: #access_token=...&refresh_token=...
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -47,11 +50,13 @@ export default function SetupPasswordPage() {
         setError('Your invite link has expired or is invalid. Please ask for a new invite.');
         return;
       }
-      const name =
-        (data.user.user_metadata?.full_name as string | undefined) ??
-        data.user.email ??
-        null;
+      const name = nameFromQuery?.trim()
+        || (data.user.user_metadata?.full_name as string | undefined)
+        || data.user.email
+        || null;
+      const email = emailFromQuery?.trim() || data.user.email || null;
       setDisplayName(name);
+      setDisplayEmail(email);
       setSessionReady(true);
     };
 
@@ -109,6 +114,13 @@ export default function SetupPasswordPage() {
       <p className="text-body-sm text-cream-600 mb-6">
         You&apos;ve been invited to your seller workspace. Create a password to get started.
       </p>
+
+      {displayEmail ? (
+        <div className="mb-6 rounded-md border border-cream-200 bg-cream-50 px-4 py-3">
+          <p className="text-caption uppercase tracking-wide text-cream-500">Account email</p>
+          <p className="text-body-sm font-medium text-cream-900">{displayEmail}</p>
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

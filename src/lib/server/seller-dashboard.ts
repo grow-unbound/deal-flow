@@ -397,11 +397,14 @@ async function fetchSellerDashboardData(
   // count above, so the callout's own hint count and row list can never drift from the
   // "Overdue receivables" KPI tile the way the old truncated-invoices-derived version did.
   // Ordered by amount so a generous bound never drops the buyers that matter most.
+  // metrics_buyer_location_snapshot has no oldest_due_at column (only the tenant-wide
+  // metrics_buyer_snapshot tracks that) — subset mode omits it and the row simply
+  // carries oldest_due_at: null downstream.
   const overdueBuyerRowsQuery = scope.mode === 'subset'
     ? db
         .schema('app')
         .from('metrics_buyer_location_snapshot')
-        .select('buyer_id, overdue_amount, oldest_due_at')
+        .select('buyer_id, overdue_amount')
         .eq('tenant_id', tenantId)
         .in('location_id', scopedLocationIds)
         .is('deleted_at', null)
