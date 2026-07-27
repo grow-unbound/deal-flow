@@ -1,11 +1,12 @@
 'use client';
 
 import { formatNumberValue } from '@/lib/utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from 'lucide-react';
 
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/ui/status-pill';
 import { apiFetch } from '@/lib/api-fetch';
@@ -66,6 +67,7 @@ export function BuyerTransactionPlacedPage({
   const router = useRouter();
   const params = useSearchParams();
   const { clearCart } = useCart();
+  const { setRefreshFn } = useBuyerRealtimeContext();
 
   const id = params.get(kind === 'estimate' ? 'estimate_id' : 'order_id') ?? params.get('id') ?? '';
   const provisionalNumber =
@@ -86,6 +88,22 @@ export function BuyerTransactionPlacedPage({
     clearCart();
   }, [clearCart]);
 
+  const loadCanonicalDetail = useCallback(async () => {
+    if (!id) return false;
+    const res = await apiFetch(`${detailEndpoint}/${id}`, { fresh: true });
+    if (!res.ok) return false;
+    const json = (await res.json()) as BuyerTransactionDetailResponse;
+    const fields = getDocumentFields(kind, json);
+    if (fields.number) {
+      setDocumentNumber(fields.number);
+      setDocumentStatusNote('');
+    } else if (fields.statusNote) {
+      setDocumentStatusNote(fields.statusNote);
+    }
+    if (fields.documentUrl) setDocumentUrl(fields.documentUrl);
+    return Boolean(fields.number || fields.documentUrl);
+  }, [detailEndpoint, id, kind]);
+
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
@@ -94,37 +112,29 @@ export function BuyerTransactionPlacedPage({
     const maxAttempts = 4;
     const retryDelayMs = 1500;
 
-    async function loadCanonicalDetail() {
+    async function pollCanonicalDetail() {
       attempt += 1;
-      const res = await apiFetch(`${detailEndpoint}/${id}`);
-      if (!res.ok) return;
-      const json = (await res.json()) as BuyerTransactionDetailResponse;
       if (cancelled) return;
-      const fields = getDocumentFields(kind, json);
-      if (fields.number) {
-        setDocumentNumber(fields.number);
-        setDocumentStatusNote('');
-      } else if (fields.statusNote) {
-        setDocumentStatusNote(fields.statusNote);
-      }
-      if (fields.documentUrl) setDocumentUrl(fields.documentUrl);
-      if (!fields.documentUrl && attempt < maxAttempts) {
+      const ready = await loadCanonicalDetail();
+      if (!ready && attempt < maxAttempts) {
         retryTimer = setTimeout(() => {
-          void loadCanonicalDetail();
+          void pollCanonicalDetail();
         }, retryDelayMs);
       }
     }
 
-    void loadCanonicalDetail();
+    void pollCanonicalDetail();
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [detailEndpoint, id, kind]);
+  }, [id, loadCanonicalDetail]);
 
-  // Realtime subscription removed (whatsapp/document realtime consolidation) — the
-  // loadCanonicalDetail polling retry loop above already covers "wait for the
-  // number/PDF to be ready" for this page.
+  useEffect(() => {
+    if (!id) return;
+    setRefreshFn(loadCanonicalDetail);
+    return () => setRefreshFn(null);
+  }, [id, loadCanonicalDetail, setRefreshFn]);
 
   const linkLabel = useMemo(
     () => (kind === 'estimate' ? 'View Estimate PDF' : 'View Order PDF'),

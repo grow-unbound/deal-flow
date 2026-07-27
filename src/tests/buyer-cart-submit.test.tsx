@@ -15,6 +15,7 @@ const markBuyerNavigationBackMock = vi.fn();
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
 const prefetchMock = vi.fn();
+const setRefreshFnMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => useRouterMock(),
@@ -61,17 +62,8 @@ vi.mock('@/contexts/BuyerRealtimeContext', () => ({
     unreadCount: 0,
     updatedEntityIds: new Map(),
     markSeen: vi.fn(),
-    setRefreshFn: vi.fn(),
+    setRefreshFn: setRefreshFnMock,
   }),
-}));
-
-vi.mock('@/lib/supabase-browser', () => ({
-  supabaseBrowser: {
-    channel: () => ({
-      on: () => ({ subscribe: () => ({}) }),
-    }),
-    removeChannel: vi.fn(),
-  },
 }));
 
 function renderWithQueryClient(ui: ReactElement) {
@@ -150,6 +142,7 @@ describe('buyer cart submission', () => {
     pushMock.mockReset();
     replaceMock.mockReset();
     prefetchMock.mockReset();
+    setRefreshFnMock.mockReset();
     window.sessionStorage.clear();
   });
 
@@ -276,6 +269,66 @@ describe('buyer transaction placed page CTAs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /go to orders/i }));
     expect(pushMock).toHaveBeenCalledWith('/buy/orders?tab=enquiries&highlight=est-42');
+  });
+
+  it('refreshes canonical detail when buyer realtime triggers the placed page refresh callback', async () => {
+    useSearchParamsMock.mockReturnValue(
+      new URLSearchParams({
+        estimate_id: 'est-77',
+        document_status_note: 'will be created soon',
+      }),
+    );
+
+    apiFetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          estimate: {
+            estimate_number: null,
+            document_status_note: 'will be created soon',
+            document_url: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          estimate: {
+            estimate_number: 'EST-77',
+            document_status_note: null,
+            document_url: 'https://example.com/estimate-77.pdf',
+          },
+        }),
+      });
+
+    const { BuyerTransactionPlacedPage } = await import(
+      '@/components/buyer/transactions/BuyerTransactionPlacedPage'
+    );
+    renderWithQueryClient(
+      <BuyerTransactionPlacedPage
+        kind="estimate"
+        title="Estimate created"
+        detailEndpoint="/api/buyer/estimates"
+        successHeading="Estimate created successfully"
+        successCopy="Done"
+        documentLabel="Estimate"
+      />,
+    );
+
+    expect(await screen.findByText('will be created soon')).toBeInTheDocument();
+
+    const refreshRegistration = setRefreshFnMock.mock.calls.at(-1)?.[0] as (() => Promise<void>) | null | undefined;
+    expect(refreshRegistration).toBeTypeOf('function');
+
+    await refreshRegistration?.();
+
+    await waitFor(() => {
+      expect(screen.getByText('EST-77')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('link', { name: /view estimate pdf/i })).toHaveAttribute(
+      'href',
+      'https://example.com/estimate-77.pdf',
+    );
   });
 });
 

@@ -18,6 +18,34 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useBuyerMe', () => ({
+  useBuyerMe: () => ({
+    data: {
+      mode: 'buyer',
+      buyer_id: 'buyer-1',
+      business_name: 'Test Buyer',
+      contact_name: 'Test',
+      phone: '9999999999',
+      gstin: null,
+      credit_limit: 0,
+      credit_used: 0,
+      open_orders_count: 0,
+      seller_preview: false,
+      support_whatsapp_number: null,
+      tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+      order_features: {
+        enquiries: true,
+        sales_orders: true,
+        invoices: true,
+        create_enquiries: true,
+        create_sales_orders: true,
+      },
+      business_policy: { credit_enabled: true, gst_inclusive: false, gst_rate: 18 },
+      whatsapp_consent_required: false,
+    },
+  }),
+}));
+
 vi.mock('@/hooks/useBuyerRealtime', async () => {
   const ReactModule = await import('react');
   return {

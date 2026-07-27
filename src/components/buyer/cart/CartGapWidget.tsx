@@ -3,7 +3,7 @@
 import { formatNumberValue } from '@/lib/utils';
 import { Package, Plus, Sparkles } from 'lucide-react';
 import posthog from 'posthog-js';
-import { hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import type { BuyerCartItem } from '@/contexts/BuyerCartContext';
 import type { CartBundle, CartBundleSlot } from '@/hooks/useCartBundles';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -79,7 +79,7 @@ export function CartGapWidget({ bundles, items, tenantId, onAddToCart }: CartGap
         {gaps.map(({ slot }) => {
           const product = slot.top_product!;
           const label = slot.slot_label ?? product.display_name;
-          const imageUrl = product.image_urls[0] ?? null;
+          const imageUrl = getBuyerProductPrimaryImageUrl(product);
           const showCampaignPrice = hasBuyerCampaignPrice(product);
 
           return (

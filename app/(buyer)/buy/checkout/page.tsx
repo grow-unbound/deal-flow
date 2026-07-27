@@ -11,6 +11,7 @@ import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { apiFetch } from '@/lib/api-fetch';
 ;
+import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { computeBuyerCartTotals } from '@/lib/gst';
 import posthog from 'posthog-js';
@@ -40,7 +41,7 @@ export default function CheckoutPage() {
         name: product.display_name,
         brand: product.brand_name ?? undefined,
         internal_sku: product.internal_sku,
-        image_url: product.image_urls[0],
+        image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
         unit_price: product.price,
         resolved_price: product.resolved_price,
         has_campaign_price: product.has_campaign_price,
