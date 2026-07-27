@@ -132,7 +132,9 @@ export function BuyerTransactionPlacedPage({
 
   useEffect(() => {
     if (!id) return;
-    setRefreshFn(loadCanonicalDetail);
+    setRefreshFn(async () => {
+      await loadCanonicalDetail();
+    });
     return () => setRefreshFn(null);
   }, [id, loadCanonicalDetail, setRefreshFn]);
 
