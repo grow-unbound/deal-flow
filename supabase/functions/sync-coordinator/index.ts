@@ -45,7 +45,6 @@ import {
   markJobFailed,
   markSlaveSkipped,
   phasesInRunFromMaster,
-  resumeSyncRealtime,
   reviveOrFailSlave,
   runAnalysisPhase,
   updateCircuitBreakerState,
@@ -191,7 +190,6 @@ async function executeAction(
         },
       });
       await updateCircuitBreakerState(admin, resolvedIntegration.id, action.degraded ? 'degraded' : 'completed');
-      await resumeSyncRealtime(admin);
       return;
     }
 
@@ -202,7 +200,6 @@ async function executeAction(
         completedAt: new Date().toISOString(),
       });
       await updateCircuitBreakerState(admin, resolvedIntegration.id, 'failed');
-      await resumeSyncRealtime(admin);
       return;
 
     case 'stale_detected': {
