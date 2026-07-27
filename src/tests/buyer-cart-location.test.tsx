@@ -94,9 +94,11 @@ describe('buyer cart location details', () => {
         pincode: '400058',
         lat: 19.12,
         lng: 72.84,
+        selection_source: 'maps',
         place_of_supply: 'Andheri West',
         nearest_warehouse_id: 'wh-1',
         routed_location_id: 'loc-1',
+        routed_location_name: 'Sainikpuri',
         nearest_warehouse_name: 'Mumbai Warehouse',
         nearest_warehouse_distance_km: 4,
         nearest_warehouse_fallback: false,
@@ -104,7 +106,7 @@ describe('buyer cart location details', () => {
     });
     useBuyerMeMock.mockReturnValue({
       data: {
-        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
         business_policy: { gst_inclusive: false, gst_rate: 18 },
         order_features: { create_sales_orders: true, create_enquiries: true },
       },
@@ -119,8 +121,7 @@ describe('buyer cart location details', () => {
     const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
     renderWithQueryClient(<CartPage />);
 
-    expect(screen.getByText('Andheri West')).toBeInTheDocument();
-    expect(screen.getByText(/fulfilled from Mumbai Warehouse/i)).toBeInTheDocument();
+    expect(screen.getByText('Sainikpuri')).toBeInTheDocument();
     expect(apiFetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/buyer/nearest-location'));
   });
 
@@ -172,7 +173,7 @@ describe('buyer cart location details', () => {
     });
     useBuyerMeMock.mockReturnValue({
       data: {
-        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
         business_policy: { gst_inclusive: true, gst_rate: 18 },
         order_features: { create_sales_orders: true, create_enquiries: true },
       },
@@ -182,7 +183,6 @@ describe('buyer cart location details', () => {
     const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
     renderWithQueryClient(<CartPage />);
 
-    expect(screen.getByText('Unavailable at this warehouse')).toBeInTheDocument();
     expect(screen.getByText('Out of stock for selected location')).toBeInTheDocument();
     expect(screen.getByText('Excluded')).toBeInTheDocument();
     expect(screen.getByText('Included in Prices')).toBeInTheDocument();
@@ -233,7 +233,7 @@ describe('buyer cart location details', () => {
     });
     useBuyerMeMock.mockReturnValue({
       data: {
-        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
         business_policy: { gst_inclusive: false, gst_rate: 18 },
         order_features: { create_sales_orders: true, create_enquiries: true },
       },

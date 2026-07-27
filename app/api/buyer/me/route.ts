@@ -23,6 +23,19 @@ interface BuyerMeResponse {
     id: string;
     name: string;
     slug: string;
+    outlets: Array<{
+      location_id: string;
+      name: string;
+      is_default: boolean;
+      city: string;
+      state: string;
+      pincode: string;
+      formatted_address: string;
+      lat: number | null;
+      lng: number | null;
+      warehouse_id: string;
+      warehouse_name: string;
+    }>;
   };
   greeting_name?: string | null;
   order_features: {
@@ -77,6 +90,22 @@ function normalizePatchBody(body: Record<string, unknown>) {
   }
 
   return next;
+}
+
+function getAddressField(address: unknown, key: 'line1' | 'line2' | 'city' | 'state' | 'pincode'): string {
+  if (!address || typeof address !== 'object') return '';
+  const value = (address as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatAddress(address: unknown): string {
+  return [
+    getAddressField(address, 'line1'),
+    getAddressField(address, 'line2'),
+    getAddressField(address, 'city'),
+    getAddressField(address, 'state'),
+    getAddressField(address, 'pincode'),
+  ].filter(Boolean).join(', ');
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -143,6 +172,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           id: tenant.id,
           name: tenant.business_name,
           slug: tenant.slug,
+          outlets: [],
         },
         greeting_name: 'Preview',
         order_features: orderFeatures,
@@ -158,7 +188,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const tenantId = context.tenant_id!;
-    const [ordersRes, creditSnapshot] = await Promise.all([
+    const [ordersRes, creditSnapshot, outletsRes] = await Promise.all([
       db
         .schema('app')
         .from('orders')
@@ -172,6 +202,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         buyerId,
         creditLimit: Number(profile.buyer?.credit_limit ?? 0),
       }),
+      db
+        .schema('app')
+        .from('warehouses')
+        .select(
+          'id, name, is_default, lat, lng, location_id, locations!inner(id, name, is_default, address, lat, lng, deleted_at)',
+        )
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .not('location_id', 'is', null)
+        .limit(500)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true }),
     ]);
 
     if (!profile.buyer) {
@@ -187,8 +229,51 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Failed to compute credit used' }, { status: 500 });
     }
 
+    if (outletsRes.error) {
+      console.error('[GET /api/buyer/me] outlets query error:', outletsRes.error);
+      return NextResponse.json({ error: 'Failed to load ordering outlets' }, { status: 500 });
+    }
+
     const openOrders = ordersRes.data ?? [];
     const openOrdersCount = openOrders.length;
+    const outletsByLocation = new Map<string, BuyerMeResponse['tenant']['outlets'][number]>();
+
+    for (const row of (outletsRes.data ?? []) as Array<Record<string, unknown>>) {
+      const location = row.locations;
+      if (!location || typeof location !== 'object') continue;
+
+      const locationId = typeof (location as Record<string, unknown>).id === 'string'
+        ? (location as Record<string, unknown>).id as string
+        : null;
+      if (!locationId || outletsByLocation.has(locationId)) continue;
+      if ((location as Record<string, unknown>).deleted_at) continue;
+
+      const lat = typeof (location as Record<string, unknown>).lat === 'number'
+        ? (location as Record<string, unknown>).lat as number
+        : (typeof row.lat === 'number' ? row.lat as number : null);
+      const lng = typeof (location as Record<string, unknown>).lng === 'number'
+        ? (location as Record<string, unknown>).lng as number
+        : (typeof row.lng === 'number' ? row.lng as number : null);
+      const address = (location as Record<string, unknown>).address;
+
+      outletsByLocation.set(locationId, {
+        location_id: locationId,
+        name: typeof (location as Record<string, unknown>).name === 'string'
+          ? (location as Record<string, unknown>).name as string
+          : typeof row.name === 'string'
+            ? row.name as string
+            : 'Outlet',
+        is_default: (location as Record<string, unknown>).is_default === true,
+        city: getAddressField(address, 'city'),
+        state: getAddressField(address, 'state'),
+        pincode: getAddressField(address, 'pincode'),
+        formatted_address: formatAddress(address),
+        lat,
+        lng,
+        warehouse_id: String(row.id),
+        warehouse_name: typeof row.name === 'string' ? row.name : 'Warehouse',
+      });
+    }
 
     const buyer = profile.buyer;
     const tenant = profile.tenant;
@@ -209,6 +294,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         id: tenant.id,
         name: tenant.business_name,
         slug: tenant.slug,
+        outlets: Array.from(outletsByLocation.values()),
       },
       greeting_name: profile.greeting_name,
       order_features: orderFeatures,

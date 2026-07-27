@@ -166,16 +166,19 @@ export interface ProductDetailResponse {
     performance_cards?: unknown[];
     detail_v2?: unknown;
     pricing: Array<{
-      item_id: string;
+      item_id: string | null;
       price_list_id: string;
       price_list_name: string;
-      effective_price: number;
-      cohorts: string[];
+      list_price: number | null;
+      effective_price: number | null;
       valid_from: string | null;
       valid_to: string | null;
+      created_at: string;
       is_active: boolean;
-      has_override: boolean;
-      base_price: number;
+      is_managed_externally: boolean;
+      status: 'active' | 'draft' | 'expired';
+      avg_discount_pct: number | null;
+      avg_margin_pct: number | null;
     }>;
     activity: Array<{
       id: string;
@@ -518,10 +521,29 @@ export function useDeactivateProduct() {
   });
 }
 
-export function useUpdateProductPriceOverride(productId: string) {
+export function useProductPriceListItemMutations(productId: string, includePerformance = false) {
   const queryClient = useQueryClient();
+  const detailQueryKey = ['tenant-product-detail', productId, includePerformance] as const;
 
-  return useMutation({
+  const patchDetailPricing = (
+    updater: (rows: ProductDetailResponse['detail']['pricing']) => ProductDetailResponse['detail']['pricing'],
+  ) => {
+    queryClient.setQueriesData<ProductDetailResponse>(
+      { queryKey: ['tenant-product-detail', productId] },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          detail: {
+            ...old.detail,
+            pricing: updater(old.detail.pricing),
+          },
+        };
+      },
+    );
+  };
+
+  const updateItem = useMutation({
     mutationFn: async ({ priceListId, itemId, price }: { priceListId: string; itemId: string; price: number }) => {
       const res = await apiFetch(`/api/price-lists/${priceListId}/items/${itemId}`, {
         method: 'PATCH',
@@ -531,36 +553,104 @@ export function useUpdateProductPriceOverride(productId: string) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Failed to update override');
+        throw new Error((err as { error?: string }).error ?? 'Failed to update list price');
       }
 
       return res.json() as Promise<{ item: { id: string; price: number } }>;
     },
     onMutate: async ({ itemId, price }) => {
-      const snapshots = await takeSnapshots(queryClient, [['tenant-product-detail', productId]]);
-      queryClient.setQueryData<ProductDetailResponse>(['tenant-product-detail', productId], (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          detail: {
-            ...old.detail,
-            pricing: old.detail.pricing.map((row) =>
-              row.item_id === itemId ? { ...row, effective_price: price } : row,
-            ),
-          },
-        };
-      });
+      const snapshots = await takeSnapshots(queryClient, [detailQueryKey]);
+      patchDetailPricing((rows) =>
+        rows.map((row) =>
+          row.item_id === itemId ? { ...row, list_price: price, effective_price: price } : row,
+        ),
+      );
       return { snapshots };
     },
     onError: (_error, _vars, ctx) => {
       rollbackSnapshots(queryClient, ctx?.snapshots);
-      toast.error(_error instanceof Error ? _error.message : 'Could not update override');
+      toast.error(_error instanceof Error ? _error.message : 'Could not update list price');
     },
-    onSuccess: () => {
+    onSuccess: (_data, { priceListId }) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-product-detail', productId] });
-      toast.success('Override updated');
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      toast.success('List price updated');
     },
   });
+
+  const addItem = useMutation({
+    mutationFn: async ({ priceListId, price }: { priceListId: string; price: number }) => {
+      const res = await apiFetch(`/api/price-lists/${priceListId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_product_id: productId, price, min_qty: 1 }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to add to price list');
+      }
+
+      return res.json() as Promise<{ item: { id: string; price: number } }>;
+    },
+    onSuccess: (data, { priceListId }) => {
+      const itemId = data.item.id;
+      const price = Number(data.item.price);
+      patchDetailPricing((rows) =>
+        rows.map((row) =>
+          row.price_list_id === priceListId
+            ? { ...row, item_id: itemId, list_price: price, effective_price: price }
+            : row,
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ['tenant-product-detail', productId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      toast.success('Product added to price list');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not add to price list');
+    },
+  });
+
+  const removeItem = useMutation({
+    mutationFn: async ({ priceListId, itemId }: { priceListId: string; itemId: string }) => {
+      const res = await apiFetch(`/api/price-lists/${priceListId}/items/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to remove from price list');
+      }
+      return { ok: true };
+    },
+    onMutate: async ({ itemId }) => {
+      const snapshots = await takeSnapshots(queryClient, [detailQueryKey]);
+      patchDetailPricing((rows) =>
+        rows.map((row) =>
+          row.item_id === itemId ? { ...row, item_id: null, list_price: null, effective_price: null } : row,
+        ),
+      );
+      return { snapshots };
+    },
+    onError: (_error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not remove from price list');
+    },
+    onSuccess: (_data, { priceListId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-product-detail', productId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      toast.success('Removed from price list');
+    },
+  });
+
+  return { updateItem, addItem, removeItem };
+}
+
+/** @deprecated Use useProductPriceListItemMutations */
+export function useUpdateProductPriceOverride(productId: string) {
+  const { updateItem } = useProductPriceListItemMutations(productId, false);
+  return updateItem;
 }
 
 export function useReactivateProduct() {

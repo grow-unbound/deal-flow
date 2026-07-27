@@ -135,7 +135,7 @@ export function ProductPerformanceTab({ performance, performanceCards }: Product
             <MetricGrid
               className="mt-0"
               tiles={[
-                { label: 'On hand', value: performance.inventory_ops.on_hand, sub: 'bottles' },
+                { label: 'On hand', value: performance.inventory_ops.on_hand, sub: 'units' },
                 { label: 'Days of cover', value: `${performance.inventory_ops.days_cover} d`, sub: 'at current pace' },
                 { label: 'Sell-through', value: `${performance.inventory_ops.sell_through_pct}%`, sub: 'last 30 days' },
                 {
@@ -159,7 +159,7 @@ export function ProductPerformanceTab({ performance, performanceCards }: Product
               id: `${buyer.buyer_id}-${index}`,
               label: buyer.buyer_name,
               meta: buyer.city ?? '—',
-              value: `${buyer.units} bottles`,
+              value: `${buyer.units} units`,
             }))}
             emptyTitle="No buyer activity yet"
             emptyDescription="This product has not been purchased by any customer in the selected horizon."

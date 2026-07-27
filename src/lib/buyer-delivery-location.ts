@@ -11,9 +11,11 @@ export const buyerDeliveryLocationSchema = z.object({
   pincode: z.string().optional(),
   lat: z.number(),
   lng: z.number(),
+  selection_source: z.enum(['outlet', 'maps']).optional(),
   place_of_supply: z.string().optional(),
   nearest_warehouse_id: z.string().nullable().optional(),
   routed_location_id: z.string().nullable().optional(),
+  routed_location_name: z.string().nullable().optional(),
   nearest_warehouse_name: z.string().nullable().optional(),
   nearest_warehouse_distance_km: z.number().nullable().optional(),
   nearest_warehouse_fallback: z.boolean().optional(),
@@ -64,23 +66,26 @@ function trimText(value: string | null | undefined): string {
  * We prefer the picked sublocality-style label, then city, then a generic prompt.
  */
 export function formatBuyerSelectedLocationLabel(
-  location: Pick<BuyerDeliveryLocation, 'label' | 'city'> | null | undefined,
-  fallback = 'Select location',
+  location: Pick<BuyerDeliveryLocation, 'label' | 'city' | 'routed_location_name'> | null | undefined,
+  fallback = 'Select outlet',
 ): string {
-  return trimText(location?.label) || trimText(location?.city) || fallback;
+  return trimText(location?.routed_location_name) || trimText(location?.label) || trimText(location?.city) || fallback;
 }
 
-/** Compact label for tight header slots — locality or city, never the full formatted address. */
+/** Compact label for tight header slots — prefer outlet name, then locality/city. */
 export function formatBuyerCompactLocationLabel(
-  location: Pick<BuyerDeliveryLocation, 'label' | 'city'> | null | undefined,
-  fallback = 'Select location',
+  location: Pick<BuyerDeliveryLocation, 'label' | 'city' | 'routed_location_name'> | null | undefined,
+  fallback = 'Select outlet',
 ): string {
   if (!location) return fallback;
 
+  const outlet = trimText(location.routed_location_name);
   const city = trimText(location.city);
   const label = trimText(location.label);
   const primary = label.split(',')[0]?.trim() ?? '';
 
+  if (outlet.length > 0 && outlet.length <= 24) return outlet;
+  if (outlet.length > 24) return `${outlet.slice(0, 24)}…`;
   if (primary.length > 0 && primary.length <= 24) return primary;
   if (city) return city;
   if (primary.length > 0) {

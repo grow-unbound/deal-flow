@@ -1,12 +1,23 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, IndianRupee, Pencil, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Pencil, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
+import { EntityAvatar, FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
+import {
+  MemberToggle,
+  MembershipBulkActionBar,
+  RowSelectCheckbox,
+  SelectableRow,
+  SelectAllCheckbox,
+  useSelectableRows,
+} from '@/components/seller/shared/SelectableMembershipTable';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
-import { useUpdateProductPriceOverride } from '@/hooks/useProducts';
+import { useProductPriceListItemMutations } from '@/hooks/useProducts';
+import { useDebounce } from '@/hooks/useDebounce';
+import { PriceListStatusBadge } from '@/components/seller/price-lists/PriceListStatusBadge';
+import { cn, formatDate, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 
 interface ProductPricingTabProps {
   productId: string;
@@ -15,151 +26,374 @@ interface ProductPricingTabProps {
   pricing: ProductDetailResponse['detail']['pricing'];
 }
 
+type PricingRow = ProductDetailResponse['detail']['pricing'][number];
+
+type SortOption =
+  | 'Pricelist (A → Z)'
+  | 'List price (high → low)'
+  | 'Avg discount (high → low)'
+  | 'Avg margin (high → low)';
+
+const MEMBER_OPTIONS = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'all', label: 'All' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'expired', label: 'Expired' },
+];
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export function ProductPricingTab({ productId, role, pricingSummary, pricing }: ProductPricingTabProps) {
   const isAdmin = role === 'seller_admin';
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [editingRow, setEditingRow] = useState<string | null>(null);
-  const updateOverride = useUpdateProductPriceOverride(productId);
+  const [search, setSearch] = useState('');
+  const [member, setMember] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<SortOption>('Pricelist (A → Z)');
+  const [editingPriceListId, setEditingPriceListId] = useState<string | null>(null);
+  const [draftPrice, setDraftPrice] = useState('');
+
+  const debouncedSearch = useDebounce(search, 300);
+  const { updateItem, addItem, removeItem } = useProductPriceListItemMutations(productId, false);
+  const isPending = updateItem.isPending || addItem.isPending || removeItem.isPending;
+  const isInterim = search.trim() !== debouncedSearch.trim();
+
+  const rows = useMemo(() => {
+    const query = debouncedSearch.trim().toLowerCase();
+    let next = pricing.filter((row) => {
+      if (query && !row.price_list_name.toLowerCase().includes(query)) return false;
+      if (member === 'yes' && !row.item_id) return false;
+      if (member === 'no' && row.item_id) return false;
+      if (statusFilter !== 'all' && row.status !== statusFilter) return false;
+      return true;
+    });
+
+    next = [...next].sort((a, b) => {
+      if (sortBy === 'List price (high → low)') {
+        return Number(b.list_price ?? -1) - Number(a.list_price ?? -1);
+      }
+      if (sortBy === 'Avg discount (high → low)') {
+        return Number(b.avg_discount_pct ?? -1) - Number(a.avg_discount_pct ?? -1);
+      }
+      if (sortBy === 'Avg margin (high → low)') {
+        return Number(b.avg_margin_pct ?? -1) - Number(a.avg_margin_pct ?? -1);
+      }
+      return a.price_list_name.localeCompare(b.price_list_name);
+    });
+
+    return next;
+  }, [debouncedSearch, member, pricing, sortBy, statusFilter]);
+
+  const selection = useSelectableRows(rows, (row) => row.price_list_id);
+
+  useEffect(() => {
+    selection.clearSelection();
+  }, [member, statusFilter, debouncedSearch, sortBy, selection.clearSelection]);
+
+  const memberCount = useMemo(() => pricing.filter((row) => row.item_id).length, [pricing]);
+
+  const filterGroups: FilterBarGroup[] = [
+    {
+      key: 'member',
+      label: 'Member',
+      options: MEMBER_OPTIONS,
+      values: [member],
+      onChange: (values) => setMember(values.at(-1) ?? 'all'),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS,
+      values: [statusFilter],
+      onChange: (values) => setStatusFilter(values.at(-1) ?? 'all'),
+    },
+  ];
+
+  function beginEdit(row: PricingRow) {
+    if (row.is_managed_externally || !isAdmin) return;
+    setEditingPriceListId(row.price_list_id);
+    if (row.list_price != null) {
+      setDraftPrice(formatNumberInput(row.list_price, 'CURRENCY_EXACT'));
+      return;
+    }
+    const seed = pricingSummary.base_selling_price;
+    setDraftPrice(seed != null ? formatNumberInput(seed, 'CURRENCY_EXACT') : '');
+  }
+
+  async function saveEdit(row: PricingRow) {
+    const parsed = parseNumberInput(draftPrice, 'CURRENCY_EXACT');
+    if (parsed == null || parsed <= 0) return;
+    if (row.item_id) {
+      await updateItem.mutateAsync({ priceListId: row.price_list_id, itemId: row.item_id, price: parsed });
+    } else {
+      await addItem.mutateAsync({ priceListId: row.price_list_id, price: parsed });
+    }
+    setEditingPriceListId(null);
+    setDraftPrice('');
+  }
+
+  async function handleBulkInclude() {
+    const basePrice = Number(pricingSummary.base_selling_price ?? 0);
+    if (basePrice <= 0) return;
+    const targets = rows.filter(
+      (row) => selection.selectedIds.includes(row.price_list_id) && !row.item_id && !row.is_managed_externally,
+    );
+    for (const row of targets) {
+      await addItem.mutateAsync({ priceListId: row.price_list_id, price: basePrice });
+    }
+    selection.clearSelection();
+  }
+
+  async function handleBulkRemove() {
+    const targets = rows.filter(
+      (row) => selection.selectedIds.includes(row.price_list_id) && row.item_id && !row.is_managed_externally,
+    );
+    for (const row of targets) {
+      if (!row.item_id) continue;
+      await removeItem.mutateAsync({ priceListId: row.price_list_id, itemId: row.item_id });
+    }
+    selection.clearSelection();
+  }
 
   return (
     <section className="mt-5 space-y-4">
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Base pricing context</h3>
-          <p className="text-base text-cream-700">Use these values as a baseline while editing cohort and price-list overrides.</p>
+      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-display text-lg text-cream-950">Base pricing context</h3>
+            <p className="mt-1 text-base text-cream-700">Use these values as a baseline while editing price list overrides.</p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.mrp != null ? formatNumberValue(pricingSummary.mrp, 'CURRENCY_EXACT') : '—'}</p>
+            <p className="mt-2 font-display text-xl leading-none text-cream-950">{pricingSummary.mrp != null ? formatNumberValue(pricingSummary.mrp, 'CURRENCY_EXACT') : '—'}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.base_selling_price != null ? formatNumberValue(pricingSummary.base_selling_price, 'CURRENCY_EXACT') : '—'}</p>
+            <p className="mt-2 font-display text-xl leading-none text-cream-950">{pricingSummary.base_selling_price != null ? formatNumberValue(pricingSummary.base_selling_price, 'CURRENCY_EXACT') : '—'}</p>
           </div>
           {isAdmin ? (
             <>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</p>
-                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatNumberValue(pricingSummary.cost_price, 'CURRENCY_EXACT') : '—'}</p>
+                <p className="mt-2 font-display text-xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatNumberValue(pricingSummary.cost_price, 'CURRENCY_EXACT') : '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</p>
-                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.margin_pct != null ? `${pricingSummary.margin_pct}%` : '—'}</p>
+                <p className="mt-2 font-display text-xl leading-none text-cream-950">{pricingSummary.margin_pct != null ? `${pricingSummary.margin_pct}%` : '—'}</p>
               </div>
             </>
           ) : (
             <>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Pricing visibility</p>
-                <p className="mt-2 font-display text-2xl leading-none text-cream-950">Read only</p>
+                <p className="mt-2 font-display text-xl leading-none text-cream-950">Read only</p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Override access</p>
-                <p className="mt-2 font-display text-2xl leading-none text-cream-950">Admin only</p>
+                <p className="mt-2 font-display text-xl leading-none text-cream-950">Admin only</p>
               </div>
             </>
           )}
         </div>
       </article>
 
-      <section className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Pricing &amp; cohorts</h3>
+      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <div>
+          <h3 className="font-display text-lg text-cream-950">Pricelist membership</h3>
+          <p className="mt-1 text-base text-cream-700">
+            {memberCount} of {pricing.length} price lists include this product.
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left">
-            <thead className="border-b border-cream-300 bg-cream-100 text-xs uppercase tracking-[0.06em] text-cream-700">
-              <tr>
-                <th className="px-5 py-2.5">Price list</th>
-                <th className="px-5 py-2.5">Customer groups</th>
-                <th className="px-5 py-2.5">Effective price</th>
-                <th className="px-5 py-2.5">Validity</th>
-                <th className="px-5 py-2.5">Status</th>
-                {isAdmin ? <th className="px-5 py-2.5 text-right">Action</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {pricing.map((row) => {
-                const isEditing = editingRow === row.item_id;
-                const value = draft[row.item_id] ?? formatNumberInput(String(row.effective_price), 'CURRENCY_EXACT');
-                return (
-                  <tr key={row.item_id} className="border-b border-cream-300 align-top last:border-b-0">
-                    <td className="px-5 py-3 text-base font-medium text-cream-900">{row.price_list_name}</td>
-                    <td className="px-5 py-3 text-base text-cream-800">{row.cohorts.join(', ')}</td>
-                    <td className="px-5 py-3">
-                      {isEditing ? (
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2">
-                            <div className="flex max-w-[220px] items-center rounded-sm border border-cream-300 bg-white pl-3">
-                              <IndianRupee size={14} className="text-cream-700" />
-                              <Input
-                                className="h-8 w-36 border-0 focus-visible:ring-0"
-                                value={value}
-                                onChange={(e) => setDraft((prev) => ({ ...prev, [row.item_id]: formatNumberInput(e.target.value, 'CURRENCY_EXACT') }))}
-                                inputMode="decimal"
-                              />
-                            </div>
-                          </div>
-                          <p className="text-xs text-cream-600">
-                            Base: {formatNumberValue(row.base_price, 'CURRENCY_EXACT')}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="font-mono text-base text-cream-900">{formatNumberValue(row.effective_price, 'CURRENCY_EXACT')}</p>
+      </article>
+
+      <div>
+        {isAdmin ? (
+          <MembershipBulkActionBar
+            selectedCount={selection.selectedIds.length}
+            onClear={selection.clearSelection}
+            isPending={isPending}
+            onInclude={() => void handleBulkInclude()}
+            onRemove={() => void handleBulkRemove()}
+          />
+        ) : null}
+
+        <FilterBar
+          count={`${rows.length} price lists${isInterim ? ' · Updating' : ''}`}
+          searchPlaceholder="Search price list…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          groups={filterGroups}
+          searchValue={search}
+          searchLoading={isInterim}
+          onSearchChange={setSearch}
+          sortOptions={[
+            'Pricelist (A → Z)',
+            'List price (high → low)',
+            'Avg discount (high → low)',
+            ...(isAdmin ? ['Avg margin (high → low)'] : []),
+          ]}
+          onSortChange={(value) => setSortBy(value as SortOption)}
+        />
+
+        <LandingTable
+          columns={[
+            ...(isAdmin
+              ? [{ label: <SelectAllCheckbox checked={selection.allSelected} indeterminate={selection.someSelected} onChange={selection.toggleVisible} />, width: 48, className: 'px-5' }]
+              : []),
+            { label: 'Pricelist', width: 300, className: 'px-5' },
+            { label: 'Member', width: 100, className: 'px-5' },
+            { label: 'List price', width: 260, align: 'right' as const, className: 'px-5' },
+            { label: 'Validity', width: 300, className: 'px-5' },
+            { label: 'Status', width: 140, className: 'px-5' },
+            { label: 'Avg discount', align: 'right' as const, minWidth: 140, className: 'px-5' },
+            ...(isAdmin ? [{ label: 'Avg margin', align: 'right' as const, minWidth: 140, className: 'px-5' }] : []),
+          ]}
+          tableMinWidth={isAdmin ? 1180 : 1020}
+          showEmptyState={rows.length === 0}
+          emptyState={
+            <div className="py-16 text-center text-sm text-cream-500">
+              {pricing.length === 0 ? 'No price lists set up for this tenant yet.' : 'No price lists match these filters.'}
+            </div>
+          }
+        >
+          {rows.map((row) => {
+            const isSelected = selection.selectedIds.includes(row.price_list_id);
+            const isMember = Boolean(row.item_id);
+            const canMutate = isAdmin && !row.is_managed_externally;
+            const isEditing = editingPriceListId === row.price_list_id;
+            const validity = `${formatDate(row.valid_from ?? row.created_at)} → ${row.valid_to ? formatDate(row.valid_to) : 'Open'}`;
+            const isExpired = row.status === 'expired';
+
+            return (
+              <SelectableRow key={row.price_list_id} selected={isSelected}>
+                {isAdmin ? (
+                  <td className="px-5 py-3.5">
+                    <RowSelectCheckbox
+                      checked={isSelected}
+                      onChange={() => selection.toggleRow(row.price_list_id)}
+                    />
+                  </td>
+                ) : null}
+                <td className="px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <EntityAvatar initials={getInitials(row.price_list_name)} hue="teal" size={38} />
+                    <div className="min-w-0">
+                      <Link href={`/price-lists/${row.price_list_id}`} className="ent-name truncate font-medium text-cream-950 hover:text-ember-700">
+                        {row.price_list_name}
+                      </Link>
+                      {row.is_managed_externally ? (
+                        <p className="mt-0.5 truncate text-xs text-cream-600">Managed in Zoho</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-3.5">
+                  <MemberToggle checked={isMember} label={`${row.price_list_name} membership`} />
+                </td>
+                <td className="group px-5 py-3.5 text-right font-mono font-semibold text-cream-950">
+                  {isEditing ? (
+                    <div className="flex justify-end gap-2">
+                      <div className="inline-flex h-9 w-32 items-center rounded-[8px] border border-cream-300 bg-white px-2 focus-within:border-ember-400">
+                        <span className="shrink-0 text-cream-600">₹</span>
+                        <input
+                          value={draftPrice}
+                          onChange={(event) => setDraftPrice(formatNumberInput(event.target.value, 'CURRENCY_EXACT'))}
+                          inputMode="decimal"
+                          className="min-w-0 flex-1 bg-transparent text-right outline-none"
+                          aria-label="List price"
+                        />
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={isPending} onClick={() => void saveEdit(row)} aria-label="Save list price">
+                        <Save size={14} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={isPending}
+                        onClick={() => {
+                          setEditingPriceListId(null);
+                          setDraftPrice('');
+                        }}
+                        aria-label="Cancel list price edit"
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!canMutate}
+                      onClick={() => beginEdit(row)}
+                      className={cn(
+                        'inline-flex min-h-[1.5rem] items-center justify-end gap-2 rounded-[8px] text-right',
+                        canMutate && 'hover:text-ember-700',
                       )}
-                    </td>
-                    <td className="px-5 py-3 text-sm text-cream-700">
-                      {(row.valid_from ? new Date(row.valid_from).toLocaleDateString('en-IN') : 'Now') + ' → ' + (row.valid_to ? new Date(row.valid_to).toLocaleDateString('en-IN') : 'Open')}
-                    </td>
-                    <td className="px-5 py-3 text-sm text-cream-700">{row.is_active ? 'Active' : 'Inactive'}</td>
-                    {isAdmin ? (
-                      <td className="px-5 py-3 text-right">
-                        isEditing ? (
-                          <div className="inline-flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="primary"
-                              size="icon"
-                              className="h-8 w-8"
-                              disabled={updateOverride.isPending}
-                              onClick={() => {
-                                const next = parseNumberInput(draft[row.item_id] ?? formatNumberInput(String(row.effective_price), 'CURRENCY_EXACT'), 'CURRENCY_EXACT');
-                                if (next == null || !Number.isFinite(next) || next <= 0) return;
-                                updateOverride.mutate({
-                                  priceListId: row.price_list_id,
-                                  itemId: row.item_id,
-                                  price: next,
-                                });
-                                setEditingRow(null);
-                              }}
-                              aria-label={`Save ${row.price_list_name} price`}
-                            >
-                              <Check size={14} />
-                            </Button>
-                            <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditingRow(null)} aria-label={`Cancel editing ${row.price_list_name} price`}>
-                              <X size={14} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditingRow(row.item_id)} aria-label={`Edit ${row.price_list_name} price`}>
-                            <Pencil size={14} />
-                          </Button>
-                        )
-                      </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-              {pricing.length === 0 ? (
-                <tr>
-                  <td colSpan={isAdmin ? 6 : 5} className="px-5 py-8 text-center text-base text-cream-700">No price-list overrides for this product yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                    >
+                      {row.list_price != null ? (
+                        formatNumberValue(row.list_price, 'CURRENCY_EXACT')
+                      ) : (
+                        <span className="text-sm font-normal text-cream-500">—</span>
+                      )}
+                      {canMutate ? <Pencil size={13} className="opacity-0 transition-opacity group-hover:opacity-100" /> : null}
+                    </button>
+                  )}
+                </td>
+                <td className={cn('px-5 py-3.5 font-mono text-sm', isExpired ? 'text-cream-500 line-through' : 'text-cream-900')}>
+                  {validity}
+                </td>
+                <td className="px-5 py-3.5">
+                  <PriceListStatusBadge is_active={row.is_active} valid_from={row.valid_from} valid_to={row.valid_to} />
+                </td>
+                <td className="px-5 py-3.5 text-right">
+                  {row.avg_discount_pct != null ? (
+                    <span
+                      className={cn(
+                        'font-mono text-base font-semibold tabular-nums',
+                        row.avg_discount_pct >= 0 ? 'text-teal-700' : 'text-danger-700',
+                      )}
+                    >
+                      {row.avg_discount_pct >= 0 ? '-' : '+'}
+                      {formatNumberValue(Math.abs(row.avg_discount_pct), 'PERCENTAGE')}
+                    </span>
+                  ) : (
+                    <span className="text-cream-400">—</span>
+                  )}
+                </td>
+                {isAdmin ? (
+                  <td className="px-5 py-3.5 text-right">
+                    {row.avg_margin_pct != null ? (
+                      <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
+                        {formatNumberValue(row.avg_margin_pct, 'PERCENTAGE')}
+                      </span>
+                    ) : (
+                      <span className="text-cream-400">—</span>
+                    )}
+                  </td>
+                ) : null}
+              </SelectableRow>
+            );
+          })}
+        </LandingTable>
+      </div>
     </section>
   );
 }

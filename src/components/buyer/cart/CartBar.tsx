@@ -9,10 +9,10 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerLandingRoute } from '@/lib/buyer-routes';
-;
 
 /** Product detail sticky footer: button row + padding + safe-area buffer. */
-const PRODUCT_STICKY_FOOTER_LIFT = 'calc(5.5rem + env(safe-area-inset-bottom, 0px) + 12px)';
+const PRODUCT_STICKY_FOOTER_LIFT =
+  'calc(5.5rem + env(safe-area-inset-bottom, 0px) + 12px)';
 
 export function CartBar() {
   const pathname = usePathname();

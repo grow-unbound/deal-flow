@@ -5,7 +5,7 @@ export interface CartBundleSlot {
   slot_label: string | null;
   is_required: boolean;
   display_order: number;
-  top_product: BuyerCatalogItem | null;
+  top_products: BuyerCatalogItem[];
 }
 
 export interface CartBundle {

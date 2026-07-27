@@ -47,6 +47,7 @@ function ActivateForm() {
   async function handleSendOtp(phone: string) {
     setSendingOtp(true);
     setError('');
+    let shouldResetLoading = true;
     try {
       const response = await fetch('/api/auth/activate/send', {
         method: 'POST',
@@ -60,17 +61,19 @@ function ActivateForm() {
         return;
       }
 
+      shouldResetLoading = false;
       router.replace(`/activate?ref_id=${encodeURIComponent(data.ref_id)}&phone=${encodeURIComponent(data.phone ?? phone)}`);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
-      setSendingOtp(false);
+      if (shouldResetLoading) setSendingOtp(false);
     }
   }
 
   async function handleVerifyOtp(otp: string) {
     setVerifyingOtp(true);
     setError('');
+    let shouldResetLoading = true;
     try {
       const response = await fetch('/api/auth/activate/verify', {
         method: 'POST',
@@ -93,11 +96,12 @@ function ActivateForm() {
       if (data.context?.full_name) params.set('full_name', data.context.full_name);
       if (data.context?.email) params.set('email', data.context.email);
 
+      shouldResetLoading = false;
       router.replace(`${data.redirect ?? '/setup-password'}?${params.toString()}`);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
-      setVerifyingOtp(false);
+      if (shouldResetLoading) setVerifyingOtp(false);
     }
   }
 
