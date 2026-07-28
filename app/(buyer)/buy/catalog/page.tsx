@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { CatalogDiscoveryLanding } from '@/components/buyer/catalog/CatalogDiscoveryLanding';
-import { requireBuyerDeliverySelection } from '@/lib/server/buyer-location-selection';
+import { BuyerSelectionGate } from '@/components/buyer/layout/BuyerSelectionGate';
 import { CatalogShareTokenView } from './CatalogShareTokenView';
 
 type CatalogPageProps = {
@@ -20,17 +20,22 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     if (value) search.set(key, value);
   }
   const returnTo = search.toString() ? `/buy/catalog?${search.toString()}` : '/buy/catalog';
-  await requireBuyerDeliverySelection(returnTo);
   const raw = params.share_token;
   const shareToken = Array.isArray(raw) ? raw[0] : raw;
 
   if (shareToken) {
     return (
-      <Suspense fallback={null}>
-        <CatalogShareTokenView shareToken={shareToken} />
-      </Suspense>
+      <BuyerSelectionGate returnTo={returnTo}>
+        <Suspense fallback={null}>
+          <CatalogShareTokenView shareToken={shareToken} />
+        </Suspense>
+      </BuyerSelectionGate>
     );
   }
 
-  return <CatalogDiscoveryLanding />;
+  return (
+    <BuyerSelectionGate returnTo={returnTo}>
+      <CatalogDiscoveryLanding />
+    </BuyerSelectionGate>
+  );
 }
