@@ -4,6 +4,8 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DELIVERY_COOKIE_NAME,
+  DELIVERY_RECENT_STORAGE_KEY,
+  buyerDeliveryCookieSchema,
   parseDeliveryCookie,
   pushRecentLocation,
   serializeDeliveryCookie,
@@ -31,13 +33,39 @@ function readFromDocument(): BuyerDeliveryCookiePayload {
     .split('; ')
     .find((row) => row.startsWith(`${DELIVERY_COOKIE_NAME}=`))
     ?.slice(`${DELIVERY_COOKIE_NAME}=`.length);
-  return parseDeliveryCookie(raw) ?? { selected: null, recent: [] };
+  return {
+    selected: parseDeliveryCookie(raw)?.selected ?? null,
+    recent: readRecentFromStorage(),
+  };
 }
 
 function writeToDocument(payload: BuyerDeliveryCookiePayload): void {
   const maxAge = 60 * 60 * 24 * 365;
   const value = serializeDeliveryCookie(payload);
   document.cookie = `${DELIVERY_COOKIE_NAME}=${value}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  writeRecentToStorage(payload.recent ?? []);
+}
+
+function readRecentFromStorage(): BuyerDeliveryLocation[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(DELIVERY_RECENT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    const result = buyerDeliveryCookieSchema.safeParse({ recent: parsed });
+    return result.success ? result.data.recent ?? [] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentToStorage(recent: BuyerDeliveryLocation[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DELIVERY_RECENT_STORAGE_KEY, JSON.stringify(recent));
+  } catch {
+    // Ignore quota/security errors; selected outlet still persists via cookie.
+  }
 }
 
 export function BuyerDeliveryProvider({
@@ -57,11 +85,16 @@ export function BuyerDeliveryProvider({
   const [hydrated, setHydrated] = React.useState<boolean>(hasServerCookiePayload);
 
   React.useEffect(() => {
-    if (hasServerCookiePayload) {
-      setHydrated(true);
-      return;
-    }
-    setState(readFromDocument());
+    setState((prev) => {
+      const clientState = readFromDocument();
+      const nextSelected = clientState.selected ?? prev.selected ?? null;
+      const clientRecent = clientState.recent ?? [];
+      const nextRecent = clientRecent.length > 0 ? clientRecent : prev.recent ?? [];
+      const sameSelected = JSON.stringify(nextSelected) === JSON.stringify(prev.selected ?? null);
+      const sameRecent = JSON.stringify(nextRecent) === JSON.stringify(prev.recent ?? []);
+      if (sameSelected && sameRecent) return prev;
+      return { selected: nextSelected, recent: nextRecent };
+    });
     setHydrated(true);
   }, [hasServerCookiePayload]);
 

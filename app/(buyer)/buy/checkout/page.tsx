@@ -15,10 +15,11 @@ import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
-import posthog from 'posthog-js';
+import { usePostHog } from 'posthog-js/react';
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const posthog = usePostHog();
   const { items, clearCart, resolvedCampaignId, replaceItems } = useCart();
   const { data: meData } = useBuyerMe();
   const delivery = useBuyerDeliveryOptional();
@@ -143,7 +144,7 @@ export default function CheckoutPage() {
       });
       const data: { success: boolean; estimate_id?: string; estimate_number?: string | null; error?: string } = await res.json();
       if (data.success) {
-        posthog.capture('inquiry_submitted', {
+        posthog?.capture('inquiry_submitted', {
           estimate_id: data.estimate_id,
           estimate_number: data.estimate_number,
           item_count: items.length,

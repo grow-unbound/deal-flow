@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS, ROLES } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
@@ -631,7 +632,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { data: sendRow } = await db
       .schema('app')
       .from('invoices')
-      .select('buyer_id, invoice_number, total_amount')
+      .select('buyer_id, invoice_number, total_amount, status')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
@@ -690,6 +691,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         recipient: sendResult.recipientPhone,
       },
       ts: new Date().toISOString(),
+    });
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'seller_document_sent',
+      properties: {
+        tenant_id: claims.tenant_id,
+        document_type: 'invoice',
+        document_id: id,
+        buyer_id: sendRow.buyer_id ?? null,
+        channel: 'whatsapp',
+        previous_status: sendRow.status ?? null,
+        next_status: 'sent',
+        total_amount: Number(sendRow.total_amount ?? 0),
+        item_count: itemCount ?? 0,
+        role: claims.role,
+      },
     });
 
     return NextResponse.json({ ok: true });

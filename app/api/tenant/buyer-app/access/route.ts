@@ -5,6 +5,7 @@ import { getVerifiedClaims, decodeJWTPayload } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import type { AccessPageResponse } from '@/hooks/useBuyerAppAccess';
@@ -229,6 +230,20 @@ export async function PATCH(request: NextRequest) {
       whatsappSentCount = queueResult.sent_count;
       whatsappEligibleCount = queueResult.eligible_count;
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: enabled ? 'buyer_app_access_enabled' : 'buyer_app_access_disabled',
+      properties: {
+        tenant_id: claims.tenant_id,
+        requested_buyer_count: buyer_ids.length,
+        updated_buyer_count: (updated ?? []).length,
+        newly_enabled_count: newlyEnabledIds.length,
+        whatsapp_sent_count: whatsappSentCount,
+        whatsapp_eligible_count: whatsappEligibleCount,
+        role: claims.role,
+      },
+    });
 
     return NextResponse.json({
       updated_count: (updated ?? []).length,
