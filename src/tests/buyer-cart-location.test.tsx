@@ -1,5 +1,5 @@
 import React, { type ReactElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -86,6 +86,7 @@ describe('buyer cart location details', () => {
       error: null,
     });
     useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
       selected: {
         place_id: 'place-1',
         label: 'Andheri West',
@@ -155,6 +156,7 @@ describe('buyer cart location details', () => {
     });
     useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
     useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
       selected: {
         place_id: 'place-1',
         label: 'Andheri West',
@@ -190,6 +192,46 @@ describe('buyer cart location details', () => {
     expect(screen.queryByText('₹12,000')).not.toBeInTheDocument();
   });
 
+  it('redirects first-time cart visits to outlet selection when nothing is selected', async () => {
+    const replaceMock = vi.fn();
+    useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: replaceMock, prefetch: vi.fn() });
+    useCartMock.mockReturnValue({
+      items: [
+        {
+          tenant_product_id: 'tp-1',
+          name: 'Camera',
+          quantity: 1,
+          line_total: 5000,
+          unit_price: 5000,
+          stock_status: 'available',
+        },
+      ],
+      itemCount: 1,
+      subtotal: 5000,
+      removeItem: vi.fn(),
+      updateQty: vi.fn(),
+      clearCart: vi.fn(),
+      replaceItems: vi.fn(),
+    });
+    useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
+    useBuyerDeliveryOptionalMock.mockReturnValue({ hydrated: true, selected: null });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
+        business_policy: { gst_inclusive: false, gst_rate: 18 },
+        order_features: { create_sales_orders: true, create_enquiries: true },
+      },
+    });
+    useBuyerResolvedProductsMock.mockReturnValue({ data: null, isLoading: false, isError: false });
+
+    const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
+    renderWithQueryClient(<CartPage />);
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith('/buy/location?returnTo=%2Fbuy%2Fcart');
+    });
+  });
+
   it('shows campaign price in cart rows after product reconciliation', async () => {
     const replaceItemsMock = vi.fn();
     useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() });
@@ -215,6 +257,7 @@ describe('buyer cart location details', () => {
     });
     useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
     useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
       selected: {
         place_id: 'place-1',
         label: 'Andheri West',

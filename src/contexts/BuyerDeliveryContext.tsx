@@ -12,6 +12,7 @@ import {
 } from '@/lib/buyer-delivery-location';
 
 interface BuyerDeliveryContextValue {
+  hydrated: boolean;
   selected: BuyerDeliveryLocation | null;
   recent: BuyerDeliveryLocation[];
   setSelected: (loc: BuyerDeliveryLocation) => void;
@@ -47,16 +48,22 @@ export function BuyerDeliveryProvider({
   initialPayload?: string | null;
 }) {
   const queryClient = useQueryClient();
+  const hasServerCookiePayload = typeof initialPayload === 'string' && initialPayload.length > 0;
   const [state, setState] = React.useState<BuyerDeliveryCookiePayload>(() => {
     const fromServer = initialPayload ? parseDeliveryCookie(initialPayload) : null;
     if (fromServer) return { selected: fromServer.selected ?? null, recent: fromServer.recent ?? [] };
     return { selected: null, recent: [] };
   });
+  const [hydrated, setHydrated] = React.useState<boolean>(hasServerCookiePayload);
 
   React.useEffect(() => {
-    if (initialPayload) return;
+    if (hasServerCookiePayload) {
+      setHydrated(true);
+      return;
+    }
     setState(readFromDocument());
-  }, [initialPayload]);
+    setHydrated(true);
+  }, [hasServerCookiePayload]);
 
   React.useEffect(() => {
     const selected = state.selected;
@@ -117,6 +124,7 @@ export function BuyerDeliveryProvider({
 
   const refreshFromDocumentCookie = React.useCallback(() => {
     setState(readFromDocument());
+    setHydrated(true);
   }, []);
 
   const setSelected = React.useCallback((loc: BuyerDeliveryLocation) => {
@@ -146,12 +154,13 @@ export function BuyerDeliveryProvider({
 
   const value = React.useMemo<BuyerDeliveryContextValue>(
     () => ({
+      hydrated,
       selected: state.selected ?? null,
       recent: state.recent ?? [],
       setSelected,
       refreshFromDocumentCookie,
     }),
-    [state.selected, state.recent, setSelected, refreshFromDocumentCookie],
+    [hydrated, state.selected, state.recent, setSelected, refreshFromDocumentCookie],
   );
 
   return <BuyerDeliveryContext.Provider value={value}>{children}</BuyerDeliveryContext.Provider>;

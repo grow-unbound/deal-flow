@@ -83,6 +83,7 @@ export default function CartPage() {
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
   const selectedDelivery = delivery?.selected ?? null;
+  const deliveryHydrated = delivery?.hydrated ?? true;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
   const allowPlaceOrder = meData?.order_features.create_sales_orders ?? false;
@@ -94,6 +95,12 @@ export default function CartPage() {
     router.prefetch('/buy/order-placed');
     router.prefetch('/buy/estimate-placed');
   }, [router]);
+
+  useEffect(() => {
+    if (!deliveryHydrated || selectedDelivery) return;
+    router.replace('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
+  }, [deliveryHydrated, router, selectedDelivery]);
+
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
       tenant_product_id: item.tenant_product_id,
