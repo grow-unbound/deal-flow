@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -77,6 +78,7 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
+  const posthog = usePostHog();
   const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
@@ -181,6 +183,52 @@ export default function CartPage() {
     }));
   }
 
+  function buildAnalyticsLineItems() {
+    return availableItems.map((item) => ({
+      tenant_product_id: item.tenant_product_id,
+      internal_sku: item.internal_sku ?? null,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      line_total: item.line_total,
+      campaign_id: item.campaign_id ?? null,
+      has_campaign_price: item.has_campaign_price === true,
+      stock_status: item.stock_status ?? null,
+    }));
+  }
+
+  function captureCartSubmitIntent(documentType: 'order' | 'estimate'): void {
+    posthog?.capture('buyer_cart_submit_clicked', {
+      document_type: documentType,
+      tenant_id: tenantId || null,
+      buyer_id: meData?.buyer_id ?? null,
+      line_count: availableItems.length,
+      item_count: availableItemCount,
+      unavailable_line_count: items.length - availableItems.length,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax_amount,
+      total,
+      line_items: buildAnalyticsLineItems(),
+      gst_inclusive: gstInclusive,
+      has_campaign_items: availableItems.some((item) => item.has_campaign_price === true),
+      campaign_id: resolvedCampaignId ?? null,
+      has_delivery_location: Boolean(selectedDelivery),
+      routed_location_id: selectedDelivery?.routed_location_id ?? null,
+      delivery_source: selectedDelivery?.selection_source ?? null,
+    });
+  }
+
+  function captureCartSubmitFailed(documentType: 'order' | 'estimate', message: string): void {
+    posthog?.capture('buyer_cart_submit_failed', {
+      document_type: documentType,
+      tenant_id: tenantId || null,
+      buyer_id: meData?.buyer_id ?? null,
+      line_count: availableItems.length,
+      item_count: availableItemCount,
+      total,
+      error_reason: message,
+    });
+  }
+
   async function resolveFulfillmentPayload(): Promise<{
     location_id: string | null;
     place_of_supply: string | null;
@@ -237,12 +285,12 @@ export default function CartPage() {
       router.replace(href);
     },
     onError: (mutationError) => {
+      const message = mutationError instanceof Error
+        ? mutationError.message
+        : 'Network error. Please check your connection and try again.';
+      captureCartSubmitFailed('order', message);
       setSubmissionPhase('idle');
-      setError(
-        mutationError instanceof Error
-          ? mutationError.message
-          : 'Network error. Please check your connection and try again.',
-      );
+      setError(message);
     },
   });
 
@@ -289,12 +337,12 @@ export default function CartPage() {
       router.replace(href);
     },
     onError: (mutationError) => {
+      const message = mutationError instanceof Error
+        ? mutationError.message
+        : 'Network error. Please check your connection and try again.';
+      captureCartSubmitFailed('estimate', message);
       setSubmissionPhase('idle');
-      setError(
-        mutationError instanceof Error
-          ? mutationError.message
-          : 'Network error. Please check your connection and try again.',
-      );
+      setError(message);
     },
   });
 
@@ -310,6 +358,7 @@ export default function CartPage() {
       setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
+    captureCartSubmitIntent('order');
     placeOrderMutation.mutate();
   }
 
@@ -325,6 +374,7 @@ export default function CartPage() {
       setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
+    captureCartSubmitIntent('estimate');
     requestQuoteMutation.mutate();
   }
 
@@ -354,7 +404,12 @@ export default function CartPage() {
             </p>
           </div>
           <button
-            onClick={() => router.push('/buy/catalog')}
+            onClick={() => {
+              posthog?.capture('buyer_empty_cart_browse_clicked', {
+                source_surface: 'cart_empty_state',
+              });
+              router.push('/buy/catalog');
+            }}
             className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 font-semibold text-white"
             style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
           >

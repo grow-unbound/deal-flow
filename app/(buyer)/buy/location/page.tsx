@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check, ChevronDown, ChevronLeft, ChevronUp, MapPin, Navigation, Store } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { getMapsLoader } from '@/lib/google-maps-loader';
 import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerDelivery } from '@/contexts/BuyerDeliveryContext';
@@ -11,6 +12,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { cn } from '@/lib/utils';
+import { getAnalyticsRouteInfo } from '@/lib/analytics-route';
 
 interface NearestLocationResponse {
   warehouse_id: string | null;
@@ -63,14 +65,33 @@ function safeReturnTo(raw: string | null): string {
   return '/buy/catalog';
 }
 
+function buildSelectedLocationAnalytics(location: BuyerDeliveryLocation) {
+  return {
+    selected_location: {
+      source: location.selection_source ?? null,
+      label: location.label || null,
+      city: location.city || null,
+      state: location.state || null,
+      pincode: location.pincode || null,
+      place_of_supply: location.place_of_supply ?? deriveBuyerPlaceOfSupply(location),
+      routed_location_id: location.routed_location_id ?? null,
+      routed_location_name: location.routed_location_name ?? null,
+      warehouse_id: location.nearest_warehouse_id ?? null,
+      warehouse_name: location.nearest_warehouse_name ?? null,
+    },
+  };
+}
+
 export default function BuyerLocationPage(): React.ReactNode {
   const router = useRouter();
+  const posthog = usePostHog();
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get('returnTo'));
   const { selected, recent, setSelected } = useBuyerDelivery();
   const { data: meData, isLoading: meLoading } = useBuyerMe();
   const outlets = meData?.tenant.outlets ?? [];
   const sellerName = meData?.tenant.name ?? 'seller';
+  const returnRoutePattern = getAnalyticsRouteInfo(returnTo.split('?')[0] || '/buy/catalog').route_pattern;
 
   const [input, setInput] = React.useState('');
   const [suggestions, setSuggestions] = React.useState<google.maps.places.AutocompleteSuggestion[]>([]);
@@ -129,6 +150,7 @@ export default function BuyerLocationPage(): React.ReactNode {
     setErr(null);
     setSaving(true);
     try {
+      const previousRoutedLocationId = selected?.routed_location_id ?? null;
       const location: BuyerDeliveryLocation = {
         place_id: `outlet-${outlet.location_id}`,
         label: outlet.name,
@@ -148,6 +170,33 @@ export default function BuyerLocationPage(): React.ReactNode {
         nearest_warehouse_fallback: false,
       };
       setSelected(location);
+      posthog?.capture('buyer_delivery_location_selected', {
+        selection_source: 'outlet',
+        seller_outlet_id: outlet.location_id,
+        seller_outlet_name: outlet.name,
+        warehouse_id: outlet.warehouse_id,
+        warehouse_name: outlet.warehouse_name,
+        is_default_outlet: outlet.is_default,
+        return_route: returnRoutePattern,
+        tenant_id: meData?.tenant.id ?? null,
+        buyer_id: meData?.buyer_id ?? null,
+        ...buildSelectedLocationAnalytics(location),
+      });
+      if (previousRoutedLocationId !== outlet.location_id) {
+        posthog?.capture('buyer_outlet_changed', {
+          selection_source: 'outlet',
+          previous_routed_location_id: previousRoutedLocationId,
+          previous_routed_location_name: selected?.routed_location_name ?? null,
+          routed_location_id: outlet.location_id,
+          routed_location_name: outlet.name,
+          warehouse_id: outlet.warehouse_id,
+          warehouse_name: outlet.warehouse_name,
+          return_route: returnRoutePattern,
+          tenant_id: meData?.tenant.id ?? null,
+          buyer_id: meData?.buyer_id ?? null,
+          ...buildSelectedLocationAnalytics(location),
+        });
+      }
       markBuyerNavigationBack();
       router.replace(returnTo);
     } finally {
@@ -158,6 +207,7 @@ export default function BuyerLocationPage(): React.ReactNode {
   async function saveSelectedLocation(location: BuyerDeliveryLocation): Promise<void> {
     const placeOfSupply = deriveBuyerPlaceOfSupply(location);
     let routing: NearestLocationResponse | null = null;
+    const previousRoutedLocationId = selected?.routed_location_id ?? null;
 
     try {
       const response = await apiFetch(`/api/buyer/nearest-location?lat=${location.lat}&lng=${location.lng}`);
@@ -168,7 +218,7 @@ export default function BuyerLocationPage(): React.ReactNode {
       routing = null;
     }
 
-    setSelected({
+    const selectedLocation: BuyerDeliveryLocation = {
       ...location,
       selection_source: 'maps',
       place_of_supply: placeOfSupply,
@@ -178,7 +228,40 @@ export default function BuyerLocationPage(): React.ReactNode {
       nearest_warehouse_name: routing?.warehouse_name ?? null,
       nearest_warehouse_distance_km: routing?.distance_km ?? null,
       nearest_warehouse_fallback: routing?.fallback ?? true,
+    };
+    setSelected(selectedLocation);
+    posthog?.capture('buyer_delivery_location_selected', {
+      selection_source: 'maps',
+      routed_location_id: routing?.location_id ?? null,
+      routed_location_name: routing?.location_name ?? null,
+      warehouse_id: routing?.warehouse_id ?? null,
+      warehouse_name: routing?.warehouse_name ?? null,
+      nearest_warehouse_distance_km: routing?.distance_km ?? null,
+      nearest_warehouse_fallback: routing?.fallback ?? true,
+      has_pincode: Boolean(location.pincode),
+      state: location.state || null,
+      return_route: returnRoutePattern,
+      tenant_id: meData?.tenant.id ?? null,
+      buyer_id: meData?.buyer_id ?? null,
+      ...buildSelectedLocationAnalytics(selectedLocation),
     });
+    if (previousRoutedLocationId !== (routing?.location_id ?? null)) {
+      posthog?.capture('buyer_outlet_changed', {
+        selection_source: 'maps',
+        previous_routed_location_id: previousRoutedLocationId,
+        previous_routed_location_name: selected?.routed_location_name ?? null,
+        routed_location_id: routing?.location_id ?? null,
+        routed_location_name: routing?.location_name ?? null,
+        warehouse_id: routing?.warehouse_id ?? null,
+        warehouse_name: routing?.warehouse_name ?? null,
+        nearest_warehouse_distance_km: routing?.distance_km ?? null,
+        nearest_warehouse_fallback: routing?.fallback ?? true,
+        return_route: returnRoutePattern,
+        tenant_id: meData?.tenant.id ?? null,
+        buyer_id: meData?.buyer_id ?? null,
+        ...buildSelectedLocationAnalytics(selectedLocation),
+      });
+    }
     markBuyerNavigationBack();
     router.replace(returnTo);
   }

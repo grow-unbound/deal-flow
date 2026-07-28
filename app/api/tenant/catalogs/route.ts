@@ -23,6 +23,7 @@ import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 type CatalogStatus = RawCampaignStatus;
 type DisplayStatus = CampaignWorkflowStatusLabel;
@@ -1385,6 +1386,33 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+  }
+
+  try {
+    const ph = getPostHogClient();
+    ph.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: isPublishing ? 'catalog_published' : 'catalog_draft_saved',
+      properties: {
+        tenant_id: claims.tenant_id,
+        campaign_id: insertedCatalog.id,
+        status: insertedCatalog.status,
+        scope_type: isSimpleForm
+          ? (payload.target_mode === 'customer_group' ? 'cohort' : 'buyer')
+          : payload.scope_type,
+        buyer_target_mode: buyerTargetMode,
+        product_membership_mode: productMembershipMode,
+        pricing_source: pricingSource,
+        has_price_list: Boolean(campaignPriceListId),
+        product_count: isSimpleForm ? payload.selected_product_ids.length : payload.items.length,
+        notify_whatsapp: Boolean(isPublishing && composerPayload?.notify_whatsapp),
+        whatsapp_recipient_count: whatsappNotify?.recipient_count ?? null,
+        whatsapp_scheduled: whatsappNotify?.scheduled ?? false,
+      },
+    });
+    await ph.flush();
+  } catch {
+    // Analytics is non-blocking for catalog creation.
   }
 
   return NextResponse.json({ catalog: insertedCatalog, whatsapp_notify: whatsappNotify });

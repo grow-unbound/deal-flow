@@ -3,6 +3,7 @@ import {
   formatBuyerSelectedLocationLabel,
   parseDeliveryCookie,
   serializeDeliveryCookie,
+  toPersistedDeliveryCookiePayload,
   type BuyerDeliveryCookiePayload,
 } from '@/lib/buyer-delivery-location';
 
@@ -68,5 +69,43 @@ describe('buyer delivery cookie routing metadata', () => {
         routed_location_name: 'Mumbai Central Outlet',
       }),
     ).toBe('Mumbai Central Outlet');
+  });
+
+  it('persists only the selected location in the cookie payload', () => {
+    const payload: BuyerDeliveryCookiePayload = {
+      selected: {
+        place_id: 'selected-1',
+        label: 'Sainikpuri',
+        formatted_address: 'Opp Vishal Mart, Sainikpuri X Road, Secunderabad',
+        city: 'Secunderabad',
+        state: 'TS',
+        pincode: '500094',
+        lat: 17.48,
+        lng: 78.55,
+        selection_source: 'outlet',
+        nearest_warehouse_id: 'wh-1',
+        routed_location_id: 'loc-1',
+        routed_location_name: 'Sainikpuri',
+      },
+      recent: [
+        {
+          place_id: 'recent-1',
+          label: 'Kharmanghat',
+          formatted_address: 'Long recent address that should stay out of the cookie',
+          city: 'Hyderabad',
+          lat: 17.36,
+          lng: 78.53,
+        },
+      ],
+    };
+
+    expect(toPersistedDeliveryCookiePayload(payload)).toEqual({
+      selected: payload.selected,
+      recent: [],
+    });
+    expect(parseDeliveryCookie(serializeDeliveryCookie(payload))).toEqual({
+      selected: payload.selected,
+      recent: [],
+    });
   });
 });

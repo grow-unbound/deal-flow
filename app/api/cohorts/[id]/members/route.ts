@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { z } from 'zod';
 
@@ -136,6 +137,20 @@ export async function POST(
     .update({ cached_member_count: count ?? 0 })
     .eq('id', id);
 
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_members_updated',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: id,
+      action: 'add',
+      requested_member_count: parsed.data.buyer_ids.length,
+      changed_member_count: rows.length,
+      cached_member_count: count ?? 0,
+      role: claims.role,
+    },
+  });
+
   return NextResponse.json({ ok: true, count }, { status: 200 });
 }
 
@@ -192,6 +207,19 @@ export async function DELETE(
     .from('cohorts')
     .update({ cached_member_count: count ?? 0 })
     .eq('id', id);
+
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_members_updated',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: id,
+      action: 'remove',
+      changed_member_count: 1,
+      cached_member_count: count ?? 0,
+      role: claims.role,
+    },
+  });
 
   return NextResponse.json({ ok: true, count });
 }

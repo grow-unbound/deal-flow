@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import posthog from 'posthog-js';
+import { usePostHog } from 'posthog-js/react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
@@ -54,6 +54,7 @@ function safeNext(raw: string | null): string | null {
 
 function LoginForm() {
   const router = useRouter();
+  const posthog = usePostHog();
   const searchParams = useSearchParams();
   const resetSuccess = searchParams.get('reset') === 'success';
   const accountVerified = searchParams.get('verified') === '1';
@@ -91,6 +92,11 @@ function LoginForm() {
       const data = (await res.json()) as PhoneOtpSendResponse | { error?: string };
 
       if (!isPhoneOtpSendResponse(data)) {
+        captureLoginFailed({
+          method: 'phone_otp',
+          failure_type: 'otp_send_api_error',
+          status: res.status,
+        });
         setPhoneError(data.error ?? 'Something went wrong. Please try again.');
         return;
       }
@@ -105,10 +111,22 @@ function LoginForm() {
       }
 
       if (data.outcome === 'unregistered') {
+        captureLoginFailed({
+          method: 'phone_otp',
+          failure_type: 'unregistered_phone',
+          status: res.status,
+          outcome: data.outcome,
+        });
         setResolution({ kind: 'unregistered' });
         return;
       }
 
+      captureLoginFailed({
+        method: 'phone_otp',
+        failure_type: data.outcome === 'buyer_disabled' ? 'buyer_app_access_disabled' : 'seller_buyer_app_disabled',
+        status: res.status,
+        outcome: data.outcome,
+      });
       setResolution({
         kind: 'blocked',
         reason: data.outcome === 'buyer_disabled' ? 'buyer_disabled' : 'seller_disabled',
@@ -117,6 +135,10 @@ function LoginForm() {
         buyerName: data.buyer_name,
       });
     } catch {
+      captureLoginFailed({
+        method: 'phone_otp',
+        failure_type: 'network_error',
+      });
       setPhoneError('Network error. Please check your connection and try again.');
     } finally {
       if (shouldResetLoading) setPhoneLoading(false);
@@ -145,8 +167,8 @@ function LoginForm() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(posthog.get_distinct_id() && { 'X-POSTHOG-DISTINCT-ID': posthog.get_distinct_id() }),
-          ...(posthog.get_session_id() && { 'X-POSTHOG-SESSION-ID': posthog.get_session_id() }),
+          ...(posthog?.get_distinct_id() && { 'X-POSTHOG-DISTINCT-ID': posthog.get_distinct_id() }),
+          ...(posthog?.get_session_id() && { 'X-POSTHOG-SESSION-ID': posthog.get_session_id() }),
         },
         body: JSON.stringify({ identifier, password }),
       });
@@ -154,11 +176,20 @@ function LoginForm() {
       const data = (await res.json()) as SignInResponse;
 
       if (!res.ok) {
+        captureLoginFailed({
+          method: 'email_password',
+          failure_type: data.error === 'Invalid email or password' ? 'invalid_credentials' : 'email_login_api_error',
+          status: res.status,
+        });
         setEmailError(data.error || 'Login failed');
         return;
       }
 
       if (data.pending_verification) {
+        posthog?.capture('login_pending_verification', {
+          method: 'email_password',
+          has_next: Boolean(next),
+        });
         const params = new URLSearchParams({
           email: data.email ?? identifier,
           uid: data.user_id ?? '',
@@ -170,6 +201,11 @@ function LoginForm() {
       }
 
       if (!data.session?.access_token || !data.session?.refresh_token) {
+        captureLoginFailed({
+          method: 'email_password',
+          failure_type: 'missing_session',
+          status: res.status,
+        });
         setEmailError('Session was not created');
         return;
       }
@@ -179,7 +215,7 @@ function LoginForm() {
         refresh_token: data.session.refresh_token,
       });
 
-      posthog.identify(data.user?.id ?? identifier, { email: data.user?.email ?? identifier });
+      posthog?.identify(data.user?.id ?? identifier, { email: data.user?.email ?? identifier });
 
       shouldResetLoading = false;
       const baseRedirect = data.redirect ?? '/dashboard';
@@ -192,6 +228,10 @@ function LoginForm() {
       router.replace(redirectPath);
       router.refresh();
     } catch {
+      captureLoginFailed({
+        method: 'email_password',
+        failure_type: 'network_or_unexpected_error',
+      });
       setEmailError('An error occurred. Please try again.');
     } finally {
       if (shouldResetLoading) setEmailLoading(false);
@@ -236,6 +276,19 @@ function LoginForm() {
     'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
   const labelCls =
     'block text-cream-700 font-semibold mb-1.5 uppercase tracking-wide';
+
+  function captureLoginFailed(properties: {
+    method: 'phone_otp' | 'email_password';
+    failure_type: string;
+    status?: number;
+    outcome?: string | null;
+  }) {
+    posthog?.capture('login_failed', {
+      ...properties,
+      has_next: Boolean(next),
+      requested_view: view,
+    });
+  }
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">

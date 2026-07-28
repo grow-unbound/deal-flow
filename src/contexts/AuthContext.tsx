@@ -135,6 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: claims.role,
       location_ids: claims.locationIds,
     });
+
+    if (claims.tenantId) {
+      posthog.group('tenant', claims.tenantId);
+    }
   };
 
   const shouldHydrateWorkspace = (claims: SessionClaims) => {

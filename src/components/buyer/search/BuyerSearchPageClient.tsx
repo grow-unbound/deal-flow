@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { usePostHog } from 'posthog-js/react';
 import { apiFetch } from '@/lib/api-fetch';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
@@ -43,6 +44,7 @@ function matchesQuery(item: BuyerCatalogItem, q: string): boolean {
 
 export function BuyerSearchPageClient() {
   const router = useRouter();
+  const posthog = usePostHog();
   const searchParams = useSearchParams();
   const scope = searchParams.get('scope') ?? 'catalog';
   const initialQ = searchParams.get('q') ?? '';
@@ -55,6 +57,7 @@ export function BuyerSearchPageClient() {
   const [buyAgainPool, setBuyAgainPool] = React.useState<BuyerCatalogItem[] | null>(null);
   const [buyAgainLoading, setBuyAgainLoading] = React.useState(scope === 'buy-again');
   const [buyAgainError, setBuyAgainError] = React.useState(false);
+  const searchEventKeyRef = React.useRef<string | null>(null);
 
   const catalogSearchQuery = useBuyerCatalogSearchInfinite(
     debounced,
@@ -127,6 +130,36 @@ export function BuyerSearchPageClient() {
     : catalogSearchQuery.isLoading && catalogItems.length === 0;
   const error = scope === 'buy-again' ? buyAgainError : catalogSearchQuery.isError;
   const refreshing = scope !== 'buy-again' && catalogSearchQuery.isFetching && catalogItems.length > 0;
+
+  React.useEffect(() => {
+    if (!posthog || debounced.length === 0 || loading || refreshing) return;
+    const key = `${scope}:${debounced}:${shownItems.length}:${error ? 'error' : 'ok'}`;
+    if (searchEventKeyRef.current === key) return;
+    searchEventKeyRef.current = key;
+    posthog.capture('buyer_catalog_search_results_viewed', {
+      source_surface: 'search_page',
+      search_scope: scope,
+      query_length: debounced.length,
+      result_count: shownItems.length,
+      has_more: scope === 'buy-again' ? false : catalogHasMore,
+      status: error ? 'error' : 'success',
+      has_category_filter: Boolean(categoryId),
+      has_brand_filter: Boolean(brandId),
+      has_campaign_filter: Boolean(catalogId),
+    });
+  }, [
+    brandId,
+    catalogHasMore,
+    catalogId,
+    categoryId,
+    debounced,
+    error,
+    loading,
+    posthog,
+    refreshing,
+    scope,
+    shownItems.length,
+  ]);
 
   function handleClose(): void {
     navigateBuyerBack(router);

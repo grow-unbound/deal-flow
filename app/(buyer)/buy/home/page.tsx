@@ -278,6 +278,7 @@ export default function HomePage() {
                 validUntil={promotion.valid_until}
                 heroImageUrl={promotion.hero_image_url}
                 hueIndex={index}
+                priority={index === 0}
               />
             ))
           ) : (

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { SearchX } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { DiscoveryThumbTile } from '@/components/buyer/catalog/DiscoveryThumbTile';
@@ -21,6 +22,7 @@ function formatProductCount(count: number): string {
 }
 
 export function CatalogDiscoveryLanding(): React.ReactNode {
+  const posthog = usePostHog();
   const landingQuery = useBuyerCatalogLandingData();
   const categories = landingQuery.data?.categories ?? [];
   const brands = landingQuery.data?.brands ?? [];
@@ -41,6 +43,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
   const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
   const searchError = searchQueryResult.isError;
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
+  const searchEventKeyRef = React.useRef<string | null>(null);
 
   const searchSentinelIndex = getSentinelInsertIndex(searchItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef: searchSentinelRef } = useInfiniteScroll({
@@ -53,6 +56,20 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 280);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  React.useEffect(() => {
+    if (!posthog || debouncedSearch.length === 0 || searchQueryResult.isFetching) return;
+    const key = `${debouncedSearch}:${searchItems.length}:${searchError ? 'error' : 'ok'}`;
+    if (searchEventKeyRef.current === key) return;
+    searchEventKeyRef.current = key;
+    posthog.capture('buyer_catalog_search_results_viewed', {
+      source_surface: 'catalog_landing',
+      query_length: debouncedSearch.length,
+      result_count: searchItems.length,
+      has_more: searchHasMore,
+      status: searchError ? 'error' : 'success',
+    });
+  }, [debouncedSearch, posthog, searchError, searchHasMore, searchItems.length, searchQueryResult.isFetching]);
 
   const isSearching = debouncedSearch.length > 0;
 
@@ -106,6 +123,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                       validUntil={c.valid_until}
                       heroImageUrl={c.hero_image_url}
                       hueIndex={idx}
+                      priority={idx === 0}
                     />
                   ))}
                 </BuyerHorizontalScroll>

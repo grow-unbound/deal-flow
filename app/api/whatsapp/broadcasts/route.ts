@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { WhatsAppBroadcastCreateSchema } from '@/lib/zod';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { resolveBroadcastAudience } from '@/lib/server/whatsapp-broadcast-audience';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildBroadcastMessageQueue } from '@/lib/server/whatsapp-broadcast-send';
@@ -465,6 +466,26 @@ export async function POST(request: NextRequest) {
     if (!input.scheduled_for) {
       await triggerWhatsAppDispatch(messageIds);
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'whatsapp_broadcast_created',
+      properties: {
+        tenant_id: claims.tenant_id,
+        broadcast_id: broadcast.id,
+        use_case: input.use_case,
+        target_type: input.target_type,
+        has_target_cohort: Boolean(input.target_cohort_id),
+        selected_buyer_count: input.target_buyer_ids?.length ?? 0,
+        linked_campaign_id: input.linked_campaign_id ?? null,
+        template_id: input.whatsapp_template_id,
+        scheduled: Boolean(input.scheduled_for),
+        recipient_count: queueInputs.length,
+        message_count: messageIds.length,
+        status: input.scheduled_for ? 'scheduled' : 'sending',
+        role: claims.role,
+      },
+    });
 
     return NextResponse.json({
       broadcast: {

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { cn } from '@/lib/utils';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 
@@ -16,8 +17,13 @@ export function BuyerSearchIconButton({
   className,
 }: BuyerSearchIconButtonProps): React.ReactNode {
   const router = useRouter();
+  const posthog = usePostHog();
 
   function handleClick(): void {
+    posthog?.capture('buyer_search_opened', {
+      source_surface: 'search_icon_button',
+      destination: href,
+    });
     markBuyerNavigationForward();
     router.push(href);
   }

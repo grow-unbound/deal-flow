@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { CohortUpdateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { buildCohortMemberBuyerRows, resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import {
@@ -708,6 +709,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
   }
 
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_updated',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: id,
+      membership_mode: isSimpleForm ? simpleMembershipMode : (cohort as any).membership_mode ?? null,
+      is_static: Boolean((cohort as any).is_static),
+      is_simple_form: isSimpleForm,
+      member_count: (cohort as any).cached_member_count ?? null,
+      allowed_brands_count: Array.isArray((cohort as any).allowed_tenant_brand_ids)
+        ? (cohort as any).allowed_tenant_brand_ids.length
+        : 0,
+      changed_name: payload.name !== undefined,
+      changed_rules: payload.rules !== undefined,
+      changed_allowed_brands: payload.allowed_tenant_brand_ids !== undefined,
+      role: claims.role,
+    },
+  });
+
   return NextResponse.json({ cohort });
 }
 
@@ -762,6 +783,17 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     console.error('[DELETE /api/cohorts/[id]]', deleteError.message);
     return NextResponse.json({ error: 'Failed to delete cohort' }, { status: 500 });
   }
+
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_deleted',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: id,
+      active_catalog_count: activeCatalogs?.length ?? 0,
+      role: claims.role,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

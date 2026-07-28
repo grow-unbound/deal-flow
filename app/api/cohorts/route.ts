@@ -8,6 +8,7 @@ import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
@@ -446,6 +447,22 @@ export async function POST(request: NextRequest) {
       .eq('id', cohort.id)
       .eq('tenant_id', claims.tenant_id);
   }
+
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_created',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: cohort.id,
+      membership_mode: membershipMode,
+      is_static: Boolean(cohort.is_static),
+      is_simple_form: isSimpleForm,
+      member_count: cachedMemberCount,
+      allowed_brands_count: allowedTenantBrandIds?.length ?? 0,
+      has_rules: Boolean(data.rules),
+      role: claims.role,
+    },
+  });
 
   return NextResponse.json({ cohort: { ...cohort, cached_member_count: cachedMemberCount } }, { status: 201 });
 }
