@@ -23,6 +23,12 @@ import {
 } from '../../../src/lib/location-assignees.ts';
 import { logCheckpoint, startTimer } from './sync-log.ts';
 import type { createAdminClient } from './sync-utils.ts';
+import {
+  captureZohoErpAnalyticsEvents,
+  isZohoBuyerAccessEnabledCandidate,
+  isZohoCatalogTransactionCandidate,
+  type ZohoAnalyticsCandidate,
+} from './posthog-erp-analytics.ts';
 // import { putObjectJson } from './r2.ts'; // Disabled — see batchUpsertEntityMap for details. Re-enable this import if that call is restored.
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -1069,6 +1075,68 @@ type ExistingTransactionalParentRow = {
   is_buyer_app_order?: boolean | null;
 };
 
+type ExistingExternalNaturalRows = {
+  byExternalRef: Map<string, Record<string, unknown>>;
+  byNaturalKey: Map<string, Record<string, unknown>>;
+};
+
+async function loadExistingRowsByExternalOrNaturalKey(
+  admin: AdminClient,
+  tableName: string,
+  tenantId: string,
+  externalRefs: string[],
+  naturalKeyColumn: string,
+  naturalKeys: string[],
+  selectColumns: string,
+): Promise<ExistingExternalNaturalRows> {
+  const byExternalRef = new Map<string, Record<string, unknown>>();
+  const byNaturalKey = new Map<string, Record<string, unknown>>();
+
+  if (externalRefs.length > 0) {
+    const { data, error } = await admin
+      .schema('app')
+      .from(tableName)
+      .select(selectColumns)
+      .eq('tenant_id', tenantId)
+      .in('external_ref', externalRefs)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new Error(`Failed to load existing ${tableName} by external_ref: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const externalRef = asStr(row.external_ref);
+      const naturalKey = asStr(row[naturalKeyColumn]);
+      if (externalRef) byExternalRef.set(externalRef, row);
+      if (naturalKey) byNaturalKey.set(naturalKey, row);
+    }
+  }
+
+  if (naturalKeys.length > 0) {
+    const { data, error } = await admin
+      .schema('app')
+      .from(tableName)
+      .select(selectColumns)
+      .eq('tenant_id', tenantId)
+      .in(naturalKeyColumn, naturalKeys)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new Error(`Failed to load existing ${tableName} by ${naturalKeyColumn}: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const externalRef = asStr(row.external_ref);
+      const naturalKey = asStr(row[naturalKeyColumn]);
+      if (externalRef && !byExternalRef.has(externalRef)) byExternalRef.set(externalRef, row);
+      if (naturalKey && !byNaturalKey.has(naturalKey)) byNaturalKey.set(naturalKey, row);
+    }
+  }
+
+  return { byExternalRef, byNaturalKey };
+}
+
 async function loadExistingTransactionalParentRows(
   admin: AdminClient,
   tableName: 'estimates' | 'orders',
@@ -1747,6 +1815,26 @@ async function persistBuyers(
     buyerRows.push(row);
   }
 
+  const existingBuyerRowsByExternalRef = new Map<string, Record<string, unknown>>();
+  const buyerExternalRefs = buyerRows
+    .map((row) => asStr(row.external_ref))
+    .filter((value): value is string => value !== null);
+  if (buyerExternalRefs.length > 0) {
+    const { data, error } = await admin
+      .schema('app')
+      .from('buyers')
+      .select('id, external_ref, buyer_app_enabled')
+      .eq('tenant_id', tenantId)
+      .in('external_ref', buyerExternalRefs)
+      .is('deleted_at', null);
+
+    if (error) throw new Error(`Failed to load existing buyers for analytics: ${error.message}`);
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const externalRef = asStr(row.external_ref);
+      if (externalRef) existingBuyerRowsByExternalRef.set(externalRef, row);
+    }
+  }
+
   const persistedBuyers = buyerRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'buyers', dedupeByExternalRef(buyerRows), ['tenant_id', 'external_ref'])
     : [];
@@ -1887,6 +1975,28 @@ async function persistBuyers(
       attachSourcePayload(contactMapPairs, contactPersonSourceByExternalId),
     ),
   ]);
+
+  const customerAnalyticsCandidates: ZohoAnalyticsCandidate[] = buyerMapPairs
+    .map((pair) => {
+      const sourceRecord = customerSourceByExternalId.get(pair.externalId) ?? null;
+      const persistedRow = persistedBuyers.find((row) => asStr(row.id) === pair.internalId || asStr(row.external_ref) === pair.externalId) ?? {};
+      const existingRow = existingBuyerRowsByExternalRef.get(pair.externalId) ?? null;
+      if (!isZohoBuyerAccessEnabledCandidate({ sourceRecord, persistedRow, existingRow })) return null;
+      return {
+        entityType: 'customers' as const,
+        externalId: pair.externalId,
+        internalId: pair.internalId,
+        eventName: 'server_erp_customer_buyer_access_enabled',
+      };
+    })
+    .filter((candidate): candidate is ZohoAnalyticsCandidate => candidate !== null);
+
+  await captureZohoErpAnalyticsEvents({
+    admin,
+    tenantId,
+    tenantIntegrationId: integrationId,
+    candidates: customerAnalyticsCandidates,
+  });
 
   const buyerIds = buyerMapPairs.map((row) => row.internalId);
   const buyerUserIds = persistedContacts
@@ -3134,6 +3244,38 @@ async function persistEstimates(
 
   await persistDerivedChildRows(admin, 'estimate_items', 'estimate_id', estimateIds, lineItemRows);
 
+  const estimateAnalyticsCandidates: ZohoAnalyticsCandidate[] = estimateMapPairs
+    .map((pair) => {
+      const parentRow = parentRows.find((row) => asStr(row.external_ref) === pair.externalId) ?? null;
+      const naturalKey = parentRow ? asStr(parentRow.estimate_number) : null;
+      const existedBefore = Boolean(
+        existingEstimateRows.byExternalRef.get(pair.externalId)
+          ?? (naturalKey ? existingEstimateRows.byNaturalKey.get(naturalKey) : null),
+      );
+      if (existedBefore) return null;
+
+      const persistedRow = persistedEstimates.find((row) => asStr(row.id) === pair.internalId || asStr(row.external_ref) === pair.externalId)
+        ?? parentRow
+        ?? {};
+      const sourceRecord = sourcePayloadByExternalRef.get(pair.externalId) ?? null;
+      if (!isZohoCatalogTransactionCandidate({ entityType: 'estimates', sourceRecord, persistedRow })) return null;
+
+      return {
+        entityType: 'estimates' as const,
+        externalId: pair.externalId,
+        internalId: pair.internalId,
+        eventName: 'server_erp_estimate_created',
+      };
+    })
+    .filter((candidate): candidate is ZohoAnalyticsCandidate => candidate !== null);
+
+  await captureZohoErpAnalyticsEvents({
+    admin,
+    tenantId,
+    tenantIntegrationId: integrationId,
+    candidates: estimateAnalyticsCandidates,
+  });
+
   return result;
 }
 
@@ -3403,6 +3545,38 @@ async function persistOrders(
 
   await persistDerivedChildRows(admin, 'order_items', 'order_id', orderIds, lineItemRows);
 
+  const orderAnalyticsCandidates: ZohoAnalyticsCandidate[] = orderMapPairs
+    .map((pair) => {
+      const parentRow = parentRows.find((row) => asStr(row.external_ref) === pair.externalId) ?? null;
+      const naturalKey = parentRow ? asStr(parentRow.order_number) : null;
+      const existedBefore = Boolean(
+        existingOrderRows.byExternalRef.get(pair.externalId)
+          ?? (naturalKey ? existingOrderRows.byNaturalKey.get(naturalKey) : null),
+      );
+      if (existedBefore) return null;
+
+      const persistedRow = persistedOrders.find((row) => asStr(row.id) === pair.internalId || asStr(row.external_ref) === pair.externalId)
+        ?? parentRow
+        ?? {};
+      const sourceRecord = sourcePayloadByOrderRef.get(pair.externalId) ?? null;
+      if (!isZohoCatalogTransactionCandidate({ entityType: 'orders', sourceRecord, persistedRow })) return null;
+
+      return {
+        entityType: 'orders' as const,
+        externalId: pair.externalId,
+        internalId: pair.internalId,
+        eventName: 'server_erp_order_created',
+      };
+    })
+    .filter((candidate): candidate is ZohoAnalyticsCandidate => candidate !== null);
+
+  await captureZohoErpAnalyticsEvents({
+    admin,
+    tenantId,
+    tenantIntegrationId: integrationId,
+    candidates: orderAnalyticsCandidates,
+  });
+
   return result;
 }
 
@@ -3565,6 +3739,16 @@ async function persistInvoices(
     });
   }
 
+  const existingInvoiceRows = await loadExistingRowsByExternalOrNaturalKey(
+    admin,
+    'invoices',
+    tenantId,
+    parentRows.map((row) => asStr(row.external_ref)).filter((value): value is string => value !== null),
+    'invoice_number',
+    parentRows.map((row) => asStr(row.invoice_number)).filter((value): value is string => value !== null),
+    'external_ref, invoice_number',
+  );
+
   const guardedInvoiceRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'invoices', 'invoices', parentRows,
   );
@@ -3680,6 +3864,38 @@ async function persistInvoices(
   }
 
   await persistDerivedChildRows(admin, 'invoice_items', 'invoice_id', invoiceIds, lineItemRows);
+
+  const invoiceAnalyticsCandidates: ZohoAnalyticsCandidate[] = invoiceMapPairs
+    .map((pair) => {
+      const parentRow = parentRows.find((row) => asStr(row.external_ref) === pair.externalId) ?? null;
+      const naturalKey = parentRow ? asStr(parentRow.invoice_number) : null;
+      const existedBefore = Boolean(
+        existingInvoiceRows.byExternalRef.get(pair.externalId)
+          ?? (naturalKey ? existingInvoiceRows.byNaturalKey.get(naturalKey) : null),
+      );
+      if (existedBefore) return null;
+
+      const persistedRow = persistedInvoices.find((row) => asStr(row.id) === pair.internalId || asStr(row.external_ref) === pair.externalId)
+        ?? parentRow
+        ?? {};
+      const sourceRecord = sourcePayloadByInvoiceRef.get(pair.externalId) ?? null;
+      if (!isZohoCatalogTransactionCandidate({ entityType: 'invoices', sourceRecord, persistedRow })) return null;
+
+      return {
+        entityType: 'invoices' as const,
+        externalId: pair.externalId,
+        internalId: pair.internalId,
+        eventName: 'server_erp_invoice_created',
+      };
+    })
+    .filter((candidate): candidate is ZohoAnalyticsCandidate => candidate !== null);
+
+  await captureZohoErpAnalyticsEvents({
+    admin,
+    tenantId,
+    tenantIntegrationId: integrationId,
+    candidates: invoiceAnalyticsCandidates,
+  });
 
   return result;
 }
