@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { Package, Plus, Sparkles } from 'lucide-react';
-import posthog from 'posthog-js';
+import { usePostHog } from 'posthog-js/react';
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';
 import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
@@ -31,6 +31,7 @@ interface CartGapWidgetProps {
 const CART_GAP_CAROUSEL_MIN_COUNT = 5;
 
 export function CartGapWidget({ bundles, items, tenantId }: CartGapWidgetProps) {
+  const posthog = usePostHog();
   const recommendations = buildCartGapRecommendations(bundles, items);
   const shownRef = React.useRef(false);
   const useCarousel = recommendations.length >= CART_GAP_CAROUSEL_MIN_COUNT;
@@ -38,13 +39,13 @@ export function CartGapWidget({ bundles, items, tenantId }: CartGapWidgetProps) 
   React.useEffect(() => {
     if (recommendations.length === 0 || shownRef.current) return;
     shownRef.current = true;
-    posthog.capture('reco_widget_shown', {
+    posthog?.capture('reco_widget_shown', {
       widget: 'cart_gap',
       tenant_id: tenantId,
       result_count: recommendations.length,
       layout: useCarousel ? 'carousel' : 'list',
     });
-  }, [recommendations.length, tenantId, useCarousel]);
+  }, [posthog, recommendations.length, tenantId, useCarousel]);
 
   if (recommendations.length === 0) return null;
 
@@ -112,6 +113,7 @@ function CartGapListItem({
   tenantId: string;
   showDivider: boolean;
 }) {
+  const posthog = usePostHog();
   const { addItem } = useCart();
   const { product, bundleName, tenantCategoryId, slotLabel } = recommendation;
   const imageUrl = getBuyerProductPrimaryImageUrl(product);
@@ -139,12 +141,16 @@ function CartGapListItem({
         on_hand: product.on_hand,
       },
       product.campaign_id,
+      {
+        source_surface: 'cart_gap_widget',
+        source_widget: 'cart_gap',
+      },
     );
-    posthog.capture('reco_add_to_cart', {
+    posthog?.capture('reco_add_to_cart', {
       widget: 'cart_gap',
       product_id: product.tenant_product_id,
     });
-    posthog.capture('reco_cart_gap_add', {
+    posthog?.capture('reco_cart_gap_add', {
       bundle_name: bundleName,
       slot_category: slotCategory,
       added_product_id: product.tenant_product_id,

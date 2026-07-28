@@ -4,6 +4,7 @@ import { formatNumberValue } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { Pressable } from '@/components/ui/pressable';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
@@ -16,6 +17,7 @@ const PRODUCT_STICKY_FOOTER_LIFT =
 
 export function CartBar() {
   const pathname = usePathname();
+  const posthog = usePostHog();
   const { itemCount, subtotal } = useCart();
   const { tabBarVisible } = useBuyerScrollChromeState();
   const isLanding = isBuyerLandingRoute(pathname);
@@ -39,6 +41,14 @@ export function CartBar() {
       <Pressable asChild haptic>
         <Link
           href="/buy/cart"
+          onClick={() => {
+            posthog?.capture('buyer_cart_opened', {
+              source_surface: 'floating_cart_bar',
+              current_path: pathname,
+              item_count: itemCount,
+              subtotal,
+            });
+          }}
           className="pointer-events-auto inline-flex items-center gap-2.5 rounded-full px-3.5 py-2.5 text-sm font-medium text-white shadow-lg transition-transform duration-fast ease-standard active:scale-[0.98]"
           style={{
             background: 'var(--teal-500)',

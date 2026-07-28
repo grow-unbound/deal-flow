@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { sendBuyerDocumentWhatsApp } from '@/lib/server/whatsapp-document-send';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -112,6 +113,21 @@ export async function PATCH(
         ts: new Date().toISOString(),
       });
 
+      getPostHogClient()?.capture({
+        distinctId: claims.sub,
+        event: 'seller_document_sent',
+        properties: {
+          tenant_id: claims.tenant_id,
+          document_type: 'estimate',
+          document_id: id,
+          channel: parsed.data.channel,
+          previous_status: estimate.status ?? null,
+          next_status: estimate.status === 'draft' ? 'sent' : estimate.status,
+          recipient_present: Boolean(parsed.data.recipient),
+          role: claims.role,
+        },
+      });
+
       return NextResponse.json({ data: { id } });
     }
 
@@ -174,6 +190,24 @@ export async function PATCH(
         recipient: sendResult.recipientPhone,
       },
       ts: new Date().toISOString(),
+    });
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub,
+      event: 'seller_document_sent',
+      properties: {
+        tenant_id: claims.tenant_id,
+        document_type: 'estimate',
+        document_id: id,
+        buyer_id: fullEstimate.buyer_id ?? null,
+        channel: 'whatsapp',
+        previous_status: fullEstimate.status ?? estimate.status ?? null,
+        next_status: (fullEstimate.status ?? estimate.status) === 'draft' ? 'sent' : fullEstimate.status ?? estimate.status ?? null,
+        total_amount: Number(fullEstimate.total_amount ?? 0),
+        item_count: itemCount ?? 0,
+        recipient_present: Boolean(sendResult.recipientPhone),
+        role: claims.role,
+      },
     });
 
     return NextResponse.json({ data: { id } });

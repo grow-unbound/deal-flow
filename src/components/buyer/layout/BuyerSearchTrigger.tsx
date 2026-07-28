@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Search } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { cn } from '@/lib/utils';
 import { openBuyerSearch } from '@/components/buyer/layout/BuyerSearchOverlay';
 
@@ -14,10 +15,17 @@ export function BuyerSearchTrigger({
   placeholder = 'Search products, SKU, brand…',
   className,
 }: BuyerSearchTriggerProps): React.ReactNode {
+  const posthog = usePostHog();
+
   return (
     <button
       type="button"
-      onClick={() => openBuyerSearch()}
+      onClick={() => {
+        posthog?.capture('buyer_search_opened', {
+          source_surface: 'search_trigger',
+        });
+        openBuyerSearch();
+      }}
       className={cn(
         'relative flex w-full items-center rounded-[12px] border border-[var(--cream-400)] bg-white py-2.5 pl-9 pr-3 text-left',
         'text-[var(--fg-3)] transition-colors hover:border-[var(--teal-500)]',

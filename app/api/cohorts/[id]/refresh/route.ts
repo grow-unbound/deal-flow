@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -52,6 +53,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .select('cached_member_count, last_refreshed_at')
     .eq('id', id)
     .single();
+
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'customer_group_refreshed',
+    properties: {
+      tenant_id: claims.tenant_id,
+      cohort_id: id,
+      cached_member_count: updated?.cached_member_count ?? null,
+      last_refreshed_at: (updated as any)?.last_refreshed_at ?? null,
+      role: claims.role,
+    },
+  });
 
   return NextResponse.json({
     ok: true,
