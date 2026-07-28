@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { SearchX } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
@@ -30,6 +31,7 @@ interface CatalogFilteredBrowseProps {
 }
 
 export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
+  const posthog = usePostHog();
   const { setCampaignId } = useCart();
   const categoryRecos = useBuyerCategoryRecos(mode === 'category' ? id : '');
   const brandRecos = useBuyerBrandRecos(mode === 'brand' ? id : '');
@@ -38,6 +40,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [search, setSearch] = React.useState('');
   const debouncedSearch = useDebounce(search, 300);
+  const searchEventKeyRef = React.useRef<string | null>(null);
 
   const categoriesQuery = useBuyerCategories();
   const brandsQuery = useBuyerBrands();
@@ -84,6 +87,22 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     setCampaignTitle('Catalog');
     setCampaignTitleResolved(false);
   }, [mode, id, retryNonce]);
+
+  React.useEffect(() => {
+    if (!posthog || debouncedSearch.length === 0 || listQuery.isFetching) return;
+    const key = `${mode}:${id}:${debouncedSearch}:${items.length}:${error ? 'error' : 'ok'}`;
+    if (searchEventKeyRef.current === key) return;
+    searchEventKeyRef.current = key;
+    posthog.capture('buyer_catalog_search_results_viewed', {
+      source_surface: 'catalog_filtered_browse',
+      browse_mode: mode,
+      entity_id: id,
+      query_length: debouncedSearch.length,
+      result_count: items.length,
+      has_more: hasMore,
+      status: error ? 'error' : 'success',
+    });
+  }, [debouncedSearch, error, hasMore, id, items.length, listQuery.isFetching, mode, posthog]);
 
   const title = mode === 'category' ? 'Category' : mode === 'brand' ? 'Brand' : campaignTitle;
 

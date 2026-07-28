@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendOrderReceivedBuyer } from '@/lib/server/whatsapp';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -72,6 +73,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Cannot send a cancelled or delivered order.' }, { status: 400 });
     }
 
+    const { count: itemCount } = await db
+      .schema('app')
+      .from('order_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', id)
+      .is('deleted_at', null);
+
     if (parsed.data.channel === 'whatsapp') {
       const buyerId = (order.buyer_id as string | null) ?? null;
       if (!buyerId) {
@@ -87,13 +95,6 @@ export async function PATCH(
       if (!ctx) {
         return NextResponse.json({ error: 'WhatsApp send is unavailable for this order.' }, { status: 409 });
       }
-
-      const { count: itemCount } = await db
-        .schema('app')
-        .from('order_items')
-        .select('id', { count: 'exact', head: true })
-        .eq('order_id', id)
-        .is('deleted_at', null);
 
       const sent = await sendOrderReceivedBuyer(
         ctx,
@@ -126,6 +127,23 @@ export async function PATCH(
       console.error('[PATCH /api/tenant/orders/[id]/send] audit', auditError);
       return NextResponse.json({ error: 'Failed to send sales order' }, { status: 500 });
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub,
+      event: 'seller_document_sent',
+      properties: {
+        tenant_id: claims.tenant_id,
+        document_type: 'sales_order',
+        document_id: id,
+        buyer_id: order.buyer_id ?? null,
+        location_id: order.location_id ?? null,
+        channel: parsed.data.channel,
+        status: order.status,
+        total_amount: Number(order.total_amount ?? 0),
+        item_count: itemCount ?? 0,
+        role: claims.role,
+      },
+    });
 
     return NextResponse.json({ data: { id } });
   } catch (error) {

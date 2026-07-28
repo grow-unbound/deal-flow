@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import posthog from 'posthog-js';
+import { usePostHog } from 'posthog-js/react';
 
 import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
@@ -32,17 +32,19 @@ export function RecoSection({
   href,
   linkLabel,
 }: RecoSectionProps): React.ReactNode {
-  const fired = React.useRef(false);
+  const posthog = usePostHog();
+  const firedKey = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (items.length === 0 || fired.current) return;
-    fired.current = true;
-    posthog.capture('reco_widget_shown', {
+    const impressionKey = `${widget}:${sourceProductId ?? ''}:${items.length}`;
+    if (items.length === 0 || firedKey.current === impressionKey) return;
+    firedKey.current = impressionKey;
+    posthog?.capture('reco_widget_shown', {
       widget,
       product_id: sourceProductId,
       result_count: items.length,
     });
-  }, [widget, sourceProductId, items.length]);
+  }, [posthog, widget, sourceProductId, items.length]);
 
   if (items.length === 0 && !alwaysShow) return null;
 

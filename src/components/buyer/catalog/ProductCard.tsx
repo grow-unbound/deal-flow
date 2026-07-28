@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
-import posthog from 'posthog-js';
+import { usePostHog } from 'posthog-js/react';
 import { Pressable } from '@/components/ui/pressable';
 import { cn, formatNumberValue } from '@/lib/utils';
 import {
@@ -61,6 +61,7 @@ export function ProductCard({
   variant = 'default',
 }: ProductCardProps): React.ReactNode {
   const isCompact = variant === 'compact';
+  const posthog = usePostHog();
   const { items, addItem, updateQty } = useCart();
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
@@ -97,9 +98,13 @@ export function ProductCard({
       tenant_category_id: item.category_id ?? undefined,
       stock_status: item.stock_status,
       on_hand: item.on_hand,
-    }, item.campaign_id);
+    }, item.campaign_id, {
+      source_surface: recoCtx ? 'recommendation_card' : 'catalog_product_card',
+      source_widget: recoCtx?.widget ?? null,
+      source_product_id: recoCtx?.sourceProductId ?? null,
+    });
     if (recoCtx) {
-      posthog.capture('reco_add_to_cart', {
+      posthog?.capture('reco_add_to_cart', {
         widget: recoCtx.widget,
         product_id: item.tenant_product_id,
         source_product_id: recoCtx.sourceProductId ?? null,

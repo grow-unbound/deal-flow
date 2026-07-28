@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const DELIVERY_COOKIE_NAME = 'df_buyer_delivery_v1';
+export const DELIVERY_RECENT_STORAGE_KEY = 'df_buyer_delivery_recent_v1';
 
 export const buyerDeliveryLocationSchema = z.object({
   place_id: z.string(),
@@ -32,8 +33,17 @@ export type BuyerDeliveryCookiePayload = z.infer<typeof buyerDeliveryCookieSchem
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
+export function toPersistedDeliveryCookiePayload(
+  payload: BuyerDeliveryCookiePayload,
+): BuyerDeliveryCookiePayload {
+  return {
+    selected: payload.selected ?? null,
+    recent: [],
+  };
+}
+
 export function serializeDeliveryCookie(payload: BuyerDeliveryCookiePayload): string {
-  return encodeURIComponent(JSON.stringify(payload));
+  return encodeURIComponent(JSON.stringify(toPersistedDeliveryCookiePayload(payload)));
 }
 
 export function parseDeliveryCookie(raw: string | undefined | null): BuyerDeliveryCookiePayload | null {

@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
 import { PostHogProvider } from '@/components/providers/PostHogProvider';
+import { PostHogRouteCapture } from '@/components/providers/PostHogRouteCapture';
 import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Analytics } from '@vercel/analytics/next';
@@ -50,7 +51,10 @@ export default function RootLayout({
         <PostHogProvider>
           <ReactQueryProvider>
             <AuthProvider>
-              <TenantProvider>{children}</TenantProvider>
+              <TenantProvider>
+                <PostHogRouteCapture />
+                {children}
+              </TenantProvider>
             </AuthProvider>
           </ReactQueryProvider>
         </PostHogProvider>

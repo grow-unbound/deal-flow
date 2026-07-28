@@ -215,7 +215,10 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
         line_total: item.line_total,
         gst_rate: item.tax_rate ?? null,
       };
-      addItem(cartItem);
+      addItem(cartItem, undefined, {
+        source_surface: 'document_reorder',
+        source_document_type: docType,
+      });
     });
     router.push('/buy/cart');
   }

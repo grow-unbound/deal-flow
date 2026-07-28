@@ -9,6 +9,7 @@ import { PriceListComposerPayloadSchema, PriceListFormPayloadSchema, type PriceL
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -526,6 +527,30 @@ export async function POST(request: NextRequest) {
       },
       ts: new Date().toISOString(),
   });
+
+  try {
+    const ph = getPostHogClient();
+    ph.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: isSimpleForm ? 'price_list_created_simple' : data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
+      properties: {
+        tenant_id: claims.tenant_id,
+        price_list_id: priceList.id,
+        item_count: isSimpleForm
+          ? data.selected_product_ids.length
+          : data.item_prices.length,
+        pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
+        membership_mode: isSimpleForm
+          ? simpleMembershipMode
+          : priceList.membership_mode ?? null,
+        has_valid_to: Boolean(data.valid_to),
+        is_active: priceList.is_active,
+      },
+    });
+    await ph.flush();
+  } catch {
+    // Analytics is non-blocking for price list creation.
+  }
 
   return NextResponse.json({ price_list: priceList }, { status: 201 });
 }

@@ -79,6 +79,12 @@ export function SignupFormCard() {
 
   async function onSubmit(values: SignupFormValues) {
     setApiError('');
+    posthog?.capture('signup_attempted', {
+      has_phone: Boolean(values.phone),
+      has_turnstile: Boolean(turnstileSiteKey),
+      business_slug_length: slugify(values.business_name).length,
+      plan: 'starter',
+    });
     try {
       const distinctId = posthog?.get_distinct_id();
       const sessionId = posthog?.get_session_id?.();
@@ -105,9 +111,22 @@ export function SignupFormCard() {
       if (!res.ok) {
         if (res.status === 409 || data.code === 'SLUG_TAKEN') {
           setApiError('A workspace with that business name already exists. Try a slightly different name.');
+          posthog?.capture('signup_failed', {
+            failure_type: 'slug_taken',
+            status: res.status,
+            code: data.code ?? 'SLUG_TAKEN',
+            has_phone: Boolean(values.phone),
+            has_turnstile: Boolean(turnstileSiteKey),
+          });
         } else {
           setApiError(data.error ?? 'Signup failed. Please try again.');
-          posthog?.capture('signup_failed', { reason: data.error });
+          posthog?.capture('signup_failed', {
+            failure_type: data.code ?? 'api_error',
+            status: res.status,
+            reason: data.error ?? null,
+            has_phone: Boolean(values.phone),
+            has_turnstile: Boolean(turnstileSiteKey),
+          });
         }
         return;
       }
@@ -128,7 +147,18 @@ export function SignupFormCard() {
       }
 
       setApiError('Account was created but verification could not be initiated. Please sign in.');
+      posthog?.capture('signup_failed', {
+        failure_type: 'verification_not_initiated',
+        status: res.status,
+        has_phone: Boolean(values.phone),
+        has_turnstile: Boolean(turnstileSiteKey),
+      });
     } catch (err) {
+      posthog?.capture('signup_failed', {
+        failure_type: 'network_or_unexpected_error',
+        has_phone: Boolean(values.phone),
+        has_turnstile: Boolean(turnstileSiteKey),
+      });
       posthog?.captureException(err);
       setApiError('An unexpected error occurred. Please try again.');
     }

@@ -93,6 +93,7 @@ export default function PromotionsPage() {
                 heroImageUrl={promotion.hero_image_url}
                 hueIndex={index}
                 layout="list"
+                priority={index === 0}
               />
             ))}
           </div>

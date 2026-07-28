@@ -8,6 +8,7 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam } from '@/lib/landing-filter-params';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -249,6 +250,28 @@ export async function POST(req: NextRequest) {
         { error: 'Failed to add product', code: insertError.code, detail: insertError.message },
         { status: 500 },
       );
+    }
+
+    try {
+      const ph = getPostHogClient();
+      ph.capture({
+        distinctId: claims.sub ?? claims.tenant_id,
+        event: 'product_created',
+        properties: {
+          tenant_id: tenantId,
+          tenant_product_id: inserted.id,
+          tenant_brand_id: resolvedTenantBrandId,
+          tenant_category_id: resolvedTenantCategoryId,
+          source_type: master_product_id ? 'master_catalog' : 'custom',
+          has_image: (image_urls ?? []).length > 0,
+          has_cost_price: effectiveCostPrice != null,
+          gst_rate: gst_rate ?? null,
+          role: claims.role,
+        },
+      });
+      await ph.flush();
+    } catch {
+      // Analytics is non-blocking for product creation.
     }
 
     return NextResponse.json({ product: inserted }, { status: 201 });

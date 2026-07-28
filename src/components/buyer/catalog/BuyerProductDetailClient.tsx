@@ -50,7 +50,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       quantity: 1,
       line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
-    }, item.campaign_id ?? campaignId);
+    }, item.campaign_id ?? campaignId, {
+      source_surface: 'product_detail',
+    });
   }
 
   function handleDecrement(): void {

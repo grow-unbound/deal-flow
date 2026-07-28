@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPost, type ApiFetchInit } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
 import type {
@@ -39,8 +39,8 @@ function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | null | un
   ].join(':');
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await apiFetch(url);
+async function fetchJson<T>(url: string, init?: ApiFetchInit): Promise<T> {
+  const response = await apiFetch(url, init);
   if (!response.ok) throw new Error(`Request failed: ${url}`);
   return response.json() as Promise<T>;
 }
@@ -152,7 +152,7 @@ export function useBuyerCatalogSearchInfinite(
       if (categoryId) params.set('category_id', categoryId);
       if (brandId) params.set('brand_id', brandId);
       if (campaignId) params.set('campaign_id', campaignId);
-      return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`);
+      return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
@@ -181,7 +181,7 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
       if (mode === 'brand') params.set('brand_id', id);
       if (mode === 'list') params.set('campaign_id', id);
       if (trimmedSearch) params.set('search', trimmedSearch);
-      return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`);
+      return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
@@ -211,7 +211,10 @@ export function useBuyerProductDetail(tenantProductId: string) {
   const productQuery = useQuery<{ items?: BuyerCatalogItem[] }>({
     queryKey: ['buyer-product-detail', tenantProductId, stockSignature],
     queryFn: async () =>
-      fetchJson<{ items?: BuyerCatalogItem[] }>(`/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`),
+      fetchJson<{ items?: BuyerCatalogItem[] }>(
+        `/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`,
+        { fresh: true },
+      ),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });

@@ -1,7 +1,7 @@
 'use client';
 
-import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback, useMemo } from 'react';
-import posthog from 'posthog-js';
+import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback, useMemo, useRef } from 'react';
+import { usePostHog } from 'posthog-js/react';
 
 import {
   BUYER_CART_CAMPAIGN_STORAGE_KEY,
@@ -30,6 +30,12 @@ export interface BuyerCartItem {
 }
 
 type CartState = { items: BuyerCartItem[]; campaignId: string | null };
+type CartAnalyticsContext = {
+  source_surface?: string;
+  source_widget?: string | null;
+  source_product_id?: string | null;
+  source_document_type?: string | null;
+};
 
 type CartAction =
   | { type: 'ADD_ITEM'; item: BuyerCartItem }
@@ -116,6 +122,54 @@ function cartReducer(state: CartState, action: CartAction): CartState {
   }
 }
 
+function getItemsAfterAdd(items: BuyerCartItem[], item: BuyerCartItem, campaignId: string | null): BuyerCartItem[] {
+  const existing = items.find((i) => i.tenant_product_id === item.tenant_product_id);
+  if (!existing) return [...items, item];
+
+  const newQty = existing.quantity + item.quantity;
+  return items.map((i) =>
+    i.tenant_product_id === item.tenant_product_id
+      ? {
+          ...i,
+          quantity: newQty,
+          line_total: newQty * i.unit_price,
+          campaign_id: item.campaign_id ?? i.campaign_id ?? campaignId,
+        }
+      : i,
+  );
+}
+
+function getItemsAfterQtyUpdate(items: BuyerCartItem[], tenantProductId: string, quantity: number): BuyerCartItem[] {
+  if (quantity <= 0) return items.filter((i) => i.tenant_product_id !== tenantProductId);
+
+  return items.map((i) =>
+    i.tenant_product_id === tenantProductId
+      ? { ...i, quantity, line_total: quantity * i.unit_price }
+      : i,
+  );
+}
+
+function getCartAnalyticsSnapshot(items: BuyerCartItem[], campaignId: string | null) {
+  const sellableItems = items.filter((item) => item.stock_status !== 'out_of_stock');
+  return {
+    cart_line_count: items.length,
+    cart_item_count: items.reduce((sum, item) => sum + item.quantity, 0),
+    cart_total_amount: sellableItems.reduce((sum, item) => sum + item.line_total, 0),
+    cart_unavailable_line_count: items.length - sellableItems.length,
+    cart_campaign_id: resolveBuyerCartCampaignId(campaignId, items),
+    line_items: items.map((item) => ({
+      tenant_product_id: item.tenant_product_id,
+      internal_sku: item.internal_sku ?? null,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      line_total: item.line_total,
+      campaign_id: item.campaign_id ?? null,
+      has_campaign_price: item.has_campaign_price === true,
+      stock_status: item.stock_status ?? null,
+    })),
+  };
+}
+
 export interface CartContextValue {
   items: BuyerCartItem[];
   campaignId: string | null;
@@ -123,7 +177,7 @@ export interface CartContextValue {
   itemCount: number;
   subtotal: number;
   setCampaignId: (campaignId: string | null) => void;
-  addItem: (item: BuyerCartItem, campaignId?: string | null) => void;
+  addItem: (item: BuyerCartItem, campaignId?: string | null, analytics?: CartAnalyticsContext) => void;
   removeItem: (tenant_product_id: string) => void;
   updateQty: (tenant_product_id: string, quantity: number) => void;
   clearCart: () => void;
@@ -133,13 +187,22 @@ export interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
+  const posthog = usePostHog();
+  const hasClientMutationRef = useRef(false);
+
   // Always start from an empty, server-matching state — reading localStorage in the
   // reducer's lazy initializer ran during the client's first render and could disagree
   // with the server-rendered (always-empty) HTML, causing a hydration mismatch. Hydrating
   // in an effect instead guarantees the first client render matches the server render.
   const [state, dispatch] = useReducer(cartReducer, { items: [], campaignId: null });
+  const stateRef = useRef(state);
 
   useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (hasClientMutationRef.current) return;
     dispatch({ type: 'HYDRATE', state: readInitialCartState() });
   }, []);
 
@@ -164,11 +227,14 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
   }, [state.campaignId]);
 
   const setCampaignId = useCallback((campaignId: string | null) => {
+    hasClientMutationRef.current = true;
     dispatch({ type: 'SET_CAMPAIGN_ID', campaignId });
   }, []);
 
-  const addItem = useCallback((item: BuyerCartItem, campaignId?: string | null) => {
-    const effectiveCampaignId = campaignId ?? item.campaign_id ?? state.campaignId ?? null;
+  const addItem = useCallback((item: BuyerCartItem, campaignId?: string | null, analytics?: CartAnalyticsContext) => {
+    hasClientMutationRef.current = true;
+    const currentState = stateRef.current;
+    const effectiveCampaignId = campaignId ?? item.campaign_id ?? currentState.campaignId ?? null;
     const stampedItem = effectiveCampaignId
       ? { ...item, campaign_id: effectiveCampaignId }
       : item;
@@ -176,31 +242,84 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     if (effectiveCampaignId) {
       dispatch({ type: 'SET_CAMPAIGN_ID', campaignId: effectiveCampaignId });
     }
+    const nextItems = getItemsAfterAdd(currentState.items, stampedItem, effectiveCampaignId);
     dispatch({ type: 'ADD_ITEM', item: stampedItem });
-    posthog.capture('catalog_item_added_to_cart', {
+    posthog?.capture('catalog_item_added_to_cart', {
       tenant_product_id: item.tenant_product_id,
       product_name: item.name,
       brand: item.brand,
+      internal_sku: item.internal_sku,
+      tenant_category_id: item.tenant_category_id,
       unit_price: item.unit_price,
+      resolved_price: item.resolved_price ?? null,
+      has_campaign_price: item.has_campaign_price === true,
       gst_rate: item.gst_rate ?? null,
       quantity: item.quantity,
       campaign_id: effectiveCampaignId,
+      stock_status: item.stock_status ?? null,
+      source_surface: analytics?.source_surface ?? 'unknown',
+      source_widget: analytics?.source_widget ?? null,
+      source_product_id: analytics?.source_product_id ?? null,
+      source_document_type: analytics?.source_document_type ?? null,
+      ...getCartAnalyticsSnapshot(nextItems, effectiveCampaignId),
     });
-  }, [state.campaignId]);
+  }, [posthog]);
 
   const removeItem = useCallback((tenant_product_id: string) => {
+    hasClientMutationRef.current = true;
+    const currentState = stateRef.current;
+    const removedItem = currentState.items.find((item) => item.tenant_product_id === tenant_product_id);
+    const nextItems = currentState.items.filter((i) => i.tenant_product_id !== tenant_product_id);
     dispatch({ type: 'REMOVE_ITEM', tenant_product_id });
-  }, []);
+    if (removedItem) {
+      posthog?.capture('buyer_cart_item_removed', {
+        tenant_product_id,
+        internal_sku: removedItem.internal_sku ?? null,
+        quantity: removedItem.quantity,
+        unit_price: removedItem.unit_price,
+        line_total: removedItem.line_total,
+        campaign_id: removedItem.campaign_id ?? currentState.campaignId,
+        source_surface: 'buyer_cart',
+        ...getCartAnalyticsSnapshot(nextItems, currentState.campaignId),
+      });
+    }
+  }, [posthog]);
 
   const updateQty = useCallback((tenant_product_id: string, quantity: number) => {
+    hasClientMutationRef.current = true;
+    const currentState = stateRef.current;
+    const previousItem = currentState.items.find((item) => item.tenant_product_id === tenant_product_id);
+    const nextItems = getItemsAfterQtyUpdate(currentState.items, tenant_product_id, quantity);
     dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity });
-  }, []);
+    if (previousItem) {
+      posthog?.capture('buyer_cart_item_quantity_changed', {
+        tenant_product_id,
+        internal_sku: previousItem.internal_sku ?? null,
+        previous_quantity: previousItem.quantity,
+        next_quantity: Math.max(0, quantity),
+        removed_by_zero_quantity: quantity <= 0,
+        unit_price: previousItem.unit_price,
+        campaign_id: previousItem.campaign_id ?? currentState.campaignId,
+        source_surface: 'buyer_cart',
+        ...getCartAnalyticsSnapshot(nextItems, currentState.campaignId),
+      });
+    }
+  }, [posthog]);
 
   const clearCart = useCallback(() => {
+    hasClientMutationRef.current = true;
+    const currentState = stateRef.current;
+    if (currentState.items.length > 0) {
+      posthog?.capture('buyer_cart_cleared', {
+        source_surface: 'buyer_cart',
+        ...getCartAnalyticsSnapshot(currentState.items, currentState.campaignId),
+      });
+    }
     dispatch({ type: 'CLEAR_CART' });
-  }, []);
+  }, [posthog]);
 
   const replaceItems = useCallback((items: BuyerCartItem[]) => {
+    hasClientMutationRef.current = true;
     dispatch({ type: 'REPLACE_ITEMS', items });
   }, []);
 

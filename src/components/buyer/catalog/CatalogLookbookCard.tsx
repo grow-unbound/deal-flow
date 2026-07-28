@@ -24,6 +24,7 @@ export interface CatalogLookbookCardProps {
   hueIndex?: number;
   /** `carousel` = fixed width for horizontal scroll; `list` = full-width stack row */
   layout?: 'carousel' | 'list';
+  priority?: boolean;
 }
 
 function formatCampaignValidity(iso: string | null | undefined): string {
@@ -43,6 +44,7 @@ export function CatalogLookbookCard({
   heroImageUrl,
   hueIndex = 0,
   layout = 'carousel',
+  priority = false,
 }: CatalogLookbookCardProps): React.ReactNode {
   const [imgError, setImgError] = React.useState(false);
   const showImage = Boolean(heroImageUrl) && !imgError;
@@ -70,6 +72,7 @@ export function CatalogLookbookCard({
             sizes={isList ? '100vw' : `${BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX}px`}
             onError={() => setImgError(true)}
             unoptimized
+            priority={priority}
           />
         ) : (
           <div className="absolute inset-0" style={{ background: gradient }} aria-hidden />

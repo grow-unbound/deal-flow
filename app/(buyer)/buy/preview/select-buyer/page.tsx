@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePostHog } from 'posthog-js/react';
 
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ interface PreviewCandidatesResponse {
 
 export default function PreviewSelectBuyerPage() {
   const router = useRouter();
+  const posthog = usePostHog();
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -59,6 +61,13 @@ export default function PreviewSelectBuyerPage() {
   }, []);
 
   async function handleSelect(buyerId: string) {
+    const buyer = buyers.find((option) => option.buyer_id === buyerId);
+    posthog?.capture('buyer_account_selected', {
+      source_surface: 'buyer_preview_select',
+      buyer_id: buyerId,
+      buyer_app_enabled: buyer?.buyer_app_enabled ?? null,
+      option_count: buyers.length,
+    });
     setSubmittingId(buyerId);
     setError('');
     try {

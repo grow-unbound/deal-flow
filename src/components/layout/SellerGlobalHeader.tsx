@@ -2,6 +2,7 @@
 
 import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone } from 'lucide-react';
 import { use, useState } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -53,6 +54,7 @@ interface SellerGlobalHeaderProps {
 
 export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeaderProps) {
   const tenantBranding = use(tenantBrandingPromise);
+  const posthog = usePostHog();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
   const { user, signOut } = useAuth();
@@ -80,7 +82,18 @@ export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeader
 
         <div className="ml-auto flex items-center gap-2">
           <Button asChild variant="ghost" className="h-11 rounded-[12px] px-3 text-cream-800 hover:text-[#221E1A]">
-            <a href="/api/buyer/preview/launch" target="_blank" rel="noreferrer">
+            <a
+              href="/api/buyer/preview/launch"
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => {
+                posthog?.capture('seller_open_buyer_app_clicked', {
+                  tenant_id: currentTenant?.id ?? null,
+                  role: isSellerAdmin ? 'seller_admin' : isSellerAssistant ? 'seller_assistant' : 'seller',
+                  destination: '/api/buyer/preview/launch',
+                });
+              }}
+            >
               Open Buyer App <ExternalLink size={14} />
             </a>
           </Button>
