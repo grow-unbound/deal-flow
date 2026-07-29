@@ -50,7 +50,7 @@ function renderAvatar(avatar: DetailAvatar) {
 export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statusActions, actions }: DetailHeaderProps) {
   return (
     <header>
-      <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-cream-600">
+      <nav className="mb-3 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:mb-4 md:text-sm md:font-normal md:tracking-0 md:text-cream-600">
         {crumbPath.map((crumb, index) => {
           const isCurrent = crumb.current || index === crumbPath.length - 1;
           return (
@@ -68,17 +68,17 @@ export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statu
         })}
       </nav>
 
-      <div className="flex items-start justify-between gap-8">
+      <div className="flex items-start justify-between gap-4 md:gap-8">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             {renderAvatar(avatar)}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
+                <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.98] tracking-[-0.022em] text-cream-900 md:text-2xl md:font-extrabold md:leading-[1.05] md:tracking-[-0.025em] md:text-cream-950">{title}</h1>
                 <StatusTag label={status.label} tone={status.tone} />
                 {statusActions ? <div className="ml-1 inline-flex items-center gap-1">{statusActions}</div> : null}
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-base text-cream-700">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:text-base md:font-normal md:tracking-0 md:text-cream-700">
                 {subtitle.map((item, index) => (
                   <div key={index} className="inline-flex items-center gap-1.5">
                     {index > 0 ? <span className="text-cream-500">·</span> : null}
@@ -89,7 +89,7 @@ export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statu
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="hidden shrink-0 items-center gap-2 md:flex">{actions}</div>
       </div>
     </header>
   );

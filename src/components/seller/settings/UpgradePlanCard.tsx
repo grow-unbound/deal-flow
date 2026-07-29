@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { PlanTier } from '@/constants/tier-limits';
 
 function nextTier(plan: PlanTier): PlanTier | null {
+  if (plan === 'lite') return 'starter';
   if (plan === 'starter') return 'growth';
   if (plan === 'growth') return 'scale';
   return null;
@@ -15,16 +16,23 @@ const COPY: Record<
   Exclude<PlanTier, 'scale'>,
   { title: string; body: string; cta: string; border: string; bg: string }
 > = {
+  lite: {
+    title: 'Upgrade to Starter',
+    body: 'Unlock the buyer app, campaign publishing, and unlimited cohorts, price lists, and catalogs.',
+    cta: 'Upgrade to Starter',
+    border: 'border-teal-200',
+    bg: 'from-teal-50 to-white',
+  },
   starter: {
     title: 'Upgrade to Growth',
-    body: 'Get 20 cohorts, 10 price lists, and 15 published catalogs — same features, higher limits.',
+    body: 'Get up to 500 buyer app monthly active users and 10 locations — same features, higher limits.',
     cta: 'Upgrade to Growth',
     border: 'border-ember-200',
     bg: 'from-ember-50 to-white',
   },
   growth: {
     title: 'Upgrade to Scale',
-    body: 'Unlimited cohorts, price lists, and published catalogs for large distributor operations.',
+    body: 'Unlimited buyer app monthly active users and locations for large distributor operations.',
     cta: 'Upgrade to Scale',
     border: 'border-violet-200',
     bg: 'from-violet-50 to-white',

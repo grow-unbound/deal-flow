@@ -421,7 +421,7 @@ INSERT INTO catalog.integration_types (
 
 -- Platform tenant — owns OTP billing wallet and platform-managed WhatsApp templates.
 -- UUID must match WHATSAPP_PLATFORM_TENANT_ID env var.
-INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_state, plan, whatsapp_credits_balance)
+INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_state, plan, whatsapp_purchased_credits_balance)
 VALUES (
   '550e8400-e29b-41d4-a716-446655440500'::uuid,
   'platform-tenant', 'Platform Tenant', 'platform',
@@ -678,7 +678,7 @@ VALUES (
 -- ──────────────────────────────────────────────────────────────
 
 INSERT INTO app.whatsapp_credit_pricing (credit_price_inr)
-VALUES (0.25);
+VALUES (0.20);
 
 INSERT INTO app.whatsapp_rate_card (meta_category, meta_cost_inr, credits_per_message)
 VALUES

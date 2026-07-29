@@ -127,7 +127,9 @@ export type Database = {
           subdomain: string | null;
           plan: string;
           settings: Record<string, any>;
-          whatsapp_credits_balance: number;
+          whatsapp_plan_allowance_balance: number;
+          whatsapp_plan_allowance_reset_at: string | null;
+          whatsapp_purchased_credits_balance: number;
           whatsapp_credits_purchased: number;
           created_at: string;
           updated_at: string;
@@ -136,9 +138,23 @@ export type Database = {
         };
         Insert: Omit<
           Database['app']['Tables']['tenants']['Row'],
-          'id' | 'created_at' | 'updated_at' | 'whatsapp_credits_balance' | 'whatsapp_credits_purchased'
+          | 'id'
+          | 'created_at'
+          | 'updated_at'
+          | 'whatsapp_plan_allowance_balance'
+          | 'whatsapp_plan_allowance_reset_at'
+          | 'whatsapp_purchased_credits_balance'
+          | 'whatsapp_credits_purchased'
         > &
-          Partial<Pick<Database['app']['Tables']['tenants']['Row'], 'whatsapp_credits_balance' | 'whatsapp_credits_purchased'>>;
+          Partial<
+            Pick<
+              Database['app']['Tables']['tenants']['Row'],
+              | 'whatsapp_plan_allowance_balance'
+              | 'whatsapp_plan_allowance_reset_at'
+              | 'whatsapp_purchased_credits_balance'
+              | 'whatsapp_credits_purchased'
+            >
+          >;
         Update: Partial<Database['app']['Tables']['tenants']['Insert']>;
       };
       tenant_settings: {

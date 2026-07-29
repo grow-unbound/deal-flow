@@ -25,7 +25,8 @@ interface TenantRow {
   id: string;
   business_name: string;
   settings: Record<string, unknown> | null;
-  whatsapp_credits_balance: number | string | null;
+  whatsapp_plan_allowance_balance: number | string | null;
+  whatsapp_purchased_credits_balance: number | string | null;
 }
 
 const TEMPLATE_VALIDATION_SHAPE = {
@@ -138,7 +139,7 @@ export async function buildBuyerAppEnablePreview(
   const { data: tenant, error: tenantError } = await db
     .schema('app')
     .from('tenants')
-    .select('id, business_name, settings, whatsapp_credits_balance')
+    .select('id, business_name, settings, whatsapp_plan_allowance_balance, whatsapp_purchased_credits_balance')
     .eq('id', tenantId)
     .maybeSingle();
 
@@ -147,7 +148,9 @@ export async function buildBuyerAppEnablePreview(
   }
 
   const sellerContext = buildSellerContextFromTenant(tenant as TenantRow);
-  const creditsBalance = Number((tenant as TenantRow).whatsapp_credits_balance ?? 0);
+  const creditsBalance =
+    Number((tenant as TenantRow).whatsapp_plan_allowance_balance ?? 0) +
+    Number((tenant as TenantRow).whatsapp_purchased_credits_balance ?? 0);
 
   let previewBuyerName = '{{buyer_name}}';
   if (buyerIds.length === 1) {

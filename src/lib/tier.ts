@@ -1,6 +1,6 @@
 import { TIER_LIMITS, type PlanTier } from '@/constants/tier-limits';
 
-const TIER_ORDER = { starter: 0, growth: 1, scale: 2 } as const;
+const TIER_ORDER = { lite: 0, starter: 1, growth: 2, scale: 3 } as const;
 
 export function meetsRequiredTier(
   tenantTier: keyof typeof TIER_ORDER,

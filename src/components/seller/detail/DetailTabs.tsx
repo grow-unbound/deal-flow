@@ -52,7 +52,11 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
   }, [activeTab, entityType, pathname, posthog, routeInfo]);
 
   return (
-    <div className="mt-6 flex gap-0 border-b border-cream-300" role="tablist" aria-orientation="horizontal">
+    <div
+      className="mx-0 mt-4 flex rounded-[10px] bg-cream-200 p-[3px] md:mt-6 md:rounded-none md:border-b md:border-cream-300 md:bg-transparent md:p-0"
+      role="tablist"
+      aria-orientation="horizontal"
+    >
       {tabs.map((tab) => {
         const isActive = tab.id === active;
         return (
@@ -74,8 +78,8 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
               onChange?.(tab.id);
             }}
             className={cn(
-              'inline-flex items-center border-b-2 border-transparent px-5 py-3.5 text-base font-medium text-cream-700 transition-colors hover:text-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-300/70',
-              isActive && 'border-ember-500 text-cream-950'
+              'inline-flex flex-1 items-center justify-center rounded-lg border-b-0 border-transparent px-2 py-1.5 text-[var(--b-text-sub)] font-medium text-cream-700 transition-colors hover:text-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-300/70 md:flex-none md:rounded-none md:border-b-2 md:px-5 md:py-3.5 md:text-base',
+              isActive && 'bg-white text-teal-500 shadow-[0_1px_2px_rgba(31,58,52,0.06)] md:border-ember-500 md:bg-transparent md:text-cream-950 md:shadow-none'
             )}
           >
             <span>{tab.label}</span>

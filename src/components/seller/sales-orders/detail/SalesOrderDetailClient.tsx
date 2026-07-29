@@ -53,6 +53,7 @@ import { formatNumberValue } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
 import { ModalCancelOrder } from './ModalCancelOrder';
 import { ModalDispatch } from './ModalDispatch';
@@ -225,25 +226,59 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
 
   const statusLabel = bandStatus === 'draft' ? 'Draft' : SO_STATUS_TITLE[ui];
   const statusTone: 'draft' | 'live' = ui === 'cancelled' || ui === 'delivered' ? 'draft' : 'live';
+  const mobileStatusTone =
+    ui === 'delivered' ? 'success' :
+    ui === 'cancelled' ? 'danger' :
+    ui === 'dispatched' ? 'warning' :
+    ui === 'confirmed' ? 'accent' : 'info';
 
   return (
     <>
-      <DocumentComposerShell
-        mode="view"
-        kind="so"
-        breadcrumbItems={[
-          { label: 'Sales orders', href: '/sales-orders' },
-          { label: data.order_number, current: true },
+      <SellerMobileTransactionDetail
+        eyebrow="Sales order"
+        documentNumber={data.order_number}
+        statusLabel={statusLabel}
+        statusTone={mobileStatusTone}
+        buyerName={buyer?.business_name}
+        buyerMeta={buyer ? [buyer.phone, buyer.bill_address].filter(Boolean).join(' · ') : null}
+        dateLabel={`Placed ${formatPlacedAt(data.placed_at)}`}
+        secondaryDateLabel={data.expected_delivery ? `Expected ${data.expected_delivery}` : null}
+        locationName={data.location_name}
+        placeOfSupply={data.place_of_supply ?? buyer?.place_of_supply}
+        notes={data.seller_note ?? data.notes}
+        lines={diffLines.map((line) => ({
+          id: line.id,
+          name: line.product_name,
+          sku: line.sku,
+          qty: line.qty,
+          unitPrice: line.unit_price,
+          lineTotal: line.line_total,
+        }))}
+        totals={[
+          { label: 'Subtotal', value: totals.subtotal },
+          ...(totals.discount_flat ? [{ label: 'Discount', value: `-${formatNumberValue(totals.discount_flat, 'CURRENCY_EXACT')}`, tone: 'muted' as const }] : []),
+          ...(totals.freight ? [{ label: 'Freight', value: totals.freight }] : []),
+          { label: 'GST', value: totals.tax_amount },
+          { label: 'Total', value: totals.grand_total, emphasis: true },
         ]}
-        title={data.order_number}
-        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply} · ${buyer.bill_address}` : 'No buyer assigned.'}
-        status={{
-          label: statusLabel,
-          tone: statusTone,
-          chipClassName: salesOrderBandChipClass(bandStatus),
-        }}
-        titleActions={(
-          <>
+      />
+      <div className="hidden md:block">
+        <DocumentComposerShell
+          mode="view"
+          kind="so"
+          breadcrumbItems={[
+            { label: 'Sales orders', href: '/sales-orders' },
+            { label: data.order_number, current: true },
+          ]}
+          title={data.order_number}
+          subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply} · ${buyer.bill_address}` : 'No buyer assigned.'}
+          status={{
+            label: statusLabel,
+            tone: statusTone,
+            chipClassName: salesOrderBandChipClass(bandStatus),
+          }}
+          titleActions={(
+            <>
           {showCancel ? (
             <Button
               type="button"
@@ -417,6 +452,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           </div>
         )}
       />
+      </div>
 
       <ModalDispatch
         open={dispatchOpen}

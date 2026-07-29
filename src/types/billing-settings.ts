@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { PlanTier } from '@/constants/tier-limits';
 
-export const PlanTierSchema = z.enum(['starter', 'growth', 'scale']);
+export const PlanTierSchema = z.enum(['lite', 'starter', 'growth', 'scale']);
 
 export const UpgradeRequestSchema = z.object({
   target_tier: PlanTierSchema,

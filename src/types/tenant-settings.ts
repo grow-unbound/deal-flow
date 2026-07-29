@@ -188,7 +188,7 @@ export interface GeneralSettingsView {
   notifications: TenantSettingsNotifications;
   business_policy: BusinessPolicy;
   delivery_routing_threshold_km: number;
-  plan: 'starter' | 'growth' | 'scale';
+  plan: 'lite' | 'starter' | 'growth' | 'scale';
 }
 
 export interface ModuleSettingsView {
@@ -197,7 +197,7 @@ export interface ModuleSettingsView {
   buyer_app: BuyerAppSettings;
   catalog: CatalogSettings;
   business_policy: BusinessPolicy;
-  plan: 'starter' | 'growth' | 'scale';
+  plan: 'lite' | 'starter' | 'growth' | 'scale';
   usage: {
     cohorts: number;
     price_lists: number;
@@ -219,7 +219,7 @@ export interface UnifiedSettingsView {
   catalog: CatalogSettings;
   product_defaults: ProductDefaults;
   delivery_routing_threshold_km: number;
-  plan: 'starter' | 'growth' | 'scale';
+  plan: 'lite' | 'starter' | 'growth' | 'scale';
   usage: { cohorts: number; price_lists: number; catalogs: number };
   open_counts: { enquiries: number; sales_orders: number; invoices: number };
 }
