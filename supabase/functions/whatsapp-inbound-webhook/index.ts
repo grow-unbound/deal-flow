@@ -62,8 +62,57 @@ function ok(body: string): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
 }
 
-function isVerifiedMetaSignature(_req: Request): boolean {
-  return true;
+// Meta signs every webhook POST body with the app's App Secret (Meta App
+// dashboard > Settings > Basic > App Secret — NOT WHATSAPP_TOKEN, which is
+// the Cloud API access token, and NOT WHATSAPP_WEBHOOK_VERIFY_TOKEN, which
+// is only the arbitrary string used in the GET subscribe handshake). The
+// signature arrives as `X-Hub-Signature-256: sha256=<hex hmac>` over the
+// raw (pre-parsed) request body.
+function hexToBytes(hex: string): Uint8Array | null {
+  if (hex.length % 2 !== 0) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    const byte = Number.parseInt(hex.substr(i * 2, 2), 16);
+    if (Number.isNaN(byte)) return null;
+    out[i] = byte;
+  }
+  return out;
+}
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff === 0;
+}
+
+async function isVerifiedMetaSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
+  const appSecret = Deno.env.get('WHATSAPP_APP_SECRET');
+  if (!appSecret) {
+    console.error('[whatsapp-inbound-webhook] WHATSAPP_APP_SECRET not configured — rejecting webhook (fail closed)');
+    return false;
+  }
+
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return false;
+  }
+  const providedHex = signatureHeader.slice('sha256='.length);
+  const providedBytes = hexToBytes(providedHex);
+  if (!providedBytes) return false;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(appSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
+  const expectedBytes = new Uint8Array(signature);
+
+  return timingSafeEqual(providedBytes, expectedBytes);
 }
 
 function mapMetaStatusToLedgerStatus(
@@ -200,6 +249,24 @@ async function handleStatusUpdates(
             error: queueError.message,
           });
         }
+
+        // Credits were debited synchronously at dispatch time, before Meta
+        // ever confirmed delivery. A failed delivery status means Meta
+        // never charges for this message, so the debited credits must be
+        // refunded. Idempotent on the DB side (refund_whatsapp_credits
+        // no-ops if already refunded) — safe to call even on a duplicate
+        // or out-of-order webhook delivery.
+        const { error: refundError } = await admin
+          .schema('app')
+          .rpc('refund_whatsapp_credits', { p_whatsapp_message_id: row.id });
+
+        if (refundError) {
+          console.error('[whatsapp-inbound-webhook] credit refund failed', {
+            providerMessageId,
+            messageId: row.id,
+            error: refundError.message,
+          });
+        }
       }
 
       if (row.whatsapp_broadcast_id) {
@@ -241,12 +308,16 @@ Deno.serve(async (req: Request) => {
     return new Response('Method not allowed', { status: 405 });
   }
 
-  if (!isVerifiedMetaSignature(req)) {
-    return ok('ignored');
+  const rawBody = await req.text();
+  const signatureHeader = req.headers.get('x-hub-signature-256');
+
+  if (!(await isVerifiedMetaSignature(rawBody, signatureHeader))) {
+    console.warn('[whatsapp-inbound-webhook] rejected webhook with invalid or missing X-Hub-Signature-256');
+    return new Response('Forbidden', { status: 401 });
   }
 
   try {
-    const body = await req.json() as MetaWebhookBody;
+    const body = JSON.parse(rawBody) as MetaWebhookBody;
     const admin = createAdminClient();
 
     const changes = (body.entry ?? []).flatMap((entry) => entry.changes ?? []);

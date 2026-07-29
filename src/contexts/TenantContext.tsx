@@ -10,7 +10,7 @@ export interface Tenant {
   gstin?: string;
   primary_state?: string;
   subdomain?: string;
-  plan: 'starter' | 'growth' | 'scale';
+  plan: 'lite' | 'starter' | 'growth' | 'scale';
   settings: Record<string, any>;
   created_at: string;
   updated_at: string;

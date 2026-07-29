@@ -16,6 +16,7 @@ import {
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
+import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
@@ -266,6 +267,7 @@ function EstimatesLandingContent({
           primary={createEstimates ? 'Add an estimate' : undefined}
           onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
         />
+        <SellerMobileTransactionTabs active="estimates" />
 
         {showRefreshingState ? (
           <EstimatesDataSkeleton />

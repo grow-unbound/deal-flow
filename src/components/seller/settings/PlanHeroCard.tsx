@@ -5,12 +5,14 @@ import type { PlanTier } from '@/constants/tier-limits';
 import type { BillingLimits, BillingUsage } from '@/types/billing-settings';
 
 const TIER_LABEL: Record<PlanTier, string> = {
+  lite: 'Lite',
   starter: 'Starter',
   growth: 'Growth',
   scale: 'Scale',
 };
 
 const TIER_SUB: Record<PlanTier, string> = {
+  lite: 'Basic WhatsApp OTP and core modules only.',
   starter: 'Everything you need to get started.',
   growth: 'Higher limits for growing businesses.',
   scale: 'Unlimited limits for large operations.',

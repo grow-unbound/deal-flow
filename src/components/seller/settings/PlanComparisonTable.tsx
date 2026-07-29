@@ -8,14 +8,13 @@ import type { PlanTier } from '@/constants/tier-limits';
 
 type CellVal = boolean | string;
 
-const ROWS: { feature: string; starter: CellVal; growth: CellVal; scale: CellVal }[] = [
-  { feature: 'All core modules', starter: true, growth: true, scale: true },
-  { feature: 'Buyer app (WhatsApp OTP)', starter: true, growth: true, scale: true },
-  { feature: 'Campaign publishing', starter: true, growth: true, scale: true },
-  { feature: 'Tally & Zoho integrations', starter: true, growth: true, scale: true },
-  { feature: 'Customer group limit', starter: '5', growth: '20', scale: 'Unlimited' },
-  { feature: 'Price list limit', starter: '2', growth: '10', scale: 'Unlimited' },
-  { feature: 'Published catalog limit', starter: '3', growth: '15', scale: 'Unlimited' },
+const ROWS: { feature: string; lite: CellVal; starter: CellVal; growth: CellVal; scale: CellVal }[] = [
+  { feature: 'Buyer app (WhatsApp OTP)', lite: false, starter: true, growth: true, scale: true },
+  { feature: 'Campaign publishing', lite: false, starter: true, growth: true, scale: true },
+  { feature: 'Tally & Zoho integrations', lite: true, starter: true, growth: true, scale: true },
+  { feature: 'Customer groups / price lists / catalogs', lite: '—', starter: 'Unlimited', growth: 'Unlimited', scale: 'Unlimited' },
+  { feature: 'Buyer app monthly active users', lite: '0', starter: '50', growth: '500', scale: 'Unlimited' },
+  { feature: 'Locations', lite: '1', starter: '1', growth: '10', scale: 'Unlimited' },
 ];
 
 function Cell({
@@ -66,6 +65,14 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
             <th
               className={cn(
                 'table-label px-4 py-3 text-center',
+                currentPlan === 'lite' && 'bg-teal-50/60 text-teal-900',
+              )}
+            >
+              Lite
+            </th>
+            <th
+              className={cn(
+                'table-label px-4 py-3 text-center',
                 currentPlan === 'starter' && 'bg-teal-50/60 text-teal-900',
               )}
             >
@@ -93,6 +100,7 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
           {ROWS.map((row) => (
             <tr key={row.feature} className="bg-white">
               <td className="border-b border-cream-100 px-4 py-3 font-medium text-cream-900">{row.feature}</td>
+              <Cell val={row.lite} current={currentPlan === 'lite'} />
               <Cell val={row.starter} current={currentPlan === 'starter'} />
               <Cell val={row.growth} current={currentPlan === 'growth'} />
               <Cell val={row.scale} current={currentPlan === 'scale'} />

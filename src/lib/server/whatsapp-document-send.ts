@@ -31,7 +31,8 @@ interface DocumentSendPrepared {
 interface TenantSendRow {
   business_name: string;
   settings: Record<string, unknown> | null;
-  whatsapp_credits_balance: number | string | null;
+  whatsapp_plan_allowance_balance: number | string | null;
+  whatsapp_purchased_credits_balance: number | string | null;
 }
 
 interface BuyerSendRow {
@@ -138,7 +139,7 @@ async function prepareDocumentSend(
     db
       .schema('app')
       .from('tenants')
-      .select('business_name, settings, whatsapp_credits_balance')
+      .select('business_name, settings, whatsapp_plan_allowance_balance, whatsapp_purchased_credits_balance')
       .eq('id', input.tenantId)
       .maybeSingle() as Promise<{ data: TenantSendRow | null; error: unknown }>,
     db
@@ -160,7 +161,8 @@ async function prepareDocumentSend(
   const tenant = tenantResult.data;
   const buyer = buyerResult.data;
   const seller = buildSellerContextFromTenant(tenant);
-  const creditsBalance = Number(tenant.whatsapp_credits_balance ?? 0);
+  const creditsBalance =
+    Number(tenant.whatsapp_plan_allowance_balance ?? 0) + Number(tenant.whatsapp_purchased_credits_balance ?? 0);
   const recipientPhone = buyer.phone ? normalizeIndianPhone(buyer.phone) : null;
   const buyerName = buyer.contact_name?.trim() || buyer.business_name;
   const sellerPhoneDisplay = seller.sellerPhone ? formatSellerPhoneDisplay(seller.sellerPhone) : null;
