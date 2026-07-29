@@ -17,7 +17,7 @@
 
 BEGIN;
 
-SELECT plan(29);
+SELECT plan(32);
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Fixtures: two tenants, sellers of both roles in tenant A, a buyer in
@@ -52,10 +52,12 @@ BEGIN
     (v_asst_a,   'wa-asst-a@test.local',   'x', now(), now(), now(), '{}', '{}'),
     (v_buyer_user_a, 'wa-buyer-a@test.local', 'x', now(), now(), now(), '{}', '{}');
 
-  INSERT INTO app.tenants (id, slug, business_name, created_at, updated_at)
+  -- whatsapp_plan_allowance_balance / whatsapp_purchased_credits_balance added
+  -- by 20260729075500_whatsapp-credit-allowance-split.sql
+  INSERT INTO app.tenants (id, slug, business_name, whatsapp_plan_allowance_balance, whatsapp_purchased_credits_balance, created_at, updated_at)
   VALUES
-    (v_tenant_a, 'wa-acme',   'WA Acme Dist.',   now(), now()),
-    (v_tenant_b, 'wa-globex', 'WA Globex Dist.', now(), now());
+    (v_tenant_a, 'wa-acme',   'WA Acme Dist.',   1000, 500, now(), now()),
+    (v_tenant_b, 'wa-globex', 'WA Globex Dist.', 2000, 750, now(), now());
 
   INSERT INTO app.tenant_users (id, tenant_id, user_id, role, is_active, created_at, updated_at)
   VALUES
@@ -76,10 +78,11 @@ BEGIN
     (v_msg_b, v_tenant_b, NULL,      '+919800000002', 'utility', 'order_placed', 'sent', now(), now());
 
   -- ── Phase B: whatsapp_credit_transactions, one row per tenant ──────────────
-  INSERT INTO app.whatsapp_credit_transactions (id, tenant_id, transaction_type, credits, balance_after, created_at, updated_at)
+  -- balance_source added by 20260729075500_whatsapp-credit-allowance-split.sql
+  INSERT INTO app.whatsapp_credit_transactions (id, tenant_id, transaction_type, credits, balance_source, balance_after, created_at, updated_at)
   VALUES
-    (v_txn_a, v_tenant_a, 'topup', 100, 1100, now(), now()),
-    (v_txn_b, v_tenant_b, 'topup', 100, 1100, now(), now());
+    (v_txn_a, v_tenant_a, 'topup', 100, 'purchased', 1100, now(), now()),
+    (v_txn_b, v_tenant_b, 'topup', 100, 'purchased', 1100, now(), now());
 
   -- ── Phase D: one platform-managed template (tenant_id NULL, global) plus a
   --    hypothetical tenant-scoped template row for tenant B (future use,
@@ -257,6 +260,38 @@ SELECT ok(
     WHERE t.id = (SELECT val FROM _wa_fixture WHERE key = 'txn_a')
   ),
   'Scenario 3 (control): seller A CAN SELECT its own tenant''s credit transaction'
+);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SCENARIO 3b — app.tenants.whatsapp_plan_allowance_balance /
+-- whatsapp_purchased_credits_balance: tenant A cannot read tenant B's balance
+-- columns (added by 20260729075500_whatsapp-credit-allowance-split.sql). Row-
+-- level RLS on app.tenants already blocks this generically (see tests/
+-- rls_policies.sql Test 1); this scenario asserts it explicitly for the two
+-- new credit-balance columns per the migration's own verification checklist.
+-- ════════════════════════════════════════════════════════════════════════════
+SELECT is(
+  (
+    SELECT count(*)::int FROM (
+      SELECT app._mock_jwt((SELECT val FROM _wa_fixture WHERE key = 'tenant_a'), 'seller_admin')
+    ) AS _setup,
+    app.tenants t
+    WHERE t.id = (SELECT val FROM _wa_fixture WHERE key = 'tenant_b')
+  ),
+  0,
+  'Scenario 3b: seller A cannot SELECT tenant B''s row (and therefore its whatsapp_plan_allowance_balance/whatsapp_purchased_credits_balance) via app.tenants'
+);
+
+SELECT is(
+  (
+    SELECT whatsapp_plan_allowance_balance FROM (
+      SELECT app._mock_jwt((SELECT val FROM _wa_fixture WHERE key = 'tenant_a'), 'seller_admin')
+    ) AS _setup,
+    app.tenants t
+    WHERE t.id = (SELECT val FROM _wa_fixture WHERE key = 'tenant_a')
+  ),
+  1000::numeric,
+  'Scenario 3b (control): seller A CAN SELECT its own tenant''s whatsapp_plan_allowance_balance'
 );
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -466,6 +501,10 @@ SELECT ok(
 SELECT ok(
   (SELECT relrowsecurity FROM pg_class WHERE oid = 'app.whatsapp_platform_config'::regclass),
   'RLS enabled on app.whatsapp_platform_config'
+);
+SELECT ok(
+  (SELECT relrowsecurity FROM pg_class WHERE oid = 'app.whatsapp_plan_credit_tiers'::regclass),
+  'RLS enabled on app.whatsapp_plan_credit_tiers'
 );
 
 SELECT * FROM finish();

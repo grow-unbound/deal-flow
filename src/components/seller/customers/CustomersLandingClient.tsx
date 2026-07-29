@@ -422,6 +422,16 @@ function CustomersLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1640}
+        mobileRows={filtered.map((buyer: CustomersLandingBuyer) => ({
+          id: buyer.id,
+          href: `/customers/${buyer.id}`,
+          primary: buyer.business_name,
+          supporting: `${buyer.phone || 'No phone'} · ${buyer.cohort}`,
+          meta: `Last sale ${formatDate(buyer.last_order_at)}`,
+          trailing: buyer.dues > 0
+            ? formatNumberValue(buyer.dues, 'CURRENCY_THRESHOLD')
+            : formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD'),
+        }))}
         >
           {filtered.map((buyer: CustomersLandingBuyer) => {
           const creditRatio = buyer.credit_limit > 0 ? buyer.credit_used / buyer.credit_limit : 0;

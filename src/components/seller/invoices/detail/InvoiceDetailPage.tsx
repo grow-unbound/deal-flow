@@ -42,6 +42,7 @@ import { formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
+import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
 const noop = () => {};
 
@@ -213,25 +214,60 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const invoiceBandStatus = resolveInvoiceBandStatus(data.db_status, data.due_date);
   const invoiceChipTone: 'draft' | 'live' =
     invoiceBandStatus === 'paid' || invoiceBandStatus === 'void' || invoiceBandStatus === 'draft' ? 'draft' : 'live';
+  const mobileStatusTone =
+    invoiceBandStatus === 'paid' ? 'success' :
+    invoiceBandStatus === 'void' ? 'danger' :
+    invoiceBandStatus === 'overdue' ? 'danger' :
+    invoiceBandStatus === 'sent' ? 'warning' : 'neutral';
 
   return (
     <>
-      <DocumentComposerShell
-        mode="view"
-        kind="invoice"
-        breadcrumbItems={[
-          { label: 'Invoices', href: '/invoices' },
-          { label: data.doc_number, current: true },
+      <SellerMobileTransactionDetail
+        eyebrow="Invoice"
+        documentNumber={data.doc_number}
+        statusLabel={INVOICE_CHIP_LABEL[invoiceBandStatus]}
+        statusTone={mobileStatusTone}
+        buyerName={data.buyer.name}
+        buyerMeta={[data.buyer.phone, buyerContext?.bill_address].filter(Boolean).join(' · ')}
+        dateLabel={data.invoice_date ? `Invoiced ${data.invoice_date}` : null}
+        secondaryDateLabel={data.due_date ? `Due ${data.due_date}` : null}
+        locationName={data.location_name}
+        placeOfSupply={data.place_of_supply}
+        notes={data.seller_note}
+        lines={diffLines.map((line) => ({
+          id: line.id,
+          name: line.product_name,
+          sku: line.sku,
+          qty: line.qty,
+          unitPrice: line.unit_price,
+          lineTotal: line.line_total,
+        }))}
+        totals={[
+          { label: 'Subtotal', value: totals.subtotal },
+          ...(totals.discount_flat ? [{ label: 'Discount', value: `-${formatNumberValue(totals.discount_flat, 'CURRENCY_EXACT')}`, tone: 'muted' as const }] : []),
+          ...(totals.freight ? [{ label: 'Freight', value: totals.freight }] : []),
+          { label: 'GST', value: totals.tax_amount },
+          { label: 'Total', value: totals.grand_total, emphasis: true },
+          ...(data.amount_outstanding > 0 ? [{ label: 'Outstanding', value: data.amount_outstanding, tone: 'danger' as const }] : []),
         ]}
-        title={data.doc_number}
-        subtitle={buyerContext ? `${data.buyer.name} · ${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
-        status={{
-          label: INVOICE_CHIP_LABEL[invoiceBandStatus],
-          tone: invoiceChipTone,
-          chipClassName: invoiceBandChipClass(invoiceBandStatus),
-        }}
-        titleActions={(
-          <>
+      />
+      <div className="hidden md:block">
+        <DocumentComposerShell
+          mode="view"
+          kind="invoice"
+          breadcrumbItems={[
+            { label: 'Invoices', href: '/invoices' },
+            { label: data.doc_number, current: true },
+          ]}
+          title={data.doc_number}
+          subtitle={buyerContext ? `${data.buyer.name} · ${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
+          status={{
+            label: INVOICE_CHIP_LABEL[invoiceBandStatus],
+            tone: invoiceChipTone,
+            chipClassName: invoiceBandChipClass(invoiceBandStatus),
+          }}
+          titleActions={(
+            <>
             {data.version > 1 ? (
               <Badge variant="warning" className="text-xs font-medium">
                 v
@@ -376,6 +412,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           </div>
         )}
       />
+      </div>
 
       <ModalMarkInvoicePaid
         open={payOpen}

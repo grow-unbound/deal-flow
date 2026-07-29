@@ -239,50 +239,64 @@ Beat-route arrival (use case #4) still ships against **existing** `app.buyers.ge
 
 **Factual flag, checked not assumed:** I could not find `whatsapp_credits_balance` or `whatsapp_credits_purchased` anywhere in the actual migrations or in `DealFlow_Settings-Spec_v3.md`'s field listing (I greped both) — only a generic mention that WhatsApp is "credits-based" and billing UI is "spec'd separately." So these two columns don't exist yet; treat this section as **defining them for the first time**, not integrating with something already live. If they do exist somewhere I didn't check (a branch, a newer migration), tell me the exact table/columns and I'll re-point this section — otherwise this is what gets built.
 
-**A flag on your proposed number, before the schema — this is the important part.** You suggested 1 credit = 1 message = ₹0.75. Checked against Meta's actual published India rates (§11): marketing ≈ ₹0.8631/message, utility and authentication ≈ ₹0.115/message each. At a flat ₹0.75/message applied to every category equally, **marketing messages sell below Meta's own cost** — you'd lose about ₹0.11 on every single marketing broadcast send, which is very likely your highest-volume category. That's not a rounding-error problem, it's a guaranteed per-message loss on the category the whole feature is largely built around. Worth catching now rather than after a few thousand sends.
+**Final, locked (2026-07-29):** ₹0.20/credit. Utility and authentication messages cost **1 credit (₹0.20)**. Marketing messages cost **6 credits (₹1.20)**. Confirmed against Meta's live India rate card (pulled directly from Meta's own pricing tool, not a third-party estimate): marketing ₹0.8631/message, utility/authentication ₹0.1150/message each.
 
-Two ways to fix it, both keeping the tenant-facing story exactly as simple as you want ("1 credit = ₹X, like Claude/OpenAI"):
+|                | Meta cost | Credits/message | Tenant price | Margin | Markup |
+| -------------- | --------- | ---------------- | ------------ | ------ | ------ |
+| Marketing      | ₹0.8631   | 6                 | ₹1.20        | ₹0.337 | 39%    |
+| Utility        | ₹0.1150   | 1                 | ₹0.20        | ₹0.085 | 74%    |
+| Authentication | ₹0.1150   | 1                 | ₹0.20        | ₹0.085 | 74%    |
 
-**Option A — true flat price, every message costs 1 credit, no category weighting.** Set the flat price *above* your highest-cost category with real margin — e.g. **₹1.00–1.10/credit** — so marketing is safely profitable and utility/authentication (much cheaper to relay) carry a large margin almost by accident. Simplest possible mental model for tenants and for your own ledger: one number, one credit, one message, period. The tradeoff is that utility/auth messages (mostly OTP and order notifications — closer to "cost of using the product" than a value-add) end up priced at a very high percentage markup, even though the absolute rupee amount is still small.
+Rationale, for the record: this deliberately keeps the higher percentage margin on marketing (39% vs. the thinner options considered — ₹1.00/message would have left only 16%, too little buffer against a routine Meta quarterly rate revision). This is an intentional value-based call — marketing broadcasts are what compound the buyer's business, so margin is retained there on purpose, not trimmed to chase competitor sticker prices. Revisit only on explicit customer pushback, not preemptively.
 
-**Option B — flat credit price, category-weighted consumption (closer to how AI-tool credit systems actually work).** Keep a low, round credit price (e.g. **₹0.25/credit**) and let different message types cost different numbers of credits — the same pattern as an LLM API charging more "tokens" for a longer or more complex request, with one flat $/token rate underneath. Concretely: **utility and authentication messages cost 1 credit (₹0.25)**, **marketing messages cost 4 credits (₹1.00)**. This produces almost the same absolute margin per message across all three categories (~₹0.13–0.14 each) while still expressing as a much higher *percentage* markup on the cheap categories and a thin, defensible percentage on marketing — which is precisely the "higher on utility/auth, lower on marketing" shape you asked for, just achieved through credit-weighting instead of a category-visible price.
+**Free monthly plan allowance — a separate, non-purchasable credit bucket, reset monthly, never rolls over.** Every tenant gets a tier-sized allowance of credits included in their subscription, topped up on their billing-cycle anniversary (same day-of-month regardless of monthly or annual billing — one reset model, not two). Unused allowance from the prior cycle is forfeited, not carried forward.
 
+| Plan tier | Monthly subscription | Annual subscription | Free credits/month | Worst-case cost to Yukti (all marketing) | Best-case cost (all utility/auth) |
+| --------- | --------------------- | -------------------- | ------------------- | ----------------------------------------- | ----------------------------------- |
+| Lite      | ₹5,000                | ₹50,000               | 1,000                | ₹144                                       | ₹115                                 |
+| Starter   | ₹12,000               | ₹1,25,000             | 2,000                | ₹288                                       | ₹230                                 |
+| Growth    | ₹30,000               | ₹3,00,000             | 4,000                | ₹576                                       | ₹460                                 |
+| Scale     | ₹50,000               | ₹5,50,000              | 7,500                | ₹1,079                                     | ₹862                                 |
 
-|                | Meta cost | Option A (₹1.00/credit, flat)           | Option B (₹0.25/credit, weighted)       |
-| -------------- | --------- | --------------------------------------- | --------------------------------------- |
-| Marketing      | ₹0.863    | 1 credit = ₹1.00 (margin ₹0.14, ~16%)   | 4 credits = ₹1.00 (margin ₹0.14, ~16%)  |
-| Utility        | ₹0.115    | 1 credit = ₹1.00 (margin ₹0.885, ~770%) | 1 credit = ₹0.25 (margin ₹0.135, ~117%) |
-| Authentication | ₹0.115    | 1 credit = ₹1.00 (margin ₹0.885, ~770%) | 1 credit = ₹0.25 (margin ₹0.135, ~117%) |
+Sized to ~2-2.5% of the annual subscription value, amortized monthly (Growth/Scale land inside that band; Lite/Starter run slightly above it on a full-marketing-usage assumption, but Lite has no marketing category access at all — no buyer PWA, no campaigns — so its realistic cost sits at the utility/auth floor). These are cost *ceilings*, not expected costs: actual aggregate spend will be lower than 100%-utilization math suggests wherever tenants don't fully exhaust their allowance (breakage) — track real redemption rate per tier over the first 2-3 months before adjusting limits, don't assume the ceiling is the average.
 
-
-**My recommendation is Option B** — it's the closer match to the AI-tool pattern you referenced (flat unit price, variable consumption per action), it doesn't leave utility/auth pricing looking arbitrary if a sophisticated tenant ever does this same napkin math, and it's still exactly as simple to show a tenant: *"1 credit = ₹0.25. Most messages cost 1 credit. Marketing broadcasts cost 4 credits."* But this is a pricing call, not an engineering one — the schema below supports either, and the actual `credit_price_inr` and `credits_per_message` values are yours to set (and change later without a schema migration).
+**Referral bonus credits — explicitly deferred, not built for MVP.** The product intent (grant existing customers bonus credits for successful referrals) is a manual operational process for now: support/ops grants credits directly via a DB update, no tenant-facing UI, no dedicated ledger entry type. Revisit building this out only once referral volume makes manual handling a real bottleneck — a good problem to have, not one to build for speculatively.
 
 ```sql
 -- additions to app.tenants
-  whatsapp_credits_balance numeric(12,2) NOT NULL DEFAULT 0     -- CREDITS, not INR — current spendable balance, debited synchronously on every send
-  whatsapp_credits_purchased numeric(12,2) NOT NULL DEFAULT 0   -- lifetime total ever topped up, for reporting/LTV — never decremented
+  whatsapp_plan_allowance_balance numeric(12,2) NOT NULL DEFAULT 0      -- current cycle's free plan credits remaining; reset to the tier's monthly_credit_allowance on each billing-cycle anniversary, never rolls over, never tops up mid-cycle
+  whatsapp_plan_allowance_reset_at timestamptz NULL                     -- last time the monthly reset ran for this tenant; drives the reset job's idempotency
+  whatsapp_purchased_credits_balance numeric(12,2) NOT NULL DEFAULT 0   -- topped-up (and manually granted, e.g. referral) credits — never expires, never resets
+  whatsapp_credits_purchased numeric(12,2) NOT NULL DEFAULT 0           -- lifetime total ever topped up, for reporting/LTV — never decremented
+
+app.whatsapp_plan_credit_tiers                          -- single global config, not per-tenant for MVP
+  plan_tier text PK CHECK (plan_tier IN ('lite','starter','growth','scale'))
+  monthly_credit_allowance numeric(10,2) NOT NULL        -- 1000 / 2000 / 4000 / 7500
+  effective_from timestamptz NOT NULL DEFAULT now()
+  + audit cols
 
 app.whatsapp_credit_pricing                            -- single global config, not per-tenant for MVP
   id uuid PK
-  credit_price_inr numeric(6,4) NOT NULL                -- ₹ per credit shown to tenants, e.g. 0.25 (Option B) or 1.00 (Option A)
+  credit_price_inr numeric(6,4) NOT NULL                -- ₹ per credit shown to tenants — 0.20
   effective_from timestamptz NOT NULL DEFAULT now()
   + audit cols
 
 app.whatsapp_rate_card                                  -- internal only, never shown to tenants
   id uuid PK
   meta_category text UNIQUE CHECK (meta_category IN ('marketing','utility','authentication'))
-  meta_cost_inr numeric(10,4) NOT NULL                  -- Meta's actual published per-message rate, kept current by you manually (§11) — for margin tracking only
-  credits_per_message numeric(5,2) NOT NULL DEFAULT 1   -- e.g. 1 (utility/auth), 4 (marketing) under Option B; always 1 under Option A
+  meta_cost_inr numeric(10,4) NOT NULL                  -- Meta's actual published per-message rate, kept current by you manually (§11) — for margin tracking only. marketing=0.8631, utility=0.1150, authentication=0.1150
+  credits_per_message numeric(5,2) NOT NULL DEFAULT 1   -- 1 (utility/auth), 6 (marketing)
   effective_from timestamptz NOT NULL DEFAULT now()
   + audit cols
 
 app.whatsapp_credit_transactions
   id uuid PK
   tenant_id uuid REFERENCES app.tenants(id)
-  transaction_type text CHECK (transaction_type IN ('topup','debit','refund','adjustment'))
-  credits numeric(12,2) NOT NULL                        -- positive for topup/refund, negative for debit — in credits, not INR
-  inr_amount numeric(12,2)                              -- INR equivalent at the time of this transaction (topup price paid, or debit's rupee value for internal reporting)
-  balance_after numeric(12,2) NOT NULL                  -- snapshot of app.tenants.whatsapp_credits_balance (credits) after this transaction
+  transaction_type text CHECK (transaction_type IN ('topup','debit','refund','adjustment','plan_allowance_reset'))
+  credits numeric(12,2) NOT NULL                        -- positive for topup/refund/reset, negative for debit — in credits, not INR
+  balance_source text CHECK (balance_source IN ('plan_allowance','purchased'))  -- which bucket this transaction affected
+  inr_amount numeric(12,2)                              -- INR equivalent at the time of this transaction (topup price paid, or debit's rupee value for internal reporting) — NULL for plan_allowance_reset
+  balance_after numeric(12,2) NOT NULL                  -- snapshot of the affected balance (plan_allowance_balance or purchased_credits_balance) after this transaction
   related_message_id uuid NULL REFERENCES app.whatsapp_messages(id)
   payment_reference text                                -- Razorpay/Stripe txn ID for topups
   notes text
@@ -291,7 +305,7 @@ app.whatsapp_credit_transactions
 
 If you later want tenant-specific negotiated rates (e.g. WineYard gets a bonus credit allotment as an anchor customer), add an optional `app.tenant_credit_overrides (tenant_id, bonus_credits_pct)` rather than touching the global pricing table — same override pattern as `app.price_list_assignments`.
 
-**Debit flow — synchronous, no reconciliation dependency:** at the moment a message is dispatched to Meta (not on a later delivery webhook), a `SECURITY DEFINER` RPC (`app.debit_whatsapp_credits`) atomically: reads `credits_per_message` for the message's category from `app.whatsapp_rate_card`, decrements `app.tenants.whatsapp_credits_balance` by that many credits, writes the `app.whatsapp_credit_transactions` row (with the INR-equivalent computed from `app.whatsapp_credit_pricing` for internal reporting), and stamps `billed_amount`/`wallet_transaction_id` onto the message row — all in the same transaction as the queue pop, so a send can never leave the balance undebited. Pre-flight (§7.2) checks the balance covers the broadcast's full estimated credit cost before any send starts; if it hits zero mid-broadcast anyway, the remaining queued sends are auto-cancelled and the seller sees exactly how many went out before credits ran dry. Update `app.whatsapp_rate_card.meta_cost_inr` whenever Meta's published rates change, so your internal margin tracking stays accurate even though the tenant-facing `credit_price_inr` doesn't need to move in lockstep.
+**Debit flow — synchronous, no reconciliation dependency, plan allowance drawn down before purchased credits.** At the moment a message is dispatched to Meta (not on a later delivery webhook), a `SECURITY DEFINER` RPC (`app.debit_whatsapp_credits`) atomically: reads `credits_per_message` for the message's category from `app.whatsapp_rate_card`, debits that many credits from `app.tenants.whatsapp_plan_allowance_balance` first and only spills into `whatsapp_purchased_credits_balance` once the allowance is exhausted, writes the `app.whatsapp_credit_transactions` row(s) (tagging `balance_source` per bucket touched, with the INR-equivalent computed from `app.whatsapp_credit_pricing` for internal reporting), and stamps `billed_amount`/`wallet_transaction_id` onto the message row — all in the same transaction as the queue pop, so a send can never leave a balance undebited. Pre-flight (§7.2) checks the **combined** balance (`whatsapp_plan_allowance_balance + whatsapp_purchased_credits_balance`) covers the broadcast's full estimated credit cost before any send starts; if it hits zero mid-broadcast anyway, the remaining queued sends are auto-cancelled and the seller sees exactly how many went out before credits ran dry. A separate scheduled function (`app.reset_whatsapp_plan_allowances`, pg_cron, runs daily) finds tenants whose billing-cycle anniversary has passed since `whatsapp_plan_allowance_reset_at`, hard-sets `whatsapp_plan_allowance_balance` to that tenant's tier `monthly_credit_allowance` (overwriting any unused remainder — no rollover), logs a `plan_allowance_reset` transaction, and stamps the new `whatsapp_plan_allowance_reset_at`. Update `app.whatsapp_rate_card.meta_cost_inr` whenever Meta's published rates change, so your internal margin tracking stays accurate even though the tenant-facing `credit_price_inr` doesn't need to move in lockstep.
 
 ### 4.7 Rate/pacing tables
 
@@ -518,14 +532,16 @@ Everything from v3's open list is now resolved:
 1. **Provider strategy** — direct Meta Cloud API, no BSP, no Tech Provider reseller layer. Your WABA is already live and sending auth/utility templates (login OTP, order updates) — good news, that means the actual critical-path risk (Meta Business verification) is already cleared, and this feature is additive on infrastructure that's proven to work, not a from-scratch integration.
 2. **Buyer consent gating** — forced acceptance at first login, no decline-and-continue path, with an "opt out anytime" line built into the checkbox copy (§4.8).
 3. **First-broadcast manual review** — dropped entirely. Preapproved templates plus the hard limits in §7.2 (wallet, daily cap, 1 marketing/buyer/day, opt-out exclusion) are the safety net; there's no separate approval gate slowing down a tenant's first send (§4.2, §7.2, §8).
-4. **Rate-card pricing story** — flat tenant-facing credits (Option B recommended: ₹0.25/credit, utility/auth = 1 credit, marketing = 4 credits), category cost variance handled internally, invisible to tenants (§4.6). **You should explicitly confirm which option (A or B) and what starting** `credit_price_inr` **before this gets built** — I've given a recommendation and the reasoning, but the actual number is a pricing call I shouldn't finalize unilaterally.
-5. **AR data source** — resolved via `app.invoices` (§3.3, §4.4), with the caveat that `amount_paid` and `due_date` as you described them don't exist as stored columns in the live migration — see the factual flag in §3.3 for what actually does.
-6. **WABA status** — confirmed live and functional, already sending `login_otp` and order/estimate update templates. No verification blocker remains.
+4. **Rate-card pricing story — locked (2026-07-29).** ₹0.20/credit. Utility/authentication = 1 credit (₹0.20). Marketing = 6 credits (₹1.20). Margins: 74% utility/auth, 39% marketing — deliberately kept richer on marketing as a value-based call (§4.6), not trimmed to chase competitor sticker prices (benchmarked against AiSensy/Interakt/WATI — see conversation history; Yukti's markup runs above all three, justified by bundling broadcast into the platform subscription rather than charging a separate WhatsApp SaaS fee on top). Revisit only on explicit customer pushback.
+5. **Free monthly plan allowance — locked (2026-07-29).** Lite 1,000 / Starter 2,000 / Growth 4,000 / Scale 7,500 credits/month, sized to ~2-2.5% of each tier's annual subscription value. Single reset model for both monthly and annual billing — resets on the tenant's billing-cycle anniversary, no rollover of unused credits. Separate `whatsapp_plan_allowance_balance` bucket from purchased credits so the reset never touches paid-for balance (§4.6).
+6. **Referral bonus credits — explicitly deferred.** No schema, no tenant-facing UI for MVP; handled as a manual DB credit grant by ops when a referral converts. Revisit only once referral volume makes manual handling a bottleneck (§4.6).
+7. **AR data source** — resolved via `app.invoices` (§3.3, §4.4), with the caveat that `amount_paid` and `due_date` as you described them don't exist as stored columns in the live migration — see the factual flag in §3.3 for what actually does.
+8. **WABA status** — confirmed live and functional, already sending `login_otp` and order/estimate update templates. No verification blocker remains.
 
 **Still open:**
 
-1. **Final credit price and weighting** — pick Option A or B (§4.6), confirm the actual `credit_price_inr` and per-category `credits_per_message` values to seed `app.whatsapp_credit_pricing` and `app.whatsapp_rate_card`. Everything else in this spec is buildable without this number, but nothing bills correctly without it.
-2. **Buyer app decline path** (minor, deprioritized): confirmed forced-acceptance for MVP (#2 above) — worth a note for later that this means a buyer who genuinely doesn't want any WhatsApp contact has no path except not using the buyer app at all. Not a blocker, just worth remembering if it comes up as buyer-side pushback later.
+1. **Buyer app decline path** (minor, deprioritized): confirmed forced-acceptance for MVP (#2 above) — worth a note for later that this means a buyer who genuinely doesn't want any WhatsApp contact has no path except not using the buyer app at all. Not a blocker, just worth remembering if it comes up as buyer-side pushback later.
+2. **Delivery-vs-dispatch credit debit** — Meta only charges for *delivered* template messages, never failed/undelivered ones, but §4.6's debit RPC fires synchronously at dispatch. This means a tenant could be charged a credit for a message that never actually delivers (bad number, opted-out contact, device unreachable) even though Meta doesn't charge Yukti for it. Two fixes, not yet chosen: debit on the delivery webhook instead of dispatch (fairer, adds latency to balance updates), or keep dispatch-time debit but auto-refund on a `failed` delivery webhook event (keeps the synchronous UX, closes the gap). Not a blocker for MVP given WhatsApp's typical 95-98% delivery rate, but worth a deliberate decision before scale rather than leaving it as an accidental margin cushion.
 
 ---
 

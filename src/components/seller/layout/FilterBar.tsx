@@ -117,13 +117,13 @@ export function FilterBar({
 
   return (
     <section
-      className="mt-5 rounded-t-[14px] border border-cream-300 border-b-0 bg-cream-50 px-3 py-[10px]"
+      className="mt-4 rounded-[12px] border border-cream-300 bg-cream-50 px-3 py-[10px] md:mt-5 md:rounded-t-[14px] md:border-b-0"
     >
-      <div className="flex w-full flex-nowrap items-center gap-2 overflow-visible">
-        <div className="relative inline-flex h-9 min-w-[176px] flex-[0_1_220px] items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] pr-8 text-cream-700">
+      <div className="flex w-full flex-col gap-2 overflow-visible md:flex-row md:flex-nowrap md:items-center">
+        <div className="relative inline-flex h-10 min-w-0 w-full items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] pr-8 text-cream-700 md:h-9 md:min-w-[176px] md:flex-[0_1_220px]">
           <Search size={14} className="pointer-events-none text-cream-600" />
           <input
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[var(--b-text-body)] text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0 md:text-sm"
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
             value={searchValue}
@@ -143,7 +143,7 @@ export function FilterBar({
           ) : null}
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto pb-0.5 md:pb-0">
           <button
             type="button"
             onClick={clearAllFilters}

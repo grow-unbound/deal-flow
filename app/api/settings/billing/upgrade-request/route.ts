@@ -8,7 +8,7 @@ import { UpgradeRequestSchema } from '@/types/billing-settings';
 
 export const dynamic = 'force-dynamic';
 
-const TIER_RANK: Record<PlanTier, number> = { starter: 0, growth: 1, scale: 2 };
+const TIER_RANK: Record<PlanTier, number> = { lite: 0, starter: 1, growth: 2, scale: 3 };
 
 export async function POST(request: NextRequest) {
   try {

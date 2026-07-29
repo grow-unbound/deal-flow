@@ -23,6 +23,7 @@ import type { PlanTier } from '@/constants/tier-limits';
 import { UpgradeRequestSchema, type UpgradeRequestInput } from '@/types/billing-settings';
 
 const TIER_NAME: Record<PlanTier, string> = {
+  lite: 'Lite',
   starter: 'Starter',
   growth: 'Growth',
   scale: 'Scale',

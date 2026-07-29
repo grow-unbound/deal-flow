@@ -8,7 +8,7 @@ import type {
 } from '@/types/billing-settings';
 
 export function normalizePlanTier(plan: string): PlanTier {
-  if (plan === 'growth' || plan === 'scale' || plan === 'starter') return plan;
+  if (plan === 'lite' || plan === 'growth' || plan === 'scale' || plan === 'starter') return plan;
   return 'starter';
 }
 

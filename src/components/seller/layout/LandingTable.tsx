@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
+import { SellerMobileList, type SellerMobileListItem } from '@/components/seller/mobile';
 
 interface LandingTableColumn {
   label?: ReactNode;
@@ -24,6 +25,8 @@ interface LandingTableProps {
   showEmptyState?: boolean;
   /** Shown when `showEmptyState` is true (e.g. `<EmptyState ... />`). */
   emptyState?: ReactNode;
+  /** Compact phone rendering for the same rows; desktop table remains unchanged. */
+  mobileRows?: SellerMobileListItem[];
 }
 
 export function LandingTable({
@@ -34,53 +37,66 @@ export function LandingTable({
   tableMinWidth,
   showEmptyState,
   emptyState,
+  mobileRows,
 }: LandingTableProps) {
   const hasHeader = columns.some((column) => column.label != null && column.label !== '');
 
   return (
-    <ScrollableTableShell
-      className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
-    >
-      <table
-        className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}
-        style={tableMinWidth != null ? { minWidth: tableMinWidth } : undefined}
+    <>
+      {mobileRows ? (
+        <SellerMobileList
+          items={showEmptyState ? [] : mobileRows}
+          emptyState={showEmptyState ? emptyState : undefined}
+        />
+      ) : null}
+      <ScrollableTableShell
+        className={cn(
+          'rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          mobileRows && 'hidden md:block',
+          className,
+        )}
       >
-        {hasHeader ? (
-          <thead>
-            <tr className="border-y border-cream-300 bg-white">
-              {columns.map((column, index) => (
-                <th
-                  key={`${column.label ?? 'col'}-${index}`}
-                  className={cn(
-                    'table-label px-4 py-[11px] text-left text-cream-700',
-                    column.align === 'right' && 'text-right',
-                    column.align === 'center' && 'text-center',
-                    column.className
-                  )}
-                  style={{
-                    width: column.width,
-                    minWidth: column.minWidth,
-                    maxWidth: column.maxWidth,
-                  }}
-                >
-                  {column.label ?? ''}
-                </th>
-              ))}
-            </tr>
-          </thead>
-        ) : null}
-        <tbody>
-          {showEmptyState && emptyState ? (
-            <tr>
-              <td colSpan={Math.max(columns.length, 1)} className="p-0">
-                {emptyState}
-              </td>
-            </tr>
-          ) : (
-            children
-          )}
-        </tbody>
-      </table>
-    </ScrollableTableShell>
+        <table
+          className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}
+          style={tableMinWidth != null ? { minWidth: tableMinWidth } : undefined}
+        >
+          {hasHeader ? (
+            <thead>
+              <tr className="border-y border-cream-300 bg-white">
+                {columns.map((column, index) => (
+                  <th
+                    key={`${column.label ?? 'col'}-${index}`}
+                    className={cn(
+                      'table-label px-4 py-[11px] text-left text-cream-700',
+                      column.align === 'right' && 'text-right',
+                      column.align === 'center' && 'text-center',
+                      column.className
+                    )}
+                    style={{
+                      width: column.width,
+                      minWidth: column.minWidth,
+                      maxWidth: column.maxWidth,
+                    }}
+                  >
+                    {column.label ?? ''}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          ) : null}
+          <tbody>
+            {showEmptyState && emptyState ? (
+              <tr>
+                <td colSpan={Math.max(columns.length, 1)} className="p-0">
+                  {emptyState}
+                </td>
+              </tr>
+            ) : (
+              children
+            )}
+          </tbody>
+        </table>
+      </ScrollableTableShell>
+    </>
   );
 }

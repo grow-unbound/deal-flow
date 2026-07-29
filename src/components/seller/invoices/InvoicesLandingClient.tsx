@@ -15,6 +15,7 @@ import {
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
+import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
@@ -244,17 +245,18 @@ function InvoicesLandingContent({
 
   return (
     <PageWrap className="max-w-[1920px]">
-      <PageHeader
+        <PageHeader
         eyebrow="Billing"
         title="Invoices"
         subtitle={subtitle}
         horizon={horizonLabel}
         showHorizonControl={false}
         primary={createInvoices ? 'Add an invoice' : undefined}
-        onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
-      />
+          onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
+        />
+        <SellerMobileTransactionTabs active="invoices" />
 
-      {showRefreshingState ? (
+        {showRefreshingState ? (
         <InvoicesDataSkeleton />
       ) : (
         <>

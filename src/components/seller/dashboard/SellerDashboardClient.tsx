@@ -579,12 +579,14 @@ export function SellerDashboardClient({
 
   return (
     <PageWrap>
-      <PageHeader
-        eyebrow="Operations"
-        title="Dashboard"
-        subtitle={subtitle}
-        horizon={horizonLabel}
-      />
+      <div className="hidden md:block">
+        <PageHeader
+          eyebrow="Operations"
+          title="Dashboard"
+          subtitle={subtitle}
+          horizon={horizonLabel}
+        />
+      </div>
 
       {isLoading && !dashboard ? <DashboardSkeleton /> : (
         <>

@@ -3,9 +3,10 @@
 import { ReactNode, Suspense } from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
+import { SellerMobileBottomTabs, SellerMobileTopbar } from './SellerMobileChrome';
 import { SellerSidebarSkeleton, SellerGlobalHeaderSkeleton } from './SellerShellSkeletons';
 import { resolveSellerSidebarLayout } from './seller-sidebar-layout';
 import { SellerRealtimeProvider } from '@/contexts/SellerRealtimeContext';
@@ -25,11 +26,23 @@ const FORCED_COLLAPSE_QUERY = '(max-width: 1279px)';
 
 const SHELL_REVALIDATE_THROTTLE_MS = 15_000;
 
+function isMobileBottomTabRoute(pathname: string) {
+  return (
+    pathname === '/dashboard' ||
+    pathname === '/customers' ||
+    pathname === '/products' ||
+    pathname === '/estimates' ||
+    pathname === '/sales-orders' ||
+    pathname === '/invoices'
+  );
+}
+
 export function SellerShell({ children, featureAvailabilityPromise, tenantBrandingPromise }: SellerShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [isForcedCollapsed, setIsForcedCollapsed] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const largeScreenQuery = window.matchMedia(LARGE_SCREEN_QUERY);
@@ -70,27 +83,41 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
     isLargeScreen,
     isForcedCollapsed,
   });
+  const hasMobileBottomTabs = isMobileBottomTabRoute(pathname);
 
   return (
     <SellerRealtimeProvider>
       <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: layout.sidebarWidth }}>
-        <Suspense fallback={<SellerSidebarSkeleton isCollapsed={layout.isCollapsed} />}>
-          <SellerSidebar
-            isCollapsed={layout.isCollapsed}
-            canCollapse={layout.canCollapse}
-            onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
-            featureAvailabilityPromise={featureAvailabilityPromise}
-          />
-        </Suspense>
+        <div className="hidden md:block">
+          <Suspense fallback={<SellerSidebarSkeleton isCollapsed={layout.isCollapsed} />}>
+            <SellerSidebar
+              isCollapsed={layout.isCollapsed}
+              canCollapse={layout.canCollapse}
+              onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+              featureAvailabilityPromise={featureAvailabilityPromise}
+            />
+          </Suspense>
+        </div>
         <main
-          className="min-h-screen pt-16 transition-[margin-left] duration-base"
-          style={{ marginLeft: 'var(--sidebar-w)' }}
+          className={[
+            'min-h-dvh transition-[margin-left] duration-base md:ml-[var(--sidebar-w)] md:min-h-screen md:pb-0 md:pt-16',
+            hasMobileBottomTabs ? 'pb-[calc(60px+env(safe-area-inset-bottom,0px))]' : 'pb-0',
+          ].join(' ')}
         >
-          <Suspense fallback={<SellerGlobalHeaderSkeleton />}>
-            <SellerGlobalHeader tenantBrandingPromise={tenantBrandingPromise} />
+          <div className="hidden md:block">
+            <Suspense fallback={<SellerGlobalHeaderSkeleton />}>
+              <SellerGlobalHeader tenantBrandingPromise={tenantBrandingPromise} />
+            </Suspense>
+          </div>
+          <Suspense fallback={null}>
+            <SellerMobileTopbar
+              tenantBrandingPromise={tenantBrandingPromise}
+              featureAvailabilityPromise={featureAvailabilityPromise}
+            />
           </Suspense>
           {children}
         </main>
+        <SellerMobileBottomTabs />
       </div>
     </SellerRealtimeProvider>
   );

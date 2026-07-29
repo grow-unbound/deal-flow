@@ -146,6 +146,20 @@ export function TransactionTable({
       className={className}
       tableClassName={cn('v2-table', tableClassName)}
       tableMinWidth={tableMinWidth}
+      mobileRows={rows.map((row) => ({
+        id: row.id,
+        href: row.href,
+        primary: row.document_number,
+        supporting: row.buyer_name,
+        meta: kind === 'invoice'
+          ? `${row.location_name ?? '—'} · Due ${row.due_at ? formatDate(row.due_at) : '—'}`
+          : `${row.items_count} item${row.items_count === 1 ? '' : 's'} · ${row.created_at ? formatDate(row.created_at) : '—'}`,
+        trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
+        badge: row.realtime_badge,
+        onClick: () => {
+          onRowClick?.(row);
+        },
+      }))}
     >
       {rows.map((row) => {
         const initials = row.buyer_initials ?? deriveInitials(row.buyer_name);

@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
   ]);
 
   const planRaw = (tRow?.plan as string | undefined) ?? 'starter';
-  const plan = planRaw === 'growth' || planRaw === 'scale' || planRaw === 'starter' ? planRaw : 'starter';
+  const plan =
+    planRaw === 'lite' || planRaw === 'growth' || planRaw === 'scale' || planRaw === 'starter' ? planRaw : 'starter';
 
   const settingsFromTs = (tsRow as { settings?: Record<string, unknown> } | null)?.settings;
   const settingsFromLegacy = (tRow?.settings as Record<string, unknown> | undefined) ?? {};
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
       (tRow?.business_name as string | undefined) ??
       'My Business') as string,
     subdomain: `${workspaceTenantSlug ?? tenantId}.yukti.so`,
-    plan: plan as 'starter' | 'growth' | 'scale',
+    plan: plan as 'lite' | 'starter' | 'growth' | 'scale',
     gstin: (tRow?.gstin as string | null | undefined) ?? null,
     primary_state: (tRow?.primary_state as string | null | undefined) ?? null,
     settings,
