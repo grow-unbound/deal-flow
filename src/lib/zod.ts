@@ -28,7 +28,7 @@ export const TenantSchema = z.object({
   business_name: z.string().min(1, 'Business name is required'),
   gstin: z.string().optional(),
   primary_state: z.string().optional(),
-  plan: z.enum(['starter', 'growth', 'scale']).default('starter'),
+  plan: z.enum(['lite', 'starter', 'growth', 'scale']).default('starter'),
 });
 
 const OptionalEmailSchema = z.string().email('Invalid email address').optional().or(z.literal(''));

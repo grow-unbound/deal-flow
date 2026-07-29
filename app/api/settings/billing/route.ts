@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       db
         .schema('app')
         .from('tenants')
-        .select('plan, whatsapp_credits_balance, whatsapp_credits_purchased')
+        .select('plan, whatsapp_plan_allowance_balance, whatsapp_purchased_credits_balance, whatsapp_credits_purchased')
         .eq('id', tenantId)
         .maybeSingle(),
       db
@@ -106,7 +106,9 @@ export async function GET(request: NextRequest) {
         price_lists: priceListCount ?? 0,
         catalogs: catalogCount ?? 0,
       },
-      whatsappBalance: Number(tenantRow.whatsapp_credits_balance ?? 1000),
+      whatsappBalance:
+        Number(tenantRow.whatsapp_plan_allowance_balance ?? 0) +
+        Number(tenantRow.whatsapp_purchased_credits_balance ?? 1000),
       whatsappPurchased: Number(tenantRow.whatsapp_credits_purchased ?? 1000),
       whatsappCreditPriceInr: Number(pricingRow?.credit_price_inr ?? 0.25),
       whatsappUsageHistory: usageHistory,

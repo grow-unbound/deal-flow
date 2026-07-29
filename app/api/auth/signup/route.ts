@@ -20,7 +20,7 @@ const SignupBodySchema = z.object({
   phone: z.string().regex(/^[0-9]{10}$/).optional(),
   gstin: z.string().optional(),
   primary_state: z.string().optional(),
-  plan: z.enum(['starter', 'growth', 'scale']).default('starter'),
+  plan: z.enum(['lite', 'starter', 'growth', 'scale']).default('starter'),
   turnstile_token: z.string().optional(),
 });
 

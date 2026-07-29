@@ -435,6 +435,19 @@ function ProductsLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1800}
+        mobileRows={displayRows.map((product: TenantProduct) => {
+          const onHand = Number(product.on_hand ?? 0);
+          const daysCover = product.days_cover ?? null;
+          const sku = product.master_product?.master_sku ?? product.internal_sku;
+          return {
+            id: product.id,
+            href: `/products/${product.id}`,
+            primary: product.display_name,
+            supporting: `${sku} · ${product.brand_name ?? 'Unknown brand'}`,
+            meta: `${product.category_name ? toLabelCase(product.category_name) : 'Uncategorized'} · ${daysCover == null ? 'No cover data' : `${Math.round(daysCover)}d cover`}`,
+            trailing: `${onHand} on hand`,
+          };
+        })}
         >
           {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';

@@ -12,17 +12,16 @@ describe('normalizePlanTier', () => {
 });
 
 describe('buildBillingView', () => {
-  it('builds starter view with warnings near limit', () => {
+  it('starter has no cohort/price-list/catalog limits (unlimited per plan)', () => {
     const v = buildBillingView({
       plan: 'starter',
-      usage: { cohorts: 4, price_lists: 2, catalogs: 3 },
+      usage: { cohorts: 999, price_lists: 999, catalogs: 999 },
       whatsappBalance: 800,
       whatsappPurchased: 1000,
     });
     expect(v.plan).toBe('starter');
-    expect(v.limits.cohorts).toBe(5);
-    expect(v.warnings.length).toBeGreaterThan(0);
-    expect(v.warnings.some((w) => w.key === 'catalogs')).toBe(true);
+    expect(v.limits.cohorts).toBe(Number.POSITIVE_INFINITY);
+    expect(v.warnings).toHaveLength(0);
   });
 
   it('scale has no limit warnings', () => {

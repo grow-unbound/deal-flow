@@ -30,7 +30,8 @@ function createDb({
                   data: {
                     business_name: 'Tenant Co',
                     settings: { business: { phone: sellerPhone } },
-                    whatsapp_credits_balance: creditsBalance,
+                    whatsapp_plan_allowance_balance: 0,
+                    whatsapp_purchased_credits_balance: creditsBalance,
                   },
                   error: null,
                 }),

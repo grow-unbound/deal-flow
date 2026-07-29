@@ -136,18 +136,6 @@ function OrdersPageInner() {
         eyebrow="Activity"
         title="Your orders"
         collapsedTitle="Orders"
-        rightSlot={
-          <button
-            type="button"
-            onClick={() => openBuyerSearch()}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-1)] bg-[var(--cream-200)]"
-            aria-label="Search"
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-700)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-        }
       />
 
       <div className="mx-[22px] mt-3.5 flex rounded-[10px] bg-[var(--cream-200)] p-[3px]">

@@ -80,7 +80,7 @@ export async function runCampaignPublishPreflight(
     db
       .schema('app')
       .from('tenants')
-      .select('whatsapp_credits_balance, settings')
+      .select('whatsapp_plan_allowance_balance, whatsapp_purchased_credits_balance, settings')
       .eq('id', input.tenantId)
       .maybeSingle(),
     db
@@ -100,7 +100,8 @@ export async function runCampaignPublishPreflight(
       .maybeSingle(),
   ]);
 
-  const creditsBalance = Number(tenant?.whatsapp_credits_balance ?? 0);
+  const creditsBalance =
+    Number(tenant?.whatsapp_plan_allowance_balance ?? 0) + Number(tenant?.whatsapp_purchased_credits_balance ?? 0);
   const sellerPhone = buildSellerPhone(asRecord(tenant?.settings));
   const tenantPhoneConfigured = Boolean(sellerPhone && isValidIndianMobile(sellerPhone));
   const templateApproved = template?.approval_status === 'approved';

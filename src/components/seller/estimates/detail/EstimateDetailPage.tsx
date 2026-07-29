@@ -47,6 +47,7 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatNumberValue } from '@/lib/utils';
+import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -166,6 +167,11 @@ export function EstimateDetailPage({ id }: { id: string }) {
   );
 
   const statusTone = data.status === 'sent' || data.status === 'converted' ? 'live' : 'draft';
+  const mobileStatusTone =
+    data.status === 'converted' ? 'success' :
+    data.status === 'declined' || data.status === 'void' ? 'danger' :
+    data.status === 'sent' ? 'warning' :
+    data.status === 'accepted' ? 'accent' : 'neutral';
 
   function handleDuplicate() {
     dupMut.mutate(undefined, {
@@ -221,18 +227,47 @@ export function EstimateDetailPage({ id }: { id: string }) {
 
   return (
     <>
-      <DocumentComposerShell
-        mode="view"
-        kind="estimate"
-        breadcrumbItems={[
-          { label: 'Estimates', href: '/estimates' },
-          { label: data.estimate_number, current: true },
+      <SellerMobileTransactionDetail
+        eyebrow="Estimate"
+        documentNumber={data.estimate_number}
+        statusLabel={data.status_label}
+        statusTone={mobileStatusTone}
+        buyerName={buyer?.business_name}
+        buyerMeta={buyer ? [buyer.phone, buyer.bill_address].filter(Boolean).join(' · ') : null}
+        dateLabel={data.estimate_date ? `Created ${data.estimate_date}` : null}
+        secondaryDateLabel={data.valid_until ? `Valid until ${data.valid_until}` : null}
+        locationName={data.location_name}
+        placeOfSupply={data.place_of_supply}
+        notes={data.seller_note ?? data.notes}
+        lines={diffLines.map((line) => ({
+          id: line.id,
+          name: line.product_name,
+          sku: line.sku,
+          qty: line.qty,
+          unitPrice: line.unit_price,
+          lineTotal: line.line_total,
+        }))}
+        totals={[
+          { label: 'Subtotal', value: totals.subtotal },
+          ...(totals.discount_flat ? [{ label: 'Discount', value: `-${formatNumberValue(totals.discount_flat, 'CURRENCY_EXACT')}`, tone: 'muted' as const }] : []),
+          ...(totals.freight ? [{ label: 'Freight', value: totals.freight }] : []),
+          { label: 'GST', value: totals.tax_amount },
+          { label: 'Total', value: totals.grand_total, emphasis: true },
         ]}
-        title={data.estimate_number}
-        subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address}` : 'No buyer assigned.'}
-        status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
-        titleActions={(
-          <>
+      />
+      <div className="hidden md:block">
+        <DocumentComposerShell
+          mode="view"
+          kind="estimate"
+          breadcrumbItems={[
+            { label: 'Estimates', href: '/estimates' },
+            { label: data.estimate_number, current: true },
+          ]}
+          title={data.estimate_number}
+          subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address}` : 'No buyer assigned.'}
+          status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
+          titleActions={(
+            <>
             {showVoid ? (
               <Button
                 type="button"
@@ -377,6 +412,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
           </div>
         )}
       />
+      </div>
 
       <ModalConvertEstimate
         open={convertOpen}

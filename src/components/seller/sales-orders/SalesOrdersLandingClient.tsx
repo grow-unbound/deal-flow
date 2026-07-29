@@ -16,6 +16,7 @@ import {
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
+import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -229,6 +230,7 @@ function SalesOrdersLandingContent({
           primary={createSalesOrders ? 'Add a sales order' : undefined}
           onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
         />
+        <SellerMobileTransactionTabs active="orders" />
 
         {showRefreshingState ? (
           <SalesOrdersDataSkeleton />
