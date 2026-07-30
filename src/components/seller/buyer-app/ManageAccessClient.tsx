@@ -398,7 +398,7 @@ function AccessTable({
                       aria-label="Select row"
                     />
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2">
                     <p className="text-base font-medium text-cream-900">{buyer.business_name}</p>
                     {buyer.phone ? (
                       <p className="mt-0.5 text-xs text-cream-500">
@@ -406,12 +406,12 @@ function AccessTable({
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-cream-700">
+                  <td className="px-3 py-2 text-sm text-cream-700">
                     {buyer.city && buyer.state
                       ? `${buyer.city}, ${buyer.state}`
                       : buyer.city ?? buyer.state ?? '—'}
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-2.5">
                       <Switch
                         checked={pendingToggles[buyer.id] ?? buyer.buyer_app_enabled}
@@ -424,12 +424,12 @@ function AccessTable({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     <span className="tabular-inline text-sm text-cream-700">
                       {formatDate(buyer.last_app_order_at)}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     {buyer.total_spend_90d > 0 ? (
                       <span className="font-display text-md font-medium tabular-nums text-cream-900">
                         {formatNumberValue(buyer.offline_spend_90d, 'CURRENCY_THRESHOLD')}
@@ -440,7 +440,7 @@ function AccessTable({
                       <span className="text-sm text-cream-400">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     <span className="font-display text-sm font-medium tabular-nums text-cream-900">
                       {buyer.buyer_app_enabled && buyer.app_gmv_90d > 0
                         ? formatNumberValue(buyer.app_gmv_90d, 'CURRENCY_THRESHOLD')
@@ -493,7 +493,7 @@ function ManageAccessSkeleton() {
             {Array.from({ length: 7 }).map((_, i) => (
               <div
                 key={i}
-                className="border-b border-cream-100 px-5 py-3.5 last:border-b-0"
+                className="border-b border-cream-100 px-3 py-2 last:border-b-0"
               >
                 <div className="grid grid-cols-[40px_260px_140px_200px_140px_180px_140px] gap-4">
                   <Skeleton className="h-4 w-4" />
@@ -758,7 +758,7 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
           <span className="text-cream-400">›</span>
           <span className="font-medium text-cream-900">Manage Access</span>
         </nav>
-        <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950">
+        <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950">
           Manage Access
         </h1>
         <p className="mt-1 text-sm text-cream-600">

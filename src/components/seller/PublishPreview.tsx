@@ -54,7 +54,7 @@ function PublishPreview({ open, onOpenChange, catalog, onPublish, publishing }: 
           <div className="bg-cream-100 rounded-md p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-body-sm font-medium text-cream-900">{catalog.name}</span>
-              <Badge variant="teal">{catalog.productCount} products</Badge>
+              <Badge variant="teal" icon>{catalog.productCount} products</Badge>
             </div>
             {catalog.cohortName && (
               <p className="text-caption text-cream-600">Cohort: {catalog.cohortName}</p>

@@ -211,7 +211,7 @@ export function IntegrationJobLiveLog({
         ) : (
           <div className="space-y-3">
             {log.map((entry) => (
-              <div key={entry.id} className="rounded-xl border border-cream-200 bg-white px-4 py-3">
+              <div key={entry.id} className="rounded-xl border border-cream-200 bg-white px-3 py-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">

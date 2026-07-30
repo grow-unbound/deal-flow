@@ -1,7 +1,6 @@
 'use client';
 
-import { type JSX, type ReactNode, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -10,7 +9,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -19,9 +17,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   useBuyerAppLanding,
   type BuyerAppLandingResponse,
-  type BuyerAppCalloutBuyer,
 } from '@/hooks/useBuyerApp';
-import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -149,123 +145,6 @@ function BuyerAppLandingContent({
             sub: `${repeatShareOfEnabledPct}% of enabled customers · ${primaryDemandVerb} 2+ ${primaryDemandNoun}`,
           },
         ]}
-      />
-
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'access_enabled_never_used',
-            kind: 'risk',
-            eyebrow: 'Access enabled, never used',
-            hint: `${(snap?.not_ordering_buyers ?? []).length}`,
-            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
-              id: string;
-              initials: string;
-              hue: 'ember';
-              name: string;
-              reason: string;
-              trailing: JSX.Element;
-            }>(
-              '/api/tenant/buyer-app?callout=access_enabled_never_used',
-              async (payload) => (payload.snapshot?.not_ordering_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-                id: b.buyer_id,
-                initials: b.initials,
-                hue: 'ember' as const,
-                name: b.name,
-                reason: `Access enabled ${b.enabled_date ?? '—'} · no app activity yet`,
-                trailing: <StatusTag label="Inactive" tone="warning" />,
-              })),
-            ),
-            rows: (snap?.not_ordering_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-              id: b.buyer_id,
-              initials: b.initials,
-              hue: 'ember' as const,
-              name: b.name,
-              reason: `Access enabled ${b.enabled_date ?? '—'} · no app activity yet`,
-              trailing: <StatusTag label="Inactive" tone="warning" />,
-            })),
-          },
-          {
-            id: 'used_no_demand',
-            kind: 'info',
-            eyebrow: 'Used the app, no demand yet',
-            hint: `${(snap?.used_no_demand_buyers ?? []).length}`,
-            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
-              id: string;
-              initials: string;
-              hue: 'teal';
-              name: string;
-              reason: string;
-              trailing: JSX.Element;
-            }>(
-              '/api/tenant/buyer-app?callout=used_no_demand',
-              async (payload) => (payload.snapshot?.used_no_demand_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-                id: b.buyer_id,
-                initials: b.initials,
-                hue: 'teal' as const,
-                name: b.name,
-                reason: `Opened the app but hasn't ${primaryDemandVerb} ${primaryDemandNoun} yet`,
-                trailing: <StatusTag label="No demand" tone="neutral" />,
-              })),
-            ),
-            rows: (snap?.used_no_demand_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-              id: b.buyer_id,
-              initials: b.initials,
-              hue: 'teal' as const,
-              name: b.name,
-              reason: `Opened the app but hasn't ${primaryDemandVerb} ${primaryDemandNoun} yet`,
-              trailing: <StatusTag label="No demand" tone="neutral" />,
-            })),
-          },
-          {
-            id: 'valuable_without_access',
-            kind: 'opportunity',
-            eyebrow: 'Valuable customers without app access',
-            hint: `${(snap?.no_app_buyers ?? []).length}`,
-            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
-              id: string;
-              initials: string;
-              hue: 'cream';
-              name: string;
-              reason: string;
-              trailing: JSX.Element;
-            }>(
-              '/api/tenant/buyer-app?callout=valuable_without_access',
-              async (payload) => (payload.snapshot?.no_app_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-                id: b.buyer_id,
-                initials: b.initials,
-                hue: 'cream' as const,
-                name: b.name,
-                reason: `${formatNumberValue(b.offline_gmv ?? 0, 'CURRENCY_THRESHOLD')} invoiced sales outside the app`,
-                trailing: (
-                  <Link
-                    href={`/customers/${b.buyer_id}`}
-                    className="text-[12px] text-teal-600 hover:text-teal-700 font-medium whitespace-nowrap"
-                  >
-                    Enable →
-                  </Link>
-                ),
-              })),
-            ),
-            rows: (snap?.no_app_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
-              id: b.buyer_id,
-              initials: b.initials,
-              hue: 'cream' as const,
-              name: b.name,
-              reason: `${formatNumberValue(b.offline_gmv ?? 0, 'CURRENCY_THRESHOLD')} invoiced sales outside the app`,
-              trailing: (
-                <Link
-                  href={`/customers/${b.buyer_id}`}
-                  className="text-[12px] text-teal-600 hover:text-teal-700 font-medium whitespace-nowrap"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Enable →
-                </Link>
-              ),
-            })),
-          },
-        ]}
-        stalenessHint={snap.refreshed_at ? `Updated ${new Date(snap.refreshed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : undefined}
       />
 
       <div className="buyer-app-cards mt-6 grid grid-cols-2 gap-6">

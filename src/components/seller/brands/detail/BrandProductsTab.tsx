@@ -106,7 +106,7 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
               key={product.tenant_product_id}
               className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             >
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <div className="flex h-[38px] w-[38px] shrink-0 items-end justify-center rounded-[10px] bg-[linear-gradient(180deg,#EAF1EE_0%,#C6DAD3_100%)] pb-1">
                     <div className="h-[26px] w-[10px] rounded-[20%_20%_8%_8%/8%_8%_4%_4%] bg-[linear-gradient(180deg,#1F3A34,#142823)]" />
@@ -119,17 +119,17 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.mrp != null ? formatNumberValue(product.mrp, 'CURRENCY_EXACT') : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.base_selling_price != null ? formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT') : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.cost_price != null ? formatNumberValue(product.cost_price, 'CURRENCY_EXACT') : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {daysCover === 0 ? (
                   <span className="font-semibold text-danger-700">0d</span>
                 ) : daysCover < 7 ? (
@@ -138,14 +138,14 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
                   <span>{daysCover}d</span>
                 )}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-5 py-3.5 text-right text-base text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              <td className="px-3 py-2 text-right text-base text-cream-900">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_EXACT')}</span>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <GrowthPill value={growthPct} />
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
             </tr>

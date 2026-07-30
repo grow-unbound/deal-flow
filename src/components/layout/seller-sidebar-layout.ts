@@ -11,7 +11,7 @@ export function resolveSellerSidebarLayout({
     return {
       isCollapsed: false,
       canCollapse: false,
-      sidebarWidth: '248px',
+      sidebarWidth: '216px',
     };
   }
 
@@ -26,6 +26,6 @@ export function resolveSellerSidebarLayout({
   return {
     isCollapsed: isUserCollapsed,
     canCollapse: true,
-    sidebarWidth: isUserCollapsed ? '72px' : '248px',
+    sidebarWidth: isUserCollapsed ? '72px' : '216px',
   };
 }

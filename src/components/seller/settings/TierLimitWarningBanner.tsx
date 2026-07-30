@@ -33,7 +33,7 @@ export function TierLimitWarningBanner({ plan, resource, used }: TierLimitWarnin
   if (!upgrade) return null;
 
   return (
-    <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+    <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
       <p>
         You&apos;ve used <strong>{used}</strong> of <strong>{limit}</strong> {noun} on your{' '}

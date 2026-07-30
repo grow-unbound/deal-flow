@@ -167,7 +167,7 @@ export function CategoryRolesTable({ initialCategories }: CategoryRolesTableProp
                 key={cat.category_id}
                 className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
               >
-                <td className="px-5 py-3.5 align-middle">
+                <td className="px-3 py-2 align-middle">
                   <div className="flex items-center gap-3">
                     <EntityAvatar
                       initials={categoryInitials(cat.category_name)}
@@ -178,15 +178,15 @@ export function CategoryRolesTable({ initialCategories }: CategoryRolesTableProp
                     <span className="text-base font-medium text-cream-900">{cat.category_name}</span>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-right align-middle">
+                <td className="px-3 py-2 text-right align-middle">
                   <span className="font-mono text-base tabular-nums text-cream-700">
                     {cat.weighted_event_count > 0 ? cat.weighted_event_count : '—'}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 align-middle">
+                <td className="px-3 py-2 align-middle">
                   {cat.computed_role ? (
                     <div className="flex items-center gap-1.5">
-                      <Badge variant={ROLE_BADGE_VARIANT[cat.computed_role] ?? 'outline'}>
+                      <Badge variant={ROLE_BADGE_VARIANT[cat.computed_role] ?? 'outline'} icon>
                         {ROLE_LABELS[cat.computed_role] ?? cat.computed_role}
                       </Badge>
                       {cat.is_auto ? (
@@ -197,7 +197,7 @@ export function CategoryRolesTable({ initialCategories }: CategoryRolesTableProp
                     <span className="text-base text-cream-500">No data yet</span>
                   )}
                 </td>
-                <td className="px-5 py-3.5 align-middle">
+                <td className="px-3 py-2 align-middle">
                   <Select
                     value={cat.override_role ?? 'auto'}
                     onValueChange={(value) =>

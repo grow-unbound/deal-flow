@@ -63,7 +63,7 @@ const config: Config = {
 
       // Named layout constants as arbitrary values (use via Tailwind JIT)
       spacing: {
-        'sidebar': '248px',
+        'sidebar': '216px',
         'topbar':  '64px',
         'tab-bar': '60px',
       },

@@ -91,7 +91,7 @@ export function DocumentComposerLoadingSkeleton() {
         </div>
         <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
+            <div key={index} className="border-b border-cream-300 px-3 py-2 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
               <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
               <div className="mt-2 h-4 w-28 animate-pulse rounded bg-cream-100" />
             </div>

@@ -14,7 +14,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
   FilterBar,
   type FilterBarGroup,
 } from '@/components/seller/layout';
@@ -139,37 +138,6 @@ function CatalogsLandingContent({
 
   const catalogs = landingData?.catalogs ?? [];
   const primaryDemandKind = landingData?.primary_demand_kind ?? 'orders';
-  const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
-
-  // Action lists derived client-side from the already-fetched campaign rows (no new SQL).
-  // Mirrors the 3 doc-starred Action options — each needs per-campaign views/view_pct/
-  // conversion_pct/days_left, which the landing "today's read" callouts don't carry.
-  const weakOpenCampaigns = useMemo(() => {
-    const MIN_AGE_DAYS = 3;
-    const now = Date.now();
-    return [...catalogs]
-      .filter((c) => c.status.label === 'Live' && (c.audience_count ?? 0) > 0
-        && (now - new Date(c.created_at).getTime()) / 86_400_000 >= MIN_AGE_DAYS)
-      .sort((a, b) => a.view_pct - b.view_pct)
-      .slice(0, 3);
-  }, [catalogs]);
-
-  const openedNoDemandCampaigns = useMemo(
-    () => [...catalogs]
-      .filter((c) => c.views > 0 && c.conversions === 0)
-      .sort((a, b) => b.views - a.views)
-      .slice(0, 3),
-    [catalogs],
-  );
-
-  const expiringEngagedCampaigns = useMemo(() => {
-    const MAX_DAYS_LEFT = 14;
-    return [...catalogs]
-      .filter((c) => c.status.label === 'Live' && c.days_left != null && c.days_left <= MAX_DAYS_LEFT
-        && c.views > 0 && c.conversions === 0)
-      .sort((a, b) => (a.days_left ?? 0) - (b.days_left ?? 0))
-      .slice(0, 3);
-  }, [catalogs]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -269,56 +237,6 @@ function CatalogsLandingContent({
         ]}
       />
 
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'weak_opens',
-            kind: 'risk',
-            eyebrow: 'Live campaigns with weak opens',
-            hint: `${weakOpenCampaigns.length}`,
-            rows: weakOpenCampaigns.map((catalog) => ({
-              id: catalog.id,
-              initials: catalog.initials,
-              hue: catalog.hue,
-              name: catalog.name,
-              reason: `${catalog.views} of ${catalog.audience_count ?? 0} customers opened`,
-              trailing: <StatusTag label={`${catalog.view_pct}% opened`} tone="warning" />,
-            })),
-            getHref: (row) => `/campaigns/${row.id}`,
-          },
-          {
-            id: 'many_openers_no_demand',
-            kind: 'info',
-            eyebrow: 'Many openers, no primary demand',
-            hint: `${openedNoDemandCampaigns.length}`,
-            rows: openedNoDemandCampaigns.map((catalog) => ({
-              id: catalog.id,
-              initials: catalog.initials,
-              hue: catalog.hue,
-              name: catalog.name,
-              reason: `${catalog.views} opened · ${catalog.view_pct}% open rate · 0 ${primaryDemandNoun}`,
-              trailing: formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD'),
-            })),
-            getHref: (row) => `/campaigns/${row.id}`,
-          },
-          {
-            id: 'expiring_engaged_non_buyers',
-            kind: 'opportunity',
-            eyebrow: 'Expiring with engaged non-buyers',
-            hint: `${expiringEngagedCampaigns.length}`,
-            rows: expiringEngagedCampaigns.map((catalog) => ({
-              id: catalog.id,
-              initials: catalog.initials,
-              hue: catalog.hue,
-              name: catalog.name,
-              reason: `${catalog.view_pct}% open rate · expires ${catalog.valid_until_label}`,
-              trailing: <StatusTag label={`${catalog.days_left}d left`} tone="warning" />,
-            })),
-            getHref: (row) => `/campaigns/${row.id}`,
-          },
-        ]}
-      />
-
       <FilterBar
         count={`${filtered.length} campaigns`}
         searchPlaceholder="Search campaign…"
@@ -361,7 +279,7 @@ function CatalogsLandingContent({
               onClick={() => router.push(`/campaigns/${catalog.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="flex items-center gap-3">
                   <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
                   <div className="min-w-0">
@@ -372,7 +290,7 @@ function CatalogsLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="space-y-1">
                   <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
                   <p className="text-xs text-cream-600">
@@ -380,18 +298,18 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {catalog.order_count > 0 ? catalog.order_count : '—'}
               </td>
               {estimatesEnabled ? (
-                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                   {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
                 </td>
               ) : null}
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
                     {catalog.views > 0 ? catalog.views : '—'}
@@ -401,7 +319,7 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
                     {catalog.demand_customers ?? 0}
@@ -409,7 +327,7 @@ function CatalogsLandingContent({
                   <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
                 </div>
               </td>
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="space-y-1">
                   <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
                   <p className="text-xs text-cream-600">
@@ -427,7 +345,7 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-4 py-3.5 text-right text-cream-500">›</td>
+              <td className="px-3 py-2 text-right text-cream-500">›</td>
             </tr>
           ))}
         </LandingTable>

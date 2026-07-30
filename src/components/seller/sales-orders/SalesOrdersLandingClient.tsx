@@ -13,7 +13,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -26,21 +25,12 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatDate, formatNumberValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Order value (high → low)' | 'Items (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Order value (high → low)', 'Items (high → low)'];
-
-function mapRowToCallout(row: Pick<OrderLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
 
 function buyerGeographyLabel(row: OrderLandingRow) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
@@ -264,47 +254,6 @@ function SalesOrdersLandingContent({
                   label: 'Waiting for confirmation',
                   value: formatNumberValue(pulseAggregates?.waiting_confirmation_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.waiting_confirmation_count ?? 0} awaiting confirmation`,
-                },
-              ]}
-            />
-
-            <V3CalloutPanel
-              items={[
-                {
-                  id: 'needs_attention',
-                  kind: 'risk',
-                  eyebrow: 'Orders to confirm',
-                  hint: `${landingData.kpis.received_count}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.needs_attention.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · ${formatDate(row.placed_at)}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'to_dispatch',
-                  kind: 'info',
-                  eyebrow: 'Orders to dispatch',
-                  hint: `${landingData.kpis.pending_dispatch_count}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.to_dispatch.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'stock_shortage',
-                  kind: 'opportunity',
-                  eyebrow: 'Stock shortage',
-                  hint: `${landingData.todays_read.stock_shortage.length}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.stock_shortage.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
                 },
               ]}
             />

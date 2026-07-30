@@ -164,7 +164,7 @@ export function BroadcastTemplatePickerOverlay({
                           <p className="truncate text-base font-medium text-cream-900">
                             {formatWhatsAppTemplateLabel(template)}
                           </p>
-                          <Badge variant={template.meta_category === 'marketing' ? 'ember' : 'teal'}>
+                          <Badge variant={template.meta_category === 'marketing' ? 'ember' : 'teal'} icon>
                             {template.meta_category}
                           </Badge>
                         </div>
@@ -195,10 +195,10 @@ export function BroadcastTemplatePickerOverlay({
             <SheetTitle>{draftTemplate ? formatWhatsAppTemplateLabel(draftTemplate) : 'Template details'}</SheetTitle>
             {draftTemplate ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Badge variant={draftTemplate.meta_category === 'marketing' ? 'ember' : 'teal'}>
+                <Badge variant={draftTemplate.meta_category === 'marketing' ? 'ember' : 'teal'} icon>
                   {draftTemplate.meta_category}
                 </Badge>
-                <Badge variant={approvalVariant(draftTemplate.approval_status)}>
+                <Badge variant={approvalVariant(draftTemplate.approval_status)} icon>
                   {approvalLabel(draftTemplate.approval_status)}
                 </Badge>
               </div>

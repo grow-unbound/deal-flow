@@ -15,7 +15,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -32,19 +31,6 @@ import { CustomerGroupFormSheet } from './CustomerGroupFormSheet';
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)';
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)'];
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((word) => word[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function getHue(index: number): 'teal' | 'ember' | 'cream' {
-  return (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream';
-}
 
 function CohortsLandingSkeleton() {
   return (
@@ -247,37 +233,6 @@ function CohortsLandingContent({
         ]}
       />
 
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'low_conversion',
-            kind: 'risk',
-            eyebrow: 'Groups needing attention',
-            hint: `${landingData.todays_read.low_conversion.length}`,
-            rows: landingData.todays_read.low_conversion.map((row, index) => ({
-              initials: getInitials(row.name),
-              hue: getHue(index),
-              name: row.name,
-              reason: `${formatNumberValue(row.conversion_pct, 'PERCENTAGE')} response · ${row.active_members} of ${row.total_members} purchased`,
-              trailing: `${formatNumberValue(row.conversion_pct, 'PERCENTAGE')}`,
-            })),
-          },
-          {
-            id: 'top_performers',
-            kind: 'info',
-            eyebrow: 'Groups driving sales',
-            hint: 'by sales',
-            rows: landingData.todays_read.top_performers.map((row, index) => ({
-              initials: getInitials(row.name),
-              hue: getHue(index),
-              name: row.name,
-              reason: `${row.total_members} customers · avg ticket ${formatNumberValue(row.aov, 'CURRENCY_THRESHOLD')}`,
-              trailing: formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD'),
-            })),
-          },
-        ]}
-      />
-
       <FilterBar
         count={`${filtered.length} customer groups`}
         searchPlaceholder="Search customer group…"
@@ -328,26 +283,26 @@ function CohortsLandingContent({
               onClick={() => router.push(`/customer-groups/${cohort.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{cohort.name}</p>
                   <p className="mt-0.5 truncate text-xs text-cream-600">{cohort.description ?? '—'}</p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.is_static ? 'Manual selection' : 'Rule based'}</td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{formatAllowedBrands(cohort)}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-sm text-cream-800">{cohort.is_static ? 'Manual selection' : 'Rule based'}</td>
+              <td className="px-3 py-2 text-sm text-cream-800">{formatAllowedBrands(cohort)}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {cohort.active_members}/{cohort.total_members}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 {formatNumberValue(cohort.gmv_mtd, 'CURRENCY_THRESHOLD')}
               </td>
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="space-y-1">
                   <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
                 </div>
               </td>
-              <td className="px-4 py-3.5 text-right text-cream-500">›</td>
+              <td className="px-3 py-2 text-right text-cream-500">›</td>
             </tr>
           ))}
         </LandingTable>

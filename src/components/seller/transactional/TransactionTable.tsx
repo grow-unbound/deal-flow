@@ -183,7 +183,7 @@ export function TransactionTable({
             }}
             onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
@@ -198,7 +198,7 @@ export function TransactionTable({
               </div>
             </td>
 
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <div className="flex items-center gap-3">
                 {/* <EntityAvatar initials={initials} hue={hue} size={30} /> */}
                 <div className="min-w-0">
@@ -208,17 +208,17 @@ export function TransactionTable({
               </div>
             </td>
 
-            <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
+            <td className="px-3 py-2 text-sm text-cream-900">{row.location_name ?? '—'}</td>
 
             {showCampaignColumn ? (
-              <td className="px-5 py-3.5 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
+              <td className="px-3 py-2 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
             ) : null}
 
             {kind !== 'invoice' ? (
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
+              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{row.items_count}</td>
             ) : null}
 
-            <td className="px-5 py-3.5 text-right">
+            <td className="px-3 py-2 text-right">
               <p className="font-display text-md text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
               {kind === 'invoice' && row.amount_subtext ? (
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
@@ -226,27 +226,27 @@ export function TransactionTable({
             </td>
 
             {kind === 'invoice' ? (
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">
                 {row.outstanding_amount ? formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD') : '—'}
               </td>
             ) : null}
 
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <StatusTag label={row.status_label} tone={row.status_tone} />
             </td>
 
-            <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+            <td className="px-3 py-2 font-mono text-sm text-cream-700">
               {row.created_at ? formatDate(row.created_at) : '—'}
             </td>
 
             {kind === 'estimate' ? (
-              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+              <td className="px-3 py-2 font-mono text-sm text-cream-700">
                 {row.expires_at ? formatDate(row.expires_at) : '—'}
               </td>
             ) : null}
 
             {kind === 'invoice' ? (
-              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+              <td className="px-3 py-2 font-mono text-sm text-cream-700">
                 {row.due_at ? formatDate(row.due_at) : '—'}
               </td>
             ) : null}

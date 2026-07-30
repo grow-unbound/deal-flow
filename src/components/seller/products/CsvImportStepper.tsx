@@ -197,14 +197,14 @@ function Step1Upload({ onFileSelected, brandSlugToId, brandsLoaded }: Step1Props
       />
 
       {parseError && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           <AlertCircle size={16} className="shrink-0" />
           {parseError}
         </div>
       )}
 
       {/* Template download */}
-      <div className="flex items-center justify-between border border-cream-200 rounded-lg px-4 py-3 bg-cream-50">
+      <div className="flex items-center justify-between border border-cream-200 rounded-lg px-3 py-2 bg-cream-50">
         <div>
           <p className="text-sm font-medium text-cream-900">Need a template?</p>
           <p className="text-xs text-cream-500">Download the CSV template with all required columns</p>

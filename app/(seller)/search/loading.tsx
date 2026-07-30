@@ -5,7 +5,7 @@ export default function SellerSearchLoading() {
         <div className="h-10 w-10 animate-pulse rounded-lg bg-cream-200" />
         <div className="h-10 flex-1 animate-pulse rounded-xl bg-cream-200" />
       </header>
-      <div className="space-y-2 px-4 py-3">
+      <div className="space-y-2 px-3 py-2">
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="h-[70px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         ))}

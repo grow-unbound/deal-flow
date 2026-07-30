@@ -56,7 +56,7 @@ export function TransactionalPageHead({
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-3xl font-extrabold tracking-[-0.02em] text-cream-950 leading-[1.05]">{title}</h1>
+          <h1 className="font-display text-xl md:text-2xl font-extrabold tracking-[-0.02em] text-cream-950 leading-[1.05]">{title}</h1>
           <StatusTag label={statusPill.label} tone={statusPill.tone} />
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-base text-cream-700">

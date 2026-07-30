@@ -622,7 +622,7 @@ export function PriceListComposer({
               />
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Pricing strategy" className="px-4 py-3">
+            <ComposerBasicsField label="Pricing strategy" className="px-3 py-2">
               <div className="mt-2 text-base font-medium leading-snug text-cream-950">
                 {formatStrategySummary(
                   pricingStrategy,
@@ -871,7 +871,7 @@ export function PriceListComposer({
             }
             center={
               <ComposerMainCard>
-              <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-3 py-2">
                 <div>
                   <div className="text-base font-semibold text-cream-900">
                     {mode === 'edit'
@@ -994,7 +994,7 @@ export function PriceListComposer({
                                 });
                               }}
                             />
-                            <td className="px-4 py-3">
+                            <td className="px-3 py-2">
                               <div className="flex items-center gap-3">
                                 {imageUrl ? (
                                   <Image
@@ -1019,10 +1019,10 @@ export function PriceListComposer({
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.cost_price, 'CURRENCY_EXACT')}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.mrp, 'CURRENCY_EXACT')}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT')}</td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.cost_price, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.mrp, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-2 text-right">
                               <div
                                 className={cn(
                                   'ml-auto inline-flex h-9 w-[108px] items-center justify-end gap-1 rounded-[6px] border bg-white px-2.5 font-mono text-sm',
@@ -1050,7 +1050,7 @@ export function PriceListComposer({
                               </div>
                             </td>
                             <td className={cn(
-                              'px-4 py-3 text-right font-mono text-xs font-medium',
+                              'px-3 py-2 text-right font-mono text-xs font-medium',
                               discountVsBase == null ? 'text-cream-500' : discountVsBase >= 0 ? 'text-teal-700' : 'text-danger-700',
                             )}>
                               {discountVsBase == null
@@ -1058,7 +1058,7 @@ export function PriceListComposer({
                                 : `${discountVsBase >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(discountVsBase), 'PERCENTAGE')}`}
                             </td>
                             <td className={cn(
-                              'px-4 py-3 text-right font-mono text-xs font-medium',
+                              'px-3 py-2 text-right font-mono text-xs font-medium',
                               marginPct == null ? 'text-cream-500' : 'text-cream-900',
                             )}>
                               {marginPct == null ? '—' : `${formatNumberValue(marginPct, 'PERCENTAGE')}`}
@@ -1069,7 +1069,7 @@ export function PriceListComposer({
                     </tbody>
                   </table>
                   {productsQuery.hasNextPage ? (
-                    <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                    <div className="border-t border-cream-300 bg-white px-3 py-2 text-center">
                       <Button
                         type="button"
                         variant="ghost"
