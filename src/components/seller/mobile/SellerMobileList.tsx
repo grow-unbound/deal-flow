@@ -28,7 +28,7 @@ export function SellerMobileList({ items, className, emptyState }: SellerMobileL
 
   return (
     <div className={cn('md:hidden', className)}>
-      <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex flex-col gap-2 px-3 py-2">
         {items.map((item) => (
           <Link
             key={item.id}
@@ -73,7 +73,7 @@ export function SellerMobileList({ items, className, emptyState }: SellerMobileL
 
 export function SellerMobileListSkeleton({ count = 6 }: { count?: number }) {
   return (
-    <div className="md:hidden px-4 py-3" role="status" aria-label="Loading list">
+    <div className="md:hidden px-3 py-2" role="status" aria-label="Loading list">
       <div className="flex flex-col gap-2">
         {Array.from({ length: count }).map((_, index) => (
           <div key={index} className="rounded-[12px] border border-cream-200 bg-white px-3.5 py-3">

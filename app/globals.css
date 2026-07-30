@@ -127,10 +127,32 @@
     --duration-slow: 280ms;
 
     /* Layout */
-    --sidebar-w: 248px;
-    --topbar-h: 64px;
+    --sidebar-w: 216px;
+    --topbar-h: 56px;
     --tab-bar-h: 60px;
     --header-h: 52px;
+
+    /* Shared control heights — Button/Input/Select read these instead of
+       hardcoding pixel values, so density can be scoped per app surface
+       (see [data-app="seller"] override below) without touching buyer. */
+    --ctl-h-sm: 34px;
+    --ctl-h-md: 40px;
+    --ctl-h-lg: 48px;
+    --ctl-h-input: 42px;
+
+    /* Badge sizing — same indirection, values match Badge's previous
+       hardcoded px-2 py-1 text-xs / h-2 w-2 markup exactly. */
+    --ctl-badge-px: 8px;
+    --ctl-badge-py: 4px;
+    --ctl-badge-text: 12px;
+    --ctl-badge-glyph: 8px;
+    --ctl-badge-icon: 14px;
+
+    /* Button label sizes — same indirection as --ctl-h-* so seller desktop
+       can compact CTA text without moving buyer's (root defaults match the
+       previous text-body-sm/text-md Tailwind classes exactly). */
+    --ctl-text-sm: var(--yk-text-base);
+    --ctl-text-md: var(--yk-text-md);
   }
 
 /* ── Buyer-app design override (DealFlow "Ember & Cream") ─────────────────
@@ -182,6 +204,60 @@
   --b-text-kpi-lg:   calc(var(--b-base) * 2.133);  /* 32px  — featured KPI */
   --b-text-price-lg: calc(var(--b-base) * 2.267);  /* 34px  — product detail price */
   --b-text-display:  calc(var(--b-base) * 2.533);  /* 38px  — login / hero headline */
+}
+
+/* ── Seller cockpit density override ───────────────────────────────────────
+   Scoped under [data-app="seller"]. Desktop (≥768px) gets a compact, denser
+   type scale for higher information density. Below 768px the seller cockpit
+   has the exact same physical constraints as the buyer PWA, so it reuses the
+   buyer's --b-text-* tokens verbatim instead of a fourth scale — duplicated
+   here (not inherited) because CSS attribute-selector scoping can't share
+   across two different root selectors. Keep in sync with the
+   [data-app="buyer"] block above if --b-base or its ratios change.
+──────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  [data-app="seller"] {
+    --yk-text-base: 13px; /* was 14px — all --yk-text-* steps cascade from this */
+
+    --ctl-h-sm: 32px;
+    --ctl-h-md: 36px;
+    --ctl-h-lg: 40px;
+    --ctl-h-input: 36px;
+
+    --ctl-text-sm: 12px;
+    --ctl-text-md: 13px;
+
+    --ctl-badge-px: 6px;
+    --ctl-badge-py: 3px;
+    --ctl-badge-text: 11px;
+    --ctl-badge-glyph: 7px;
+    --ctl-badge-icon: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-app="seller"] {
+    /* Align the generic --yk-text-* chain (used by plain text-xs…text-3xl
+       classes that DON'T reference --b-text-* directly) to buyer's base too,
+       so nothing on seller-mobile is sized off the old 14px default. */
+    --yk-text-base: var(--b-base);
+
+    --b-base: 15px;
+    --b-text-eyebrow:  calc(var(--b-base) * 0.667);
+    --b-text-sub:      calc(var(--b-base) * 0.800);
+    --b-text-label:    calc(var(--b-base) * 0.867);
+    --b-text-body:     var(--b-base);
+    --b-text-header:   calc(var(--b-base) * 1.133);
+    --b-text-price:    calc(var(--b-base) * 1.067);
+    --b-text-section:  calc(var(--b-base) * 1.267);
+    --b-text-total:    calc(var(--b-base) * 1.467);
+    --b-text-kpi:      calc(var(--b-base) * 1.600);
+    --b-text-page-sm:  calc(var(--b-base) * 1.733);
+    --b-text-page:     calc(var(--b-base) * 2.000);
+    --b-text-kpi-lg:   calc(var(--b-base) * 2.133);
+    --b-text-price-lg: calc(var(--b-base) * 2.267);
+    --b-text-display:  calc(var(--b-base) * 2.533);
+  }
 }
 
   * {

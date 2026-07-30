@@ -874,7 +874,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                                   : toggleRuleRow(buyer.id, nextChecked)
                               }
                             />
-                            <td className="px-4 py-3">
+                            <td className="px-3 py-2">
                               <div className="flex items-center gap-3">
                                 <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
                                 <div className="min-w-0">
@@ -885,21 +885,21 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-cream-900">{buyer.geography_label}</td>
-                            <td className="px-4 py-3 font-mono text-cream-900">
+                            <td className="px-3 py-2 text-cream-900">{buyer.geography_label}</td>
+                            <td className="px-3 py-2 font-mono text-cream-900">
                               {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                             </td>
-                            <td className="px-4 py-3 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
-                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
-                            <td className="px-4 py-3 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
+                            <td className="px-3 py-2 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
+                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-3 py-2 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
                           </ComposerSelectableRow>
                         );
                       })}
                     </tbody>
                     </table>
                     {buyerResultsQuery.hasNextPage ? (
-                      <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                      <div className="border-t border-cream-300 bg-white px-3 py-2 text-center">
                         <Button
                           type="button"
                           variant="ghost"

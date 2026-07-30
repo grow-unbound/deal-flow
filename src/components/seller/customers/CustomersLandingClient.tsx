@@ -1,6 +1,5 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { triggerHaptic } from '@/lib/haptics';
@@ -18,7 +17,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,7 +33,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
-import { loadCalloutRows } from '@/lib/callout-loader';
 
 type SortOption = 'Recent activity' | 'Sales (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent activity', 'Sales (high → low)', 'Outstanding (high → low)'];
@@ -48,42 +45,6 @@ function formatDate(value: string | null) {
 function formatOverdueDays(value: number | null | undefined) {
   if (value == null) return '—';
   return `${value}d overdue`;
-}
-
-function tabularInline(value: string): ReactNode {
-  return <span className="tabular-inline">{value}</span>;
-}
-
-function mapNeedsCallRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
-  return (callouts?.needs_call ?? []).map((buyer) => ({
-    id: buyer.id,
-    initials: buyer.avatar.initials,
-    hue: buyer.avatar.hue,
-    name: buyer.business_name,
-    reason: (
-      <>
-        {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
-        {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
-      </>
-    ),
-    trailing: <span className="font-mono text-base tabular">{formatNumberValue(buyer.dues, 'CURRENCY_EXACT')}</span>,
-  }));
-}
-
-function mapWinBackRows(callouts: CustomersLandingResponse['callouts'] | undefined) {
-  return (callouts?.win_back ?? []).map((buyer) => ({
-    id: buyer.id,
-    initials: buyer.avatar.initials,
-    hue: buyer.avatar.hue,
-    name: buyer.business_name,
-    reason: (
-      <>
-        {buyer.phone ?? '—'}
-        {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
-      </>
-    ),
-    trailing: <span className="font-mono text-base tabular">{formatNumberValue(buyer.prior_value, 'CURRENCY_EXACT')}</span>,
-  }));
 }
 
 function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolean {
@@ -279,8 +240,7 @@ function CustomersLandingContent({
   if (!data) return <CustomersLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
-  const callouts = summaryData?.callouts;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+  const groups: FilterBarGroup[] =(summaryData?.filters?.groups ?? []).map((group) => ({
     key: group.key,
     label: group.label,
     options: group.options,
@@ -344,35 +304,6 @@ function CustomersLandingContent({
             label: 'Overdue amount',
             value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
             sub: `${kpis?.overdue_customer_count ?? 0} customers`,
-          },
-        ]}
-      />
-
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'collect_overdue_balances',
-            kind: 'risk',
-            eyebrow: 'Collect overdue balances',
-            hint: `${callouts?.needs_call_total ?? callouts?.needs_call?.length ?? 0}`,
-            getHref: (row) => `/customers/${row.id}`,
-            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapNeedsCallRows>[number]>(
-              '/api/tenant/customers?callout=needs_call',
-              async (payload) => mapNeedsCallRows(payload.callouts),
-            ),
-            rows: mapNeedsCallRows(callouts),
-          },
-          {
-            id: 'win_back_inactive_customers',
-            kind: 'opportunity',
-            eyebrow: 'Win back inactive customers',
-            hint: `${callouts?.win_back_total ?? callouts?.win_back?.length ?? 0}`,
-            getHref: (row) => `/customers/${row.id}`,
-            loadRows: () => loadCalloutRows<CustomersLandingResponse, ReturnType<typeof mapWinBackRows>[number]>(
-              '/api/tenant/customers?callout=win_back',
-              async (payload) => mapWinBackRows(payload.callouts),
-            ),
-            rows: mapWinBackRows(callouts),
           },
         ]}
       />
@@ -449,7 +380,7 @@ function CustomersLandingContent({
               onClick={() => router.push(`/customers/${buyer.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="ent flex items-center gap-3">
                   {/* <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} /> */}
                   <div className="min-w-0">
@@ -460,24 +391,24 @@ function CustomersLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">
+              <td className="px-3 py-2 text-sm text-cream-800">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-cream-900">{buyer.cohort}</p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <div className="min-w-0 text-left">
                   <p className="truncate text-sm text-cream-900">{priceListLabel}</p>
                   <p className="mt-1 truncate text-xs text-cream-500">{priceListSubtext}</p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-5 py-3.5 text-right text-md font-medium tabular-nums text-cream-800">
+              <td className="px-3 py-2 text-right text-md font-medium tabular-nums text-cream-800">
                 <span className="tabular-inline">{formatNumberValue(buyer.dues, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-5 py-3.5 text-right text-sm text-cream-800">
+              <td className="px-3 py-2 text-right text-sm text-cream-800">
                 <div className="flex flex-col items-end">
                   <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
                     {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatNumberValue(buyer.overdue_amount, 'CURRENCY_THRESHOLD') : '-'}
@@ -485,8 +416,8 @@ function CustomersLandingContent({
                   {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
+              <td className="px-3 py-2">
                 <div className="flex flex-col gap-1">
                   <div className="h-[5px] w-[120px] overflow-hidden rounded-full bg-cream-200">
                     <div
@@ -499,7 +430,7 @@ function CustomersLandingContent({
                   </span>
                 </div>
               </td>
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <StatusTag label={buyer.status.label} tone={buyer.status.tone} className="whitespace-nowrap" />
                   {buyer.whatsapp_opted_out ? (
@@ -509,7 +440,7 @@ function CustomersLandingContent({
                   ) : null}
                 </div>
               </td>
-              <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
+              <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
             </tr>
           );
           })}

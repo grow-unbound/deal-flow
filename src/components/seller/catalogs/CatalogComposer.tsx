@@ -1092,7 +1092,7 @@ export function CatalogComposer({
             }
             center={
               <ComposerMainCard>
-                <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-3 py-2">
                   <div>
                     <div className="text-base font-semibold text-cream-900">
                       {filteredProducts.length} of {productCount} products match
@@ -1144,7 +1144,7 @@ export function CatalogComposer({
                 </div>
 
                 {fieldErrors.products ? (
-                  <div className="border-b border-cream-300 px-4 py-3">
+                  <div className="border-b border-cream-300 px-3 py-2">
                     <Alert variant="warning">
                       <AlertDescription>{fieldErrors.products}</AlertDescription>
                     </Alert>
@@ -1152,7 +1152,7 @@ export function CatalogComposer({
                 ) : null}
 
                 {priceSource === 'manual' ? (
-                  <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-white px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-white px-3 py-2">
                     <div className="flex items-center gap-2 text-sm font-semibold text-cream-800">
                       Campaign pricing
                     </div>
@@ -1203,7 +1203,7 @@ export function CatalogComposer({
                     </Button>
                   </div>
                 ) : (
-                  <div className="border-b border-cream-300 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+                  <div className="border-b border-cream-300 bg-teal-50 px-3 py-2 text-sm text-teal-800">
                     Campaign prices are populated from {priceLists.find((priceList) => priceList.id === priceListId)?.name ?? 'selected pricelist'}; products without a pricelist item use base selling price.
                   </div>
                 )}
@@ -1269,7 +1269,7 @@ export function CatalogComposer({
                                   if (nextChecked) clearFieldError('products');
                                 }}
                               />
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-2">
                                 <div className="flex items-center gap-3">
                                   <EntityAvatar
                                     initials={getInitials(product.brand_name || product.display_name)}
@@ -1289,9 +1289,9 @@ export function CatalogComposer({
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.cost_price != null ? formatNumberValue(product.cost_price, 'CURRENCY_EXACT') : '—'}</td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{base > 0 ? formatNumberValue(base, 'CURRENCY_EXACT') : '—'}</td>
-                              <td className="px-4 py-3 text-right">
+                              <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{product.cost_price != null ? formatNumberValue(product.cost_price, 'CURRENCY_EXACT') : '—'}</td>
+                              <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{base > 0 ? formatNumberValue(base, 'CURRENCY_EXACT') : '—'}</td>
+                              <td className="px-3 py-2 text-right">
                                 {priceSource === 'manual' ? (
                                   <div className="ml-auto flex w-[140px] items-center rounded-[8px] border border-cream-300 bg-white px-3 py-2">
                                     <span className="shrink-0 font-mono text-sm text-cream-600">₹</span>
@@ -1312,13 +1312,13 @@ export function CatalogComposer({
                                   <span className="font-mono font-semibold text-cream-900">{formatNumberValue(campaignPrice, 'CURRENCY_EXACT')}</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right font-mono text-cream-900">
+                              <td className="px-3 py-2 text-right font-mono text-cream-900">
                                 {discount == null ? '—' : `${formatNumberValue(Math.max(0, discount), 'PERCENTAGE')}`}
                               </td>
-                              <td className="px-4 py-3 text-right font-mono text-cream-900">
+                              <td className="px-3 py-2 text-right font-mono text-cream-900">
                                 {margin == null ? '—' : `${formatNumberValue(margin, 'PERCENTAGE')}`}
                               </td>
-                              <td className="px-4 py-3 text-right">
+                              <td className="px-3 py-2 text-right">
                                 <Select
                                   value={tagOverrides[product.id] ?? 'auto'}
                                   onValueChange={(value) => applyTagOverride([product.id], value as CatalogComposerTag | 'auto')}
@@ -1352,7 +1352,7 @@ export function CatalogComposer({
                       </tbody>
                     </table>
                     {productsQuery.hasNextPage ? (
-                      <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                      <div className="border-t border-cream-300 bg-white px-3 py-2 text-center">
                         <Button
                           type="button"
                           variant="ghost"

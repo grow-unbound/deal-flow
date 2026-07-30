@@ -15,8 +15,6 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -234,7 +232,6 @@ function LocationsLandingContent({
   const showRefreshingState = isLoading && !data;
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
   const kpis = summaryData?.kpis ?? landingData.kpis;
-  const callouts = summaryData?.callouts ?? landingData.callouts;
 
   return (
     <PageWrap>
@@ -292,50 +289,6 @@ function LocationsLandingContent({
             ]}
           />
 
-          <V3CalloutPanel
-            items={[
-              {
-                id: 'conversions',
-                kind: 'info',
-                eyebrow: 'Locations with expiring estimates',
-                hint: `${callouts.conversions.length}`,
-                rows: callouts.conversions.map((row) => ({
-                  initials: row.initials,
-                  hue: 'teal' as const,
-                  name: row.name,
-                  reason: `${row.estimate_number} · exp in ${row.expires_in_days}d`,
-                  trailing: formatNumberValue(row.total_amount ?? 0, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'top_locations',
-                kind: 'info',
-                eyebrow: 'Locations driving sales',
-                hint: `${callouts.top_locations.length}`,
-                rows: callouts.top_locations.map((row) => ({
-                  initials: row.initials,
-                  hue: 'teal' as const,
-                  name: row.name,
-                  reason: `${row.orders_count} orders · ${row.buyers_count} buyers`,
-                  trailing: formatNumberValue(row.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'collections_overdue',
-                kind: 'risk',
-                eyebrow: 'Locations with overdue balances',
-                hint: `${callouts.collections_overdue.length}`,
-                rows: callouts.collections_overdue.map((row) => ({
-                  initials: row.initials,
-                  hue: 'ember' as const,
-                  name: row.name,
-                  reason: `${formatNumberValue(row.outstanding_dues ?? 0, 'CURRENCY_THRESHOLD')} · oldest ${row.oldest_unpaid_days}d unpaid`,
-                  trailing: <StatusTag tone="danger" label="Overdue" />,
-                })),
-              },
-            ]}
-          />
-
           <FilterBar
             count={`${filtered.length} locations`}
             searchPlaceholder="Search location…"
@@ -387,7 +340,7 @@ function LocationsLandingContent({
                   onPointerDown={() => triggerHaptic()}
                   className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
                 >
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-3">
                       <EntityAvatar size={38} initials={row.initials} hue="teal" />
                       <div className="min-w-0">
@@ -396,28 +349,28 @@ function LocationsLandingContent({
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.active_buyers}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.outstanding_dues > 0 ? formatNumberValue(row.outstanding_dues, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.invoice_count_90d > 0 ? row.invoice_count_90d : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : demandCount > 0 ? demandCount : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : row.conversion_90d > 0 ? `${row.conversion_90d}%` : '—'}
                   </td>
-                  <td className="px-4 py-3.5 text-right text-cream-500">
+                  <td className="px-3 py-2 text-right text-cream-500">
                     <ChevronRight size={14} className="text-cream-400" />
                   </td>
                 </tr>

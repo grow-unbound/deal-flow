@@ -284,14 +284,14 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
             return (
               <SelectableRow key={row.price_list_id} selected={isSelected}>
                 {isAdmin ? (
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2">
                     <RowSelectCheckbox
                       checked={isSelected}
                       onChange={() => selection.toggleRow(row.price_list_id)}
                     />
                   </td>
                 ) : null}
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-3">
                     <EntityAvatar initials={getInitials(row.price_list_name)} hue="teal" size={38} />
                     <div className="min-w-0">
@@ -304,10 +304,10 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <MemberToggle checked={isMember} label={`${row.price_list_name} membership`} />
                 </td>
-                <td className="group px-5 py-3.5 text-right font-mono font-semibold text-cream-950">
+                <td className="group px-3 py-2 text-right font-mono font-semibold text-cream-950">
                   {isEditing ? (
                     <div className="flex justify-end gap-2">
                       <div className="inline-flex h-9 w-32 items-center rounded-[8px] border border-cream-300 bg-white px-2 focus-within:border-ember-400">
@@ -357,13 +357,13 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                     </button>
                   )}
                 </td>
-                <td className={cn('px-5 py-3.5 font-mono text-sm', isExpired ? 'text-cream-500 line-through' : 'text-cream-900')}>
+                <td className={cn('px-3 py-2 font-mono text-sm', isExpired ? 'text-cream-500 line-through' : 'text-cream-900')}>
                   {validity}
                 </td>
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <PriceListStatusBadge is_active={row.is_active} valid_from={row.valid_from} valid_to={row.valid_to} />
                 </td>
-                <td className="px-5 py-3.5 text-right">
+                <td className="px-3 py-2 text-right">
                   {row.avg_discount_pct != null ? (
                     <span
                       className={cn(
@@ -379,7 +379,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                   )}
                 </td>
                 {isAdmin ? (
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     {row.avg_margin_pct != null ? (
                       <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
                         {formatNumberValue(row.avg_margin_pct, 'PERCENTAGE')}

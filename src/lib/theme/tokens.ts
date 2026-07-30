@@ -141,7 +141,7 @@ export const transitionDuration = {
 
 // Layout constants (for use in shell components)
 export const layout = {
-  sidebarWidth: '248px',
+  sidebarWidth: '216px',
   topbarHeight: '64px',
   contentMax: '1280px',
   buyerTabBarHeight: '60px',

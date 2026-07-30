@@ -176,7 +176,7 @@ export function LinesTable({
 
   return (
     <section className="doc-lines flex h-full min-h-0 flex-col overflow-visible rounded-[14px] border border-cream-300 bg-white">
-      <div className="doc-lines-head flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 px-5 py-4">
+      <div className="doc-lines-head flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 px-4 py-3">
         <div>
           <p className="title text-base font-semibold text-cream-950">
             {readOnly

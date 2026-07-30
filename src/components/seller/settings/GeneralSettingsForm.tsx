@@ -144,7 +144,7 @@ export function GeneralSettingsForm({
 
   if (error) {
     return (
-      <div className="w-full rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-base text-ember-900">
+      <div className="w-full rounded-lg border border-ember-200 bg-ember-50 px-3 py-2 text-base text-ember-900">
         <p className="font-medium">Could not load settings.</p>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={refetch}>
           Retry

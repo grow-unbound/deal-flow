@@ -14,8 +14,6 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -242,7 +240,6 @@ function BrandLandingContent({
     },
   });
 
-  const topPerformers = useMemo(() => summaryData?.todays_read?.top_performers ?? [], [summaryData?.todays_read?.top_performers]);
   const catalogFresh =
     summaryData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
   const activeBuyers = summaryData?.kpis?.buyers_with_orders_mtd ?? 0;
@@ -302,26 +299,6 @@ function BrandLandingContent({
             label: 'Recently active in campaigns',
             value: `${catalogFresh}`,
             sub: freshnessHelp(),
-          },
-        ]}
-      />
-
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'brands_driving_sales',
-            kind: 'info',
-            eyebrow: 'Brands driving sales',
-            hint: `${topPerformers.length}`,
-            getHref: (row) => `/brands/${row.id}`,
-            rows: topPerformers.map((brand, index) => ({
-              id: String(brand.id),
-              initials: getInitials(brand.name),
-              hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
-              name: brand.name,
-              reason: `${portfolioGmv > 0 ? Math.round((brand.gmv_mtd / portfolioGmv) * 100) : 0}% of portfolio`,
-              trailing: formatNumberValue(brand.gmv_mtd, 'CURRENCY_THRESHOLD'),
-            })),
           },
         ]}
       />
@@ -404,7 +381,7 @@ function BrandLandingContent({
             onClick={() => router.push(`/brands/${brand.id}`)}
             onPointerDown={() => triggerHaptic()}
           >
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <div className="ent flex items-center gap-3">
                 <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={38} />
                 <div className="min-w-0">
@@ -413,10 +390,10 @@ function BrandLandingContent({
                 </div>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-right text-base text-cream-900">
+            <td className="px-3 py-2 text-right text-base text-cream-900">
               <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD')}</span>
             </td>
-            <td className="px-5 py-3.5 text-right text-base text-cream-900">
+            <td className="px-3 py-2 text-right text-base text-cream-900">
               <div className="mb-1 h-[5px] w-[184px] overflow-hidden rounded-full bg-cream-200">
                 <div
                   className={`h-[5px] rounded-full ${brand.hue === 'ember' ? 'bg-ember-400' : brand.hue === 'cream' ? 'bg-cream-600' : 'bg-teal-500'}`}
@@ -425,13 +402,13 @@ function BrandLandingContent({
               </div>
               <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD')}</p>
             </td>
-            <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900 tabular-nums">
+            <td className="px-3 py-2 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published campaign'}</p>
             </td>
-            <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
+            <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
           </tr>
         ))}
       </LandingTable>
