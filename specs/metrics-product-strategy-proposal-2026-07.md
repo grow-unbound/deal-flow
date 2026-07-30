@@ -26,6 +26,8 @@ This revision reassesses the earlier proposal from first principles. Previous re
 
 ## How to read the recommendations
 
+
+
 ### Feasibility
 
 
@@ -36,6 +38,8 @@ This revision reassesses the earlier proposal from first principles. Previous re
 | `ON-OPEN`     | Practical as a bounded database aggregate when one detail page opens; do not maintain it daily for every entity.                                                |
 | `CONDITIONAL` | Usable only when the named configuration, integration, or data-quality condition is satisfied.                                                                  |
 | `LATER`       | Do not ship as truth with the current data. It needs missing history, provenance, ledger events, or attribution.                                                |
+
+
 
 
 ### Time basis
@@ -66,6 +70,8 @@ Technically feasible does not automatically mean suitable. An option still needs
 - **NOW is not period-filtered:** Do not use a global period control on pages dominated by current posture. If a page mixes NOW and period facts, label each card explicitly.
 - **Advanced insights use progressive disclosure:** BAU owners can stop after Pulse and Actions. Growth-oriented owners can open Explore or “More insights.”
 - **Unavailable is not zero:** Show an explicit warning when data is incomplete. Use zero only when it is a verified business result.
+
+
 
 ## Landing-page period contract
 
@@ -106,6 +112,8 @@ Explore has no page-global control. A history card may offer 3M/12M/YTD locally 
 - **Stock with no sale in 90 days:** current available-stock value/units for products with no eligible invoice line in the last 90 days. This is not inventory age or true dead stock.
 - **Source contribution:** Buyer App demand/invoices may use their direct source fields. Campaign demand uses only directly linked Estimates/Orders; campaign-attributed invoiced sales remain conditional on durable document lineage. Never call either incremental revenue.
 
+
+
 ### Primary demand document
 
 Yukti must resolve one primary demand document per tenant and use it consistently anywhere the UI says demand, submitted, repeat, or response:
@@ -129,6 +137,8 @@ Adaptive UI copy:
 | Campaign response         | Open-to-enquiry        | Open-to-order      |
 | Dashboard current demand  | Open estimate value    | Open order value   |
 | Dashboard action          | Estimate follow-up     | Order execution    |
+
+
 
 
 ## Current technical limits
@@ -164,7 +174,11 @@ This audit distinguishes product feasibility from the code currently serving the
 
 ---
 
+
+
 # Operations modules
+
+
 
 ## 1. Estimates
 
@@ -186,6 +200,8 @@ This audit distinguishes product feasibility from the code currently serving the
 | Estimates converted to orders — count + value                             | Growth      | `THIS MONTH · CONDITIONAL` | Show only when Sales Orders are enabled.                                 |
 | Estimate-to-order rate                                                    | Growth      | `THIS MONTH · CONDITIONAL` | Show only for an enabled, linked Estimate-to-Order workflow.             |
 | Buyer App estimate value                                                  | Growth      | `THIS MONTH · READY`       | Shows self-service demand without mixing it with orders.                 |
+
+
 
 
 ### Action options
@@ -217,6 +233,8 @@ Optional contextual aids, maximum two:
 | Engagement timeline                                                | `READY`       | Sent, viewed, accepted, and converted timestamps only when not already present in Activity.            |
 
 
+
+
 ## 2. Sales Orders
 
 **Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **0** · Explore **0**
@@ -237,6 +255,8 @@ Optional contextual aids, maximum two:
 | Orders waiting beyond the status SLA                    | BAU         | `NOW · CONDITIONAL`  | Use only after the tenant accepts explicit thresholds for each status.          |
 | Cancelled orders — count + value                        | Growth      | `THIS MONTH · READY` | Useful when cancellations are material and reasons are captured.                |
 | Exact fill rate / OTIF                                  | Growth      | `LATER`              | Requires reliable fulfilled/backordered quantities and promised-date semantics. |
+
+
 
 
 ### Action options
@@ -268,6 +288,8 @@ Optional contextual aids, maximum two:
 | Historical order quality                                                      | `LATER`       | Exact fill rate and OTIF require missing line-level fulfillment facts.                  |
 
 
+
+
 ## 3. Invoices
 
 **Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **0** · Explore **0**
@@ -288,6 +310,8 @@ Optional contextual aids, maximum two:
 | Overdue 30+ days                                                              | BAU         | `NOW · READY`              | Useful alternative for credit-heavy businesses.                       |
 | Customers with overdue invoices                                               | BAU         | `NOW · READY`              | A workload view when customer count matters more than rupee total.    |
 | Cash collected in period                                                      | Growth      | `THIS MONTH · CONDITIONAL` | Use only when payment sync and partial-payment handling are complete. |
+
+
 
 
 ### Action options
@@ -318,6 +342,8 @@ One optional contextual panel:
 | Historical invoice margin                                              | `LATER`     | Current invoice lines do not preserve cost at sale.                                                 |
 
 
+
+
 ## 4. Customers
 
 **Recommended shape:** Landing Pulse **4** · Actions **2** · Detail Pulse **4** · Explore **4**
@@ -339,6 +365,8 @@ One optional contextual panel:
 | Repeat customers — count + rate                                                                                         | Growth      | `90D · REWORK`      | Feasible from invoices, but the current activity path is order-led.         |
 | Buyer App enabled customers                                                                                             | Growth      | `NOW · READY`       | Useful alternative for tenants prioritising digital adoption.               |
 | Total active customers                                                                                                  | BAU         | `NOW · READY`       | Contextual denominator; usually belongs in the page subtitle.               |
+
+
 
 
 ### Action options
@@ -372,6 +400,8 @@ One optional contextual panel:
 | Historical gross margin                                               | Growth      | `LATER`            | Requires cost-at-sale provenance.                                                                     |
 
 
+
+
 ### Explore options
 
 Render up to four recommended cards. Show Payment behavior only when due dates and final payment timestamps pass validation; otherwise use Current pricing setup as the non-overlapping fallback. Place remaining alternatives behind “More insights.”
@@ -387,6 +417,8 @@ Render up to four recommended cards. Show Payment behavior only when due dates a
 | Current pricing setup                                                                                                            | BAU         | `NOW · READY`           | Assigned Pricelists, Groups, and fallback path.                                                                    |
 | Products not bought recently                                                                                                     | Growth      | `ON-OPEN · CONDITIONAL` | Only repeated products past their normal interval; avoid speculative cross-sell.                                   |
 | Margin and price realization                                                                                                     | Growth      | `LATER`                 | Historical margin is not reliable without cost-at-sale.                                                            |
+
+
 
 
 ## 5. Products
@@ -410,6 +442,8 @@ Render up to four recommended cards. Show Payment behavior only when due dates a
 | Total available units                                                                              | BAU         | `NOW · READY`        | Useful for inventory-heavy tenants but weak as a portfolio-wide decision metric.   |
 | Open ordered quantity versus stock                                                                 | BAU         | `NOW · CONDITIONAL`  | Directionally useful only if open-order semantics are agreed; not fill rate.       |
 | Gross margin                                                                                       | Growth      | `LATER`              | Historical cost-at-sale is missing.                                                |
+
+
 
 
 ### Action options
@@ -442,6 +476,8 @@ Render up to four recommended cards. Show Payment behavior only when due dates a
 | Gross margin                                                              | Growth      | `LATER`               | Requires cost-at-sale.                                 |
 
 
+
+
 ### Explore options
 
 
@@ -459,7 +495,11 @@ Render up to four recommended cards. Show Payment behavior only when due dates a
 
 ---
 
+
+
 # Growth modules
+
+
 
 ## 6. Buyer App
 
@@ -486,6 +526,8 @@ Buyer App is a channel dashboard, not an entity module. Buyer-level rows deep-li
 | Average demand documents per enabled customer                                       | Growth      | `90D · REWORK`      | Feasible but usually less actionable than submitting and repeat-customer rates.                  |
 
 
+
+
 ### Action options
 
 
@@ -496,6 +538,8 @@ Buyer App is a channel dashboard, not an entity module. Buyer-level rows deep-li
 | ★ Used the app but submitted no demand - Buyer Name, App Status (trailing), Invoiced sales, Demand value (supporting)           | `NOW + 90D · REWORK` | Last activity and prior value; contact for help.                                                      |
 | Previously submitted app demand, now inactive                                                                                   | `NOW + 90D · REWORK` | Previous app value and days since the primary demand document; re-engage.                             |
 | App demand needing operational action                                                                                           | `NOW · REWORK`       | Follow up on estimates or execute orders according to the primary demand document.                    |
+
+
 
 
 ### Explore options
@@ -511,6 +555,8 @@ Buyer App is a channel dashboard, not an entity module. Buyer-level rows deep-li
 | Assisted versus app order quality                             | Growth      | `90D · CONDITIONAL` | Compare AOV/cancellation only; exact fill-rate comparison is unavailable.                  |
 | Customers moving from assisted to app                         | Growth      | `90D · ON-OPEN`     | Ranked transition list; do not maintain buyer-by-day histories.                            |
 | Cart and checkout drop-off                                    | Growth      | `LATER`             | Middle funnel events are incomplete.                                                       |
+
+
 
 
 ## 7. Campaigns
@@ -535,6 +581,8 @@ Use “opened” and “campaign-linked demand” rather than “reached,” “
 | Live campaigns                                                                                   | BAU         | `NOW · READY`       | Workflow context; often better in the subtitle.                                        |
 | Campaign enquiry pipeline                                                                        | BAU         | `90D · READY`       | Order-primary alternative only; estimates remain a separately labelled upstream stage. |
 | WhatsApp delivery rate                                                                           | BAU         | `90D · CONDITIONAL` | Available only for campaigns linked to authoritative broadcast delivery events.        |
+
+
 
 
 ### Action options
@@ -565,6 +613,8 @@ Use “opened” and “campaign-linked demand” rather than “reached,” “
 | Days remaining                                                                      | BAU         | `NOW · READY`            | Prefer in campaign header metadata rather than a KPI card.           |
 
 
+
+
 ### Explore options
 
 
@@ -578,6 +628,8 @@ Use “opened” and “campaign-linked demand” rather than “reached,” “
 | Response by Customer Group                                        | Growth      | `LIFETIME · CONDITIONAL` | Uses current membership unless publish-time audience was saved.                                                  |
 | Previous-campaign comparison                                      | Growth      | `LATER`                  | Campaign audiences, durations, and assortments are not naturally comparable.                                     |
 | Cart/checkout funnel                                              | Growth      | `LATER`                  | Middle events are incomplete.                                                                                    |
+
+
 
 
 ## 8. Customer Groups
@@ -603,6 +655,8 @@ Current group membership is configuration, not historical truth. Any sales metri
 | Rule-based Groups needing refresh                                                           | BAU         | `NOW · CONDITIONAL`  | Requires an agreed refresh/failure SLA.                                                       |
 | Total Groups                                                                                | BAU         | `NOW · READY`        | Useful context, usually in the subtitle rather than a KPI.                                    |
 | Combined Group sales                                                                        | Growth      | `LATER`              | Overlapping memberships make a summed headline misleading without a declared allocation rule. |
+
+
 
 
 ### Action options
@@ -633,6 +687,8 @@ Current group membership is configuration, not historical truth. Any sales metri
 | Historical group growth                                                         | Growth      | `LATER`            | Membership effective dates are absent.                  |
 
 
+
+
 ### Explore options
 
 
@@ -645,6 +701,8 @@ Current group membership is configuration, not historical truth. Any sales metri
 | Buyer App adoption                                                 | Growth      | `90D · ON-OPEN`       | Access, ordering, and app contribution among current members.             |
 | Monthly sales trend                                                | Growth      | `LATER`               | Without membership history, the past is recomputed using today's members. |
 | Historical margin                                                  | Growth      | `LATER`               | Cost-at-sale is absent.                                                   |
+
+
 
 
 ## 9. Pricelists
@@ -669,6 +727,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | ★ Pricelists expiring in 30 days - count, static text (supporting)                         | BAU         | `NOW · READY`       | Useful when validity windows are common.                                              |
 | Customer Groups with active pricing                                                        | BAU         | `NOW · READY`       | Setup coverage for tenants using group pricing.                                       |
 | Customers on base price                                                                    | Growth      | `NOW · CONDITIONAL` | Useful only when tenant policy expects custom pricing; base price may be intentional. |
+
+
 
 
 ### Action options
@@ -699,6 +759,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | Sales using this Pricelist                                         | Growth      | `LATER`             | Transaction lines do not preserve resolved Pricelist provenance. |
 
 
+
+
 ### Explore options — Coverage & checks
 
 
@@ -711,6 +773,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | Activity log                                                       | BAU         | `NOW · READY`       | Recent assignment and price changes when audit data is complete.                          |
 | Historical adoption/value                                          | Growth      | `LATER`             | Requires transaction-level resolved Pricelist provenance.                                 |
 | Margin impact trend                                                | Growth      | `LATER`             | Requires both Pricelist provenance and cost-at-sale.                                      |
+
+
 
 
 ## 10. Brands
@@ -734,6 +798,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | ★ Stock in brands with no sale in 90 days - total units + product count and brand count (supporting) | Both        | `NOW + 90D · REWORK` | Count/units are safe; value depends on complete current cost.               |
 | Brands with sales falling versus prior 90 days                                                       | Growth      | `90D · REWORK`       | Low-cardinality comparison is affordable, but current facts are order-led.  |
 | Gross margin by brand                                                                                | Growth      | `LATER`              | Historical cost-at-sale is absent.                                          |
+
+
 
 
 ### Action options
@@ -765,6 +831,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | Gross margin                                                                 | Growth      | `LATER`               | Cost-at-sale is missing.                        |
 
 
+
+
 ### Explore options
 
 
@@ -777,6 +845,8 @@ Pricelists are a configuration and diagnostics surface, not a time-series perfor
 | Campaign and Buyer App contribution                           | Growth      | `90D · CONDITIONAL` | Directly linked source contribution only.                                            |
 | Sales by location                                             | Growth      | `90D · ON-OPEN`     | Location mix where invoice location is populated.                                    |
 | Historical price/margin realization                           | Growth      | `LATER`             | Cost-at-sale is absent; price-only distribution may be added separately.             |
+
+
 
 
 ## 11. Locations
@@ -802,6 +872,8 @@ Location metrics use the explicit location on estimates, orders, and invoices. T
 | Locations with recent sellers low/out of stock                                    | BAU         | `NOW + 90D · CONDITIONAL` | Requires a clear location-to-warehouse relationship.                           |
 | Top location share of sales                                                       | Growth      | `90D · REWORK`            | Invoice-based concentration; current location facts are order-led.             |
 | Gross margin / fill rate                                                          | Growth      | `LATER`                   | Cost-at-sale and complete fulfillment facts are missing.                       |
+
+
 
 
 ### Action options
@@ -833,6 +905,8 @@ Location metrics use the explicit location on estimates, orders, and invoices. T
 | Gross margin / fill rate                                                    | Growth      | `LATER`                   | Required historical cost/fulfillment facts are missing.                                |
 
 
+
+
 ### Explore options
 
 
@@ -845,6 +919,8 @@ Location metrics use the explicit location on estimates, orders, and invoices. T
 | Buyer App and campaign contribution                               | Growth      | `90D · CONDITIONAL` | Directly linked source contribution.                               |
 | ★ Customers buying here - see metrics in the last column          | Growth      | `90D · ON-OPEN`     | Ranked customer activity, not permanent customer ownership.        |
 | Customer health by owned territory                                | Growth      | `LATER`             | There is no direct customer-to-location ownership model.           |
+
+
 
 
 ## 12. Warehouses
@@ -870,6 +946,8 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 | Products tracked                                                                           | BAU         | `NOW · READY`             | Configuration context, usually in the subtitle.                               |
 | ★ Products out of stock regardless of sales - product count + warehouse count (supporting) | BAU         | `NOW · READY`             | Stable service-level posture without warehouse sales attribution.             |
 | Historical stock turns                                                                     | Growth      | `LATER`                   | Requires a complete movement ledger.                                          |
+
+
 
 
 ### Action options
@@ -902,6 +980,8 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 | Inventory turns                                                                        | Growth      | `LATER`                   | Movement history is missing.                                   |
 
 
+
+
 ### Explore options
 
 
@@ -915,6 +995,8 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 | Stock value by brand/category                                 | BAU         | `NOW · CONDITIONAL`       | Current-cost estimate.                                                                                                    |
 | Inventory movement/activity                                   | BAU         | `LATER`                   | Audit/inbound data is not a complete ledger.                                                                              |
 | Historical stock trend / age                                  | Growth      | `LATER`                   | Not reconstructable reliably.                                                                                             |
+
+
 
 
 ## 13. Categories
@@ -938,6 +1020,8 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 | ★ Categories with no sale in 90 days - category count + static text (Supporting)                 | Both        | `NOW + 90D · REWORK` | Count/units are safe; value depends on complete current cost.                  |
 | ★ Uncategorised active products - product count + static text (supporting)                       | BAU         | `NOW · READY`        | Search/reporting data-quality issue.                                           |
 | Gross margin by category                                                                         | Growth      | `LATER`              | Cost-at-sale is missing.                                                       |
+
+
 
 
 ### Action options
@@ -969,6 +1053,8 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 | Gross margin                                                                  | Growth      | `LATER`               | Cost-at-sale is missing.                    |
 
 
+
+
 ### Explore options
 
 
@@ -985,7 +1071,11 @@ Warehouse analytics is current-state inventory intelligence. Do not present hist
 
 ---
 
+
+
 # Dashboard portfolios
+
+
 
 ## Seller Dashboard — business control tower
 
@@ -1014,6 +1104,8 @@ The Seller Dashboard is the only cross-module command centre. It shows overall b
 | Gross margin                                                               | Growth      | `LATER`               | Cost-at-sale is missing.                                                      |
 
 
+
+
 ### Action options
 
 
@@ -1026,6 +1118,8 @@ The Seller Dashboard is the only cross-module command centre. It shows overall b
 | Product availability                                                                                                     | `NOW + 90D · REWORK`      | Recent invoice sellers low/out of stock; current demand path is order-led.                                              |
 | Customer reactivation                                                                                                    | `NOW + 90D · CONDITIONAL` | Due-to-reorder and valuable inactive customers.                                                                         |
 | ★ Buyer App activation - Buyer Name, invoice Amount (trailing), buyer-app status, invoice count last 90days (supporting) | `NOW + 90D · REWORK`      | Valuable customers not enabled or enabled but unused; value must be invoice-led rather than the current order-led path. |
+
+
 
 
 ### Explore options
@@ -1045,6 +1139,8 @@ Show three recommended cards. Put the rest behind “More insights.” Show thes
 | Margin leakage                                         | Growth      | `LATER`               | Cost-at-sale is missing.                                                                                                 |
 
 
+
+
 ## Buyer App Dashboard — channel adoption workspace
 
 Use the complete option portfolio in [Buyer App](#6-buyer-app). Its default composition is:
@@ -1058,6 +1154,8 @@ Do not repeat seller-wide receivables, inventory, margin, or general order-execu
 On the Seller Dashboard, use exactly one Buyer App cross-link: show the starred activation Action when that queue has exceptions; otherwise show the Explore teaser. Never render both.
 
 ---
+
+
 
 # Recommended density summary
 
@@ -1084,6 +1182,8 @@ These are curated defaults, not structural requirements. Render fewer when no ot
 
 ---
 
+
+
 # Challenges applied to the reviewed selections
 
 Most revised stars remain intact. The following were changed because keeping them would create duplicate or misleading information:
@@ -1100,7 +1200,11 @@ Most revised stars remain intact. The following were changed because keeping the
 
 ---
 
+
+
 # Current implementation implications
+
+
 
 ## Keep and correct
 
@@ -1110,6 +1214,8 @@ Most revised stars remain intact. The following were changed because keeping the
 - Resolve the primary demand document from tenant settings everywhere; do not let each route independently choose Estimates, Orders, or both.
 - Make Actions ignore the selected document-created period so older unresolved records never disappear.
 
+
+
 ## Remove or demote
 
 - Universal landing-page period selectors. Keep date controls only inside Estimate, Sales Order, and Invoice table toolbars.
@@ -1118,6 +1224,8 @@ Most revised stars remain intact. The following were changed because keeping the
 - Duplicate KPI strips and Performance tabs on estimate, order, and invoice details.
 - Active entity counts as headline cards when they belong in page subtitles.
 - Performance as the default-open tab; default to operational Details/Overview and remember only explicit user selection.
+
+
 
 ## Defer until source data improves
 
@@ -1129,6 +1237,8 @@ Most revised stars remain intact. The following were changed because keeping the
 - Full campaign/cart funnel and causal or incremental lift.
 
 ---
+
+
 
 # Metric admission checklist
 

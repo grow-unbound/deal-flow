@@ -12,7 +12,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -27,7 +26,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatAsOfLabel, formatDate, formatNumberValue } from '@/lib/utils';
+import { formatAsOfLabel, formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -58,19 +57,6 @@ function invoiceSourceFilterLabel(row: TenantInvoicesResponse['invoices'][number
   if (row.source_kind === 'converted') return 'Converted';
   if (row.source_kind === 'buyer_app') return 'Buyer App';
   return 'Direct';
-}
-
-function mapRowToCallout(row: { id: string; buyer_initials: string; buyer_hue: TenantInvoicesResponse['invoices'][number]['buyer_hue']; buyer_name: string }) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
-
-function invoiceSupportText(row: Pick<TenantInvoicesResponse['invoices'][number], 'invoice_number' | 'due_date'>) {
-  return `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`;
 }
 
 function InvoicesTableRowsSkeleton() {
@@ -289,47 +275,6 @@ function InvoicesLandingContent({
           {asOfLabel ? (
             <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
           ) : null}
-
-          <V3CalloutPanel
-            items={[
-              {
-                id: 'largest_overdue',
-                kind: 'risk',
-                eyebrow: 'Largest overdue balances',
-                hint: `${kpis?.overdue_count ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.largest_overdue ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'due_soon',
-                kind: 'info',
-                eyebrow: 'High-value invoices due soon',
-                hint: `${pulseAggregates?.due_soon_count ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.due_soon ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'newly_overdue',
-                kind: 'opportunity',
-                eyebrow: 'Newly overdue invoices',
-                hint: `${summaryData?.todays_read?.newly_overdue?.length ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.newly_overdue ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-            ]}
-          />
 
             <FilterBar
               count={`${displayRows.length} of ${total} invoices${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}

@@ -13,7 +13,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -28,7 +27,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { formatDate, formatNumberValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -45,15 +44,6 @@ const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = 
   void: 7,
   pending: 8,
 };
-
-function mapRowToCallout(row: Pick<EstimateLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
 
 function compareStatusRows(a: EstimateLandingRow, b: EstimateLandingRow) {
   const rankDelta = STATUS_SORT_RANK[a.status.value] - STATUS_SORT_RANK[b.status.value];
@@ -217,8 +207,6 @@ function EstimatesLandingContent({
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
 
   const pulseAggregates = summaryData?.pulse_aggregates;
-  const followUpHint = `${pulseAggregates?.sent_awaiting_count ?? 0}`;
-  const expiringHint = `${pulseAggregates?.expiring_soon_count ?? 0}`;
 
   if (isLoading && !data) return <EstimatesLandingSkeleton />;
 
@@ -234,7 +222,6 @@ function EstimatesLandingContent({
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;
-  const read = summaryData?.todays_read;
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
@@ -300,47 +287,6 @@ function EstimatesLandingContent({
                   label: 'Expiring in 7 days',
                   value: formatNumberValue(pulseAggregates?.expiring_soon_value ?? 0, 'CURRENCY_THRESHOLD'),
                   sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
-                },
-              ]}
-            />
-
-            <V3CalloutPanel
-              items={[
-                {
-                  id: 'needs_follow_up',
-                  kind: 'risk',
-                  eyebrow: 'Sent awaiting action',
-                  hint: followUpHint,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.needs_follow_up ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · Sent ${row.sent_at ? formatDate(row.sent_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'drafts_not_sent',
-                  kind: 'info',
-                  eyebrow: 'Drafts not sent',
-                  hint: `${kpis?.open_drafts ?? 0}`,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.drafts_not_sent ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · ${row.estimate_date ? formatDate(row.estimate_date) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'expiring_soon',
-                  kind: 'opportunity',
-                  eyebrow: 'Expiring unresolved',
-                  hint: expiringHint,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.expiring_soon ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · Expires ${row.expires_at ? formatDate(row.expires_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
                 },
               ]}
             />

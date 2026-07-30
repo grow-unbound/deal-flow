@@ -946,7 +946,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           These Zoho entities are synced into DealFlow after the connection completes.
                         </div>
                         <div className="mt-3 overflow-hidden rounded-2xl border border-cream-200">
-                          <div className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-200 bg-cream-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
+                          <div className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-200 bg-cream-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
                             <div>Zoho entity</div>
                             <div>DealFlow target</div>
                             <div>Capture</div>
@@ -958,7 +958,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                               return (
                                 <div
                                   key={`${mapping.source_entity}:${mapping.target_entity}`}
-                                  className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-100 px-4 py-3 last:border-b-0"
+                                  className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-100 px-3 py-2 last:border-b-0"
                                 >
                                   <div className="flex items-center gap-2 text-sm font-medium text-cream-900">
                                     <CheckCircle2 className="h-4 w-4 text-success-600" />
@@ -968,7 +968,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                                   <div className="text-sm text-cream-700">{labelize(mapping.trigger_type)}</div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="outline">{labelize(mode)}</Badge>
-                                    <Badge variant={mapping.direction === 'bidirectional' ? 'success' : 'outline'}>
+                                    <Badge variant={mapping.direction === 'bidirectional' ? 'success' : 'outline'} icon>
                                       {labelize(mapping.direction)}
                                     </Badge>
                                   </div>
@@ -984,7 +984,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     ) : null}
                     <div className="grid gap-3 sm:grid-cols-2">
                       {getImportScopes(wizardIntegration).map((scope) => (
-                        <div key={scope} className="rounded-xl border border-cream-200 bg-white px-4 py-3">
+                        <div key={scope} className="rounded-xl border border-cream-200 bg-white px-3 py-2">
                           <div className="flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-teal-600" />
                             <span className="text-sm font-medium text-cream-900">{labelize(scope)}</span>
@@ -1024,7 +1024,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     {oauthNotice ? (
                       <div
                         className={cn(
-                          'rounded-2xl border px-4 py-3 text-sm',
+                          'rounded-2xl border px-3 py-2 text-sm',
                           oauthNotice.kind === 'success'
                             ? 'border-success-200 bg-success-50 text-success-900'
                             : 'border-warning-500/30 bg-warning-50 text-warning-800',
@@ -1063,13 +1063,13 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     ) : null}
 
                     {!isSellerAdmin ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
                         Seller admin access is required to connect and start syncing.
                       </div>
                     ) : null}
 
                     {missingRequired.length > 0 ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
                         Fill the required fields before continuing.
                       </div>
                     ) : null}

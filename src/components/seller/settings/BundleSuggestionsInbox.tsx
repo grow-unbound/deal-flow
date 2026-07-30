@@ -149,24 +149,24 @@ export function BundleSuggestionsInbox({ initialSuggestions, onBundleCreated }: 
               key={s.id}
               className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             >
-              <td className="px-5 py-3.5 align-middle text-base font-medium text-cream-900">
+              <td className="px-3 py-2 align-middle text-base font-medium text-cream-900">
                 {suggestionLabel(s)}
               </td>
-              <td className="px-5 py-3.5 align-middle">
+              <td className="px-3 py-2 align-middle">
                 <div className="flex flex-wrap gap-1.5">
                   {s.category_names.map((name, idx) => (
-                    <Badge key={idx} variant="outline" className="text-xs">
+                    <Badge key={idx} variant="outline">
                       {name}
                     </Badge>
                   ))}
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right align-middle text-base text-cream-700">
+              <td className="px-3 py-2 text-right align-middle text-base text-cream-700">
                 <span className="font-mono tabular-nums">{s.avg_co_occurrence}</span> orders
                 <span className="mx-1.5 text-cream-400">·</span>
                 <span className="font-mono tabular-nums">{Math.round(s.confidence_score * 100)}%</span>
               </td>
-              <td className="px-5 py-3.5 text-right align-middle">
+              <td className="px-3 py-2 text-right align-middle">
                 <div className="flex items-center justify-end gap-1">
                   <RecommendationsTableIconButton
                     label="Create bundle"

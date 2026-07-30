@@ -27,7 +27,7 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({
-  eyebrow,
+  eyebrow: _eyebrow,
   title,
   subtitle,
   horizon: _horizon,
@@ -40,11 +40,10 @@ export function PageHeader({
   onPrimaryClick,
 }: PageHeaderProps) {
   return (
-    <header className="mb-4 flex items-end justify-between gap-4 md:mb-7 md:gap-6">
+    <header className="mb-3 flex items-end justify-between gap-4 md:mb-4 md:gap-6">
       <div className="min-w-0">
-        <p className="text-[var(--b-text-eyebrow)] font-semibold uppercase tracking-[0.18em] text-cream-700 md:text-xs md:tracking-[0.16em]">{eyebrow}</p>
-        <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.96] tracking-[-0.022em] text-cream-900 md:text-3xl md:font-extrabold md:leading-[1.05] md:tracking-[-0.02em]">{title}</h1>
-        <p className="mt-1.5 max-w-[64ch] text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:mt-[10px] md:text-md md:font-normal md:leading-[1.55] md:tracking-0 md:text-cream-700">{subtitle}</p>
+        <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.96] tracking-[-0.022em] text-cream-900 md:text-2xl md:font-extrabold md:leading-[1] md:tracking-[-0.02em]">{title}</h1>
+        <p className="mt-0.5 max-w-[64ch] text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:mt-0.5 md:text-md md:font-normal md:leading-[1.3] md:tracking-0 md:text-cream-700">{subtitle}</p>
       </div>
       <div className="hidden shrink-0 items-center gap-2 pb-0.5 md:flex">
         {secondary ? (

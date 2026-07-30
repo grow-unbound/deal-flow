@@ -138,7 +138,7 @@ export function SellerMobileSearchPage() {
         </div>
       </header>
 
-      <main className="px-4 py-3">
+      <main className="px-3 py-2">
         {loading ? <p className="px-1 py-2 text-xs text-cream-600">Updating results...</p> : null}
         {error ? <p className="px-1 py-6 text-center text-sm text-danger-700">Could not load search results.</p> : null}
 

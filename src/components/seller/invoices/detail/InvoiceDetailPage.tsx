@@ -269,7 +269,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           titleActions={(
             <>
             {data.version > 1 ? (
-              <Badge variant="warning" className="text-xs font-medium">
+              <Badge variant="warning" icon>
                 v
                 {data.version}
               </Badge>

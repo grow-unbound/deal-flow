@@ -67,7 +67,7 @@ export function LandingTable({
                   <th
                     key={`${column.label ?? 'col'}-${index}`}
                     className={cn(
-                      'table-label px-4 py-[11px] text-left text-cream-700',
+                      'table-label px-3 py-2 text-left text-cream-700',
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
                       column.className

@@ -63,7 +63,7 @@ export function ComposerTitleRow({
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
+          <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
           {status ? (
             status.chipClassName ? (
               <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em]', status.chipClassName)}>
@@ -116,7 +116,7 @@ export function ComposerBasicsField({
   className?: string;
 }) {
   return (
-    <div className={cn('relative border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
+    <div className={cn('relative border-b border-cream-300 px-3 py-2 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
@@ -234,7 +234,7 @@ export function ComposerCheckboxCell({
   className?: string;
 }) {
   return (
-    <td className={cn('w-9 px-4 py-3 align-middle', className)} onClick={(event) => event.stopPropagation()}>
+    <td className={cn('w-9 px-3 py-2 align-middle', className)} onClick={(event) => event.stopPropagation()}>
       <div className="flex items-center justify-center">
         <input
           type="checkbox"

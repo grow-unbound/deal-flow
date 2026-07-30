@@ -20,10 +20,10 @@ const buttonVariants = cva(
         link:        'text-ember-700 underline-offset-4 hover:underline p-0 h-auto border-transparent active:scale-100 active:opacity-70',
       },
       size: {
-        sm:   'h-[34px] px-3 text-body-sm',
-        md:   'h-10 px-4 text-md',
-        lg:   'h-12 px-6 text-md',
-        icon: 'h-10 w-10',
+        sm:   'h-[var(--ctl-h-sm)] px-3 text-[length:var(--ctl-text-sm)]',
+        md:   'h-[var(--ctl-h-md)] px-4 text-[length:var(--ctl-text-md)]',
+        lg:   'h-[var(--ctl-h-lg)] px-6 text-[length:var(--ctl-text-md)]',
+        icon: 'h-[var(--ctl-h-md)] w-[var(--ctl-h-md)]',
       },
     },
     defaultVariants: {

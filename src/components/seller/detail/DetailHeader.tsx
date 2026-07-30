@@ -74,11 +74,11 @@ export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statu
             {renderAvatar(avatar)}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.98] tracking-[-0.022em] text-cream-900 md:text-2xl md:font-extrabold md:leading-[1.05] md:tracking-[-0.025em] md:text-cream-950">{title}</h1>
+                <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.98] tracking-[-0.022em] text-cream-900 md:text-2xl md:font-extrabold md:leading-[1] md:tracking-[-0.025em] md:text-cream-950">{title}</h1>
                 <StatusTag label={status.label} tone={status.tone} />
                 {statusActions ? <div className="ml-1 inline-flex items-center gap-1">{statusActions}</div> : null}
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:text-base md:font-normal md:tracking-0 md:text-cream-700">
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:text-base md:font-normal md:tracking-0 md:text-cream-700">
                 {subtitle.map((item, index) => (
                   <div key={index} className="inline-flex items-center gap-1.5">
                     {index > 0 ? <span className="text-cream-500">·</span> : null}

@@ -46,7 +46,7 @@ export function CategoryActivityTab({ activity }: CategoryActivityTabProps) {
       {activity.map((item) => (
         <div
           key={item.id}
-          className="flex items-start gap-4 rounded-[10px] border border-cream-200 bg-white px-4 py-3"
+          className="flex items-start gap-4 rounded-[10px] border border-cream-200 bg-white px-3 py-2"
         >
           <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-cream-100 text-xs font-semibold text-cream-600">
             {item.actor_name.charAt(0).toUpperCase()}

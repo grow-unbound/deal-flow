@@ -163,7 +163,7 @@ export function CategoriesSettingsClient() {
                       inactive && 'bg-cream-50/80 text-cream-600',
                     )}
                   >
-                    <td className="px-4 py-3.5 align-middle">
+                    <td className="px-3 py-2 align-middle">
                       <div className="flex items-center gap-3">
                         {thumbUrl ? (
                           <Image
@@ -185,10 +185,10 @@ export function CategoriesSettingsClient() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 align-middle">
+                    <td className="px-3 py-2 align-middle">
                       <span className="font-mono text-sm tabular-nums text-cream-700">{cat.display_order}</span>
                     </td>
-                    <td className="px-4 py-3.5 align-middle">
+                    <td className="px-3 py-2 align-middle">
                       {inactive ? (
                         <StatusTag label="Inactive" tone="neutral" />
                       ) : (
@@ -196,7 +196,7 @@ export function CategoriesSettingsClient() {
                       )}
                     </td>
                     {isSellerAdmin ? (
-                      <td className="px-4 py-3.5 text-right align-middle">
+                      <td className="px-3 py-2 text-right align-middle">
                         <div className="flex justify-end gap-1">
                           {inactive ? (
                             <Button
@@ -267,7 +267,7 @@ export function CategoriesSettingsClient() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deactivateTarget ? (
-            <div className="rounded-md border border-warning-500/30 bg-warning-50 px-4 py-3 text-base text-warning-800">
+            <div className="rounded-md border border-warning-500/30 bg-warning-50 px-3 py-2 text-base text-warning-800">
               <span className="font-medium text-warning-900">{deactivateTarget.name}</span>
               {deactivateTarget.slug ? (
                 <span className="ml-2 font-mono text-sm text-warning-700/90">{deactivateTarget.slug}</span>

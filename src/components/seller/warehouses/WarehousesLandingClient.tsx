@@ -13,8 +13,6 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -215,37 +213,6 @@ export function WarehousesLandingClient({
         ]}
       />
 
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'stock_attention',
-            kind: 'risk',
-            eyebrow: 'Stock attention',
-            hint: `${summary?.callouts.stock_attention.length ?? 0} warehouses`,
-            rows: (summary?.callouts.stock_attention ?? []).map((row) => ({
-              initials: row.initials,
-              hue: 'ember' as const,
-              name: row.name,
-              reason: `${row.value} low / stockout SKUs`,
-              trailing: <StatusTag tone="warning" label="Review" />,
-            })),
-          },
-          {
-            id: 'idle_stock',
-            kind: 'risk',
-            eyebrow: 'Idle stock',
-            hint: `${summary?.callouts.idle_stock.length ?? 0} warehouses`,
-            rows: (summary?.callouts.idle_stock ?? []).map((row) => ({
-              initials: row.initials,
-              hue: 'ember' as const,
-              name: row.name,
-              reason: `${row.value} idle SKUs`,
-              trailing: <StatusTag tone="warning" label="Idle" />,
-            })),
-          },
-        ]}
-      />
-
       <FilterBar
         count={`${filtered.length} warehouses`}
         searchPlaceholder="Search warehouse…"
@@ -292,7 +259,7 @@ export function WarehousesLandingClient({
               onPointerDown={() => triggerHaptic()}
               className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
             >
-              <td className="px-5 py-3.5">
+              <td className="px-3 py-2">
                 <div className="flex items-center gap-3">
                   <EntityAvatar size={38} initials={row.initials} hue="teal" />
                   <div className="min-w-0">
@@ -306,12 +273,12 @@ export function WarehousesLandingClient({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
-              <td className="px-4 py-3.5 text-right text-cream-500">
+              <td className="px-3 py-2 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
+              <td className="px-3 py-2 text-right text-cream-500">
                 <ChevronRight size={14} className="text-cream-400" />
               </td>
             </tr>
