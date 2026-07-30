@@ -16,7 +16,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -58,11 +57,6 @@ function toLabelCase(input: string): string {
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
-}
-
-function formatDaysCover(value: number | null | undefined): string {
-  if (value == null) return '—';
-  return `${value}d`;
 }
 
 function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
@@ -332,56 +326,6 @@ function ProductsLandingContent({
         ]}
       />
 
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'recently_sold_out_of_stock',
-            kind: 'risk' as const,
-            eyebrow: 'Recently sold, now out of stock',
-            hint: `${recentlySoldOutOfStock}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.recently_sold_out_of_stock ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${row.units_mtd} units · ${formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD')}`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-          {
-            id: 'running_low',
-            kind: 'info' as const,
-            eyebrow: 'Products running low',
-            hint: `${lowStock}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.running_low ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${formatDaysCover(row.days_cover)} cover`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-          {
-            id: 'no_sale_90d',
-            kind: 'opportunity' as const,
-            eyebrow: 'Stock with no sale in 90 days',
-            hint: `${summaryData?.todays_read?.no_sale_90d?.length ?? 0}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.no_sale_90d ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${row.brand}`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-        ]}
-      />
-
       <FilterBar
         count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
@@ -468,7 +412,7 @@ function ProductsLandingContent({
               onClick={() => router.push(`/products/${product.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <EntityAvatar
                     initials={getInitials(product.display_name)}
@@ -484,25 +428,25 @@ function ProductsLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <div className="inline-flex items-center gap-2">
                   <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} imageUrl={product.master_product?.brand_logo_url ?? null} size={22} />
                   <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <span className="text-sm text-cream-900">{toLabelCase(category)}</span>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <StatusTag tone={product.is_active ? 'success' : 'neutral'} label={product.is_active ? 'Active' : 'Inactive'} />
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <div className="flex flex-col items-end">
                   <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
                   <span className="mt-1 text-xs text-cream-500">{uom}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 <div className="flex flex-col items-end">
                   {daysCover == null ? (
                     <span className="text-cream-500">—</span>
@@ -515,14 +459,14 @@ function ProductsLandingContent({
                   )}
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-5 py-3.5 text-right text-base text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              <td className="px-3 py-2 text-right text-base text-cream-900">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
-              <td className="px-4 py-3.5 text-right text-md text-cream-500">›</td>
+              <td className="px-3 py-2 text-right text-md text-cream-500">›</td>
             </tr>
           );
           })}

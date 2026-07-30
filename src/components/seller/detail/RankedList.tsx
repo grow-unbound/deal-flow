@@ -68,8 +68,8 @@ export function RankedList({
         <div
           key={item.id}
           className={cn(
-            'grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0',
-            compact ? 'px-4 py-3' : '',
+            'grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-cream-300 px-3 py-2 last:border-b-0',
+            compact ? 'px-3 py-2' : '',
           )}
         >
           <div className="flex items-center gap-3">

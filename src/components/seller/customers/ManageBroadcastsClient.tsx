@@ -179,7 +179,7 @@ function ManageBroadcastsInner({
             <span className="text-cream-400">›</span>
             <span className="font-medium text-cream-900">Manage Broadcasts</span>
           </nav>
-          <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950">
+          <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950">
             Manage Broadcasts
           </h1>
           <p className="mt-[10px] max-w-[64ch] text-md leading-[1.55] text-cream-700">
@@ -252,13 +252,13 @@ function ManageBroadcastsInner({
               key={broadcast.id}
               className="border-b border-cream-300 bg-white"
             >
-              <td className="px-5 py-3.5 text-sm text-cream-800">{formatBroadcastDate(broadcast)}</td>
-              <td className="px-5 py-3.5 text-sm font-medium text-cream-900">{broadcast.name}</td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">
+              <td className="px-3 py-2 text-sm text-cream-800">{formatBroadcastDate(broadcast)}</td>
+              <td className="px-3 py-2 text-sm font-medium text-cream-900">{broadcast.name}</td>
+              <td className="px-3 py-2 text-sm text-cream-800">
                 {broadcast.template_name ?? '—'}
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{broadcast.target_label}</td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{formatDeliveryStatus(broadcast)}</td>
+              <td className="px-3 py-2 text-sm text-cream-800">{broadcast.target_label}</td>
+              <td className="px-3 py-2 text-sm text-cream-800">{formatDeliveryStatus(broadcast)}</td>
             </tr>
           ))}
         </LandingTable>

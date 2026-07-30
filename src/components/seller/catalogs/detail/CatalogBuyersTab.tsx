@@ -324,21 +324,21 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
               const lastConversionAt = buyer.last_conversion_at ?? buyer.last_order_at;
               return (
                 <SelectableRow key={buyer.buyer_id} selected={isSelected}>
-                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
+                  <td className="px-3 py-2">
                     <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
                     <p className="mt-0.5 text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
                   </td>
-                  <td className="px-5 py-3.5"><MemberToggle checked={Boolean(buyer.is_member)} label={`${buyer.buyer_name} campaign membership`} /></td>
-                  <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label ?? buyer.city ?? '—'}</td>
-                  <td className="px-5 py-3.5"><StatusTag label={normalizedStatus} tone={statusTone(buyer.opened_status)} /></td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2"><MemberToggle checked={Boolean(buyer.is_member)} label={`${buyer.buyer_name} campaign membership`} /></td>
+                  <td className="px-3 py-2 text-base text-cream-900">{buyer.geography_label ?? buyer.city ?? '—'}</td>
+                  <td className="px-3 py-2"><StatusTag label={normalizedStatus} tone={statusTone(buyer.opened_status)} /></td>
+                  <td className="px-3 py-2 text-right">
                     <p className="font-display text-md text-cream-950">{demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{demandCount > 0 ? demandCountLabel(buyer.primary_demand_kind, demandCount) : '—'}</p>
                   </td>
-                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
-                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
-                  <td className="px-5 py-3.5 text-base text-cream-700">{lastConversionAt ? formatDate(lastConversionAt) : '—'}</td>
+                  <td className="px-3 py-2 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                  <td className="px-3 py-2 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
+                  <td className="px-3 py-2 text-base text-cream-700">{lastConversionAt ? formatDate(lastConversionAt) : '—'}</td>
                 </SelectableRow>
               );
             })

@@ -16,7 +16,6 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -80,12 +79,6 @@ function toStatusTone(status: PriceListLandingRow['status']): 'success' | 'warni
   if (status === 'active') return 'success';
   if (status === 'draft') return 'warning';
   return 'neutral';
-}
-
-function entityHue(index: number): 'teal' | 'ember' | 'cream' {
-  if (index % 3 === 0) return 'teal';
-  if (index % 3 === 1) return 'ember';
-  return 'cream';
 }
 
 function PriceListsLandingContent({
@@ -220,39 +213,6 @@ function PriceListsLandingContent({
           ]}
         />
 
-        <V3CalloutPanel
-          items={[
-            {
-              id: 'expiring_soon',
-              kind: 'risk',
-              eyebrow: 'Expiring soon',
-              hint: `${data?.todays_read.expiring_soon.length ?? 0}`,
-              rows: (data?.todays_read.expiring_soon ?? []).map((row, index) => ({
-                initials: row.initials,
-                hue: entityHue(index),
-                name: row.name,
-                reason: `Expires ${row.valid_until_label} · ${row.cohorts_count} cohort(s)`,
-                trailing: <StatusTag label={titleCaseStatus(row.status)} tone={toStatusTone(row.status)} />,
-              })),
-            },
-            {
-              id: 'uncovered_cohorts',
-              kind: 'opportunity',
-              eyebrow: 'Uncovered cohorts',
-              hint: 'no active list',
-              rows: (data?.todays_read.uncovered_cohorts ?? []).map((row, index) => ({
-                initials: row.initials,
-                hue: entityHue(index),
-                name: row.name,
-                reason: isSellerAssistant
-                  ? `${row.member_count} buyers · currently using base price`
-                  : `${row.member_count} buyers · falling back to base price`,
-                trailing: row.member_count,
-              })),
-            },
-          ]}
-        />
-
         <FilterBar
           count={`${filteredRows.length} price lists`}
           searchPlaceholder="Search price list…"
@@ -316,7 +276,7 @@ function PriceListsLandingContent({
                 onClick={() => router.push(`/price-lists/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
-                <td className="px-5 py-3.5 text-base text-cream-900">
+                <td className="px-3 py-2 text-base text-cream-900">
                   <div className="ent flex items-center gap-3">
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
@@ -327,19 +287,19 @@ function PriceListsLandingContent({
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-sm text-cream-800">
+                <td className="px-3 py-2 text-sm text-cream-800">
                   {strategySub}
                 </td>
-                <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
+                <td className="px-3 py-2 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.priority}
                 </td>
-                <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
+                <td className="px-3 py-2 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.product_count}
                 </td>
-                <td className={`px-5 py-3.5 font-mono text-sm ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
+                <td className={`px-3 py-2 font-mono text-sm ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
                   {validity}
                 </td>
-                <td className="px-5 py-3.5 text-right">
+                <td className="px-3 py-2 text-right">
                   {row.avg_discount_pct != null ? (
                     <span
                       className={cn(
@@ -355,7 +315,7 @@ function PriceListsLandingContent({
                   )}
                 </td>
                 {!isSellerAssistant ? (
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     {row.avg_margin_pct != null ? (
                       <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
                         {formatNumberValue(row.avg_margin_pct, 'PERCENTAGE')}
@@ -365,10 +325,10 @@ function PriceListsLandingContent({
                     )}
                   </td>
                 ) : null}
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <StatusTag label={titleCaseStatus(row.status)} tone={toStatusTone(row.status)} />
                 </td>
-                <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
+                <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
               </tr>
             );
           })}

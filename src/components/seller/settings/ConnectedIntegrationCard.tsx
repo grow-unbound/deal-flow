@@ -1460,7 +1460,7 @@ export function ConnectedIntegrationCard({
 
                 return (
                   <details key={phaseGroup.id} className="group/phase overflow-hidden rounded-2xl border border-cream-200 bg-white" open={phaseIsOpen}>
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <ChevronDown className="h-4 w-4 shrink-0 text-cream-500 transition-transform group-open/phase:rotate-180" />
                         <div>
@@ -1513,7 +1513,7 @@ export function ConnectedIntegrationCard({
                       </div>
                     </summary>
 
-                    <div className="border-t border-cream-200 bg-cream-50 px-4 py-3">
+                    <div className="border-t border-cream-200 bg-cream-50 px-3 py-2">
                       <div className="space-y-2">
                         {phaseGroup.id === 'analysis' ? (
                           <div className="space-y-2">
@@ -1810,7 +1810,7 @@ export function ConnectedIntegrationCard({
                         <div className="grid gap-3 xl:grid-cols-4">
                           {phaseEntries.length > 0 ? (
                             phaseEntries.map((phase) => (
-                              <div key={`${job.id}-${phase.id}`} className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
+                              <div key={`${job.id}-${phase.id}`} className="rounded-xl border border-cream-200 bg-cream-50 px-3 py-2">
                                 <div className="text-sm font-medium text-cream-900">{phase.label}</div>
                                 <div className="mt-1 text-xs text-cream-600">
                                   {phase.stat

@@ -49,7 +49,7 @@ function NotificationRow({ n }: { n: AppNotification }) {
     <Link
       href={n.href}
       onClick={() => markRead(n.id)}
-      className="flex items-start gap-3 rounded-[10px] border border-cream-200 bg-white px-4 py-3.5 no-underline transition-colors hover:bg-cream-50"
+      className="flex items-start gap-3 rounded-[10px] border border-cream-200 bg-white px-3 py-2 no-underline transition-colors hover:bg-cream-50"
     >
       <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-cream-100">
         <Icon size={16} strokeWidth={1.85} className="text-cream-600" />

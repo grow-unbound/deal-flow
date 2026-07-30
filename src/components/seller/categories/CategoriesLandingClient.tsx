@@ -13,7 +13,6 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
   FilterBar,
   type FilterBarGroup,
 } from '@/components/seller/layout';
@@ -137,13 +136,6 @@ function CategoriesLandingContent({
   ];
   const rows = landingData?.rows ?? [];
 
-  // Doc-starred Action "Categories with no sale in 90 days" — derived client-side from
-  // the already-fetched category rows (no backend list for this exists yet).
-  const noSaleCategories = useMemo(
-    () => rows.filter((r) => r.gmv_mtd === 0 && r.active_sku_count > 0).sort((a, b) => b.active_sku_count - a.active_sku_count).slice(0, 10),
-    [rows],
-  );
-
   const filtered = useMemo<CategoryTableRow[]>(() => {
     const q = search.trim().toLowerCase();
     return rows
@@ -235,61 +227,6 @@ function CategoriesLandingContent({
             ]}
           />
 
-          <V3CalloutPanel
-            items={[
-              {
-                id: 'stockout_risk',
-                kind: 'risk',
-                eyebrow: 'Categories with recent sellers out of stock',
-                hint: `${landingData.callouts.stockout_risk.length}`,
-                getHref: (row) => `/categories/${row.id}`,
-                rows: landingData.callouts.stockout_risk.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  reason: `${c.oos_sku_count ?? 0} out of stock · ${c.low_stock_sku_count ?? 0} low stock`,
-                  trailing: null,
-                })),
-              },
-              {
-                id: 'no_sale_90d',
-                kind: 'info',
-                eyebrow: 'Categories with no sale in 90 days',
-                // Derived from already-fetched category rows, not a tenant-wide backend
-                // aggregate — honest about undercounting until every page is loaded.
-                hint: hasNextPage ? `${noSaleCategories.length}+` : `${noSaleCategories.length}`,
-                getHref: (row) => `/categories/${row.id}`,
-                rows: noSaleCategories.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  reason: `${c.active_sku_count} active products`,
-                  trailing: null,
-                })),
-              },
-              {
-                id: 'fast_movers',
-                kind: 'opportunity',
-                eyebrow: 'Categories gaining demand',
-                hint: 'by units sold',
-                getHref: (row) => `/categories/${row.id}`,
-                rows: landingData.callouts.fast_movers.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  // fast_movers rows don't carry growth_pct — get_seller_category_landing_summary_v2
-                  // never returns it for this list, so the previous `c.growth_pct ?? 0` fallback
-                  // silently rendered a permanent "flat" badge. Show the real GMV instead.
-                  reason: `${c.units_mtd ?? 0} units sold`,
-                  trailing: formatNumberValue(c.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-            ]}
-          />
-
           <FilterBar
             count={`${filtered.length} categories`}
             searchPlaceholder="Search category…"
@@ -342,7 +279,7 @@ function CategoriesLandingContent({
                 onClick={() => router.push(`/categories/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-3">
                     <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
                     <div className="min-w-0">
@@ -350,19 +287,19 @@ function CategoriesLandingContent({
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.brand_count}
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                <td className="px-3 py-2 text-right text-medium text-cream-700">
                   {formatNumberValue(row.active_sku_count, 'COUNT')}
                 </td>
-                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                <td className="px-3 py-2 text-right text-medium text-cream-700">
                   {row.oos_sku_count > 0 ? formatNumberValue(row.oos_sku_count, 'COUNT') : '—'}
                 </td>
-                <td className="px-4 py-3.5 text-right text-cream-400">
+                <td className="px-3 py-2 text-right text-cream-400">
                   <ChevronRight size={16} />
                 </td>
               </tr>

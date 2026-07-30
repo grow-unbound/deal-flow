@@ -12,10 +12,10 @@ export function SellerSidebarSkeleton({ isCollapsed = false }: { isCollapsed?: b
       style={{ width: 'var(--sidebar-w)' }}
       aria-hidden
     >
-      <div className="flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
+      <div className="flex h-14 shrink-0 items-center border-b border-cream-300 px-3">
         <div className={isCollapsed ? 'h-7 w-7 animate-pulse rounded-md bg-cream-300' : 'h-8 w-[138px] animate-pulse rounded-md bg-cream-300'} />
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
         {NAV_GROUP_ROW_COUNTS.map((rowCount, groupIndex) => (
           <div key={groupIndex} className={groupIndex > 0 ? 'pt-5' : undefined}>
             {!isCollapsed && <div className="mb-2 h-3 w-16 animate-pulse rounded bg-cream-200" />}
@@ -34,7 +34,7 @@ export function SellerSidebarSkeleton({ isCollapsed = false }: { isCollapsed?: b
 export function SellerGlobalHeaderSkeleton() {
   return (
     <header
-      className="fixed right-0 top-0 z-20 flex h-16 items-center gap-4 border-b border-cream-300 bg-[var(--bg-surface)] px-9"
+      className="fixed right-0 top-0 z-20 flex h-14 items-center gap-4 border-b border-cream-300 bg-[var(--bg-surface)] px-6"
       style={{ left: 'var(--sidebar-w)' }}
       aria-hidden
     >

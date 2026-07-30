@@ -82,7 +82,7 @@ export function ComposerShell({
       <div className="border-b border-cream-200 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
-            <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">
+            <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">
               {title}
             </h1>
             <div className="max-w-[68ch] text-base leading-[1.6] text-cream-700">{subtitle}</div>

@@ -261,24 +261,24 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
               const isSelected = selection.selectedIds.includes(buyer.buyer_id);
               return (
                 <SelectableRow key={buyer.buyer_id} selected={isSelected}>
-                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
+                  <td className="px-3 py-2">
                     <p className="truncate text-base font-medium text-cream-950">{buyer.business_name}</p>
                     <p className="mt-0.5 truncate text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
                   </td>
-                  <td className="px-5 py-3.5"><MemberToggle checked={buyer.is_member} label={`${buyer.business_name} membership`} /></td>
-                  <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label}</td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2"><MemberToggle checked={buyer.is_member} label={`${buyer.business_name} membership`} /></td>
+                  <td className="px-3 py-2 text-base text-cream-900">{buyer.geography_label}</td>
+                  <td className="px-3 py-2 text-right">
                     <p className="font-display text-md text-cream-950">{formatNumberValue(buyer.spend_90d, 'CURRENCY_EXACT')}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{demandCountLabel('invoices', buyer.invoice_count_90d)}</p>
                   </td>
-                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_invoice_at ? formatDate(buyer.last_invoice_at) : '—'}</td>
-                  <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.outstanding_due, 'CURRENCY_EXACT')}</td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-base text-cream-700">{buyer.last_invoice_at ? formatDate(buyer.last_invoice_at) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.outstanding_due, 'CURRENCY_EXACT')}</td>
+                  <td className="px-3 py-2 text-right">
                     <p className="font-display text-md text-cream-950">{buyer.primary_demand_kind === 'none' ? '—' : formatNumberValue(buyer.demand_value_90d, 'CURRENCY_EXACT')}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{buyer.primary_demand_kind === 'none' ? '—' : demandCountLabel(buyer.primary_demand_kind, buyer.demand_count_90d)}</p>
                   </td>
-                  <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                  <td className="px-3 py-2 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
                 </SelectableRow>
               );
             })
