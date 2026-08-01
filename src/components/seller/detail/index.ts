@@ -1,5 +1,5 @@
 export { DetailHeader } from './DetailHeader';
-export type { CrumbItem, DetailAvatar, DetailStatus, DetailHeaderProps } from './DetailHeader';
+export type { DetailAvatar, DetailStatus, DetailHeaderProps } from './DetailHeader';
 export { MetricCard } from './MetricCard';
 export type { MetricCardProps } from './MetricCard';
 export { MetricGrid } from './MetricGrid';
@@ -9,7 +9,7 @@ export type { MetaTile, MetaStrip4Props } from './MetaStrip4';
 export { DetailTabs } from './DetailTabs';
 export type { DetailTab, DetailTabsProps } from './DetailTabs';
 export { DetailActions } from './DetailActions';
-export type { DetailActionMode, DetailActionsProps } from './DetailActions';
+export type { DetailActionItem, DetailActionsProps } from './DetailActions';
 export { PerformanceCard } from './PerformanceCard';
 export type { PerformanceCardProps } from './PerformanceCard';
 export { TrendFrame } from './TrendFrame';

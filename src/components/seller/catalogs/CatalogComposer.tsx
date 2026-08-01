@@ -9,7 +9,6 @@ import {
   ComposerBasicsStrip,
   ComposerBodyGrid,
   ComposerCheckboxCell,
-  ComposerBreadcrumbs,
   ComposerFooterBar,
   ComposerMainCard,
   ComposerSelectableRow,
@@ -745,13 +744,6 @@ export function CatalogComposer({
       <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
         <ComposerShell>
           <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <ComposerBreadcrumbs
-            items={[
-              { label: 'Campaigns', href: '/campaigns' },
-              { label: mode === 'edit' ? detail?.header.name ?? 'Edit campaign' : 'New campaign', current: true },
-            ]}
-          />
-
           <ComposerTitleRow
             title={mode === 'edit' ? 'Edit campaign' : 'Add a campaign'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}

@@ -1,7 +1,9 @@
 export { PageWrap } from './PageWrap';
+export { EntitySplitShell } from './EntitySplitShell';
 export { PageHeader } from './PageHeader';
 export { InsightStrip4 } from './InsightStrip4';
 export type { InsightTile } from './InsightStrip4';
+export { StickyListHeader } from './StickyListHeader';
 export { MetricCard } from '../detail/MetricCard';
 export type { MetricCardProps } from '../detail/MetricCard';
 export { MetricGrid } from '../detail/MetricGrid';

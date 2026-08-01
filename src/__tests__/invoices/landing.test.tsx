@@ -18,6 +18,8 @@ const useCreateFlagsMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => '/invoices',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useInvoices', () => ({

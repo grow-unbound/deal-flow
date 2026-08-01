@@ -9,7 +9,6 @@ import {
   ComposerBasicsField,
   ComposerBasicsStrip,
   ComposerBodyGrid,
-  ComposerBreadcrumbs,
   ComposerCheckboxCell,
   ComposerFooterBar,
   ComposerMainCard,
@@ -572,13 +571,6 @@ export function PriceListComposer({
       <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
       <ComposerShell>
           <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <ComposerBreadcrumbs
-            items={[
-              { label: 'Price Lists', href: '/price-lists' },
-              { label: mode === 'edit' ? detail?.name ?? 'Edit pricelist' : 'New pricelist', current: true },
-            ]}
-          />
-
           <ComposerTitleRow
             title={mode === 'edit' ? 'Edit pricelist' : 'Add a pricelist'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}

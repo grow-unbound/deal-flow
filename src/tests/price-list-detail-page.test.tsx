@@ -10,6 +10,7 @@ vi.mock('next/navigation', () => ({
   useParams: () => useParamsMock(),
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/price-lists/pl-1',
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('@/components/FeatureGate', () => ({ FeatureGate: ({ children }: { children: ReactNode }) => <>{children}</> }));
 vi.mock('@/components/auth/RoleGuard', () => ({ RoleGuard: ({ children }: { children: ReactNode }) => <>{children}</> }));

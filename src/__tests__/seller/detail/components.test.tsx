@@ -83,13 +83,9 @@ describe('DetailTabs', () => {
 });
 
 describe('DetailHeader', () => {
-  it('styles the last crumb as current with font-medium', () => {
+  it('renders the title without breadcrumbs', () => {
     render(
       <DetailHeader
-        crumbPath={[
-          { label: 'Brands', href: '/brands' },
-          { label: 'WineYard Vintners', current: true },
-        ]}
         avatar={{ kind: 'customer', initials: 'WV', hue: 'ember' }}
         title="WineYard Vintners"
         status={{ label: 'Live', tone: 'success' }}
@@ -98,7 +94,8 @@ describe('DetailHeader', () => {
       />
     );
 
-    expect(screen.getAllByText('WineYard Vintners')[0]).toHaveClass('font-medium');
+    expect(screen.getByRole('heading', { name: 'WineYard Vintners' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 });
 

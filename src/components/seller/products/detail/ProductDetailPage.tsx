@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { DetailHeader, DetailTabs } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -14,7 +14,6 @@ import { useRole } from '@/hooks/useRole';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
-import { ProductDetailSkeleton as SharedProductDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { ProductDetailsTab } from './ProductDetailsTab';
 import { ProductPricingTab } from './ProductPricingTab';
 import { AddProductSheet } from '../AddProductSheet';
@@ -28,49 +27,6 @@ type TabId = 'details' | 'performance' | 'pricing';
 
 interface ProductDetailPageProps {
   id: string;
-}
-
-function ProductDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-52" />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-[14px]" />
-              <div className="space-y-2">
-                <Skeleton className="h-7 w-56" />
-                <Skeleton className="h-4 w-80" />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-        <div className="flex gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-32 rounded-full" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-          <Skeleton className="h-[28rem] rounded-[14px]" />
-          <Skeleton className="h-[28rem] rounded-[14px]" />
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <Skeleton className="h-72 rounded-[14px]" />
-          <Skeleton className="h-72 rounded-[14px]" />
-        </div>
-      </div>
-    </PageWrap>
-  );
 }
 
 function daysCoverClass(days: number): string {
@@ -133,27 +89,27 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <SharedProductDetailSkeleton />;
-  if (isError || !data) {
+  if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load product" description="There was a problem fetching this product detail page." />;
   }
 
   return (
-    <PageWrap className="pt-7">
+    <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
-        crumbPath={[
-          { label: 'Products', href: '/products' },
-          { label: data.detail.header.name, current: true },
-        ]}
+        loading={isLoading}
         avatar={{ kind: 'product' }}
-        title={data.detail.header.name}
-        status={{ label: data.detail.header.status_label, tone: data.detail.header.status_tone }}
-        subtitle={[
-          data.detail.header.brand,
-          data.detail.header.sku,
-          data.detail.header.pack,
-          `MRP ${formatNumberValue(data.detail.header.mrp, 'CURRENCY_EXACT')}`,
-        ]}
+        title={data?.detail.header.name ?? ''}
+        status={{ label: data?.detail.header.status_label ?? '', tone: data?.detail.header.status_tone ?? 'neutral' }}
+        subtitle={
+          data
+            ? [
+                data.detail.header.brand,
+                data.detail.header.sku,
+                data.detail.header.pack,
+                `MRP ${formatNumberValue(data.detail.header.mrp, 'CURRENCY_EXACT')}`,
+              ]
+            : []
+        }
         actions={isSellerAssistant ? null : (
           <div className="flex items-center gap-2 pt-1">
             <AlertDialog>
@@ -186,13 +142,21 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         )}
       />
 
-      <MetricGrid
-        className="mt-6"
-        showSupportingText
-        tiles={isSellerAssistant
-          ? tiles.filter((tile) => tile.label !== 'Units · MTD')
-          : tiles}
-      />
+      {data ? (
+        <InsightStrip4
+          className="mt-6"
+          showSupportingText
+          tiles={isSellerAssistant
+            ? tiles.filter((tile) => tile.label !== 'Units · MTD')
+            : tiles}
+        />
+      ) : (
+        <div className="mt-6 grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+      )}
 
       <DetailTabs
         tabs={tabs}
@@ -201,23 +165,31 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       />
 
       {activeTab === 'details' ? (
-        <ProductDetailsTab
-          details={data.detail.details}
-          role={data.detail.role}
-          isSaving={updateProduct.isPending}
-          onSave={(payload) => updateProduct.mutate({ id, data: payload })}
-        />
+        data ? (
+          <ProductDetailsTab
+            details={data.detail.details}
+            role={data.detail.role}
+            isSaving={updateProduct.isPending}
+            onSave={(payload) => updateProduct.mutate({ id, data: payload })}
+          />
+        ) : (
+          <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
+        )
       ) : null}
       {showPerformanceTab && activeTab === 'performance' ? (
-        <ProductPerformanceTab performance={data.detail.performance} performanceCards={data.detail.performance_cards} />
+        data ? <ProductPerformanceTab performance={data.detail.performance} performanceCards={data.detail.performance_cards} /> : <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
       ) : null}
       {activeTab === 'pricing' ? (
-        <ProductPricingTab
-          productId={id}
-          role={data.detail.role}
-          pricingSummary={data.detail.pricing_summary}
-          pricing={data.detail.pricing}
-        />
+        data ? (
+          <ProductPricingTab
+            productId={id}
+            role={data.detail.role}
+            pricingSummary={data.detail.pricing_summary}
+            pricing={data.detail.pricing}
+          />
+        ) : (
+          <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
+        )
       ) : null}
 
       {!isSellerAssistant ? (
@@ -226,9 +198,9 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           onOpenChange={setEditOpen}
           hideTrigger
           mode="edit"
-          product={data.product}
+          product={data?.product}
         />
       ) : null}
-    </PageWrap>
+    </div>
   );
 }

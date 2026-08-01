@@ -25,7 +25,6 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useTenantCatalogs, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { CampaignFormSheet } from './CampaignFormSheet';
 
@@ -33,30 +32,6 @@ type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open t
 
 const SORT_OPTIONS: SortOption[] = ['Recently published', 'Demand value (high → low)', 'Open to demand (high → low)'];
 const STATUS_OPTIONS = ['Draft', 'Scheduled', 'Live', 'Live · Unpublished Changes', 'Expiring soon', 'Expired', 'Archived'] as const;
-
-function CatalogsLoadingSkeleton() {
-  return (
-    <PageWrap>
-      <div className="h-24 animate-pulse rounded-[12px] bg-cream-100" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-2 grid grid-cols-2 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[260px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-    </PageWrap>
-  );
-}
 
 function CatalogsDataSkeleton() {
   return (
@@ -162,8 +137,6 @@ function CatalogsLandingContent({
       });
   }, [catalogs, search, sortBy, statusFilter]);
 
-  if (isLoading && !landingData) return <CatalogsLandingSkeleton />;
-
   if (isError && !landingData) {
     return (
       <ErrorState
@@ -172,9 +145,8 @@ function CatalogsLandingContent({
       />
     );
   }
-  if (!landingData) return <CatalogsLandingSkeleton />;
-  const showRefreshingState = isLoading && !data;
-  const estimatesEnabled = landingData.channels?.estimates_enabled ?? true;
+  const showRefreshingState = isLoading && !landingData;
+  const estimatesEnabled = landingData?.channels?.estimates_enabled ?? true;
 
   const tableColumns = [
     { label: 'Campaign', width: 280, minWidth: 260, className: 'px-5' },
@@ -195,11 +167,12 @@ function CatalogsLandingContent({
       <PageHeader
         eyebrow="Growth"
         title="Campaigns"
-        subtitle={`${landingData.total ?? catalogs.length} campaigns · ${landingData.kpis.live_catalogs} live · ${landingData.kpis.scheduled_catalogs ?? 0} scheduled.`}
+        subtitle={`${landingData?.total ?? catalogs.length} campaigns · ${landingData?.kpis.live_catalogs ?? 0} live · ${landingData?.kpis.scheduled_catalogs ?? 0} scheduled.`}
         horizon={horizonLabel}
         primary="Add a campaign"
         onPrimaryClick={() => setCampaignFormOpen(true)}
       />
+      <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
 
       {showRefreshingState ? (
         <CatalogsDataSkeleton />
@@ -210,29 +183,28 @@ function CatalogsLandingContent({
         />
       ) : (
         <>
-      <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
       <InsightStrip4
         tiles={[
           {
             label: `Campaigns opens · ${metricSuffix}`,
-            value: `${landingData.kpis.opened_customers_mtd ?? 0}`,
+            value: `${landingData?.kpis.opened_customers_mtd ?? 0}`,
             sub: `customers opened live campaigns`,
           },
           {
             label: `Campaign demand · ${metricSuffix}`,
-            value: `${landingData.kpis.conversions_mtd ?? 0}`,
+            value: `${landingData?.kpis.conversions_mtd ?? 0}`,
             sub: `customers raised ${primaryDemandKind}`,
           },
           {
             label: `Campaign-linked demand value · ${metricSuffix}`,
-            value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
-            sub: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd} linked ${primaryDemandKind}`,
+            value: formatNumberValue(landingData?.kpis.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
+            sub: `${landingData?.kpis.conversions_mtd ?? landingData?.kpis.orders_attributed_mtd ?? 0} linked ${primaryDemandKind}`,
             tone: 'accent',
           },
           {
             label: primaryDemandKind === 'estimates' ? 'Open-to-enquiry rate' : 'Open-to-order rate',
-            value: `${landingData.kpis.avg_conversion_pct}%`,
-            sub: `${landingData.kpis.conversions_mtd ?? 0} of ${landingData.kpis.opened_customers_mtd ?? 0} customers`,
+            value: `${landingData?.kpis.avg_conversion_pct ?? 0}%`,
+            sub: `${landingData?.kpis.conversions_mtd ?? 0} of ${landingData?.kpis.opened_customers_mtd ?? 0} customers`,
           },
         ]}
       />

@@ -824,14 +824,6 @@ export function DocComposerSalesOrder({
       <DocumentComposerShell
         mode={isConfirmedEdit ? 'edit' : 'create'}
         kind="so"
-        breadcrumbItems={[
-          { label: 'Sales' },
-          { label: 'Sales orders', href: '/sales-orders' },
-          {
-            label: mode === 'edit' ? documentState.order_number : 'New sales order',
-            current: true,
-          },
-        ]}
         title={title}
         subtitle={subtitle}
         status={{ label: modeChip, tone: mode === 'edit' ? 'live' : 'draft' }}

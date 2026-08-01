@@ -9,6 +9,10 @@ interface InsightTile {
   delta?: string;
   deltaTone?: 'up' | 'down';
   tone?: 'accent' | 'warn';
+  /** Makes the tile clickable — used by the expanded (list-only) landing view to
+   * let the user pick which KPI drives the split-pane header title. */
+  onClick?: () => void;
+  selected?: boolean;
 }
 
 interface InsightStrip4Props {

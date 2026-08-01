@@ -88,6 +88,8 @@ Invoiced Sales removed from Pulse (still a table column). Page becomes pure inve
 
 "App-sourced Demand" replaces "App-sourced Invoiced Sales" — demand (an order or estimate submitted through the app) is the direct signal of buyer engagement with the app itself. Whether that demand becomes an invoice depends on your team confirming and dispatching it — that's outlet execution, not buyer behavior, and belongs on Orders/Invoices, not here.
 
+> Note - useful callouts being removed - Customers access enabeld but never used; Used the app, no demand yet; valuabel customers without app access
+
 ## Campaigns
 
 | KPI | Supporting text | Time basis | Filter on click |
@@ -97,7 +99,7 @@ Invoiced Sales removed from Pulse (still a table column). Page becomes pure inve
 | Campaign demand | Y customers · Z estimates/orders | This Quarter | campaigns with linked demand in quarter |
 | Campaign revenue | Y customers · Z invoices | This Quarter | campaigns with linked invoices in quarter |
 
-> Note - useful callouts that are being removed - Live Campaigns with weak opens; Many openers, no demand; Expiring campaigns with engaged non-buyers;
+> Note - useful callouts being removed - Live Campaigns with weak opens; Many openers, no demand; Expiring campaigns with engaged non-buyers;
 
 ## Customer Groups
 
@@ -136,6 +138,8 @@ Invoiced Sales removed from Pulse (still a table column). Page becomes pure inve
 | Open demand | Y locations · Z estimates/orders | NOW | open primary-demand at location |
 | Overdue receivables | Y locations | NOW | overdue balance > 0 |
 | Top 80% locations | "X of Y locations" | Month | sorted by revenue desc, cutoff marker |
+
+> Note - removed callouts that are useful - Locations with expiring demand in 7 days; 
 
 ## Warehouses
 
