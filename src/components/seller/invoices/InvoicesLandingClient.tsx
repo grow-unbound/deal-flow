@@ -1,7 +1,7 @@
 'use client';
 
-import { useDeferredValue, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Receipt } from 'lucide-react';
 
@@ -12,7 +12,8 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
+  StickyListHeader,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -23,13 +24,14 @@ import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesRespon
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatAsOfLabel, formatDate, formatNumberValue } from '@/lib/utils';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { formatAsOfLabel, formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
+import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
+import { TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
@@ -60,19 +62,6 @@ function invoiceSourceFilterLabel(row: TenantInvoicesResponse['invoices'][number
   return 'Direct';
 }
 
-function mapRowToCallout(row: { id: string; buyer_initials: string; buyer_hue: TenantInvoicesResponse['invoices'][number]['buyer_hue']; buyer_name: string }) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
-
-function invoiceSupportText(row: Pick<TenantInvoicesResponse['invoices'][number], 'invoice_number' | 'due_date'>) {
-  return `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`;
-}
-
 function InvoicesTableRowsSkeleton() {
   return (
     <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
@@ -87,15 +76,8 @@ function InvoicesDataSkeleton() {
           <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         ))}
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
       <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
-      </div>
+      <InvoicesTableRowsSkeleton />
     </>
   );
 }
@@ -103,14 +85,17 @@ function InvoicesDataSkeleton() {
 function InvoicesLandingContent({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantInvoicesResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search')?.trim() || undefined;
+  const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
+  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(clientInitialPeriod);
   const summaryQuery = useTenantInvoices(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
@@ -118,6 +103,7 @@ function InvoicesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
+    pathnameOverride: '/invoices',
     version: 4,
     initialState: {
       search: '',
@@ -150,9 +136,11 @@ function InvoicesLandingContent({
     rootMargin: '400px',
     onLoadMore: fetchNextPage,
   });
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
   useRouteScrollRestoration({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
+    pathnameOverride: '/invoices',
     ready: !isLoading,
   });
 
@@ -198,6 +186,10 @@ function InvoicesLandingContent({
   }, [allInvoices, filters.due, filters.location_id, filters.source, filters.status, search, sortBy]);
 
   const displayRows = filteredRows;
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(displayRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [displayRows.length],
+  );
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   const subtitle = useMemo(() => {
@@ -210,8 +202,6 @@ function InvoicesLandingContent({
   const pulseAggregates = summaryData?.pulse_aggregates;
   const asOfLabel = formatAsOfLabel(summaryData?.computed_at);
 
-  if (isLoading && !data) return <InvoicesLandingSkeleton />;
-
   if (isError && !data) {
     return (
       <ErrorState
@@ -220,9 +210,35 @@ function InvoicesLandingContent({
       />
     );
   }
-  if (!data) return <InvoicesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
+  const kpiOptions = [
+    {
+      id: 'invoiced-sales',
+      label: 'Invoiced sales · 90D',
+      value: formatNumberValue(kpis?.gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.invoices_this_period ?? 0} invoices in trailing 90 days`,
+    },
+    {
+      id: 'outstanding-amount',
+      label: 'Outstanding amount',
+      value: formatNumberValue(kpis?.outstanding_sum ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
+    },
+    {
+      id: 'overdue-amount',
+      label: 'Overdue amount',
+      value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
+    },
+    {
+      id: 'due-in-7-days',
+      label: 'Due in 7 days',
+      value: formatNumberValue(pulseAggregates?.due_soon_sum ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
+    },
+  ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
@@ -244,92 +260,37 @@ function InvoicesLandingContent({
   ];
 
   return (
-    <PageWrap className="max-w-[1920px]">
+    <PageWrap className="max-w-[1920px] flex h-full min-h-0 flex-col">
+      <StickyListHeader>
         <PageHeader
-        eyebrow="Billing"
-        title="Invoices"
-        subtitle={subtitle}
-        horizon={horizonLabel}
-        showHorizonControl={false}
-        primary={createInvoices ? 'Add an invoice' : undefined}
+          eyebrow={isPaneOpen ? 'Invoices' : 'Billing'}
+          title={isPaneOpen ? selectedOption.label : 'Invoices'}
+          subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+          horizon={horizonLabel}
+          showHorizonControl={false}
+          primary={createInvoices ? 'Add an invoice' : undefined}
           onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
+          compact={isPaneOpen}
         />
-        <SellerMobileTransactionTabs active="invoices" />
 
-        {showRefreshingState ? (
-        <InvoicesDataSkeleton />
-      ) : (
-        <>
-          <InsightStrip4
-            tiles={[
-              {
-                label: 'Invoiced sales · 90D',
-                value: formatNumberValue(kpis?.gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-                sub: `${kpis?.invoices_this_period ?? 0} invoices in trailing 90 days`,
-              },
-              {
-                label: 'Outstanding amount',
-                value: formatNumberValue(kpis?.outstanding_sum ?? 0, 'CURRENCY_THRESHOLD'),
-                sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
-                tone: 'accent',
-              },
-              {
-                label: 'Overdue amount',
-                value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
-                sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
-                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
-              },
-              {
-                label: 'Due in 7 days',
-                value: formatNumberValue(pulseAggregates?.due_soon_sum ?? 0, 'CURRENCY_THRESHOLD'),
-                sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
-              },
-            ]}
-          />
-          {asOfLabel ? (
-            <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
-          ) : null}
-
-          <V3CalloutPanel
-            items={[
-              {
-                id: 'largest_overdue',
-                kind: 'risk',
-                eyebrow: 'Largest overdue balances',
-                hint: `${kpis?.overdue_count ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.largest_overdue ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'due_soon',
-                kind: 'info',
-                eyebrow: 'High-value invoices due soon',
-                hint: `${pulseAggregates?.due_soon_count ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.due_soon ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-              {
-                id: 'newly_overdue',
-                kind: 'opportunity',
-                eyebrow: 'Newly overdue invoices',
-                hint: `${summaryData?.todays_read?.newly_overdue?.length ?? 0}`,
-                getHref: (row) => `/invoices/${row.id}`,
-                rows: (summaryData?.todays_read?.newly_overdue ?? []).map((row) => ({
-                  ...mapRowToCallout(row),
-                  reason: invoiceSupportText(row),
-                  trailing: formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-            ]}
-          />
+        {showRefreshingState || isError ? null : (
+          <>
+            {isPaneOpen ? null : (
+              <>
+                <InsightStrip4
+                  tiles={kpiOptions.map((option): InsightTile => ({
+                    label: option.label,
+                    value: option.value,
+                    sub: option.sub,
+                    onClick: () => setSelectedKpiKey(option.id),
+                    selected: option.id === selectedKpiKey,
+                  }))}
+                />
+                {asOfLabel ? (
+                  <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
+                ) : null}
+              </>
+            )}
 
             <FilterBar
               count={`${displayRows.length} of ${total} invoices${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
@@ -338,13 +299,24 @@ function InvoicesLandingContent({
               activeChip=""
               sortBy={sortBy}
               hideViewToggle
+              compact={isPaneOpen}
               groups={groups}
               searchValue={search}
               onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
               sortOptions={SORT_OPTIONS}
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
+          </>
+        )}
+      </StickyListHeader>
 
+      <div className="min-h-0 flex-1 overflow-y-auto">
+      <SellerMobileTransactionTabs active="invoices" />
+
+      {showRefreshingState ? (
+        <InvoicesDataSkeleton />
+      ) : (
+        <>
           <div className="overflow-x-auto">
             {showTableSkeleton ? (
               <InvoicesTableRowsSkeleton />
@@ -371,8 +343,12 @@ function InvoicesLandingContent({
             ) : (
               <TransactionTable
                 kind="invoice"
+                forceCompact={isPaneOpen}
+                selectedId={openId}
                 showCampaignColumn={showCampaignColumn}
                 tableMinWidth={showCampaignColumn ? 1480 : 1260}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
                 rows={displayRows.map((row) => ({
                   id: row.id,
                   href: `/invoices/${row.id}`,
@@ -399,8 +375,6 @@ function InvoicesLandingContent({
             )}
           </div>
 
-          {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
-          <div ref={sentinelRef} className="h-px" aria-hidden />
           {isFetchingNextPage && (
             <div className="flex justify-center py-4">
               <Skeleton className="h-8 w-48 rounded-full" />
@@ -408,6 +382,7 @@ function InvoicesLandingContent({
           )}
         </>
       )}
+      </div>
     </PageWrap>
   );
 }
@@ -415,11 +390,9 @@ function InvoicesLandingContent({
 export function InvoicesLandingClient({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantInvoicesResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
@@ -428,5 +401,5 @@ export function InvoicesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <InvoicesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
+  return <InvoicesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
 }

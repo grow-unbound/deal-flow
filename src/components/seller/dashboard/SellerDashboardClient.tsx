@@ -14,12 +14,10 @@ import {
   PageWrap,
   SeeAllSheet,
   StatusTag,
-  V3CalloutPanel,
 } from '@/components/seller/layout';
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
-import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type {
   SellerDashboardBusinessFlowMeta,
@@ -249,47 +247,8 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         }))}
       />
       {asOfLabel ? (
-        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+        <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
       ) : null}
-      <V3CalloutPanel
-        items={admin.callouts.map((item) => ({
-          ...item,
-          loadRows: () => loadCalloutRows<SellerDashboardResponse, {
-            id: string;
-            href?: string;
-            initials: string;
-            hue: typeof item.rows[number]['hue'];
-            name: string;
-            reason: string;
-            trailing: string;
-          }>(
-            `/api/tenant/dashboard?callout=${encodeURIComponent(item.id)}`,
-            async (payload) => {
-              const section = payload.admin?.callouts ?? [];
-              const matched = section.find((entry) => entry.id === item.id);
-              return (matched?.rows ?? []).map((row) => ({
-                id: row.id,
-                href: row.href,
-                initials: row.initials,
-                hue: row.hue,
-                name: row.name,
-                reason: row.reason,
-                trailing: row.trailing,
-              }));
-            },
-          ),
-          getHref: (row) => item.rows.find((source) => source.id === row.id)?.href ?? '',
-          rows: item.rows.map((row) => ({
-            id: row.id,
-            href: row.href,
-            initials: row.initials,
-            hue: row.hue,
-            name: row.name,
-            reason: row.reason,
-            trailing: row.trailing,
-          })),
-        }))}
-      />
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <DetailCardRenderer
           card={{
@@ -494,46 +453,8 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
         }))}
       />
       {asOfLabel ? (
-        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+        <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
       ) : null}
-      <V3CalloutPanel
-        items={assistant.callouts.map((item) => ({
-          ...item,
-          loadRows: () => loadCalloutRows<SellerDashboardResponse, {
-            id: string;
-            href?: string;
-            initials: string;
-            hue: typeof item.rows[number]['hue'];
-            name: string;
-            reason: string;
-            trailing: string;
-          }>(
-            `/api/tenant/dashboard?callout=${encodeURIComponent(item.id)}`,
-            async (payload) => {
-              const section = payload.assistant?.callouts ?? [];
-              const matched = section.find((entry) => entry.id === item.id);
-              return (matched?.rows ?? []).map((row) => ({
-                id: row.id,
-                href: row.href,
-                initials: row.initials,
-                hue: row.hue,
-                name: row.name,
-                reason: row.reason,
-                trailing: row.trailing,
-              }));
-            },
-          ),
-          rows: item.rows.map((row) => ({
-            id: row.id,
-            href: row.href,
-            initials: row.initials,
-            hue: row.hue,
-            name: row.name,
-            reason: row.reason,
-            trailing: row.trailing,
-          })),
-        }))}
-      />
       <div className={cn('mt-5 grid gap-5', assistant.feeds.length >= 3 ? 'grid-cols-1 xl:grid-cols-3' : assistant.feeds.length === 2 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1')}>
         {assistant.feeds.map((feed) => (
           <FeedCard key={feed.id} feed={feed} newEntityIds={newEntityIds} markSeen={markSeen} />

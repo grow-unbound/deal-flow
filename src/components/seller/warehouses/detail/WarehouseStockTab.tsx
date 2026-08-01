@@ -188,7 +188,7 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
       >
         {filtered.map((item, index) => (
           <tr key={item.tenant_product_id} className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50">
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <div className="flex items-center gap-3">
                 <EntityAvatar initials={getInitials(item.product_name)} hue={getHue(index)} size={38} />
                 <div className="min-w-0">
@@ -197,16 +197,16 @@ export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
                 </div>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <div className="inline-flex items-center gap-2">
                 <EntityAvatar initials={getInitials(item.brand_name)} hue={getHue(index + 1)} size={22} />
                 <span className="text-sm text-cream-900">{item.brand_name}</span>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_available, 'COUNT')}</td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_reserved, 'COUNT')}</td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.sellable_units, 'COUNT')}</td>
-            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">
+            <td className="px-3 py-2 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_available, 'COUNT')}</td>
+            <td className="px-3 py-2 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.qty_reserved, 'COUNT')}</td>
+            <td className="px-3 py-2 text-center font-mono text-base tabular-nums text-cream-900">{formatNumberValue(item.sellable_units, 'COUNT')}</td>
+            <td className="px-3 py-2 text-center font-mono text-base tabular-nums text-cream-900">
               {item.reorder_point != null ? formatNumberValue(item.reorder_point, 'COUNT') : '—'}
             </td>
           </tr>

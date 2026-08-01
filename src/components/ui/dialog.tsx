@@ -59,12 +59,12 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('sticky top-0 z-10 shrink-0 border-b border-cream-200 bg-white/95 px-6 py-5 backdrop-blur-sm', className)} {...props} />
+  <div className={cn('sticky top-0 z-10 shrink-0 border-b border-cream-200 bg-white/95 px-4 py-3.5 backdrop-blur-sm', className)} {...props} />
 );
 DialogHeader.displayName = 'DialogHeader';
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('sticky bottom-0 z-10 flex shrink-0 items-center justify-end gap-3 border-t border-cream-200 bg-white/95 px-6 py-4 backdrop-blur-sm', className)} {...props} />
+  <div className={cn('sticky bottom-0 z-10 flex shrink-0 items-center justify-end gap-3 border-t border-cream-200 bg-white/95 px-4 py-3 backdrop-blur-sm', className)} {...props} />
 );
 DialogFooter.displayName = 'DialogFooter';
 
@@ -93,7 +93,7 @@ const DialogDescription = React.forwardRef<
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 const DialogBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 py-5', className)} {...props} />
+  <div className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-3.5', className)} {...props} />
 );
 DialogBody.displayName = 'DialogBody';
 

@@ -4,12 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
-import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { DetailHeader, DetailTabs } from '@/components/seller/detail';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CategoryDetailSkeleton as SharedCategoryDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCategoryDetail } from '@/hooks/useCategories';
@@ -28,37 +27,6 @@ type TabId = 'performance' | 'products' | 'brands';
 
 interface CategoryDetailPageProps {
   id: string;
-}
-
-function CategoryDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <Skeleton className="h-4 w-52" />
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-12 w-12 rounded-[14px]" />
-            <div className="space-y-2">
-              <Skeleton className="h-7 w-56" />
-              <Skeleton className="h-4 w-80" />
-            </div>
-          </div>
-        </div>
-        <div className="border-b border-cream-300" />
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-24 rounded-full" />
-          ))}
-        </div>
-        <Skeleton className="h-[24rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
 }
 
 export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
@@ -103,41 +71,33 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <SharedCategoryDetailSkeleton />;
-  if (isError || !data) {
-    return (
-      <ErrorState
-        heading="Couldn't load category"
-        description="There was a problem fetching this category detail page."
-      />
-    );
-  }
+  const h = data?.header;
+  const since = h ? new Date(h.created_at) : null;
+  const carriedSince = since ? since.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '';
 
-  const h = data.header;
-  const since = new Date(h.created_at);
-  const carriedSince = since.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
-
-  const editingCategory: TenantCategory = {
-    id: h.id,
-    tenant_id: h.tenant_id,
-    name: h.name,
-    slug: h.slug,
-    description: h.description,
-    is_active: h.is_active,
-    display_order: h.display_order,
-    external_ref: h.external_ref,
-    r2_image_thumb_key: h.r2_image_thumb_key,
-    r2_image_original_key: h.r2_image_original_key,
-    r2_image_medium_key: h.r2_image_medium_key,
-    deleted_at: h.deleted_at,
-    created_at: h.created_at,
-    updated_at: h.updated_at,
-  };
+  const editingCategory: TenantCategory | null = h
+    ? {
+        id: h.id,
+        tenant_id: h.tenant_id,
+        name: h.name,
+        slug: h.slug,
+        description: h.description,
+        is_active: h.is_active,
+        display_order: h.display_order,
+        external_ref: h.external_ref,
+        r2_image_thumb_key: h.r2_image_thumb_key,
+        r2_image_original_key: h.r2_image_original_key,
+        r2_image_medium_key: h.r2_image_medium_key,
+        deleted_at: h.deleted_at,
+        created_at: h.created_at,
+        updated_at: h.updated_at,
+      }
+    : null;
 
   const tabs = [
     ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-    { id: 'products', label: 'Products', badge: h.active_sku_count },
-    { id: 'brands', label: 'Brands', badge: h.brand_count },
+    { id: 'products', label: 'Products', badge: h?.active_sku_count },
+    { id: 'brands', label: 'Brands', badge: h?.brand_count },
   ] as const;
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
 
@@ -147,21 +107,23 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     }
   }, [activeTab, setTab, tab]);
 
+  if (isError || (!isLoading && !data)) {
+    return (
+      <ErrorState
+        heading="Couldn't load category"
+        description="There was a problem fetching this category detail page."
+      />
+    );
+  }
+
   return (
-    <PageWrap className="pt-7">
+    <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
-        crumbPath={[
-          { label: 'Categories', href: '/categories' },
-          { label: h.name, current: true },
-        ]}
-        avatar={{ kind: 'brand', initials: h.initials, hue: 'teal' }}
-        title={h.name}
-        status={{ label: h.is_active ? 'Active' : 'Archived', tone: h.is_active ? 'success' : 'neutral' }}
-        subtitle={[
-          h.description ?? '',
-          `${h.active_sku_count} SKUs · ${h.brand_count} brands`,
-          `Created ${carriedSince}`,
-        ].filter(Boolean)}
+        loading={isLoading}
+        avatar={{ kind: 'brand', initials: h?.initials ?? 'CT', hue: 'teal' }}
+        title={h?.name ?? ''}
+        status={{ label: h?.is_active ? 'Active' : 'Archived', tone: h?.is_active ? 'success' : 'neutral' }}
+        subtitle={h ? [h.description ?? '', `${h.active_sku_count} SKUs · ${h.brand_count} brands`, `Created ${carriedSince}`].filter(Boolean) : []}
         actions={
           isSellerAdmin ? (
             <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
@@ -173,15 +135,27 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
+      {data ? (
+        <InsightStrip4 className="mt-6" showSupportingText tiles={tiles} />
+      ) : (
+        <div className="mt-6 grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+      )}
 
       <DetailTabs tabs={tabs as unknown as Array<{ id: string; label: string; badge?: number }>} active={activeTab} onChange={(value) => setTab(value as TabId)} />
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        <CategoryPerformanceTab performanceCards={data.performance_cards} />
+        data ? <CategoryPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
-      {activeTab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
-      {activeTab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
+      {activeTab === 'products' ? (
+        data ? <CategoryProductsTab products={data.products} categoryId={id} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+      ) : null}
+      {activeTab === 'brands' ? (
+        data ? <CategoryBrandsTab brands={data.brands} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+      ) : null}
 
       <CategoryFormSheet
         open={editOpen}
@@ -189,6 +163,6 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         editingCategory={editingCategory}
         onSuccess={() => void queryClient.invalidateQueries({ queryKey: ['category-detail', id] })}
       />
-    </PageWrap>
+    </div>
   );
 }

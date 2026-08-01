@@ -277,8 +277,8 @@ export function PriceListProductsTab({
               const isEditing = editingId === row.item_id;
               return (
                 <SelectableRow key={row.tenant_product_id} selected={isSelected}>
-                  <td className="px-5 py-3.5"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-3">
                       <ProductImageCell src={row.image_url} alt={row.product_name} />
                       <div className="min-w-0">
@@ -287,9 +287,9 @@ export function PriceListProductsTab({
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
-                  <td className="px-5 py-3.5 text-right font-mono text-sm text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
-                  <td className="group px-5 py-3.5 text-right font-mono font-semibold text-cream-950">
+                  <td className="px-3 py-2"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
+                  <td className="px-3 py-2 text-right font-mono text-sm text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
+                  <td className="group px-3 py-2 text-right font-mono font-semibold text-cream-950">
                     {isEditing ? (
                       <div className="flex justify-end gap-2">
                         <div className="inline-flex h-9 w-32 items-center rounded-[8px] border border-cream-300 bg-white px-2 focus-within:border-ember-400">
@@ -321,19 +321,19 @@ export function PriceListProductsTab({
                       </button>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-3 py-2 text-right">
                     <p className="font-mono text-sm text-cream-900">{formatNumberValue(row.base_price, 'CURRENCY_EXACT')}</p>
                     <p className={cn('mt-0.5 text-xs', row.discount_pct == null ? 'text-cream-500' : row.discount_pct >= 0 ? 'text-teal-700' : 'text-danger-700')}>
                       {row.discount_pct == null ? '—' : `${row.discount_pct >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(row.discount_pct), 'PERCENTAGE')}`}
                     </p>
                   </td>
                   {canViewFinancials ? (
-                    <td className="px-5 py-3.5 text-right">
+                    <td className="px-3 py-2 text-right">
                       <p className="font-mono text-sm text-cream-900">{row.cost_price != null && row.cost_price > 0 ? formatNumberValue(row.cost_price, 'CURRENCY_EXACT') : '—'}</p>
                       <p className="mt-0.5 text-xs text-cream-600">{row.margin_pct == null ? '—' : formatNumberValue(row.margin_pct, 'PERCENTAGE')}</p>
                     </td>
                   ) : null}
-                  <td className="px-5 py-3.5 text-right font-mono text-sm text-cream-900">{stockLabel(row.on_hand)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sm text-cream-900">{stockLabel(row.on_hand)}</td>
                 </SelectableRow>
               );
             })

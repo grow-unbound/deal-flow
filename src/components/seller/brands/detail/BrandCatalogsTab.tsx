@@ -71,17 +71,17 @@ export function BrandCatalogsTab({ brandId }: BrandCatalogsTabProps) {
       >
         {filtered.map((catalog) => (
           <tr key={catalog.campaign_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-            <td className="px-5 py-3.5 text-base font-medium text-cream-900">{catalog.campaign_name}</td>
-            <td className="px-5 py-3.5 text-cream-900">{catalog.cohort_name}</td>
-            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD')}</td>
-            <td className="px-5 py-3.5 text-cream-900">{catalog.orders}</td>
-            <td className="px-5 py-3.5 text-cream-900">
+            <td className="px-3 py-2 text-base font-medium text-cream-900">{catalog.campaign_name}</td>
+            <td className="px-3 py-2 text-cream-900">{catalog.cohort_name}</td>
+            <td className="px-3 py-2 font-display text-md text-cream-950">{formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD')}</td>
+            <td className="px-3 py-2 text-cream-900">{catalog.orders}</td>
+            <td className="px-3 py-2 text-cream-900">
               <StatusTag
                 label={catalog.status}
                 tone={catalog.status === 'published' ? 'success' : catalog.status === 'draft' ? 'warning' : 'neutral'}
               />
             </td>
-            <td className="px-5 py-3.5 text-cream-900">{new Date(catalog.sent_at).toLocaleDateString('en-IN')}</td>
+            <td className="px-3 py-2 text-cream-900">{new Date(catalog.sent_at).toLocaleDateString('en-IN')}</td>
           </tr>
         ))}
       </LandingTable>

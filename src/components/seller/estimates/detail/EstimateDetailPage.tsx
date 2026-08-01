@@ -11,6 +11,7 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
   BuyerCardFilled,
   DocumentMetaCard,
@@ -259,70 +260,71 @@ export function EstimateDetailPage({ id }: { id: string }) {
         <DocumentComposerShell
           mode="view"
           kind="estimate"
-          breadcrumbItems={[
-            { label: 'Estimates', href: '/estimates' },
-            { label: data.estimate_number, current: true },
-          ]}
+          containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.estimate_number}
           subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address}` : 'No buyer assigned.'}
           status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
           titleActions={(
-            <>
-            {showVoid ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setVoidOpen(true)}
-                disabled={voidMut.isPending}
-              >
-              <Ban className="h-4 w-4" />
-                Void estimate
-              </Button>
-            ) : null}
-            {showDuplicate ? (
-              <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={handleDuplicate} disabled={dupMut.isPending}>
-                <Copy className="h-4 w-4" />
-                Duplicate
-              </Button>
-            ) : null}
-            {showEdit ? (
-              <Button
-                type="button"
-                variant={data.status === 'draft' ? 'outline' : 'ghost'}
-                size="sm"
-                className="gap-2"
-                onClick={() => {
-                  seedEstimateComposerCache(queryClient, id, data);
-                  router.push(`/estimates/${id}/edit`);
-                }}
-              >
-                <Edit2 className="h-4 w-4" />
-                Edit estimate
-              </Button>
-            ) : null}
-            {showSend ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                className="gap-2"
-                onClick={() => setSendOpen(true)}
-                disabled={sendMut.isPending}
-              >
-                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Send estimate
-              </Button>
-            ) : null}
-            
-            {(data.status === 'draft' || data.status === 'sent') && orderManagement && (createSalesOrders || createInvoices) ? (
-              <Button type="button" variant="accent" disabled={convertMut.isPending || convertToInvoiceMut.isPending} size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
-                <ArrowRightCircle className="h-4 w-4" />
-                Convert estimate
-              </Button>
-            ) : null}
-          </>
+            <DetailActions
+              inline={(
+                <>
+                  {showSend ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setSendOpen(true)}
+                      disabled={sendMut.isPending}
+                    >
+                      {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Send estimate
+                    </Button>
+                  ) : null}
+                  {(data.status === 'draft' || data.status === 'sent') && orderManagement && (createSalesOrders || createInvoices) ? (
+                    <Button type="button" variant="accent" disabled={convertMut.isPending || convertToInvoiceMut.isPending} size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
+                      <ArrowRightCircle className="h-4 w-4" />
+                      Convert estimate
+                    </Button>
+                  ) : null}
+                </>
+              )}
+              overflow={[
+                ...(showVoid
+                  ? [
+                      {
+                        label: 'Void estimate',
+                        icon: <Ban className="h-4 w-4" />,
+                        onClick: () => setVoidOpen(true),
+                        disabled: voidMut.isPending,
+                        destructive: true,
+                      } satisfies DetailActionItem,
+                    ]
+                  : []),
+                ...(showDuplicate
+                  ? [
+                      {
+                        label: 'Duplicate',
+                        icon: <Copy className="h-4 w-4" />,
+                        onClick: handleDuplicate,
+                        disabled: dupMut.isPending,
+                      } satisfies DetailActionItem,
+                    ]
+                  : []),
+                ...(showEdit
+                  ? [
+                      {
+                        label: 'Edit estimate',
+                        icon: <Edit2 className="h-4 w-4" />,
+                        onClick: () => {
+                          seedEstimateComposerCache(queryClient, id, data);
+                          router.push(`/estimates/${id}/edit`);
+                        },
+                      } satisfies DetailActionItem,
+                    ]
+                  : []),
+              ]}
+            />
         )}
         basics={(
           <DocumentBasicsStrip

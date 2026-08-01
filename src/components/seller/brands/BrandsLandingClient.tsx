@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { UserPlus, Plus, Layers } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { triggerHaptic } from '@/lib/haptics';
 
@@ -14,8 +14,8 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  StatusTag,
-  V3CalloutPanel,
+  StickyListHeader,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -23,10 +23,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { formatNumberValue } from '@/lib/utils';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Campaign age (most recent)';
@@ -59,40 +59,12 @@ const InviteUserDialog = dynamic(
   () => import('@/components/seller/InviteUserDialog').then((mod) => mod.InviteUserDialog),
 );
 
-function BrandLandingSkeleton() {
-  return (
-    <PageWrap>
-      <div className="space-y-5">
-        <Skeleton className="h-7 w-44" />
-        <Skeleton className="h-4 w-[36rem]" />
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-[14px]" />
-          ))}
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 rounded-[14px]" />
-          ))}
-        </div>
-        <Skeleton className="h-14 rounded-[14px]" />
-        <Skeleton className="h-[28rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
-}
-
 function BrandLandingDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-52 rounded-[14px]" />
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
@@ -138,13 +110,14 @@ function toBrandVm(brand: TenantBrand, index: number): BrandVm {
 function BrandLandingContent({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantBrandsResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
   const lowerLabel = 'in the last 90 days';
@@ -152,6 +125,7 @@ function BrandLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/brands',
     version: 4,
     initialState: {
       search: '',
@@ -173,10 +147,12 @@ function BrandLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-brands-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/brands',
     ready: !isLoading,
   });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('portfolio-gmv');
   const visibleCount = routeState.visibleCount;
   const hasTableControls = Boolean(search.trim() || filters.categories.length > 0 || filters.cohorts.length > 0);
 
@@ -226,6 +202,10 @@ function BrandLandingContent({
     setRouteState((current) => ({ ...current, visibleCount: PAGE_SIZE }));
   }, [filters.categories, filters.cohorts, search, sortBy]);
   const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(visibleRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [visibleRows.length],
+  );
   const hasMore = visibleCount < filtered.length || Boolean(hasNextPage);
   const { sentinelRef } = useInfiniteScroll({
     hasMore,
@@ -242,7 +222,6 @@ function BrandLandingContent({
     },
   });
 
-  const topPerformers = useMemo(() => summaryData?.todays_read?.top_performers ?? [], [summaryData?.todays_read?.top_performers]);
   const catalogFresh =
     summaryData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
   const activeBuyers = summaryData?.kpis?.buyers_with_orders_mtd ?? 0;
@@ -260,107 +239,115 @@ function BrandLandingContent({
   };
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
-  if (isLoading && !landingData) return <BrandsLandingSkeleton />;
+  const kpiOptions = [
+    {
+      id: 'portfolio-gmv',
+      label: portfolioGmvLabel,
+      value: formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD'),
+      sub: horizonLabel,
+    },
+    {
+      id: 'active-brands',
+      label: 'Active brands',
+      value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
+      sub: `${activeBuyers} of ${totalBuyers} customers purchased`,
+    },
+    {
+      id: 'recent-campaigns',
+      label: 'Recently active in campaigns',
+      value: `${catalogFresh}`,
+      sub: freshnessHelp(),
+    },
+  ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+
+  // No early full-page skeleton swap: the real PageHeader/StickyListHeader/FilterBar
+  // render immediately below (their content is either static or already null-safe),
+  // and `showRefreshingState`/`showTableSkeleton` cover the data-dependent regions
+  // (KPI strip, table rows) with placeholders — so title/CTAs/table headers show up
+  // instantly instead of being replaced by a disconnected generic skeleton component.
   if (isError && !landingData) {
     return (
       <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
     );
   }
-  if (!landingData) return <BrandsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   return (
-    <PageWrap>
-      <PageHeader
-        eyebrow="Portfolio"
-        title="Brands"
-        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} active brands · ${summaryData?.branded_product_count ?? 0} of ${summaryData?.active_product_count ?? 0} active products branded.`}
-        horizon={horizonLabel}
-        primary="Add a brand"
-        onPrimaryClick={() => setAddBrandOpen(true)}
-      />
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <StickyListHeader>
+        <PageHeader
+          eyebrow={isPaneOpen ? 'Brands' : 'Portfolio'}
+          title={isPaneOpen ? selectedOption.label : 'Brands'}
+          subtitle={isPaneOpen
+            ? `${selectedOption.value} · ${selectedOption.sub}`
+            : `${summaryData?.kpis?.brands_carried ?? updatedBrands.length} active brands · ${summaryData?.branded_product_count ?? 0} of ${summaryData?.active_product_count ?? 0} active products branded.`}
+          horizon={horizonLabel}
+          primary="Add a brand"
+          onPrimaryClick={() => setAddBrandOpen(true)}
+          compact={isPaneOpen}
+        />
 
+        {showRefreshingState || isError ? null : (
+          <>
+            {isPaneOpen ? null : (
+              <InsightStrip4
+                tiles={kpiOptions.map((option): InsightTile => ({
+                  label: option.label,
+                  value: option.value,
+                  sub: option.sub,
+                  onClick: () => setSelectedKpiKey(option.id),
+                  selected: option.id === selectedKpiKey,
+                }))}
+              />
+            )}
+
+            <FilterBar
+              count={`${filtered.length} brands`}
+              searchPlaceholder="Search brand or category…"
+              chips={[]}
+              activeChip=""
+              sortBy={sortBy}
+              hideViewToggle
+              compact={isPaneOpen}
+              groups={[
+                {
+                  key: 'categories',
+                  label: 'Categories',
+                  options: categoryOptions.map((value) => ({ value, label: value })),
+                  values: filters.categories,
+                  onChange: (values) => setRouteState((current) => ({
+                    ...current,
+                    filters: { ...(current.filters ?? filters), categories: values, cohorts: current.filters?.cohorts ?? filters.cohorts },
+                  })),
+                },
+                {
+                  key: 'cohorts',
+                  label: 'Customer Groups',
+                  options: cohortOptions,
+                  values: filters.cohorts,
+                  onChange: (values) => setRouteState((current) => ({
+                    ...current,
+                    filters: { ...(current.filters ?? filters), categories: current.filters?.categories ?? filters.categories, cohorts: values },
+                  })),
+                },
+              ]}
+              searchValue={search}
+              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+              sortOptions={[...SORT_OPTIONS]}
+              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+            />
+          </>
+        )}
+      </StickyListHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
         <BrandLandingDataSkeleton />
       ) : isError ? (
         <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
       ) : (
         <>
-      <InsightStrip4
-        tiles={[
-          {
-            label: portfolioGmvLabel,
-            value: formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD'),
-            tone: 'accent',
-          },
-          {
-            label: 'Active brands',
-            value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
-            sub: `${activeBuyers} of ${totalBuyers} customers purchased`,
-          },
-          {
-            label: 'Recently active in campaigns',
-            value: `${catalogFresh}`,
-            sub: freshnessHelp(),
-          },
-        ]}
-      />
-
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'brands_driving_sales',
-            kind: 'info',
-            eyebrow: 'Brands driving sales',
-            hint: `${topPerformers.length}`,
-            getHref: (row) => `/brands/${row.id}`,
-            rows: topPerformers.map((brand, index) => ({
-              id: String(brand.id),
-              initials: getInitials(brand.name),
-              hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
-              name: brand.name,
-              reason: `${portfolioGmv > 0 ? Math.round((brand.gmv_mtd / portfolioGmv) * 100) : 0}% of portfolio`,
-              trailing: formatNumberValue(brand.gmv_mtd, 'CURRENCY_THRESHOLD'),
-            })),
-          },
-        ]}
-      />
-
-      <FilterBar
-        count={`${filtered.length} brands`}
-        searchPlaceholder="Search brand or category…"
-        chips={[]}
-        activeChip=""
-        sortBy={sortBy}
-        hideViewToggle
-        groups={[
-          {
-            key: 'categories',
-            label: 'Categories',
-            options: categoryOptions.map((value) => ({ value, label: value })),
-            values: filters.categories,
-            onChange: (values) => setRouteState((current) => ({
-              ...current,
-              filters: { ...(current.filters ?? filters), categories: values, cohorts: current.filters?.cohorts ?? filters.cohorts },
-            })),
-          },
-          {
-            key: 'cohorts',
-            label: 'Customer Groups',
-            options: cohortOptions,
-            values: filters.cohorts,
-            onChange: (values) => setRouteState((current) => ({
-              ...current,
-              filters: { ...(current.filters ?? filters), categories: current.filters?.categories ?? filters.categories, cohorts: values },
-            })),
-          },
-        ]}
-        searchValue={search}
-        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-      />
-
       {showTableSkeleton ? (
         <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} />
       ) : (
@@ -396,15 +383,35 @@ function BrandLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1400}
+        forceCompact={isPaneOpen}
+        sentinelIndex={sentinelIndex}
+        sentinelRef={sentinelRef}
+        mobileRows={visibleRows.map((brand) => ({
+          id: brand.id,
+          href: `/brands/${brand.id}`,
+          primary: brand.name,
+          supporting: `${brand.skus} SKUs · ${brand.category}`,
+          meta: brand.catalogName ?? 'No published campaign',
+          trailing: formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD'),
+          selected: brand.id === openId,
+        }))}
       >
-        {visibleRows.map((brand) => (
+        {visibleRows.map((brand, index) => (
+          <Fragment key={brand.id}>
+          {index === sentinelIndex ? (
+            <tr aria-hidden="true" style={{ height: 0 }}>
+              <td colSpan={6} className="p-0"><div ref={sentinelRef} /></td>
+            </tr>
+          ) : null}
           <tr
-            key={brand.id}
-            className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
+            className={cn(
+              'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              brand.id === openId ? 'bg-ember-50' : 'bg-white',
+            )}
             onClick={() => router.push(`/brands/${brand.id}`)}
             onPointerDown={() => triggerHaptic()}
           >
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <div className="ent flex items-center gap-3">
                 <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={38} />
                 <div className="min-w-0">
@@ -413,10 +420,10 @@ function BrandLandingContent({
                 </div>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-right text-base text-cream-900">
+            <td className="px-3 py-2 text-right text-base text-cream-900">
               <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD')}</span>
             </td>
-            <td className="px-5 py-3.5 text-right text-base text-cream-900">
+            <td className="px-3 py-2 text-right text-base text-cream-900">
               <div className="mb-1 h-[5px] w-[184px] overflow-hidden rounded-full bg-cream-200">
                 <div
                   className={`h-[5px] rounded-full ${brand.hue === 'ember' ? 'bg-ember-400' : brand.hue === 'cream' ? 'bg-cream-600' : 'bg-teal-500'}`}
@@ -425,26 +432,24 @@ function BrandLandingContent({
               </div>
               <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD')}</p>
             </td>
-            <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900 tabular-nums">
+            <td className="px-3 py-2 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-3 py-2 text-base text-cream-900">
               <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published campaign'}</p>
             </td>
-            <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
+            <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
           </tr>
+          </Fragment>
         ))}
       </LandingTable>
       )}
-
-      {hasMore ? (
-        <div ref={sentinelRef} className="h-10 w-full" aria-hidden="true" />
-      ) : null}
 
       <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       <AddBrandCommand open={addBrandOpen} onOpenChange={setAddBrandOpen} hideTrigger />
         </>
       )}
+      </div>
     </PageWrap>
   );
 }
@@ -452,15 +457,13 @@ function BrandLandingContent({
 export function BrandsLandingClient({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantBrandsResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <BrandLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <BrandLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

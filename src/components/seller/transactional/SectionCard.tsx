@@ -12,7 +12,7 @@ export interface SectionCardProps {
 export function SectionCard({ title, sub, rightSlot, flush = false, children }: SectionCardProps) {
   return (
     <div className="overflow-hidden rounded-[14px] border border-cream-200 bg-white">
-      <div className="flex items-center justify-between border-b border-cream-100 px-5 py-3.5">
+      <div className="flex items-center justify-between border-b border-cream-100 px-3 py-2">
         <div className="min-w-0">
           <span className="text-base font-semibold text-cream-900">{title}</span>
           {sub ? <span className="ml-2 text-sm text-cream-600">{sub}</span> : null}

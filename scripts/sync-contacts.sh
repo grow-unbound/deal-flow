@@ -10,14 +10,16 @@ set -euo pipefail
 # Filter flags (at least one required; multiple flags are OR-combined in DB query):
 #   --since YYYY-MM-DD      Paginated bulk-sync of contacts modified since this
 #                           date (server-side Zoho last_modified_time filter).
-#   --buyer-app-enabled     Sync only buyers with is_buyer_app_enabled = true.
+#   --buyer-app-enabled     Sync only buyers with buyer_app_enabled = true.
 #   --gstin                 Sync only buyers with gstin IS NOT NULL.
 #
 # Step-2 flag (incremental mode only — NOT for initial full loads):
-#   --incremental           After the list-sync pass, also fetch full contact
-#                           details via /contacts/{id} for each updated buyer.
-#                           Calls sync-customers with contact_id param.
-#                           Skip this flag during initial / historical loads.
+#   --incremental           After the list-sync pass, detail-fetch each buyer
+#                           updated since --since via ensure-customer (GET
+#                           /contacts/{id}). Skip during initial / historical loads.
+#
+# Per-contact refresh uses ensure-customer (refreshBuyerFromZoho). Full list
+# sync (--since only) uses sync-customers paginated /contacts list.
 #
 # Examples:
 #   # Daily incremental — modified yesterday + full detail fetch:
@@ -47,7 +49,7 @@ SINCE=""
 BUYER_APP_ENABLED=false
 GSTIN_FILTER=false
 INCREMENTAL=false
-BATCH_SIZE=100
+BATCH_SIZE=50
 SLEEP_BETWEEN=2   # seconds between paginated calls (since-mode only)
 
 # ── Arg parsing ───────────────────────────────────────────────────────────────
@@ -87,6 +89,27 @@ if [ "$BUYER_APP_ENABLED" = true ] || [ "$GSTIN_FILTER" = true ] || [ "$INCREMEN
   fi
 fi
 
+# ── Helper: fetch app.buyers via PostgREST and extract external_ref values ────
+fetch_buyer_external_refs() {
+  local url="$1"
+  local resp
+
+  resp=$(curl -sS "$url" \
+    -H "apikey: ${SUPABASE_SERVICE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+    -H "Accept: application/json" \
+    -H "Accept-Profile: app")
+
+  if ! jq -e 'type == "array"' <<<"$resp" >/dev/null 2>&1; then
+    echo "PostgREST error: $(jq -r '.message // .' <<<"$resp")" >&2
+    return 1
+  fi
+
+  jq -r '.[].external_ref' <<<"$resp" \
+    | grep -v '^null$' \
+    | sort -u
+}
+
 # ── Helper: query Supabase REST for buyer external_refs ───────────────────────
 # Returns a newline-separated list of Zoho contact IDs (external_ref values).
 query_buyer_external_refs() {
@@ -94,10 +117,10 @@ query_buyer_external_refs() {
 
   # Build PostgREST OR filter for the requested criteria
   if [ "$BUYER_APP_ENABLED" = true ] && [ "$GSTIN_FILTER" = true ]; then
-    # OR(is_buyer_app_enabled.eq.true,gstin.not.is.null)
-    filter_parts+=("or=(is_buyer_app_enabled.eq.true,gstin.not.is.null)")
+    # OR(buyer_app_enabled.eq.true,gstin.not.is.null)
+    filter_parts+=("or=(buyer_app_enabled.eq.true,gstin.not.is.null)")
   elif [ "$BUYER_APP_ENABLED" = true ]; then
-    filter_parts+=("is_buyer_app_enabled=eq.true")
+    filter_parts+=("buyer_app_enabled=eq.true")
   elif [ "$GSTIN_FILTER" = true ]; then
     filter_parts+=("gstin=not.is.null")
   fi
@@ -112,31 +135,20 @@ query_buyer_external_refs() {
 
   local url="${SUPABASE_URL}/rest/v1/buyers?select=external_ref&external_ref=not.is.null&deleted_at=is.null&${query_string}"
 
-  curl -sS "$url" \
-    -H "apikey: ${SUPABASE_SERVICE_KEY}" \
-    -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
-    -H "Accept: application/json" \
-    | jq -r '.[].external_ref' \
-    | grep -v '^null$' \
-    | sort -u
+  fetch_buyer_external_refs "$url"
 }
 
 # ── Helper: query buyers updated since a date (for step-2 incremental) ────────
 query_updated_buyer_external_refs() {
   local since="$1"
-  curl -sS "${SUPABASE_URL}/rest/v1/buyers?select=external_ref&external_ref=not.is.null&deleted_at=is.null&updated_at=gte.${since}" \
-    -H "apikey: ${SUPABASE_SERVICE_KEY}" \
-    -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
-    -H "Accept: application/json" \
-    | jq -r '.[].external_ref' \
-    | grep -v '^null$' \
-    | sort -u
+  local url="${SUPABASE_URL}/rest/v1/buyers?select=external_ref&external_ref=not.is.null&deleted_at=is.null&updated_at=gte.${since}"
+
+  fetch_buyer_external_refs "$url"
 }
 
-# ── Helper: call sync-customers for one contact by Zoho ID (step 2) ──────────
-# Requires sync-customers to support contact_id param (single-contact mode:
-# fetches /contacts/{contact_id} instead of the paginated /contacts list).
-sync_single_contact() {
+# ── Helper: refresh one Zoho contact via ensure-customer edge function ────────
+# GET /contacts/{id} + persist (refreshBuyerFromZoho). One Zoho API call per buyer.
+refresh_single_contact() {
   local contact_id="$1"
 
   local body
@@ -146,19 +158,23 @@ sync_single_contact() {
     '{tenant_integration_id:$tid, contact_id:$cid}')
 
   local resp
-  resp=$(curl -sS -X POST "${SUPABASE_URL}/functions/v1/sync-customers" \
+  resp=$(curl -sS -X POST "${SUPABASE_URL}/functions/v1/ensure-customer" \
     -H "Content-Type: application/json" \
     -H "x-integrations-dispatch-secret: ${INTEGRATIONS_DISPATCH_SECRET}" \
     -d "$body")
 
-  echo "$resp" | jq .
-
   local ok
   ok=$(echo "$resp" | jq -r '.ok')
-  if [ "$ok" != "true" ]; then
-    echo "  [warn] sync_single_contact failed for $contact_id: $(echo "$resp" | jq -r '.error // .message // "unknown"')" >&2
-    return 1
+  local records
+  records=$(echo "$resp" | jq -r '.records_synced // 0')
+  if [ "$ok" = "true" ]; then
+    echo "  ok — records_synced=$records"
+    return 0
   fi
+
+  echo "$resp" | jq .
+  echo "  [warn] refresh failed for $contact_id: $(echo "$resp" | jq -r '.error // .message // "unknown"')" >&2
+  return 1
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -214,8 +230,7 @@ if [ -n "$SINCE" ] && [ "$BUYER_APP_ENABLED" = false ] && [ "$GSTIN_FILTER" = fa
   done
 
 else
-  # Local-filter mode: query DB for matching buyer external_refs, then sync
-  # each contact individually (one after the other as specified).
+  # Local-filter mode: query DB, then refresh each buyer via ensure-customer.
   echo "Mode: local-filter (buyer_app_enabled=$BUYER_APP_ENABLED, gstin=$GSTIN_FILTER, since=${SINCE:-none})"
 
   echo "Querying DB for matching buyers..."
@@ -232,25 +247,11 @@ else
     failed=0
     while IFS= read -r contact_id; do
       idx=$((idx + 1))
-      echo "[$idx/$total] Syncing contact $contact_id..."
+      echo "[$idx/$total] Refreshing contact $contact_id..."
 
-      body=$(jq -n \
-        --arg tid "$TENANT_INTEGRATION_ID" \
-        --arg cid "$contact_id" \
-        --arg since "$SINCE" \
-        '{tenant_integration_id:$tid, contact_id:$cid}
-         + (if $since != "" then {since:$since} else {} end)')
-
-      resp=$(curl -sS -X POST "${SUPABASE_URL}/functions/v1/sync-customers" \
-        -H "Content-Type: application/json" \
-        -H "x-integrations-dispatch-secret: ${INTEGRATIONS_DISPATCH_SECRET}" \
-        -d "$body")
-
-      echo "$resp" | jq .
-
-      ok=$(echo "$resp" | jq -r '.ok')
-      if [ "$ok" != "true" ]; then
-        echo "  [warn] failed for $contact_id" >&2
+      if refresh_single_contact "$contact_id"; then
+        true
+      else
         failed=$((failed + 1))
       fi
 
@@ -263,12 +264,8 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 2 — Per-contact full-detail fetch (incremental daily sync only)
-# Skip during initial full loads or historical backfills.
-# Calls /contacts/{id} on Zoho for each buyer updated since the since-date,
-# populating fields not returned by the list endpoint (e.g. custom fields,
-# detailed address, credit terms). Requires sync-customers to support
-# contact_id param (single-contact mode).
+# STEP 2 — Per-contact detail refresh (incremental daily sync only)
+# ensure-customer → GET /contacts/{id} for buyers updated locally since --since.
 # ═══════════════════════════════════════════════════════════════════════════════
 if [ "$INCREMENTAL" = true ]; then
   echo ""
@@ -293,7 +290,7 @@ if [ "$INCREMENTAL" = true ]; then
         idx=$((idx + 1))
         echo "[$idx/$total_updated] Detail fetch for $contact_id..."
 
-        if sync_single_contact "$contact_id"; then
+        if refresh_single_contact "$contact_id"; then
           true
         else
           failed=$((failed + 1))

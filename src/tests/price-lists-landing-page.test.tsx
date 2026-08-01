@@ -24,6 +24,8 @@ const storageFactory = () => {
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/price-lists',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/usePriceLists', () => ({

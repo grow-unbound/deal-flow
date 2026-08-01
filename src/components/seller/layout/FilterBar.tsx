@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronDown, Loader2, Search, X } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -44,6 +44,10 @@ interface LegacyFilterBarProps {
 
 interface FilterBarProps extends LegacyFilterBarProps {
   groups?: FilterBarGroup[];
+  /** Compact 2-row layout (icon-only sort, no count) for the split-pane list
+   * column. Defaults to false: the original single-row layout with a visible
+   * "Sort: value" dropdown and result count, used in the expanded/list-only view. */
+  compact?: boolean;
 }
 
 function describeSelection(group: FilterBarGroup): string {
@@ -86,6 +90,7 @@ export function FilterBar({
   sortOptions,
   onSortChange,
   groups,
+  compact = false,
 }: FilterBarProps) {
   const activeGroups = groups ?? normalizeLegacyGroups({
     count,
@@ -115,116 +120,167 @@ export function FilterBar({
   }, [activeGroups]);
   const allSelected = activeGroups.every((group) => group.values.length === 0);
 
-  return (
-    <section
-      className="mt-4 rounded-[12px] border border-cream-300 bg-cream-50 px-3 py-[10px] md:mt-5 md:rounded-t-[14px] md:border-b-0"
-    >
-      <div className="flex w-full flex-col gap-2 overflow-visible md:flex-row md:flex-nowrap md:items-center">
-        <div className="relative inline-flex h-10 min-w-0 w-full items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] pr-8 text-cream-700 md:h-9 md:min-w-[176px] md:flex-[0_1_220px]">
-          <Search size={14} className="pointer-events-none text-cream-600" />
-          <input
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[var(--b-text-body)] text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0 md:text-sm"
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            value={searchValue}
-            onChange={(event) => onSearchChange?.(event.target.value)}
-          />
-          {searchLoading ? (
-            <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-cream-500" aria-hidden />
-          ) : searchValue?.length ? (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => onSearchChange?.('')}
-              className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-cream-500 transition-colors hover:bg-cream-100 hover:text-cream-800"
-            >
-              <X size={12} />
-            </button>
-          ) : null}
-        </div>
+  const searchField = (
+    <div className={cn(
+      'relative inline-flex h-10 items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] pr-8 text-cream-700 md:h-9',
+      compact ? 'min-w-0 flex-1' : 'min-w-0 w-full md:min-w-[176px] md:flex-[0_1_220px]',
+    )}>
+      <Search size={14} className="pointer-events-none text-cream-600" />
+      <input
+        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[var(--b-text-body)] text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0 md:text-sm"
+        placeholder={searchPlaceholder}
+        aria-label={searchPlaceholder}
+        value={searchValue}
+        onChange={(event) => onSearchChange?.(event.target.value)}
+      />
+      {searchLoading ? (
+        <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-cream-500" aria-hidden />
+      ) : searchValue?.length ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onSearchChange?.('')}
+          className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-cream-500 transition-colors hover:bg-cream-100 hover:text-cream-800"
+        >
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
 
-        <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto pb-0.5 md:pb-0">
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className={cn(
-              'inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-sm transition-colors',
-              'border-cream-400 bg-white text-cream-800 hover:bg-cream-100',
-              allSelected && 'border-ember-200 bg-ember-50 text-cream-900 hover:bg-ember-50',
-            )}
+  const filterChips = (
+    <div className={cn('flex min-w-0 items-center justify-start gap-2 overflow-x-auto pb-0.5 md:pb-0', !compact && 'flex-1')}>
+      <button
+        type="button"
+        onClick={clearAllFilters}
+        className={cn(
+          'inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-sm transition-colors',
+          'border-cream-400 bg-white text-cream-800 hover:bg-cream-100',
+          allSelected && 'border-ember-200 bg-ember-50 text-cream-900 hover:bg-ember-50',
+        )}
+      >
+        All
+      </button>
+      {activeGroups.map((group) => {
+        const isOpen = openKey === group.key;
+        const triggerLabel = group.label ? `${group.label}: ${describeSelection(group)}` : describeSelection(group);
+        return (
+          <Popover
+            key={group.key}
+            open={isOpen}
+            onOpenChange={(nextOpen) => setOpenKey(nextOpen ? group.key : null)}
           >
-            All
-          </button>
-          {activeGroups.map((group) => {
-            const isOpen = openKey === group.key;
-            const triggerLabel = group.label ? `${group.label}: ${describeSelection(group)}` : describeSelection(group);
-            return (
-              <Popover
-                key={group.key}
-                open={isOpen}
-                onOpenChange={(nextOpen) => setOpenKey(nextOpen ? group.key : null)}
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-cream-800 transition-colors hover:bg-cream-100',
+                  'border-cream-400 bg-white',
+                  group.values.length > 0 && 'border-ember-300 bg-ember-50 text-cream-900',
+                  isOpen && 'border-ember-300 bg-ember-50',
+                )}
               >
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-cream-800 transition-colors hover:bg-cream-100',
-                      'border-cream-400 bg-white',
-                      group.values.length > 0 && 'border-ember-300 bg-ember-50 text-cream-900',
-                      isOpen && 'border-ember-300 bg-ember-50',
-                    )}
-                  >
-                    <span className="font-medium">{triggerLabel}</span>
-                    <ChevronDown size={14} />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  sideOffset={2}
-                  className="z-[70] w-[var(--radix-popover-trigger-width)] max-h-[min(24rem,var(--radix-popover-content-available-height))] overflow-hidden rounded-[10px] border-cream-300 bg-white p-1 shadow-lg"
+                <span className="font-medium">{triggerLabel}</span>
+                <ChevronDown size={14} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={2}
+              className="z-[70] w-[var(--radix-popover-trigger-width)] max-h-[min(24rem,var(--radix-popover-content-available-height))] overflow-hidden rounded-[10px] border-cream-300 bg-white p-1 shadow-lg"
+            >
+              <div className="max-h-full overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    group.onChange([]);
+                    setOpenKey(null);
+                  }}
+                  className={cn(
+                    'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
+                    group.values.length === 0 && 'font-medium text-cream-900',
+                  )}
                 >
-                  <div className="max-h-full overflow-y-auto">
+                  All
+                </button>
+                {group.options.map((option) => {
+                  const checked = group.values.includes(option.value);
+                  return (
                     <button
+                      key={option.value}
                       type="button"
+                      disabled={option.disabled}
                       onClick={() => {
-                        group.onChange([]);
+                        group.onChange([option.value]);
                         setOpenKey(null);
                       }}
                       className={cn(
                         'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
-                        group.values.length === 0 && 'font-medium text-cream-900',
+                        option.disabled && 'cursor-not-allowed opacity-50',
                       )}
                     >
-                      All
+                      <span className={cn('min-w-0 flex-1', checked && 'font-medium text-cream-900')}>
+                        {option.label}
+                      </span>
                     </button>
-                    {group.options.map((option) => {
-                      const checked = group.values.includes(option.value);
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          disabled={option.disabled}
-                          onClick={() => {
-                            group.onChange([option.value]);
-                            setOpenKey(null);
-                          }}
-                          className={cn(
-                            'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
-                            option.disabled && 'cursor-not-allowed opacity-50',
-                          )}
-                        >
-                          <span className={cn('min-w-0 flex-1', checked && 'font-medium text-cream-900')}>
-                            {option.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            );
-          })}
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+        );
+      })}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <section className="mt-4 rounded-[12px] border border-cream-300 bg-cream-50 px-3 py-[10px] md:mt-5 md:rounded-t-[14px] md:rounded-b-none md:border-b-0">
+        <div className="flex w-full flex-col gap-2">
+          <div className="flex w-full items-center gap-2">
+            {searchField}
+
+            {sortOptions ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-cream-400 bg-white text-cream-800 hover:bg-cream-100 md:h-9 md:w-9"
+                  aria-label={`Sort: ${sortBy}`}
+                  title={`Sort: ${sortBy}`}
+                >
+                  <ArrowUpDown size={15} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[220px] border-cream-300">
+                  {sortOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option}
+                      onClick={() => onSortChange?.(option)}
+                      className={cn(option === sortBy && 'bg-cream-100 font-medium text-cream-900')}
+                    >
+                      {option}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+
+            {!hideViewToggle ? (
+              <button type="button" className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-cream-200 text-sm text-cream-700 xl:inline-flex">
+                View
+              </button>
+            ) : null}
+          </div>
+
+          {filterChips}
         </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-4 rounded-[12px] border border-cream-300 bg-cream-50 px-3 py-[10px] md:mt-5 md:rounded-t-[14px] md:rounded-b-none md:border-b-0">
+      <div className="flex w-full flex-col gap-2 overflow-visible md:flex-row md:flex-nowrap md:items-center">
+        {searchField}
+        {filterChips}
 
         <div className="hidden shrink-0 justify-center xl:flex">
           <p className="whitespace-nowrap text-sm text-cream-700">{count}</p>

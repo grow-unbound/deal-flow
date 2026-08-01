@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -50,6 +51,14 @@ export interface TransactionTableProps {
   tableMinWidth?: number | string;
   rowClassName?: string;
   onRowClick?: (row: TransactionTableRow) => void;
+  /** Forwarded to `LandingTable` — forces the compact card list when this table
+   * renders in the split-pane list column. */
+  forceCompact?: boolean;
+  /** Highlights this row/card as the currently-open record in the split pane. */
+  selectedId?: string;
+  /** Mid-list infinite-scroll sentinel — forwarded to `LandingTable`. */
+  sentinelIndex?: number;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
 }
 
 function deriveInitials(name: string) {
@@ -129,6 +138,10 @@ export function TransactionTable({
   tableMinWidth,
   rowClassName,
   onRowClick,
+  forceCompact,
+  selectedId,
+  sentinelIndex,
+  sentinelRef,
 }: TransactionTableProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -146,6 +159,9 @@ export function TransactionTable({
       className={className}
       tableClassName={cn('v2-table', tableClassName)}
       tableMinWidth={tableMinWidth}
+      forceCompact={forceCompact}
+      sentinelIndex={sentinelIndex}
+      sentinelRef={sentinelRef}
       mobileRows={rows.map((row) => ({
         id: row.id,
         href: row.href,
@@ -156,24 +172,31 @@ export function TransactionTable({
           : `${row.items_count} item${row.items_count === 1 ? '' : 's'} · ${row.created_at ? formatDate(row.created_at) : '—'}`,
         trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
         badge: row.realtime_badge,
+        selected: row.id === selectedId,
         onClick: () => {
           onRowClick?.(row);
         },
       }))}
     >
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const initials = row.buyer_initials ?? deriveInitials(row.buyer_name);
         const hue = row.buyer_hue ?? 'teal';
         const click = onRowClick ?? ((current: TransactionTableRow) => router.push(current.href));
 
         return (
+          <Fragment key={row.id}>
+          {index === sentinelIndex ? (
+            <tr aria-hidden="true" style={{ height: 0 }}>
+              <td colSpan={columns.length} className="p-0"><div ref={sentinelRef} /></td>
+            </tr>
+          ) : null}
           <tr
-            key={row.id}
             className={cn(
               // active:bg (not scale) — CSS transform on a <tr> renders inconsistently
               // across browsers (Safari in particular), so press feedback here is a
               // background flash instead of Pressable's usual scale-down.
-              'cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              row.id === selectedId ? 'bg-ember-50' : 'bg-white',
               rowClassName,
             )}
             onClick={() => click(row)}
@@ -183,7 +206,7 @@ export function TransactionTable({
             }}
             onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
@@ -198,7 +221,7 @@ export function TransactionTable({
               </div>
             </td>
 
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <div className="flex items-center gap-3">
                 {/* <EntityAvatar initials={initials} hue={hue} size={30} /> */}
                 <div className="min-w-0">
@@ -208,17 +231,17 @@ export function TransactionTable({
               </div>
             </td>
 
-            <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
+            <td className="px-3 py-2 text-sm text-cream-900">{row.location_name ?? '—'}</td>
 
             {showCampaignColumn ? (
-              <td className="px-5 py-3.5 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
+              <td className="px-3 py-2 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
             ) : null}
 
             {kind !== 'invoice' ? (
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
+              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{row.items_count}</td>
             ) : null}
 
-            <td className="px-5 py-3.5 text-right">
+            <td className="px-3 py-2 text-right">
               <p className="font-display text-md text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
               {kind === 'invoice' && row.amount_subtext ? (
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
@@ -226,31 +249,32 @@ export function TransactionTable({
             </td>
 
             {kind === 'invoice' ? (
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">
                 {row.outstanding_amount ? formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD') : '—'}
               </td>
             ) : null}
 
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <StatusTag label={row.status_label} tone={row.status_tone} />
             </td>
 
-            <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+            <td className="px-3 py-2 font-mono text-sm text-cream-700">
               {row.created_at ? formatDate(row.created_at) : '—'}
             </td>
 
             {kind === 'estimate' ? (
-              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+              <td className="px-3 py-2 font-mono text-sm text-cream-700">
                 {row.expires_at ? formatDate(row.expires_at) : '—'}
               </td>
             ) : null}
 
             {kind === 'invoice' ? (
-              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
+              <td className="px-3 py-2 font-mono text-sm text-cream-700">
                 {row.due_at ? formatDate(row.due_at) : '—'}
               </td>
             ) : null}
           </tr>
+          </Fragment>
         );
       })}
     </LandingTable>

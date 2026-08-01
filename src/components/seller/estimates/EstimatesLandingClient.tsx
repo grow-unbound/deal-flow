@@ -1,8 +1,8 @@
 'use client';
 
-import { useDeferredValue, useMemo } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { Plus, FileText } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 
@@ -13,7 +13,8 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
+  StickyListHeader,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -24,13 +25,14 @@ import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { formatDate, formatNumberValue } from '@/lib/utils';
-import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
-import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
+import { parseSellerLandingPeriod, sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
+import { TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
@@ -45,15 +47,6 @@ const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = 
   void: 7,
   pending: 8,
 };
-
-function mapRowToCallout(row: Pick<EstimateLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
 
 function compareStatusRows(a: EstimateLandingRow, b: EstimateLandingRow) {
   const rankDelta = STATUS_SORT_RANK[a.status.value] - STATUS_SORT_RANK[b.status.value];
@@ -99,15 +92,8 @@ function EstimatesDataSkeleton() {
           <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         ))}
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
       <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
-      </div>
+      <EstimatesTableRowsSkeleton />
     </>
   );
 }
@@ -115,15 +101,18 @@ function EstimatesDataSkeleton() {
 function EstimatesLandingContent({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantEstimatesResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search')?.trim() || undefined;
+  const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
-  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(clientInitialPeriod);
   const metricSuffix = sellerLandingMetricSuffix(period);
   const summaryQuery = useTenantEstimates(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
@@ -132,6 +121,7 @@ function EstimatesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
+    pathnameOverride: '/estimates',
     version: 5,
     initialState: {
       search: '',
@@ -147,6 +137,7 @@ function EstimatesLandingContent({
   const search = routeState.search;
   const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
   const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('estimate-value');
 
   const debouncedSearch = useDebounce(search, 300);
   const deferredFilters = useDeferredValue(filters);
@@ -160,12 +151,12 @@ function EstimatesLandingContent({
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,
-    rootMargin: '400px',
     onLoadMore: fetchNextPage,
   });
   useRouteScrollRestoration({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
+    pathnameOverride: '/estimates',
     ready: !isLoading,
   });
 
@@ -207,6 +198,10 @@ function EstimatesLandingContent({
     });
   }, [allEstimates, filters.location_id, filters.source, filters.status, search, sortBy]);
 
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(filteredRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [filteredRows.length],
+  );
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filteredRows.length === 0;
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
@@ -217,10 +212,6 @@ function EstimatesLandingContent({
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
 
   const pulseAggregates = summaryData?.pulse_aggregates;
-  const followUpHint = `${pulseAggregates?.sent_awaiting_count ?? 0}`;
-  const expiringHint = `${pulseAggregates?.expiring_soon_count ?? 0}`;
-
-  if (isLoading && !data) return <EstimatesLandingSkeleton />;
 
   if (isError && !data) {
     return (
@@ -230,11 +221,36 @@ function EstimatesLandingContent({
       />
     );
   }
-  if (!data) return <EstimatesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;
-  const read = summaryData?.todays_read;
+  const kpiOptions = [
+    {
+      id: 'estimate-value',
+      label: 'Estimate value · 90D',
+      value: formatNumberValue(kpis?.total_gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.total_estimates_this_period ?? 0} estimates in trailing 90 days`,
+    },
+    {
+      id: 'open-estimates',
+      label: 'Open estimates',
+      value: formatNumberValue(kpis?.open_estimate_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.open_estimates_this_period ?? 0} open estimates`,
+    },
+    {
+      id: 'awaiting-action',
+      label: 'Awaiting action 3+ days',
+      value: formatNumberValue(pulseAggregates?.sent_awaiting_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending conversion`,
+    },
+    {
+      id: 'expiring-soon',
+      label: 'Expiring in 7 days',
+      value: formatNumberValue(pulseAggregates?.expiring_soon_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
+    },
+  ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
@@ -257,18 +273,53 @@ function EstimatesLandingContent({
 
   return (
     <>
-      <PageWrap className="max-w-[1920px]">
-        <PageHeader
-          eyebrow="Enquiries"
-          title="Estimates"
-          subtitle={subtitle}
-          horizon={horizonLabel}
-          showHorizonControl={false}
-          primary={createEstimates ? 'Add an estimate' : undefined}
-          onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
-        />
-        <SellerMobileTransactionTabs active="estimates" />
+      <PageWrap className="max-w-[1920px] flex h-full min-h-0 flex-col">
+        <StickyListHeader>
+          <PageHeader
+            eyebrow={isPaneOpen ? 'Estimates' : 'Enquiries'}
+            title={isPaneOpen ? selectedOption.label : 'Estimates'}
+            subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+            horizon={horizonLabel}
+            showHorizonControl={false}
+            primary={createEstimates ? 'Add an estimate' : undefined}
+            onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
+            compact={isPaneOpen}
+          />
+          <SellerMobileTransactionTabs active="estimates" />
 
+          {showRefreshingState || isError ? null : (
+            <>
+              {isPaneOpen ? null : (
+                <InsightStrip4
+                  tiles={kpiOptions.map((option): InsightTile => ({
+                    label: option.label,
+                    value: option.value,
+                    sub: option.sub,
+                    onClick: () => setSelectedKpiKey(option.id),
+                    selected: option.id === selectedKpiKey,
+                  }))}
+                />
+              )}
+
+              <FilterBar
+                count={`Showing ${filteredRows.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+                searchPlaceholder="Search estimate number…"
+                chips={[]}
+                activeChip=""
+                sortBy={sortBy}
+                hideViewToggle
+                compact={isPaneOpen}
+                groups={groups}
+                searchValue={search}
+                onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+                sortOptions={SORT_OPTIONS}
+                onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+              />
+            </>
+          )}
+        </StickyListHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {showRefreshingState ? (
           <EstimatesDataSkeleton />
         ) : isError ? (
@@ -278,87 +329,6 @@ function EstimatesLandingContent({
           />
         ) : (
           <>
-            <InsightStrip4
-              tiles={[
-                {
-                  label: 'Estimate value · 90D',
-                  value: formatNumberValue(kpis?.total_gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates in trailing 90 days`,
-                },
-                {
-                  label: 'Open estimates',
-                  value: formatNumberValue(kpis?.open_estimate_value ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${kpis?.open_estimates_this_period ?? 0} open estimates`,
-                  tone: 'accent',
-                },
-                {
-                  label: 'Awaiting action 3+ days',
-                  value: formatNumberValue(pulseAggregates?.sent_awaiting_value ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending conversion`,
-                },
-                {
-                  label: 'Expiring in 7 days',
-                  value: formatNumberValue(pulseAggregates?.expiring_soon_value ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
-                },
-              ]}
-            />
-
-            <V3CalloutPanel
-              items={[
-                {
-                  id: 'needs_follow_up',
-                  kind: 'risk',
-                  eyebrow: 'Sent awaiting action',
-                  hint: followUpHint,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.needs_follow_up ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · Sent ${row.sent_at ? formatDate(row.sent_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'drafts_not_sent',
-                  kind: 'info',
-                  eyebrow: 'Drafts not sent',
-                  hint: `${kpis?.open_drafts ?? 0}`,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.drafts_not_sent ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · ${row.estimate_date ? formatDate(row.estimate_date) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'expiring_soon',
-                  kind: 'opportunity',
-                  eyebrow: 'Expiring unresolved',
-                  hint: expiringHint,
-                  getHref: (row) => `/estimates/${row.id}`,
-                  rows: (read?.expiring_soon ?? []).map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · Expires ${row.expires_at ? formatDate(row.expires_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-              ]}
-            />
-
-            <FilterBar
-              count={`Showing ${filteredRows.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
-              searchPlaceholder="Search estimate number…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={SORT_OPTIONS}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
                 <EstimatesTableRowsSkeleton />
@@ -387,6 +357,10 @@ function EstimatesLandingContent({
                   kind="estimate"
                   showCampaignColumn={showCampaignColumn}
                   tableMinWidth={showCampaignColumn ? 1450 : 1230}
+                  forceCompact={isPaneOpen}
+                  selectedId={openId}
+                  sentinelIndex={sentinelIndex}
+                  sentinelRef={sentinelRef}
                   rows={filteredRows.map((row) => ({
                     id: row.id,
                     href: `/estimates/${row.id}`,
@@ -415,8 +389,6 @@ function EstimatesLandingContent({
               )}
             </div>
 
-            {/* Scroll sentinel — triggers next-page fetch 400px before list end */}
-            <div ref={sentinelRef} className="h-px" aria-hidden />
             {isFetchingNextPage && (
               <div className="flex justify-center py-4">
                 <Skeleton className="h-8 w-48 rounded-full" />
@@ -424,6 +396,7 @@ function EstimatesLandingContent({
             )}
           </>
         )}
+        </div>
       </PageWrap>
 
     </>
@@ -433,11 +406,9 @@ function EstimatesLandingContent({
 export function EstimatesLandingClient({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantEstimatesResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
@@ -446,5 +417,5 @@ export function EstimatesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <EstimatesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
+  return <EstimatesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
 }

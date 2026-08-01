@@ -273,10 +273,6 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
   return (
     <PageWrap className="pt-7">
       <DetailHeader
-        crumbPath={[
-          { label: 'Campaigns', href: '/campaigns' },
-          { label: data.header.name, current: true },
-        ]}
         avatar={{ kind: 'catalog', initials: data.header.initials, imageUrl: data.header.hero_image_url }}
         title={data.header.name}
         status={{ label: data.header.status_label, tone: data.header.status_tone }}

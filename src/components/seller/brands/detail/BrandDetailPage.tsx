@@ -3,8 +3,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
-import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { DetailHeader, DetailTabs } from '@/components/seller/detail';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -17,7 +17,6 @@ import {
   type BrandDetailResponse,
 } from '@/hooks/useBrands';
 import { formatNumberValue } from '@/lib/utils';
-import { BrandDetailSkeleton as SharedBrandDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { BrandDetailsTab } from './BrandDetailsTab';
 import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
@@ -33,49 +32,6 @@ type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs';
 
 interface BrandDetailPageProps {
   id: string;
-}
-
-function BrandDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-52" />
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-7 w-56" />
-                <Skeleton className="h-4 w-80" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-9 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-44 rounded-[8px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="border-b border-cream-300" />
-
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-28 rounded-full" />
-          ))}
-        </div>
-
-        <Skeleton className="h-[24rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
 }
 
 function subtitle(header: BrandDetailResponse['header']) {
@@ -155,20 +111,18 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <SharedBrandDetailSkeleton />;
-  if (isError || !data) return <ErrorState heading="Couldn't load brand" description="There was a problem fetching this brand detail page." />;
+  if (isError || (!isLoading && !data)) {
+    return <ErrorState heading="Couldn't load brand" description="There was a problem fetching this brand detail page." />;
+  }
 
   return (
-    <PageWrap className="pt-7">
+    <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
-        crumbPath={[
-          { label: 'Brands', href: '/brands' },
-          { label: data.header.brand_name, current: true },
-        ]}
-        avatar={{ kind: 'brand', initials: data.header.initials, hue: data.header.hue }}
-        title={data.header.brand_name}
-        status={{ label: data.header.status_label, tone: data.header.status_tone }}
-        subtitle={subtitle(data.header)}
+        loading={isLoading}
+        avatar={{ kind: 'brand', initials: data?.header.initials ?? 'BR', hue: data?.header.hue ?? 'cream' }}
+        title={data?.header.brand_name ?? ''}
+        status={{ label: data?.header.status_label ?? '', tone: data?.header.status_tone ?? 'neutral' }}
+        subtitle={data ? subtitle(data.header) : []}
         actions={
           <div className="flex items-center gap-2 pt-1">
             <AlertDialog>
@@ -202,7 +156,15 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
+      {data ? (
+        <InsightStrip4 className="mt-6" showSupportingText tiles={tiles} />
+      ) : (
+        <div className="mt-6 grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+      )}
 
       <DetailTabs
         tabs={tabs}
@@ -211,17 +173,23 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       />
 
       {activeTab === 'details' ? (
-        <BrandDetailsTab
-          details={data.details}
-          isSaving={updateMutation.isPending}
-          onSave={(payload) => updateMutation.mutate(payload)}
-        />
+        data ? (
+          <BrandDetailsTab
+            details={data.details}
+            isSaving={updateMutation.isPending}
+            onSave={(payload) => updateMutation.mutate(payload)}
+          />
+        ) : (
+          <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        )
       ) : null}
       {showPerformanceTab && activeTab === 'performance' ? (
-        <BrandPerformanceTab performanceCards={data.performance_cards} />
+        data ? <BrandPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
       {activeTab === 'products' ? <BrandProductsTab brandId={id} /> : null}
-      {activeTab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
+      {activeTab === 'buyers' ? (
+        data ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+      ) : null}
       {activeTab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
 
       <AddBrandCommand
@@ -229,8 +197,8 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         onOpenChange={setEditOpen}
         hideTrigger
         mode="edit"
-        brand={data.details}
+        brand={data?.details ?? null}
       />
-    </PageWrap>
+    </div>
   );
 }

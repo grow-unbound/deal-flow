@@ -21,7 +21,7 @@ function NotificationsBell({ unreadCount, onClick }: { unreadCount: number; onCl
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-11 w-11 items-center justify-center rounded-[12px] text-cream-800 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
+      className="relative inline-flex h-9 w-9 items-center justify-center rounded-[12px] text-cream-800 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
       aria-label="Notifications"
     >
       <Bell size={16} strokeWidth={2} />
@@ -75,13 +75,13 @@ export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeader
   return (
     <>
       <header
-        className="fixed right-0 top-0 z-20 flex h-16 items-center gap-4 border-b border-cream-300 bg-[var(--bg-surface)] px-9"
+        className="fixed right-0 top-0 z-20 flex h-14 items-center gap-4 border-b border-cream-300 bg-[var(--bg-surface)] px-6"
         style={{ left: 'var(--sidebar-w)' }}
       >
         <GlobalSearchOverlay className="max-w-[min(50vw,40rem)] flex-[1_1_0%]" />
 
         <div className="ml-auto flex items-center gap-2">
-          <Button asChild variant="ghost" className="h-11 rounded-[12px] px-3 text-cream-800 hover:text-[#221E1A]">
+          <Button asChild variant="ghost" className="h-9 rounded-[12px] px-3 text-cream-800 hover:text-[#221E1A]">
             <a
               href="/api/buyer/preview/launch"
               target="_blank"
@@ -104,7 +104,7 @@ export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeader
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-11 items-center gap-2 rounded-[12px] px-2 pr-2 text-left transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
+                className="inline-flex h-9 items-center gap-2 rounded-[12px] px-2 pr-2 text-left transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
                 aria-label={`Open account menu for ${userName}`}
               >
                 <Avatar size="md" className="h-9 w-9">
