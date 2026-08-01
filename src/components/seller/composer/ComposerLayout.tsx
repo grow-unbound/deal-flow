@@ -1,14 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { cn } from '@/lib/utils';
-
-interface ComposerCrumb {
-  label: string;
-  href?: string;
-  current?: boolean;
-}
 
 export function ComposerShell({
   children,
@@ -18,29 +11,6 @@ export function ComposerShell({
   className?: string;
 }) {
   return <div className={cn('flex min-h-0 flex-1 flex-col gap-4', className)}>{children}</div>;
-}
-
-export function ComposerBreadcrumbs({
-  items,
-}: {
-  items: ComposerCrumb[];
-}) {
-  return (
-    <nav className="flex flex-wrap items-center gap-1.5 text-sm text-cream-600">
-      {items.map((item, index) => (
-        <div key={`${item.label}-${index}`} className="flex items-center gap-1.5">
-          {item.href && !item.current ? (
-            <Link href={item.href} className="hover:text-cream-900">
-              {item.label}
-            </Link>
-          ) : (
-            <span className={cn(item.current ? 'font-medium text-cream-900' : '')}>{item.label}</span>
-          )}
-          {index < items.length - 1 ? <span className="text-cream-400">›</span> : null}
-        </div>
-      ))}
-    </nav>
-  );
 }
 
 export function ComposerTitleRow({
@@ -63,7 +33,7 @@ export function ComposerTitleRow({
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
+          <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
           {status ? (
             status.chipClassName ? (
               <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em]', status.chipClassName)}>
@@ -116,7 +86,7 @@ export function ComposerBasicsField({
   className?: string;
 }) {
   return (
-    <div className={cn('relative border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
+    <div className={cn('relative border-b border-cream-300 px-3 py-2 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
@@ -234,7 +204,7 @@ export function ComposerCheckboxCell({
   className?: string;
 }) {
   return (
-    <td className={cn('w-9 px-4 py-3 align-middle', className)} onClick={(event) => event.stopPropagation()}>
+    <td className={cn('w-9 px-3 py-2 align-middle', className)} onClick={(event) => event.stopPropagation()}>
       <div className="flex items-center justify-center">
         <input
           type="checkbox"

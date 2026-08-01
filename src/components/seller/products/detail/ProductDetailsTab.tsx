@@ -47,7 +47,7 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
 
   return (
     <section className="mt-5 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-      <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
+      <div className="flex items-center justify-between border-b border-cream-300 px-4 py-3">
         <h2 className="font-display text-lg text-cream-950">Details</h2>
       </div>
 
@@ -55,8 +55,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
         <table className="w-full text-base">
           <tbody>
             <tr className="border-b border-cream-200">
-              <td className="w-64 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Display Name</td>
-              <td className="py-3 text-cream-900">
+              <td className="w-64 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Display Name</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <Input
                     className="max-w-lg"
@@ -70,16 +70,16 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">SKU</td>
-              <td className="py-3 text-cream-900">{details.sku}</td>
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">SKU</td>
+              <td className="py-2 text-cream-900">{details.sku}</td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Category</td>
-              <td className="py-3 text-cream-900">{details.category}</td>
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Category</td>
+              <td className="py-2 text-cream-900">{details.category}</td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Pack size</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Pack size</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <Input
@@ -104,8 +104,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <div className="flex max-w-[220px] items-center rounded-sm border border-cream-300 bg-white pl-3">
                     <IndianRupee size={14} className="text-cream-700" />
@@ -125,8 +125,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <div className="flex max-w-[220px] items-center rounded-sm border border-cream-300 bg-white pl-3">
                     <IndianRupee size={14} className="text-cream-700" />
@@ -146,8 +146,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</td>
+              <td className="py-2 text-cream-900">
                 {isEditing && isAdmin ? (
                   <div className="flex max-w-[220px] items-center rounded-sm border border-cream-300 bg-white pl-3">
                     <IndianRupee size={14} className="text-cream-700" />
@@ -167,22 +167,22 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin %</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin %</td>
+              <td className="py-2 text-cream-900">
                 {marginPct != null ? `${marginPct}%` : '—'}
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">HSN code</td>
-              <td className="py-3 text-cream-900">{details.hsn_code ?? '—'}</td>
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">HSN code</td>
+              <td className="py-2 text-cream-900">{details.hsn_code ?? '—'}</td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">GST rate</td>
-              <td className="py-3 text-cream-900">{details.gst_rate != null ? `${details.gst_rate}%` : '—'}</td>
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">GST rate</td>
+              <td className="py-2 text-cream-900">{details.gst_rate != null ? `${details.gst_rate}%` : '—'}</td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">External Ref</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">External Ref</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <Input
                     className="max-w-md"
@@ -195,8 +195,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Status</td>
-              <td className="py-3 text-cream-900">
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Status</td>
+              <td className="py-2 text-cream-900">
                 {isEditing ? (
                   <Switch checked={form.is_active} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, is_active: checked }))} label="Active" />
                 ) : details.is_active ? (
@@ -207,8 +207,8 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
               </td>
             </tr>
             <tr>
-              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Last Updated</td>
-              <td className="py-3 font-mono text-sm text-cream-900">{new Date(details.updated_at).toLocaleString('en-IN')}</td>
+              <td className="py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Last Updated</td>
+              <td className="py-2 font-mono text-sm text-cream-900">{new Date(details.updated_at).toLocaleString('en-IN')}</td>
             </tr>
           </tbody>
         </table>

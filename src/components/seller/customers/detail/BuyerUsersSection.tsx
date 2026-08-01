@@ -133,14 +133,14 @@ export function BuyerUsersSection({ buyerId, users }: BuyerUsersSectionProps) {
           >
             {liveUsers.map((user) => (
               <tr key={user.id} className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50">
-                <td className="px-4 py-3.5 text-base text-cream-900">{user.first_name || '—'} {user.last_name || '—'}</td>
-                <td className="px-4 py-3.5 font-mono text-base text-cream-700">{user.phone ?? '—'}</td>
-                <td className="px-4 py-3.5 text-base text-cream-700">{user.email ?? '—'}</td>
-                <td className="px-4 py-3.5 text-base text-cream-700">{user.designation ?? '—'}</td>
-                <td className="px-4 py-3.5">
+                <td className="px-3 py-2 text-base text-cream-900">{user.first_name || '—'} {user.last_name || '—'}</td>
+                <td className="px-3 py-2 font-mono text-base text-cream-700">{user.phone ?? '—'}</td>
+                <td className="px-3 py-2 text-base text-cream-700">{user.email ?? '—'}</td>
+                <td className="px-3 py-2 text-base text-cream-700">{user.designation ?? '—'}</td>
+                <td className="px-3 py-2">
                   <StatusPill status={user.is_active ? 'Active' : 'Inactive'} />
                 </td>
-                <td className="px-4 py-3.5">
+                <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-2">
                     <Button
                       type="button"

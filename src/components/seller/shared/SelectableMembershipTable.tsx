@@ -152,7 +152,7 @@ export function TableBodySkeleton({
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <tr key={`skeleton-${rowIndex}`} className="border-b border-cream-200 bg-white">
           {Array.from({ length: columns }).map((__, columnIndex) => (
-            <td key={`skeleton-${rowIndex}-${columnIndex}`} className="px-5 py-3.5">
+            <td key={`skeleton-${rowIndex}-${columnIndex}`} className="px-3 py-2">
               <Skeleton className={cn('h-4 rounded-md', columnIndex === 1 ? 'w-4/5' : 'w-full')} />
               {columnIndex === 1 ? <Skeleton className="mt-2 h-3 w-1/2 rounded-md" /> : null}
             </td>

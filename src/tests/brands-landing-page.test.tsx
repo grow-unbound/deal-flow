@@ -9,6 +9,8 @@ const fetchSellerPageBootstrapMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useBrands', () => ({
@@ -49,7 +51,10 @@ vi.mock('@/components/seller/InviteUserDialog', () => ({
   InviteUserDialog: () => null,
 }));
 
-import BrandsPage from '../../app/(seller)/brands/page';
+// Flag-gate + list rendering moved from page.tsx into layout.tsx as part of the
+// split-pane rollout (the list now stays mounted across /brands <-> /brands/[id]),
+// so this exercises BrandsLayout instead of the (now trivial) BrandsPage.
+import BrandsLayout from '../../app/(seller)/brands/layout';
 
 describe('brands landing integration', () => {
   beforeEach(() => {
@@ -66,7 +71,7 @@ describe('brands landing integration', () => {
   it('renders flag-off empty state and does not fetch data when disabled', async () => {
     useFlagMock.mockReturnValue(false);
 
-    const element = await BrandsPage({ searchParams: Promise.resolve({}) });
+    const element = await BrandsLayout({ children: null });
     render(element);
 
     expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();

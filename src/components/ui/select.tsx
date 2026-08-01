@@ -28,7 +28,7 @@ const SelectTrigger = React.forwardRef<
         ref={ref}
         id={triggerId}
         className={cn(
-          'flex h-10 w-full items-center justify-between rounded-sm border border-cream-300 bg-white px-3 text-body text-cream-900',
+          'flex h-[var(--ctl-h-input)] w-full items-center justify-between rounded-sm border border-cream-300 bg-white px-3 text-body text-cream-900',
           'transition-colors duration-fast ease-standard',
           'focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20',
           'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-cream-100',

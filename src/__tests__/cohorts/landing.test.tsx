@@ -8,6 +8,8 @@ const useFlagMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => '/customer-groups',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useCohorts', () => ({
@@ -48,7 +50,7 @@ describe('cohorts landing page', () => {
       },
     });
 
-    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
+    render(<CohortsLandingClient initialData={null} />);
 
     expect(screen.getByText('Valuable customers in no Group')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
@@ -90,7 +92,7 @@ describe('cohorts landing page', () => {
       },
     });
 
-    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
+    render(<CohortsLandingClient initialData={null} />);
     fireEvent.click(screen.getByText('South Tier-A'));
 
     expect(pushMock).toHaveBeenCalledWith('/customer-groups/coh-1');
@@ -116,7 +118,7 @@ describe('cohorts landing page', () => {
       },
     });
 
-    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
+    render(<CohortsLandingClient initialData={null} />);
     expect(screen.getByText('12.00%')).toBeInTheDocument();
   });
 
@@ -176,7 +178,7 @@ describe('cohorts landing page', () => {
       },
     });
 
-    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
+    render(<CohortsLandingClient initialData={null} />);
     fireEvent.click(screen.getByRole('button', { name: 'Brands: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Brand One' }));
 

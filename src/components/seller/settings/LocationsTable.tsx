@@ -39,7 +39,7 @@ export function LocationsTableRows({
               inactive && 'bg-cream-50/80 text-cream-600',
             )}
           >
-            <td className="px-4 py-3.5 align-top">
+            <td className="px-3 py-2 align-top">
               <div className="flex gap-3">
                 <div
                   className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-100 text-cream-600"
@@ -61,13 +61,13 @@ export function LocationsTableRows({
                 </div>
               </div>
             </td>
-            <td className="px-4 py-3.5 align-top text-base text-cream-700 whitespace-nowrap">
+            <td className="px-3 py-2 align-top text-base text-cream-700 whitespace-nowrap">
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-cream-500" aria-hidden />
                 {[loc.address?.city, loc.address?.state].filter(Boolean).join(', ') || '—'}
               </span>
             </td>
-            <td className="px-4 py-3.5 align-top whitespace-nowrap">
+            <td className="px-3 py-2 align-top whitespace-nowrap">
               {inactive ? (
                 <StatusTag label="Inactive" tone="neutral" />
               ) : (
@@ -75,7 +75,7 @@ export function LocationsTableRows({
               )}
             </td>
             {isAdmin ? (
-              <td className="px-4 py-3.5 text-right align-top">
+              <td className="px-3 py-2 text-right align-top">
                 <div className="flex justify-end gap-1">
                   {inactive ? (
                     <Button

@@ -8,6 +8,11 @@ export interface MetricTile {
   delta?: ReactNode;
   deltaTone?: 'up' | 'down' | 'neutral';
   tone?: 'accent' | 'warn';
+  /** Makes the tile clickable — e.g. the expanded-view KPI grid, where clicking a
+   * tile selects it for the split-pane header's dynamic title. Omit for the
+   * static, non-interactive strips used elsewhere (detail-page metric grids). */
+  onClick?: () => void;
+  selected?: boolean;
 }
 
 export interface MetricCardProps extends MetricTile {
@@ -24,14 +29,27 @@ export function MetricCard({
   tone,
   className,
   showSupportingText = true,
+  onClick,
+  selected,
 }: MetricCardProps) {
   const hasSupportingText = showSupportingText && (sub || delta);
 
   return (
     <article
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
       className={cn(
         'rounded-[14px] border border-cream-300 bg-white px-[18px] py-[16px] transition duration-150 hover:border-cream-400 focus-within:ring-2 focus-within:ring-ember-300/70 active:scale-[0.97]',
         tone === 'warn' && 'border-ember-300',
+        onClick && 'cursor-pointer',
+        selected && 'border-ember-300 ring-1 ring-ember-200',
         className,
       )}
     >

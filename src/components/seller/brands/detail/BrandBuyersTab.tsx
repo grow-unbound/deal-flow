@@ -80,15 +80,15 @@ export function BrandBuyersTab({ brandId, buyers }: BrandBuyersTabProps) {
       >
         {filtered.map((buyer) => (
           <tr key={buyer.id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-            <td className="px-5 py-3.5">
+            <td className="px-3 py-2">
               <p className="text-base font-medium text-cream-900">{buyer.name}</p>
               <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
             </td>
-            <td className="px-5 py-3.5 text-cream-900">{buyer.cohort}</td>
-            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatNumberValue(buyer.spend, 'CURRENCY_THRESHOLD')}</td>
-            <td className="px-5 py-3.5 text-cream-900">{buyer.orders}</td>
-            <td className="px-5 py-3.5 text-cream-900">{buyer.last_order ? new Date(buyer.last_order).toLocaleDateString('en-IN') : '—'}</td>
-            <td className="px-5 py-3.5 text-cream-900">
+            <td className="px-3 py-2 text-cream-900">{buyer.cohort}</td>
+            <td className="px-3 py-2 font-display text-md text-cream-950">{formatNumberValue(buyer.spend, 'CURRENCY_THRESHOLD')}</td>
+            <td className="px-3 py-2 text-cream-900">{buyer.orders}</td>
+            <td className="px-3 py-2 text-cream-900">{buyer.last_order ? new Date(buyer.last_order).toLocaleDateString('en-IN') : '—'}</td>
+            <td className="px-3 py-2 text-cream-900">
               <StatusTag label={buyer.status} tone={buyer.status === 'Active' ? 'success' : 'neutral'} />
             </td>
           </tr>

@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { triggerHaptic } from '@/lib/haptics';
 import { ChevronRight, Tag } from 'lucide-react';
 
@@ -13,9 +13,10 @@ import {
   LandingTable,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
+  StickyListHeader,
   FilterBar,
   type FilterBarGroup,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -23,10 +24,10 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
-import { formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
-import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
@@ -35,37 +36,12 @@ const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
 
-function CategoriesLoadingSkeleton() {
-  return (
-    <PageWrap>
-      <div className="h-24 animate-pulse rounded-[12px] bg-cream-100" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-2 h-[320px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-    </PageWrap>
-  );
-}
-
 function CategoriesDataSkeleton() {
   return (
     <>
       <div className="mt-5 grid grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
         ))}
       </div>
       <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
@@ -77,21 +53,24 @@ function CategoriesDataSkeleton() {
 function CategoriesLandingContent({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: CategoriesLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/categories',
     version: 4,
     initialState: {
       search: '',
@@ -111,6 +90,7 @@ function CategoriesLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/categories',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -137,13 +117,6 @@ function CategoriesLandingContent({
   ];
   const rows = landingData?.rows ?? [];
 
-  // Doc-starred Action "Categories with no sale in 90 days" — derived client-side from
-  // the already-fetched category rows (no backend list for this exists yet).
-  const noSaleCategories = useMemo(
-    () => rows.filter((r) => r.gmv_mtd === 0 && r.active_sku_count > 0).sort((a, b) => b.active_sku_count - a.active_sku_count).slice(0, 10),
-    [rows],
-  );
-
   const filtered = useMemo<CategoryTableRow[]>(() => {
     const q = search.trim().toLowerCase();
     return rows
@@ -168,8 +141,20 @@ function CategoriesLandingContent({
       });
   }, [filters.products, filters.status, rows, search, sortBy]);
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
+  const visibleRows = filtered;
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(visibleRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [visibleRows.length],
+  );
+  const hasMore = Boolean(hasNextPage);
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore,
+    isLoading: isFetchingNextPage,
+    onLoadMore: () => {
+      void fetchNextPage();
+    },
+  });
 
-  if (isLoading && !landingData) return <CategoriesLandingSkeleton />;
   if (isError && !landingData) {
     return (
       <ErrorState
@@ -178,22 +163,96 @@ function CategoriesLandingContent({
       />
     );
   }
-  if (!landingData) return <CategoriesLandingSkeleton />;
 
   const showRefreshingState = isLoading && !data;
-  const kpis = landingData.kpis;
+  const kpis = landingData?.kpis;
+  const safeKpis = kpis ?? {
+    active_count: 0,
+    uncategorized_count: 0,
+    uncategorised_active_product_count: 0,
+    categorised_active_product_count: 0,
+  };
+
+  const kpiOptions = [
+    {
+      id: 'invoiced-sales',
+      // rows.reduce sums only the currently-loaded page(s) of categories, not
+      // the tenant total — get_seller_category_landing_summary_v2 computes a
+      // true total_gmv internally but does not return it in its kpis object.
+      // This is an approximation until that field is exposed.
+      label: `Invoiced sales · ${metricSuffix}`,
+      value: formatNumberValue(rows.reduce((s, r) => s + r.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
+      sub: `${Math.max(0, safeKpis.active_count - safeKpis.uncategorized_count)} categories`,
+    },
+    {
+      id: 'categories-with-sales',
+      label: 'Categories with invoiced sales',
+      value: `${Math.max(0, safeKpis.active_count - safeKpis.uncategorized_count)}`,
+      sub: `of ${safeKpis.active_count} active categories`,
+    },
+    {
+      id: 'categories-no-sale',
+      label: 'Categories with no sale in 90D',
+      value: `${safeKpis.uncategorized_count}`,
+      sub: `${safeKpis.uncategorized_count > 1 ? `${safeKpis.uncategorized_count} categories` : 'category'}`,
+    },
+    {
+      id: 'uncategorised-products',
+      label: 'Uncategorised active products',
+      value: `${safeKpis.uncategorised_active_product_count}`,
+      sub: 'products don\'t have a category',
+    },
+  ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
 
   return (
-    <PageWrap>
-      <PageHeader
-        eyebrow="Catalog"
-        title="Categories"
-        subtitle={`${kpis.active_count} categories · ${kpis.categorised_active_product_count} categorised products · ${kpis.uncategorised_active_product_count} need setup.`}
-        horizon={horizonLabel}
-        primary="Add category"
-        onPrimaryClick={() => setAddSheetOpen(true)}
-      />
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <StickyListHeader>
+        <PageHeader
+          eyebrow={isPaneOpen ? 'Categories' : 'Catalog'}
+          title={isPaneOpen ? selectedOption.label : 'Categories'}
+          subtitle={isPaneOpen
+            ? `${selectedOption.value} · ${selectedOption.sub}`
+            : `${safeKpis.active_count} categories · ${safeKpis.categorised_active_product_count} categorised products · ${safeKpis.uncategorised_active_product_count} need setup.`}
+          horizon={horizonLabel}
+          primary="Add category"
+          onPrimaryClick={() => setAddSheetOpen(true)}
+          compact={isPaneOpen}
+        />
 
+        {showRefreshingState || isError ? null : (
+          <>
+            {isPaneOpen ? null : (
+              <InsightStrip4
+                tiles={kpiOptions.map((option): InsightTile => ({
+                  label: option.label,
+                  value: option.value,
+                  sub: option.sub,
+                  onClick: () => setSelectedKpiKey(option.id),
+                  selected: option.id === selectedKpiKey,
+                }))}
+              />
+            )}
+
+            <FilterBar
+              count={`${filtered.length} categories`}
+              searchPlaceholder="Search category…"
+              chips={[]}
+              activeChip=""
+              sortBy={sortBy}
+              hideViewToggle
+              compact={isPaneOpen}
+              groups={groups}
+              searchValue={search}
+              onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
+              sortOptions={SORT_OPTIONS}
+              onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
+            />
+          </>
+        )}
+      </StickyListHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
         <CategoriesDataSkeleton />
       ) : isError ? (
@@ -203,107 +262,6 @@ function CategoriesLandingContent({
         />
       ) : (
         <>
-          <InsightStrip4
-            tiles={[
-              {
-                // rows.reduce sums only the currently-loaded page(s) of categories, not
-                // the tenant total — get_seller_category_landing_summary_v2 computes a
-                // true total_gmv internally but does not return it in its kpis object.
-                // This is an approximation until that field is exposed.
-                label: `Invoiced sales · ${metricSuffix}`,
-                value: formatNumberValue(rows.reduce((s, r) => s + r.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
-                sub: `${Math.max(0, kpis.active_count - kpis.uncategorized_count)} categories`,
-                tone: 'accent',
-              },
-              {
-                label: 'Categories with invoiced sales',
-                value: `${Math.max(0, kpis.active_count - kpis.uncategorized_count)}`,
-                sub: `of ${kpis.active_count} active categories`,
-              },
-              {
-                label: 'Categories with no sale in 90D',
-                value: `${kpis.uncategorized_count}`,
-                sub: `${kpis.uncategorized_count > 1 ? `${kpis.uncategorized_count} categories` : 'category'}`,
-                tone: 'warn',
-              },
-              {
-                label: 'Uncategorised active products',
-                value: `${kpis.uncategorised_active_product_count}`,
-                sub: 'products don\'t have a category',
-                tone: 'warn',
-              },
-            ]}
-          />
-
-          <V3CalloutPanel
-            items={[
-              {
-                id: 'stockout_risk',
-                kind: 'risk',
-                eyebrow: 'Categories with recent sellers out of stock',
-                hint: `${landingData.callouts.stockout_risk.length}`,
-                getHref: (row) => `/categories/${row.id}`,
-                rows: landingData.callouts.stockout_risk.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  reason: `${c.oos_sku_count ?? 0} out of stock · ${c.low_stock_sku_count ?? 0} low stock`,
-                  trailing: null,
-                })),
-              },
-              {
-                id: 'no_sale_90d',
-                kind: 'info',
-                eyebrow: 'Categories with no sale in 90 days',
-                // Derived from already-fetched category rows, not a tenant-wide backend
-                // aggregate — honest about undercounting until every page is loaded.
-                hint: hasNextPage ? `${noSaleCategories.length}+` : `${noSaleCategories.length}`,
-                getHref: (row) => `/categories/${row.id}`,
-                rows: noSaleCategories.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  reason: `${c.active_sku_count} active products`,
-                  trailing: null,
-                })),
-              },
-              {
-                id: 'fast_movers',
-                kind: 'opportunity',
-                eyebrow: 'Categories gaining demand',
-                hint: 'by units sold',
-                getHref: (row) => `/categories/${row.id}`,
-                rows: landingData.callouts.fast_movers.map((c) => ({
-                  id: c.id,
-                  initials: c.initials,
-                  hue: 'teal' as const,
-                  name: c.name,
-                  // fast_movers rows don't carry growth_pct — get_seller_category_landing_summary_v2
-                  // never returns it for this list, so the previous `c.growth_pct ?? 0` fallback
-                  // silently rendered a permanent "flat" badge. Show the real GMV instead.
-                  reason: `${c.units_mtd ?? 0} units sold`,
-                  trailing: formatNumberValue(c.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-                })),
-              },
-            ]}
-          />
-
-          <FilterBar
-            count={`${filtered.length} categories`}
-            searchPlaceholder="Search category…"
-            chips={[]}
-            activeChip=""
-            sortBy={sortBy}
-            hideViewToggle
-            groups={groups}
-            searchValue={search}
-            onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
-            sortOptions={SORT_OPTIONS}
-            onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
-          />
-
           {showTableSkeleton ? (
             <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
           ) : (
@@ -334,15 +292,35 @@ function CategoriesLandingContent({
                 }
               />
             }
+            forceCompact={isPaneOpen}
+            sentinelIndex={sentinelIndex}
+            sentinelRef={sentinelRef}
+            mobileRows={visibleRows.map((row) => ({
+              id: row.id,
+              href: `/categories/${row.id}`,
+              primary: row.name,
+              supporting: `${row.brand_count} brands`,
+              meta: `${formatNumberValue(row.active_sku_count, 'COUNT')} products`,
+              trailing: row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—',
+              selected: row.id === openId,
+            }))}
           >
-            {filtered.map((row) => (
+            {visibleRows.map((row, index) => (
+              <Fragment key={row.id}>
+              {index === sentinelIndex ? (
+                <tr aria-hidden="true" style={{ height: 0 }}>
+                  <td colSpan={6} className="p-0"><div ref={sentinelRef} /></td>
+                </tr>
+              ) : null}
               <tr
-                key={row.id}
-                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
+                className={cn(
+                  'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+                  row.id === openId ? 'bg-ember-50' : 'bg-white',
+                )}
                 onClick={() => router.push(`/categories/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
-                <td className="px-5 py-3.5">
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-3">
                     <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
                     <div className="min-w-0">
@@ -350,29 +328,28 @@ function CategoriesLandingContent({
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.brand_count}
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                <td className="px-3 py-2 text-right text-medium text-cream-700">
                   {formatNumberValue(row.active_sku_count, 'COUNT')}
                 </td>
-                <td className="px-5 py-3.5 text-right text-medium text-cream-700">
+                <td className="px-3 py-2 text-right text-medium text-cream-700">
                   {row.oos_sku_count > 0 ? formatNumberValue(row.oos_sku_count, 'COUNT') : '—'}
                 </td>
-                <td className="px-4 py-3.5 text-right text-cream-400">
+                <td className="px-3 py-2 text-right text-cream-400">
                   <ChevronRight size={16} />
                 </td>
               </tr>
+              </Fragment>
             ))}
           </LandingTable>
           )}
         </>
       )}
-
-      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
 
       <CategoryFormSheet
         open={addSheetOpen}
@@ -380,6 +357,7 @@ function CategoriesLandingContent({
         editingCategory={null}
         onSuccess={() => void queryClient.invalidateQueries({ queryKey: ['categories-landing'] })}
       />
+      </div>
     </PageWrap>
   );
 }
@@ -387,15 +365,13 @@ function CategoriesLandingContent({
 export function CategoriesLandingClient({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: CategoriesLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <CategoriesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CategoriesLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

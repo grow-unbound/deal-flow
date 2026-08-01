@@ -252,7 +252,7 @@ export function ModalConvertEstimate({
               <button
                 type="button"
                 onClick={() => setTarget('sales_order')}
-                className={`flex flex-1 items-center gap-2.5 rounded-[10px] border px-4 py-3 text-left transition-colors ${
+                className={`flex flex-1 items-center gap-2.5 rounded-[10px] border px-3 py-2 text-left transition-colors ${
                   target === 'sales_order'
                     ? 'border-teal-500 bg-teal-50 text-teal-900'
                     : 'border-cream-300 bg-white text-cream-700 hover:border-cream-400'
@@ -267,7 +267,7 @@ export function ModalConvertEstimate({
               <button
                 type="button"
                 onClick={() => setTarget('invoice')}
-                className={`flex flex-1 items-center gap-2.5 rounded-[10px] border px-4 py-3 text-left transition-colors ${
+                className={`flex flex-1 items-center gap-2.5 rounded-[10px] border px-3 py-2 text-left transition-colors ${
                   target === 'invoice'
                     ? 'border-teal-500 bg-teal-50 text-teal-900'
                     : 'border-cream-300 bg-white text-cream-700 hover:border-cream-400'
@@ -282,13 +282,13 @@ export function ModalConvertEstimate({
             </div>
           )}
           {!createSalesOrders && createInvoices && (
-            <div className="flex items-center gap-2 rounded-[10px] border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+            <div className="flex items-center gap-2 rounded-[10px] border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
               <FileText className="h-4 w-4 shrink-0" />
               Converting directly to an <strong className="font-semibold">Invoice</strong> — Sales Order creation is disabled in settings.
             </div>
           )}
           {createSalesOrders && !createInvoices && (
-            <div className="flex items-center gap-2 rounded-[10px] border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+            <div className="flex items-center gap-2 rounded-[10px] border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
               <ShoppingCart className="h-4 w-4 shrink-0" />
               Converting to a <strong className="font-semibold">Sales Order</strong> — Invoice creation is disabled in settings.
             </div>

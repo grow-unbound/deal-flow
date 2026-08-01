@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Pencil, RefreshCw } from 'lucide-react';
-import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { DetailHeader, DetailTabs } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CohortDetailSkeleton as SharedCohortDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { formatNumberValue } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -28,44 +27,6 @@ type TabId = 'buyers' | 'performance';
 
 interface CohortDetailPageProps {
   id: string;
-}
-
-function CohortDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-52" />
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-7 w-56" />
-                <Skeleton className="h-4 w-80" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-[8.5rem] rounded-[8px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-28 rounded-full" />
-          ))}
-        </div>
-
-        <Skeleton className="h-[24rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
 }
 
 function formatRefreshedAt(iso: string | null | undefined): string {
@@ -120,22 +81,20 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <SharedCohortDetailSkeleton />;
-  if (isError || !data) return <ErrorState heading="Couldn't load customer group" description="There was a problem fetching this customer group detail page." />;
+  if (isError || (!isLoading && !data)) {
+    return <ErrorState heading="Couldn't load customer group" description="There was a problem fetching this customer group detail page." />;
+  }
 
   return (
-    <PageWrap className="pt-7">
+    <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
-        crumbPath={[
-          { label: 'Customer Groups', href: '/customer-groups' },
-          { label: data.header.cohort_name, current: true },
-        ]}
-        avatar={{ kind: 'brand', initials: data.header.initials, hue: data.header.hue }}
-        title={data.header.cohort_name}
-        status={{ label: data.header.status_label, tone: data.header.status_tone }}
-        subtitle={[data.header.subtitle.members_text, data.header.subtitle.description_text, data.header.subtitle.created_by_text]}
+        loading={isLoading}
+        avatar={{ kind: 'brand', initials: data?.header.initials ?? 'CG', hue: data?.header.hue ?? 'cream' }}
+        title={data?.header.cohort_name ?? ''}
+        status={{ label: data?.header.status_label ?? '', tone: data?.header.status_tone ?? 'neutral' }}
+        subtitle={data ? [data.header.subtitle.members_text, data.header.subtitle.description_text, data.header.subtitle.created_by_text] : []}
         actions={
-          isSellerAdmin ? (
+          isSellerAdmin && data ? (
             <div className="flex items-center gap-2 pt-1">
               {!data.details_rules.is_static ? (
                 <div className="flex flex-col items-end gap-0.5">
@@ -163,7 +122,15 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         }
       />
 
-      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
+      {data ? (
+        <InsightStrip4 className="mt-6" showSupportingText tiles={tiles} />
+      ) : (
+        <div className="mt-6 grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+      )}
 
       <DetailTabs
         tabs={[
@@ -175,31 +142,37 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       />
 
       {tab === 'buyers' ? (
-        <CohortBuyersTab
-          cohortId={id}
-          rules_summary={data.rules_summary}
-          activeMembersMtd={data.meta_strip_4.active_members}
-          details_rules={data.details_rules}
-        />
+        data ? (
+          <CohortBuyersTab
+            cohortId={id}
+            rules_summary={data.rules_summary}
+            activeMembersMtd={data.meta_strip_4.active_members}
+            details_rules={data.details_rules}
+          />
+        ) : (
+          <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        )
       ) : null}
       {showPerformanceTab && tab === 'performance' ? (
-        <CohortPerformanceTab performanceCards={data.performance_cards} />
+        data ? <CohortPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
-      <CustomerGroupFormSheet
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        mode="edit"
-        cohortId={id}
-        defaultValues={{
-          form_mode: 'simple',
-          name: data.details_rules.name,
-          description: data.details_rules.description,
-          allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
-          membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
-          selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
-          rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
-        }}
-      />
-    </PageWrap>
+      {data ? (
+        <CustomerGroupFormSheet
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          mode="edit"
+          cohortId={id}
+          defaultValues={{
+            form_mode: 'simple',
+            name: data.details_rules.name,
+            description: data.details_rules.description,
+            allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
+            membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
+            selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
+            rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
+          }}
+        />
+      ) : null}
+    </div>
   );
 }

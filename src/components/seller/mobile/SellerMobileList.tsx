@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
@@ -13,28 +13,95 @@ export interface SellerMobileListItem {
   meta?: ReactNode;
   badge?: 'new' | 'updated';
   onClick?: () => void;
+  /** Highlights this card as the currently-open record — used by the split-pane
+   * list column so the selection stays visible while browsing. */
+  selected?: boolean;
 }
 
 interface SellerMobileListProps {
   items: SellerMobileListItem[];
   className?: string;
   emptyState?: ReactNode;
+  /** Render regardless of viewport — used by the split-pane list column, which is
+   * narrow on desktop too and reuses this same compact card format. */
+  forceVisible?: boolean;
+  /** Array index at which to interleave the infinite-scroll sentinel (mid-list, not
+   * trailing) — see `getSentinelInsertIndex` in `useInfiniteScroll.ts`. */
+  sentinelIndex?: number;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
 }
 
-export function SellerMobileList({ items, className, emptyState }: SellerMobileListProps) {
+export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef }: SellerMobileListProps) {
   if (items.length === 0 && emptyState) {
-    return <div className="md:hidden">{emptyState}</div>;
+    return <div className={forceVisible ? undefined : 'md:hidden'}>{emptyState}</div>;
+  }
+
+  if (forceVisible) {
+    // Split-pane desktop list column: a subtle line-separated list (like a
+    // condensed table), not touch-sized cards — the pane is narrow but this is
+    // still a mouse/trackpad surface. Rounded-bottom + bordered like the
+    // desktop table's own ScrollableTableShell, so it reads as one connected
+    // panel continuing from the FilterBar above rather than blending into the
+    // page background.
+    return (
+      <div className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
+        <div className="divide-y divide-cream-200">
+          {items.map((item, index) => (
+            <Fragment key={item.id}>
+              {index === sentinelIndex && sentinelRef ? (
+                <div ref={sentinelRef} className="h-px" aria-hidden />
+              ) : null}
+              <Link
+                href={item.href}
+                onClick={item.onClick}
+                className={cn(
+                  'flex items-center justify-between gap-3 px-4 py-3.5 text-left no-underline transition-colors hover:bg-cream-50',
+                  item.selected ? 'bg-ember-50 hover:bg-ember-50' : 'bg-transparent',
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="min-w-0 truncate text-[var(--b-text-body)] font-medium text-cream-900">
+                      {item.primary}
+                    </p>
+                    {item.badge ? <RealtimeBadge type={item.badge} className="shrink-0" /> : null}
+                  </div>
+                  {item.supporting || item.meta ? (
+                    <p className="mt-1 truncate text-sm text-cream-600">
+                      {item.supporting}
+                      {item.supporting && item.meta ? ' · ' : null}
+                      {item.meta}
+                    </p>
+                  ) : null}
+                </div>
+                {item.trailing ? (
+                  <p className="shrink-0 max-w-[8.5rem] truncate text-right text-[var(--b-text-body)] font-medium text-cream-900">
+                    {item.trailing}
+                  </p>
+                ) : null}
+              </Link>
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className={cn('md:hidden', className)}>
-      <div className="flex flex-col gap-2 px-4 py-3">
-        {items.map((item) => (
+      <div className="flex flex-col gap-2 px-3 py-2">
+        {items.map((item, index) => (
+          <Fragment key={item.id}>
+          {index === sentinelIndex && sentinelRef ? (
+            <div ref={sentinelRef} className="h-px" aria-hidden />
+          ) : null}
           <Link
-            key={item.id}
             href={item.href}
             onClick={item.onClick}
-            className="block rounded-[12px] border border-cream-200 bg-white px-3.5 py-3 text-left no-underline transition-colors active:bg-cream-100"
+            className={cn(
+              'block rounded-[12px] border px-3.5 py-3 text-left no-underline transition-colors active:bg-cream-100',
+              item.selected ? 'border-ember-300 bg-ember-50' : 'border-cream-200 bg-white',
+            )}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -65,6 +132,7 @@ export function SellerMobileList({ items, className, emptyState }: SellerMobileL
               </div>
             </div>
           </Link>
+          </Fragment>
         ))}
       </div>
     </div>
@@ -73,7 +141,7 @@ export function SellerMobileList({ items, className, emptyState }: SellerMobileL
 
 export function SellerMobileListSkeleton({ count = 6 }: { count?: number }) {
   return (
-    <div className="md:hidden px-4 py-3" role="status" aria-label="Loading list">
+    <div className="md:hidden px-3 py-2" role="status" aria-label="Loading list">
       <div className="flex flex-col gap-2">
         {Array.from({ length: count }).map((_, index) => (
           <div key={index} className="rounded-[12px] border border-cream-200 bg-white px-3.5 py-3">

@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 
 import {
   ComposerBodyGrid,
-  ComposerBreadcrumbs,
   ComposerFooterBar,
   ComposerShell,
   ComposerTitleRow,
@@ -13,16 +12,9 @@ import { PageWrap } from '@/components/seller/layout';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { cn } from '@/lib/utils';
 
-export interface DocumentComposerBreadcrumbItem {
-  label: string;
-  href?: string;
-  current?: boolean;
-}
-
 export function DocumentComposerShell({
   mode,
   kind,
-  breadcrumbItems,
   title,
   subtitle,
   status,
@@ -32,10 +24,10 @@ export function DocumentComposerShell({
   center,
   right,
   footer,
+  containerClassName,
 }: {
   mode: 'create' | 'edit' | 'view';
   kind: 'estimate' | 'so' | 'invoice';
-  breadcrumbItems: DocumentComposerBreadcrumbItem[];
   title: string;
   subtitle: string;
   status?: { label: string; tone?: 'draft' | 'live'; chipClassName?: string };
@@ -45,13 +37,16 @@ export function DocumentComposerShell({
   center: ReactNode;
   right: ReactNode;
   footer?: ReactNode;
+  /** Overrides the default full-page `PageWrap` wrapper — used by the read-only
+   * `view` mode when rendered inside the split-pane detail column, which is
+   * already width-constrained by the resizer. `create`/`edit` callers omit this
+   * and keep the default full-page treatment. */
+  containerClassName?: string;
 }) {
   return (
-    <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
+    <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6', containerClassName)}>
       <ComposerShell>
         <div className={cn('flex min-h-0 flex-1 flex-col gap-4', mode === 'view' && 'doc-readonly')} data-doc-kind={kind}>
-          <ComposerBreadcrumbs items={breadcrumbItems} />
-
           <ComposerTitleRow
             title={title}
             subtitle={subtitle}
@@ -91,7 +86,7 @@ export function DocumentComposerLoadingSkeleton() {
         </div>
         <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
+            <div key={index} className="border-b border-cream-300 px-3 py-2 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
               <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
               <div className="mt-2 h-4 w-28 animate-pulse rounded bg-cream-100" />
             </div>

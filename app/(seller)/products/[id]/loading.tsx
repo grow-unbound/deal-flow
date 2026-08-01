@@ -1,7 +1,7 @@
 // Mirrors product detail layout (breadcrumb, title, KPIs, tabs, two-column + secondary grid)
 export default function ProductDetailLoading() {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6 space-y-6" role="status" aria-label="Loading product detail">
+    <div className="w-full px-4 py-4 md:px-6 md:py-4 space-y-6" role="status" aria-label="Loading product detail">
       <div className="space-y-3">
         <div className="h-4 w-52 animate-pulse rounded bg-cream-200" />
         <div className="flex items-center justify-between">

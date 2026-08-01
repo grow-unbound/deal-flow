@@ -1,7 +1,7 @@
 'use client';
 
-import { useDeferredValue, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Fragment, useDeferredValue, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { triggerHaptic } from '@/lib/haptics';
 import dynamic from 'next/dynamic';
 import { Upload, Plus, Package } from 'lucide-react';
@@ -16,7 +16,8 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
-  V3CalloutPanel,
+  StickyListHeader,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -25,10 +26,10 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
-import { formatNumberValue } from '@/lib/utils';
-import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { cn, formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 const AddProductSheet = dynamic(
@@ -60,11 +61,6 @@ function toLabelCase(input: string): string {
     .join(' ');
 }
 
-function formatDaysCover(value: number | null | undefined): string {
-  if (value == null) return '—';
-  return `${value}d`;
-}
-
 function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
   const seen = new Set<string>();
 
@@ -92,40 +88,12 @@ function matchesProductSearch(product: TenantProduct, query: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function ProductLandingSkeleton() {
-  return (
-    <PageWrap>
-      <div className="space-y-5">
-        <Skeleton className="h-7 w-44" />
-        <Skeleton className="h-4 w-[36rem]" />
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-[14px]" />
-          ))}
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 rounded-[14px]" />
-          ))}
-        </div>
-        <Skeleton className="h-14 rounded-[14px]" />
-        <Skeleton className="h-[28rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
-}
-
 function ProductLandingDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-52 rounded-[14px]" />
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
@@ -136,12 +104,13 @@ function ProductLandingDataSkeleton() {
 
 function ProductsLandingContent({
   initialData,
-  initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const { isSellerAssistant } = useRole();
   const period = 'last90';
   const horizonLabel = 'Trailing 90 days';
@@ -151,6 +120,7 @@ function ProductsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
+    pathnameOverride: '/products',
     version: 3,
     initialState: {
       search: '',
@@ -168,6 +138,7 @@ function ProductsLandingContent({
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
   const [addProductOpen, setAddProductOpen] = useState(false);
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
 
   const debouncedSearch = useDebounce(search, 300);
   const deferredFilters = useDeferredValue(filters);
@@ -187,6 +158,7 @@ function ProductsLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-products-landing',
     scopeKey: period,
+    pathnameOverride: '/products',
     ready: !isLoading,
   });
 
@@ -244,9 +216,11 @@ function ProductsLandingContent({
       });
   }, [allProducts, filters.brand, filters.category, filters.status, filters.stock, isSellerAssistant, search, sortBy]);
   const displayRows = filtered;
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(displayRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [displayRows.length],
+  );
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
-
-  if (isLoading && !data) return <ProductsLandingSkeleton />;
 
   if (isError && !data) {
     return (
@@ -258,7 +232,6 @@ function ProductsLandingContent({
       </PageWrap>
     );
   }
-  if (!data) return <ProductsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;
@@ -277,12 +250,43 @@ function ProductsLandingContent({
     })),
   }));
 
+  const kpiOptions = [
+    {
+      id: 'invoiced-sales',
+      label: `Invoiced sales · ${metricSuffix}`,
+      value: formatNumberValue(kpis?.revenue_mtd ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
+    },
+    {
+      id: 'products-sold',
+      label: 'Products that sold · 90D',
+      value: `${productsSold}`,
+      sub: `${Math.round((productsSold/summaryTotal)*100)}% of all products`,
+    },
+    {
+      id: 'recently-out-of-stock',
+      label: 'Recently sold products out of stock',
+      value: `${recentlySoldOutOfStock}`,
+      sub: `${Math.round((recentlySoldOutOfStock/productsSold)*100)}% of products that sold`,
+    },
+    {
+      id: 'products-running-low',
+      label: 'Products running low',
+      value: `${lowStock}`,
+      sub: `${Math.round((lowStock/summaryTotal)*100)}% of all products`,
+    },
+  ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+
   return (
-    <PageWrap>
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <StickyListHeader>
         <PageHeader
-          eyebrow="Catalog"
-          title="Products"
-          subtitle={`${summaryTotal} active products across ${summaryBrands} brands and ${categoryCount} categories.`}
+          eyebrow={isPaneOpen ? 'Products' : 'Catalog'}
+          title={isPaneOpen ? selectedOption.label : 'Products'}
+          subtitle={isPaneOpen
+            ? `${selectedOption.value} · ${selectedOption.sub}`
+            : `${summaryTotal} active products across ${summaryBrands} brands and ${categoryCount} categories.`}
           horizon={horizonLabel}
           showHorizonControl={false}
         secondary={{
@@ -294,8 +298,42 @@ function ProductsLandingContent({
           primary: 'Add a product',
           onPrimaryClick: () => setAddProductOpen(true),
         })}
+        compact={isPaneOpen}
       />
 
+      {showRefreshingState || isError ? null : (
+        <>
+      {isPaneOpen ? null : (
+        <InsightStrip4
+          tiles={kpiOptions.map((option): InsightTile => ({
+            label: option.label,
+            value: option.value,
+            sub: option.sub,
+            onClick: () => setSelectedKpiKey(option.id),
+            selected: option.id === selectedKpiKey,
+          }))}
+        />
+      )}
+
+      <FilterBar
+        count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+        searchPlaceholder="Search product, SKU, brand…"
+        chips={[]}
+        activeChip=""
+        sortBy={sortBy}
+        hideViewToggle
+        compact={isPaneOpen}
+        groups={groups}
+        searchValue={search}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        sortOptions={[...SORT_OPTIONS]}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+      />
+        </>
+      )}
+      </StickyListHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
         <ProductLandingDataSkeleton />
       ) : isError ? (
@@ -305,99 +343,6 @@ function ProductsLandingContent({
         />
       ) : (
         <>
-      <InsightStrip4
-        tiles={[
-          {
-            label: `Invoiced sales · ${metricSuffix}`,
-            value: formatNumberValue(kpis?.revenue_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-            sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
-            tone: 'accent',
-          },
-          {
-            label: 'Products that sold · 90D',
-            value: `${productsSold}`,
-            sub: `${Math.round((productsSold/summaryTotal)*100)}% of all products`,
-          },
-          {
-            label: 'Recently sold products out of stock',
-            value: `${recentlySoldOutOfStock}`,
-            sub: `${Math.round((recentlySoldOutOfStock/productsSold)*100)}% of products that sold`,
-            tone: recentlySoldOutOfStock > 0 ? 'warn' : undefined,
-          },
-          {
-            label: 'Products running low',
-            value: `${lowStock}`,
-            sub: `${Math.round((lowStock/summaryTotal)*100)}% of all products`,
-          },
-        ]}
-      />
-
-      <V3CalloutPanel
-        items={[
-          {
-            id: 'recently_sold_out_of_stock',
-            kind: 'risk' as const,
-            eyebrow: 'Recently sold, now out of stock',
-            hint: `${recentlySoldOutOfStock}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.recently_sold_out_of_stock ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${row.units_mtd} units · ${formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD')}`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-          {
-            id: 'running_low',
-            kind: 'info' as const,
-            eyebrow: 'Products running low',
-            hint: `${lowStock}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.running_low ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${formatDaysCover(row.days_cover)} cover`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-          {
-            id: 'no_sale_90d',
-            kind: 'opportunity' as const,
-            eyebrow: 'Stock with no sale in 90 days',
-            hint: `${summaryData?.todays_read?.no_sale_90d?.length ?? 0}`,
-            getHref: (row) => `/products/${row.id}`,
-            rows: (summaryData?.todays_read?.no_sale_90d ?? []).map((row) => ({
-              id: row.id,
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.sku} · ${row.brand}`,
-              trailing: `${row.on_hand} on hand`,
-            })),
-          },
-        ]}
-      />
-
-      <FilterBar
-        count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
-        searchPlaceholder="Search product, SKU, brand…"
-        chips={[]}
-        activeChip=""
-        sortBy={sortBy}
-        hideViewToggle
-        groups={groups}
-        searchValue={search}
-        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-      />
-        </>
-      )}
-
       {showTableSkeleton ? (
         <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
       ) : (
@@ -435,6 +380,9 @@ function ProductsLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1800}
+        forceCompact={isPaneOpen}
+        sentinelIndex={sentinelIndex}
+        sentinelRef={sentinelRef}
         mobileRows={displayRows.map((product: TenantProduct) => {
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = product.days_cover ?? null;
@@ -446,6 +394,7 @@ function ProductsLandingContent({
             supporting: `${sku} · ${product.brand_name ?? 'Unknown brand'}`,
             meta: `${product.category_name ? toLabelCase(product.category_name) : 'Uncategorized'} · ${daysCover == null ? 'No cover data' : `${Math.round(daysCover)}d cover`}`,
             trailing: `${onHand} on hand`,
+            selected: product.id === openId,
           };
         })}
         >
@@ -462,13 +411,21 @@ function ProductsLandingContent({
           const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace');
 
           return (
+            <Fragment key={product.id}>
+            {index === sentinelIndex ? (
+              <tr aria-hidden="true" style={{ height: 0 }}>
+                <td colSpan={10} className="p-0"><div ref={sentinelRef} /></td>
+              </tr>
+            ) : null}
             <tr
-              key={product.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
+              className={cn(
+                'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+                product.id === openId ? 'bg-ember-50' : 'bg-white',
+              )}
               onClick={() => router.push(`/products/${product.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <EntityAvatar
                     initials={getInitials(product.display_name)}
@@ -484,25 +441,25 @@ function ProductsLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <div className="inline-flex items-center gap-2">
                   <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} imageUrl={product.master_product?.brand_logo_url ?? null} size={22} />
                   <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <span className="text-sm text-cream-900">{toLabelCase(category)}</span>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <StatusTag tone={product.is_active ? 'success' : 'neutral'} label={product.is_active ? 'Active' : 'Inactive'} />
               </td>
-              <td className="px-5 py-3.5 text-right">
+              <td className="px-3 py-2 text-right">
                 <div className="flex flex-col items-end">
                   <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
                   <span className="mt-1 text-xs text-cream-500">{uom}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
                 <div className="flex flex-col items-end">
                   {daysCover == null ? (
                     <span className="text-cream-500">—</span>
@@ -515,43 +472,37 @@ function ProductsLandingContent({
                   )}
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-5 py-3.5 text-right text-base text-cream-900">
+              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              <td className="px-3 py-2 text-right text-base text-cream-900">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
+              <td className="px-3 py-2 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
-              <td className="px-4 py-3.5 text-right text-md text-cream-500">›</td>
+              <td className="px-3 py-2 text-right text-md text-cream-500">›</td>
             </tr>
+            </Fragment>
           );
           })}
         </LandingTable>
       )}
 
-      {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
-      <div ref={sentinelRef} className="h-px" aria-hidden />
-      {isFetchingNextPage && (
-        <div className="flex justify-center py-4">
-          <Skeleton className="h-8 w-48 rounded-full" />
-        </div>
-      )}
-
       {!isSellerAssistant ? <AddProductSheet open={addProductOpen} onOpenChange={setAddProductOpen} hideTrigger /> : null}
+        </>
+      )}
+      </div>
     </PageWrap>
   );
 }
 
 export function ProductsLandingClient({
   initialData,
-  initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} initialSearch={initialSearch} />
+      <ProductsLandingContent initialData={initialData} />
     </FeatureGate>
   );
 }

@@ -87,7 +87,11 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
 
   return (
     <SellerRealtimeProvider>
-      <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: layout.sidebarWidth }}>
+      <div
+        data-app="seller"
+        className="min-h-screen bg-[var(--bg-surface)]"
+        style={{ ['--sidebar-w' as string]: layout.sidebarWidth }}
+      >
         <div className="hidden md:block">
           <Suspense fallback={<SellerSidebarSkeleton isCollapsed={layout.isCollapsed} />}>
             <SellerSidebar
@@ -100,7 +104,7 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
         </div>
         <main
           className={[
-            'min-h-dvh transition-[margin-left] duration-base md:ml-[var(--sidebar-w)] md:min-h-screen md:pb-0 md:pt-16',
+            'min-h-dvh transition-[margin-left] duration-base md:ml-[var(--sidebar-w)] md:min-h-screen md:pb-0 md:pt-14',
             hasMobileBottomTabs ? 'pb-[calc(60px+env(safe-area-inset-bottom,0px))]' : 'pb-0',
           ].join(' ')}
         >

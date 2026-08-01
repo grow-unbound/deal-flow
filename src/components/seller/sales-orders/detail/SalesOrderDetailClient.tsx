@@ -11,6 +11,7 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
   BuyerCardFilled,
   DocumentMetaCard,
@@ -187,7 +188,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
       return <PermissionDenied />;
     }
     return (
-      <div className="mx-auto w-full max-w-[1920px] px-8 pt-7 pb-6">
+      <div className="px-4 py-4 md:px-6 md:py-4">
         <ErrorState
           heading="Couldn't load sales order"
           description={error instanceof Error ? error.message : 'Failed to load sales order.'}
@@ -266,10 +267,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         <DocumentComposerShell
           mode="view"
           kind="so"
-          breadcrumbItems={[
-            { label: 'Sales orders', href: '/sales-orders' },
-            { label: data.order_number, current: true },
-          ]}
+          containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.order_number}
           subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply} · ${buyer.bill_address}` : 'No buyer assigned.'}
           status={{
@@ -278,81 +276,67 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             chipClassName: salesOrderBandChipClass(bandStatus),
           }}
           titleActions={(
-            <>
-          {showCancel ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive gap-2"
-              onClick={() => setCancelOpen(true)}
-              disabled={cancelMut.isPending}
-            >
-              <X className="h-4 w-4" />
-              Cancel order
-            </Button>
-            ) : null} 
-            {showEdit ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                onClick={() => {
-                  void prefetchSalesOrderComposer(queryClient, id);
-                  router.push(`/sales-orders/${id}/edit`);
-                }}
-              >
-                <Edit2 className="h-4 w-4" />
-                Edit order
-              </Button>
-            ) : null}
-            {showSend ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                className="gap-2"
-                onClick={() => setSendOpen(true)}
-                disabled={sendMut.isPending}
-              >
-                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Send order
-              </Button>
-            ) : null}
-            {ui === 'confirmed' ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setDispatchOpen(true)}
-                disabled={dispatchMut.isPending}
-              >
-                <Truck className="h-4 w-4" />
-                Dispatch
-              </Button>
-            ) : null}
-            {ui === 'dispatched' ? (
-              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
-                <PackageCheck className="h-4 w-4" />
-                Mark delivered
-              </Button>
-            ) : null}
-            {showConfirm ? (
-              <Button
-                type="button"
-                variant="accent"
-                size="sm"
-                className="gap-2"
-                onClick={() => setConfirmOpen(true)}
-                disabled={confirmMut.isPending}
-              >  
-                <Truck className="h-4 w-4" />
-                Confirm order
-              </Button>
-            ) : null}
-          </>
+            <DetailActions
+              inline={(
+                <>
+                  {showSend ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setSendOpen(true)}
+                      disabled={sendMut.isPending}
+                    >
+                      {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Send order
+                    </Button>
+                  ) : null}
+                  {ui === 'dispatched' ? (
+                    <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
+                      <PackageCheck className="h-4 w-4" />
+                      Mark delivered
+                    </Button>
+                  ) : null}
+                  {showConfirm ? (
+                    <Button
+                      type="button"
+                      variant="accent"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setConfirmOpen(true)}
+                      disabled={confirmMut.isPending}
+                    >
+                      <Truck className="h-4 w-4" />
+                      Confirm order
+                    </Button>
+                  ) : null}
+                </>
+              )}
+              overflow={[
+                ...(ui === 'confirmed' ? [{
+                  label: 'Dispatch',
+                  icon: <Truck size={14} />,
+                  onClick: () => setDispatchOpen(true),
+                  disabled: dispatchMut.isPending,
+                } satisfies DetailActionItem] : []),
+                ...(showEdit ? [{
+                  label: 'Edit order',
+                  icon: <Edit2 size={14} />,
+                  onClick: () => {
+                    void prefetchSalesOrderComposer(queryClient, id);
+                    router.push(`/sales-orders/${id}/edit`);
+                  },
+                } satisfies DetailActionItem] : []),
+                ...(showCancel ? [{
+                  label: 'Cancel order',
+                  icon: <X size={14} />,
+                  onClick: () => setCancelOpen(true),
+                  disabled: cancelMut.isPending,
+                  destructive: true,
+                } satisfies DetailActionItem] : []),
+              ]}
+            />
         )}
         basics={(
           <DocumentBasicsStrip

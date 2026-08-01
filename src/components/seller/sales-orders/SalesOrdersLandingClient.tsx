@@ -1,7 +1,7 @@
 'use client';
 
-import { useDeferredValue, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Package } from 'lucide-react';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
@@ -13,7 +13,8 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  V3CalloutPanel,
+  StickyListHeader,
+  type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
@@ -26,21 +27,15 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatDate, formatNumberValue } from '@/lib/utils';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { SalesOrdersLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { formatNumberValue } from '@/lib/utils';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
+import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
+import { TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Order value (high → low)' | 'Items (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Order value (high → low)', 'Items (high → low)'];
-
-function mapRowToCallout(row: Pick<OrderLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
-  return {
-    id: row.id,
-    initials: row.buyer_initials,
-    hue: row.buyer_hue,
-    name: row.buyer_name,
-  };
-}
+const PAGE_SIZE = 20;
 
 function buyerGeographyLabel(row: OrderLandingRow) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
@@ -83,15 +78,8 @@ function SalesOrdersDataSkeleton() {
           <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         ))}
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
       <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
-      </div>
+      <SalesOrdersTableRowsSkeleton />
     </>
   );
 }
@@ -99,15 +87,18 @@ function SalesOrdersDataSkeleton() {
 function SalesOrdersLandingContent({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantOrdersResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = openId != null;
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search')?.trim() || undefined;
+  const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
-  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(clientInitialPeriod);
   const summaryQuery = useTenantOrders(period, {}, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
@@ -115,6 +106,7 @@ function SalesOrdersLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
+    pathnameOverride: '/sales-orders',
     version: 4,
     initialState: {
       search: '',
@@ -144,9 +136,12 @@ function SalesOrdersLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
+    pathnameOverride: '/sales-orders',
     ready: !isLoading,
   });
   const sortBy = routeState.sortBy;
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('order-value');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const orders = landingData?.orders ?? [];
 
@@ -179,14 +174,27 @@ function SalesOrdersLandingContent({
   }, [filters.location_id, filters.source, filters.status, orders, search, sortBy]);
   const showTableSkeleton = (isLoading || isFetching) && filteredRows.length === 0;
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filters.location_id, filters.source, filters.status, search, sortBy]);
+  const visibleRows = useMemo(() => filteredRows.slice(0, visibleCount), [filteredRows, visibleCount]);
+  const hasMore = visibleCount < filteredRows.length;
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore,
+    isLoading: false,
+    onLoadMore: () => setVisibleCount((current) => Math.min(current + PAGE_SIZE, filteredRows.length)),
+  });
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(visibleRows.length, SELLER_INFINITE_SCROLL_RATIO),
+    [visibleRows.length],
+  );
+
+  const pulseAggregates = summaryData?.pulse_aggregates;
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
     if (!kpis) return `Sales orders ${lowerLabel} from your buyers.`;
     return `${kpis.orders_mtd} sales orders in the trailing 90 days.`;
-  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
-  const pulseAggregates = summaryData?.pulse_aggregates;
-
-  if (isLoading && !landingData) return <SalesOrdersLandingSkeleton />;
+  }, [lowerLabel, summaryData?.kpis]);
 
   if (isError && !landingData) {
     return (
@@ -196,8 +204,35 @@ function SalesOrdersLandingContent({
       />
     );
   }
-  if (!landingData) return <SalesOrdersLandingSkeleton />;
   const showRefreshingState = isLoading && !landingData;
+
+  const kpiOptions = [
+    {
+      id: 'order-value',
+      label: 'Order value · 90D',
+      value: formatNumberValue(landingData?.kpis.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${landingData?.kpis.orders_mtd ?? 0} sales orders in trailing 90 days`,
+    },
+    {
+      id: 'open-orders',
+      label: 'Open orders',
+      value: formatNumberValue(landingData?.kpis.open_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${landingData?.kpis.open_total ?? 0} open orders`,
+    },
+    {
+      id: 'waiting-dispatch',
+      label: 'Waiting to dispatch',
+      value: formatNumberValue(pulseAggregates?.waiting_dispatch_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${pulseAggregates?.waiting_dispatch_count ?? 0} confirmed, awaiting dispatch`,
+    },
+    {
+      id: 'waiting-confirmation',
+      label: 'Waiting for confirmation',
+      value: formatNumberValue(pulseAggregates?.waiting_confirmation_value ?? 0, 'CURRENCY_THRESHOLD'),
+      sub: `${pulseAggregates?.waiting_confirmation_count ?? 0} awaiting confirmation`,
+    },
+  ];
+
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
@@ -217,21 +252,57 @@ function SalesOrdersLandingContent({
       })),
     })),
   ];
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
 
   return (
     <>
-      <PageWrap className="max-w-[1920px]">
-        <PageHeader
-          eyebrow="Transactions"
-          title="Sales Orders"
-          subtitle={subtitle}
-          horizon={horizonLabel}
-          showHorizonControl={false}
-          primary={createSalesOrders ? 'Add a sales order' : undefined}
-          onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
-        />
-        <SellerMobileTransactionTabs active="orders" />
+      <PageWrap className="max-w-[1920px] flex h-full min-h-0 flex-col">
+        <StickyListHeader>
+          <PageHeader
+            eyebrow={isPaneOpen ? 'Sales Orders' : 'Transactions'}
+            title={isPaneOpen ? selectedOption.label : 'Sales Orders'}
+            subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+            horizon={horizonLabel}
+            showHorizonControl={false}
+            primary={createSalesOrders ? 'Add a sales order' : undefined}
+            onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
+            compact={isPaneOpen}
+          />
+          <SellerMobileTransactionTabs active="orders" />
 
+          {showRefreshingState || isError ? null : (
+            <>
+              {isPaneOpen ? null : (
+                <InsightStrip4
+                  tiles={kpiOptions.map((option): InsightTile => ({
+                    label: option.label,
+                    value: option.value,
+                    sub: option.sub,
+                    onClick: () => setSelectedKpiKey(option.id),
+                    selected: option.id === selectedKpiKey,
+                  }))}
+                />
+              )}
+
+              <FilterBar
+                count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
+                searchPlaceholder="Search order number…"
+                chips={[]}
+                activeChip=""
+                sortBy={sortBy}
+                hideViewToggle
+                compact={isPaneOpen}
+                groups={groups}
+                searchValue={search}
+                onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+                sortOptions={SORT_OPTIONS}
+                onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+              />
+            </>
+          )}
+        </StickyListHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {showRefreshingState ? (
           <SalesOrdersDataSkeleton />
         ) : isError ? (
@@ -241,88 +312,6 @@ function SalesOrdersLandingContent({
           />
         ) : (
           <>
-            <InsightStrip4
-              tiles={[
-                {
-                  label: 'Order value · 90D',
-                  value: formatNumberValue(landingData.kpis.gmv_mtd, 'CURRENCY_THRESHOLD'),
-                  sub: `${landingData.kpis.orders_mtd} sales orders in trailing 90 days`,
-                },
-                {
-                  label: 'Open orders',
-                  value: formatNumberValue(landingData.kpis.open_value, 'CURRENCY_THRESHOLD'),
-                  sub: `${landingData.kpis.open_total} open orders`,
-                  tone: 'accent',
-                },
-                {
-                  label: 'Waiting to dispatch',
-                  value: formatNumberValue(pulseAggregates?.waiting_dispatch_value ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${pulseAggregates?.waiting_dispatch_count ?? 0} confirmed, awaiting dispatch`,
-                  tone: 'warn',
-                },
-                {
-                  label: 'Waiting for confirmation',
-                  value: formatNumberValue(pulseAggregates?.waiting_confirmation_value ?? 0, 'CURRENCY_THRESHOLD'),
-                  sub: `${pulseAggregates?.waiting_confirmation_count ?? 0} awaiting confirmation`,
-                },
-              ]}
-            />
-
-            <V3CalloutPanel
-              items={[
-                {
-                  id: 'needs_attention',
-                  kind: 'risk',
-                  eyebrow: 'Orders to confirm',
-                  hint: `${landingData.kpis.received_count}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.needs_attention.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · ${formatDate(row.placed_at)}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'to_dispatch',
-                  kind: 'info',
-                  eyebrow: 'Orders to dispatch',
-                  hint: `${landingData.kpis.pending_dispatch_count}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.to_dispatch.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-                {
-                  id: 'stock_shortage',
-                  kind: 'opportunity',
-                  eyebrow: 'Stock shortage',
-                  hint: `${landingData.todays_read.stock_shortage.length}`,
-                  getHref: (row) => `/sales-orders/${row.id}`,
-                  rows: landingData.todays_read.stock_shortage.map((row) => ({
-                    ...mapRowToCallout(row),
-                    reason: `${row.order_id} · Confirmed ${row.confirmed_at ? formatDate(row.confirmed_at) : '—'}`,
-                    trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
-                  })),
-                },
-              ]}
-            />
-
-            <FilterBar
-              count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
-              searchPlaceholder="Search order number…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={SORT_OPTIONS}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
                 <SalesOrdersTableRowsSkeleton />
@@ -351,7 +340,11 @@ function SalesOrdersLandingContent({
                   kind="order"
                   showCampaignColumn={showCampaignColumn}
                   tableMinWidth={showCampaignColumn ? 1380 : 1180}
-                  rows={filteredRows.map((row) => ({
+                  forceCompact={isPaneOpen}
+                  selectedId={openId}
+                  sentinelIndex={sentinelIndex}
+                  sentinelRef={sentinelRef}
+                  rows={visibleRows.map((row) => ({
                     id: row.id,
                     href: `/sales-orders/${row.id}`,
                     document_number: row.order_id,
@@ -379,6 +372,7 @@ function SalesOrdersLandingContent({
             </div>
           </>
         )}
+        </div>
       </PageWrap>
 
     </>
@@ -388,11 +382,9 @@ function SalesOrdersLandingContent({
 export function SalesOrdersLandingClient({
   initialData,
   initialPeriod,
-  initialSearch,
 }: {
   initialData: TenantOrdersResponse | null;
   initialPeriod: SellerLandingPeriod;
-  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrders = useFlagState('SALES_ORDERS');
@@ -401,5 +393,5 @@ export function SalesOrdersLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <SalesOrdersLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
+  return <SalesOrdersLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
 }

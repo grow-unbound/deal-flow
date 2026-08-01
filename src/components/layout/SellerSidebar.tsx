@@ -202,7 +202,7 @@ export function SellerSidebar({
         <Link
           href={item.href}
           className={[
-            'flex items-center rounded-[12px] py-2.5 text-base font-medium transition-colors duration-fast',
+            'flex items-center rounded-[12px] py-2 text-base font-medium transition-colors duration-fast',
             showExpandedContent ? 'gap-3 px-3 justify-start' : 'justify-center px-0',
             active
               ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]'
@@ -233,7 +233,7 @@ export function SellerSidebar({
         }
       }}
     >
-      <div className={showExpandedContent ? 'flex h-16 shrink-0 items-center border-b border-cream-300 px-3' : 'flex h-16 shrink-0 items-center justify-center border-b border-cream-300 px-0'}>
+      <div className={showExpandedContent ? 'flex h-14 shrink-0 items-center border-b border-cream-300 px-3' : 'flex h-14 shrink-0 items-center justify-center border-b border-cream-300 px-0'}>
         {!showExpandedContent ? (
           <YuktiLogo variant="mark-copper" className="h-7 w-7" priority />
         ) : (
@@ -243,7 +243,7 @@ export function SellerSidebar({
         )}
       </div>
 
-      <nav className={showExpandedContent ? 'flex-1 space-y-0.5 overflow-y-auto px-3 py-4' : 'flex-1 space-y-0.5 overflow-y-auto px-2 py-4'}>
+      <nav className={showExpandedContent ? 'flex-1 space-y-0.5 overflow-y-auto px-3 py-3' : 'flex-1 space-y-0.5 overflow-y-auto px-2 py-3'}>
         {isSellerAssistant ? (
           <div className="space-y-0.5">
             {ASSISTANT_NAV_ORDER
@@ -277,7 +277,7 @@ export function SellerSidebar({
             type="button"
             onClick={onToggleCollapse}
             className={[
-              'flex w-full items-center rounded-[12px] py-2.5 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
+              'flex w-full items-center rounded-[12px] py-2 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
               showExpandedContent ? 'gap-3 px-3 justify-start' : 'justify-center px-0',
             ].join(' ')}
             aria-label={!showExpandedContent && isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
