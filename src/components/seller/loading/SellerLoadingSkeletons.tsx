@@ -42,16 +42,12 @@ function LandingSkeleton({
   topGridClassName,
   topCount,
   topCardHeight,
-  midGridClassName,
-  midCount,
-  midCardHeight,
   tableHeaderGridClassName,
   tableHeaderCount,
   tableRowGridClassName,
   tableRowCount,
   tableCellCount,
   tableCellHeight,
-  tablePanelHeight,
 }: {
   ariaLabel: string;
   titleWidth: string;
@@ -59,16 +55,12 @@ function LandingSkeleton({
   topGridClassName: string;
   topCount: number;
   topCardHeight: string;
-  midGridClassName: string;
-  midCount: number;
-  midCardHeight: string;
   tableHeaderGridClassName: string;
   tableHeaderCount: number;
   tableRowGridClassName: string;
   tableRowCount: number;
   tableCellCount: number;
   tableCellHeight: string;
-  tablePanelHeight: string;
 }) {
   return (
     <div className="mx-auto w-full max-w-[1920px] px-8 py-6" role="status" aria-label={ariaLabel}>
@@ -81,12 +73,6 @@ function LandingSkeleton({
         <div className={topGridClassName}>
           {Array.from({ length: topCount }).map((_, index) => (
             <PulseCard key={index} className={topCardHeight} />
-          ))}
-        </div>
-
-        <div className={midGridClassName}>
-          {Array.from({ length: midCount }).map((_, index) => (
-            <PulseCard key={index} className={midCardHeight} />
           ))}
         </div>
 
@@ -108,8 +94,6 @@ function LandingSkeleton({
             ))}
           </div>
         </div>
-
-        <div className={tablePanelHeight} />
       </div>
     </div>
   );
@@ -117,7 +101,6 @@ function LandingSkeleton({
 
 function DetailSkeleton({
   ariaLabel,
-  breadcrumbWidth,
   titleWidth,
   subtitleWidth,
   actionWidths,
@@ -129,7 +112,6 @@ function DetailSkeleton({
   contentHeightClassName,
 }: {
   ariaLabel: string;
-  breadcrumbWidth: string;
   titleWidth: string;
   subtitleWidth: string;
   actionWidths: string[];
@@ -141,9 +123,8 @@ function DetailSkeleton({
   contentHeightClassName: string;
 }) {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6 space-y-6" role="status" aria-label={ariaLabel}>
+    <div className="px-4 py-4 md:px-6 md:py-4 space-y-6" role="status" aria-label={ariaLabel}>
       <div className="space-y-3">
-        <PulseLine className={breadcrumbWidth} />
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <PulseCard className={avatarClassName} />
@@ -229,35 +210,48 @@ export function BuyerAppSkeleton() {
 
 export function WorkboardLandingSkeleton({
   ariaLabel,
-  titleWidth,
-  descriptionWidth,
+  titleWidth = 'h-8 w-40',
+  descriptionWidth = 'h-4 w-[30rem]',
   topCardHeight = 'h-[108px]',
-  midCardHeight = 'h-[190px]',
-  tableHeight = 'h-[420px]',
+  tableColumnGridClassName = 'grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]',
+  tableColumnCount = 7,
+  tableRowCount = 6,
 }: {
   ariaLabel: string;
   titleWidth?: string;
   descriptionWidth?: string;
   topCardHeight?: string;
-  midCardHeight?: string;
-  tableHeight?: string;
+  tableColumnGridClassName?: string;
+  tableColumnCount?: number;
+  tableRowCount?: number;
 }) {
   return (
     <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label={ariaLabel}>
-      <PulseCard className="h-24 rounded-[12px]" />
+      <div className="space-y-3">
+        <PulseLine className={titleWidth} />
+        <PulseLine className={descriptionWidth} />
+      </div>
       <div className="mt-5 grid grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, index) => (
           <PulseCard key={index} className={cn(topCardHeight, 'rounded-[12px]')} />
         ))}
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <PulseCard key={index} className={cn(midCardHeight, 'rounded-[14px]')} />
-        ))}
-      </div>
       <div className="mt-5 h-[46px] rounded-[12px] border border-cream-200 bg-cream-100 animate-pulse" />
       <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className={cn(tableHeight, 'animate-pulse bg-cream-50')} />
+        <div className={cn('grid gap-3 border-b border-cream-200 px-5 py-3', tableColumnGridClassName)}>
+          {Array.from({ length: tableColumnCount }).map((_, index) => (
+            <PulseLine key={index} className="h-3 w-full" />
+          ))}
+        </div>
+        <div className="space-y-3 p-4">
+          {Array.from({ length: tableRowCount }).map((_, row) => (
+            <div key={row} className={cn('grid gap-3', tableColumnGridClassName)}>
+              {Array.from({ length: tableColumnCount }).map((_, col) => (
+                <PulseCard key={col} className="h-10 rounded-md" />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -270,16 +264,12 @@ export function CatalogLandingSkeleton({
   topGridClassName,
   topCount,
   topCardHeight,
-  midGridClassName,
-  midCount,
-  midCardHeight,
   tableHeaderGridClassName,
   tableHeaderCount,
   tableRowGridClassName,
   tableRowCount,
   tableCellCount,
   tableCellHeight,
-  tablePanelHeight,
 }: {
   ariaLabel: string;
   titleWidth: string;
@@ -287,16 +277,12 @@ export function CatalogLandingSkeleton({
   topGridClassName: string;
   topCount: number;
   topCardHeight: string;
-  midGridClassName: string;
-  midCount: number;
-  midCardHeight: string;
   tableHeaderGridClassName: string;
   tableHeaderCount: number;
   tableRowGridClassName: string;
   tableRowCount: number;
   tableCellCount: number;
   tableCellHeight: string;
-  tablePanelHeight: string;
 }) {
   return (
     <LandingSkeleton
@@ -306,16 +292,12 @@ export function CatalogLandingSkeleton({
       topGridClassName={topGridClassName}
       topCount={topCount}
       topCardHeight={topCardHeight}
-      midGridClassName={midGridClassName}
-      midCount={midCount}
-      midCardHeight={midCardHeight}
       tableHeaderGridClassName={tableHeaderGridClassName}
       tableHeaderCount={tableHeaderCount}
       tableRowGridClassName={tableRowGridClassName}
       tableRowCount={tableRowCount}
       tableCellCount={tableCellCount}
       tableCellHeight={tableCellHeight}
-      tablePanelHeight={tablePanelHeight}
     />
   );
 }
@@ -329,16 +311,12 @@ export function CustomersLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_1.1fr_1.25fr_0.9fr_0.8fr_0.95fr_0.8fr_0.9fr_0.9fr_40px]"
       tableHeaderCount={9}
       tableRowGridClassName="grid-cols-[1.8fr_1.1fr_1.25fr_0.9fr_0.8fr_0.95fr_0.8fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={9}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -352,16 +330,12 @@ export function ProductsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.4fr_1fr_1fr_0.9fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr_40px]"
       tableHeaderCount={9}
       tableRowGridClassName="grid-cols-[1.4fr_1fr_1fr_0.9fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr_40px]"
       tableRowCount={6}
       tableCellCount={9}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -375,16 +349,12 @@ export function BrandsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableHeaderCount={6}
       tableRowGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableRowCount={6}
       tableCellCount={6}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -398,16 +368,12 @@ export function LocationsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_1fr_0.9fr_0.8fr_0.9fr_0.9fr_0.9fr_40px]"
       tableHeaderCount={7}
       tableRowGridClassName="grid-cols-[1.8fr_1fr_0.9fr_0.8fr_0.9fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={7}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -421,16 +387,12 @@ export function WarehousesLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_1.1fr_1fr_0.8fr_0.9fr_0.8fr_0.9fr_0.9fr_40px]"
       tableHeaderCount={8}
       tableRowGridClassName="grid-cols-[1.8fr_1.1fr_1fr_0.8fr_0.9fr_0.8fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={8}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -444,16 +406,12 @@ export function CategoriesLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-[108px] rounded-[12px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-[190px] rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_0.9fr_0.9fr_40px]"
       tableHeaderCount={5}
       tableRowGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={5}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -467,16 +425,12 @@ export function CohortsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_40px]"
       tableHeaderCount={3}
       tableRowGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={3}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -490,16 +444,12 @@ export function PriceListsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.6fr_1fr_0.7fr_0.8fr_1.05fr_0.85fr_0.85fr_0.8fr_40px]"
       tableHeaderCount={8}
       tableRowGridClassName="grid-cols-[1.6fr_1fr_0.7fr_0.8fr_1.05fr_0.85fr_0.85fr_0.8fr_40px]"
       tableRowCount={6}
       tableCellCount={8}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -513,16 +463,12 @@ export function CatalogsLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      midGridClassName="grid grid-cols-3 gap-3"
-      midCount={3}
-      midCardHeight="h-52 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableHeaderCount={6}
       tableRowGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableRowCount={6}
       tableCellCount={6}
       tableCellHeight="h-10 rounded-md"
-      tablePanelHeight="h-0"
     />
   );
 }
@@ -543,7 +489,6 @@ export function CustomerDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading customer detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
       actionWidths={['h-9 w-28 rounded-[8px]', 'h-9 w-24 rounded-[8px]', 'h-9 w-24 rounded-[8px]']}
@@ -561,7 +506,6 @@ export function ProductDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading product detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
       actionWidths={['h-9 w-24 rounded-[8px]', 'h-9 w-24 rounded-[8px]']}
@@ -579,7 +523,6 @@ export function BrandDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading brand detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
       actionWidths={['h-9 w-9 rounded-[8px]', 'h-9 w-24 rounded-[8px]', 'h-9 w-24 rounded-[8px]', 'h-9 w-44 rounded-[8px]']}
@@ -597,7 +540,6 @@ export function LocationDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading location detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 max-w-md"
       actionWidths={['h-9 w-20 rounded-[8px]']}
@@ -615,7 +557,6 @@ export function WarehouseDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading warehouse detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 max-w-md"
       actionWidths={['h-9 w-32 rounded-[8px]']}
@@ -633,7 +574,6 @@ export function CategoryDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading category detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
       actionWidths={[]}
@@ -651,7 +591,6 @@ export function CohortDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading cohort detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
       actionWidths={['h-9 w-[8.5rem] rounded-[8px]']}
@@ -669,7 +608,6 @@ export function PriceListDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading price list detail"
-      breadcrumbWidth="h-4 w-52"
       titleWidth="h-12 w-96"
       subtitleWidth="h-4 w-[42rem]"
       actionWidths={['h-10 w-56 rounded-[8px]']}
@@ -687,7 +625,6 @@ export function CatalogDetailSkeleton() {
   return (
     <DetailSkeleton
       ariaLabel="Loading catalog detail"
-      breadcrumbWidth="h-6 w-56"
       titleWidth="h-7 w-64"
       subtitleWidth="h-4 max-w-md"
       actionWidths={['h-9 w-32 rounded-[8px]', 'h-9 w-36 rounded-[8px]']}
