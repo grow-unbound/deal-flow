@@ -93,6 +93,7 @@ export function useRouteSnapshot<T>({
   enabled = true,
   mode = 'session',
   scopeKey,
+  pathnameOverride,
 }: {
   storageKey: string;
   initialState: T;
@@ -100,8 +101,19 @@ export function useRouteSnapshot<T>({
   enabled?: boolean;
   mode?: StorageMode;
   scopeKey?: string;
+  /** Use this instead of the live `usePathname()` for the storage key. For
+   * components that stay mounted across a parent/child route pair (e.g. a
+   * seller split-pane list view mounted across `/entity` <-> `/entity/[id]`
+   * — see `EntitySplitShell`), the live pathname changes on that navigation
+   * even though the component itself never remounts. Without this override,
+   * the "route changed" re-hydrate effect below fires anyway and resets the
+   * in-memory state (search/filters/sort) back to whatever (usually nothing)
+   * is stored under the new URL's key. Pass a stable base path (e.g.
+   * `/brands`) to opt out of that per-URL reset. */
+  pathnameOverride?: string;
 }) {
-  const pathname = usePathname();
+  const livePathname = usePathname();
+  const pathname = pathnameOverride ?? livePathname;
   const resolvedStorageKey = useMemo(
     () => buildStorageKey(ROUTE_SNAPSHOT_PREFIX, storageKey, pathname, scopeKey),
     [pathname, scopeKey, storageKey],
@@ -177,13 +189,19 @@ export function useRouteScrollRestoration({
   enabled = true,
   ready = true,
   scopeKey,
+  pathnameOverride,
 }: {
   storageKey: string;
   enabled?: boolean;
   ready?: boolean;
   scopeKey?: string;
+  /** See `useRouteSnapshot`'s `pathnameOverride` — same fix, same reason:
+   * without it, scroll position resets whenever a still-mounted list's
+   * pathname changes (e.g. opening the split-pane detail view). */
+  pathnameOverride?: string;
 }) {
-  const pathname = usePathname();
+  const livePathname = usePathname();
+  const pathname = pathnameOverride ?? livePathname;
   const scrollContext = useBuyerScrollRoot();
   const scrollRoot = scrollContext?.scrollRoot ?? null;
   const resolvedStorageKey = useMemo(

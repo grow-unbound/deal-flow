@@ -1,13 +1,6 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { cn } from '@/lib/utils';
 import { EntityAvatar, type EntityAvatarHue, StatusTag, type StatusTone } from '@/components/seller/layout';
-
-interface CrumbItem {
-  label: string;
-  href?: string;
-  current?: boolean;
-}
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DetailAvatar {
   kind: 'brand' | 'product' | 'catalog' | 'customer' | 'warehouse' | 'location' | 'category' | 'cohort' | 'price-list' | 'campaign' | 'generic';
@@ -22,13 +15,14 @@ interface DetailStatus {
 }
 
 interface DetailHeaderProps {
-  crumbPath: CrumbItem[];
   avatar: DetailAvatar;
   title: string;
   status: DetailStatus;
   subtitle: ReactNode[];
   statusActions?: ReactNode;
   actions: ReactNode;
+  /** While true, title/status/subtitle render as skeleton placeholders instead of the (possibly not-yet-loaded) props. */
+  loading?: boolean;
 }
 
 function renderAvatar(avatar: DetailAvatar) {
@@ -47,45 +41,36 @@ function renderAvatar(avatar: DetailAvatar) {
   );
 }
 
-export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statusActions, actions }: DetailHeaderProps) {
+export function DetailHeader({ avatar, title, status, subtitle, statusActions, actions, loading }: DetailHeaderProps) {
   return (
     <header>
-      <nav className="mb-3 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:mb-4 md:text-sm md:font-normal md:tracking-0 md:text-cream-600">
-        {crumbPath.map((crumb, index) => {
-          const isCurrent = crumb.current || index === crumbPath.length - 1;
-          return (
-            <div key={`${crumb.label}-${index}`} className="inline-flex items-center gap-1.5">
-              {index > 0 ? <span className="text-cream-400">›</span> : null}
-              {crumb.href && !isCurrent ? (
-                <Link href={crumb.href} className="hover:text-cream-900">
-                  {crumb.label}
-                </Link>
-              ) : (
-                <span className={cn(isCurrent && 'font-medium text-cream-900')}>{crumb.label}</span>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
       <div className="flex items-start justify-between gap-4 md:gap-8">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             {renderAvatar(avatar)}
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.98] tracking-[-0.022em] text-cream-900 md:text-2xl md:font-extrabold md:leading-[1] md:tracking-[-0.025em] md:text-cream-950">{title}</h1>
-                <StatusTag label={status.label} tone={status.tone} />
-                {statusActions ? <div className="ml-1 inline-flex items-center gap-1">{statusActions}</div> : null}
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:text-base md:font-normal md:tracking-0 md:text-cream-700">
-                {subtitle.map((item, index) => (
-                  <div key={index} className="inline-flex items-center gap-1.5">
-                    {index > 0 ? <span className="text-cream-500">·</span> : null}
-                    <span>{item}</span>
+              {loading ? (
+                <>
+                  <Skeleton className="h-6 w-48" />
+                  <Skeleton className="mt-2 h-4 w-64" />
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="font-display text-lg font-extrabold leading-[1.05] tracking-[-0.025em] text-cream-950 md:text-xl">{title}</h1>
+                    <StatusTag label={status.label} tone={status.tone} />
+                    {statusActions ? <div className="ml-1 inline-flex items-center gap-1">{statusActions}</div> : null}
                   </div>
-                ))}
-              </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[var(--b-text-sub)] font-medium leading-5 tracking-[-0.01em] text-cream-500 md:text-base md:font-normal md:tracking-0 md:text-cream-700">
+                    {subtitle.map((item, index) => (
+                      <div key={index} className="inline-flex items-center gap-1.5">
+                        {index > 0 ? <span className="text-cream-500">·</span> : null}
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -95,4 +80,4 @@ export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statu
   );
 }
 
-export type { CrumbItem, DetailAvatar, DetailStatus, DetailHeaderProps };
+export type { DetailAvatar, DetailStatus, DetailHeaderProps };

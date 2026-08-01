@@ -1236,6 +1236,40 @@ function preserveExistingTransactionalOriginAndFlags(
 // Only active when adapter is provided (webhook path). Bulk sync callers omit adapter and get
 // the existing graceful-degradation behaviour (null / skip / throw) unchanged.
 
+/** GET /contacts/{id} and upsert buyer + embedded contact persons + assignments. */
+export async function refreshBuyerFromZoho(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  externalContactId: string,
+  adapter: ZohoAdapter,
+): Promise<{ buyerId: string | null; synced: number }> {
+  const fetched = await adapter.fetchContactById(externalContactId);
+  if (!fetched) return { buyerId: null, synced: 0 };
+
+  const result = await persistBuyers(
+    admin,
+    tenantId,
+    actorId,
+    integrationId,
+    [fetched],
+    adapter,
+    zohoTypeId,
+    INCREMENTAL_PERSIST_OPTIONS,
+  );
+  const buyerId = await resolveInternalIdWithFallback(
+    admin,
+    tenantId,
+    integrationId,
+    'customers',
+    'buyers',
+    externalContactId,
+  );
+  return { buyerId, synced: result.created + result.updated };
+}
+
 async function ensureBuyerExists(
   admin: AdminClient,
   tenantId: string,
@@ -1248,20 +1282,16 @@ async function ensureBuyerExists(
   const existing = await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', externalContactId);
   if (existing) return existing;
 
-  const fetched = await adapter.fetchContactById(externalContactId);
-  if (!fetched) return null;
-
-  await persistBuyers(
+  const { buyerId } = await refreshBuyerFromZoho(
     admin,
     tenantId,
     actorId,
     integrationId,
-    [fetched],
-    adapter,
     zohoTypeId,
-    INCREMENTAL_PERSIST_OPTIONS,
+    externalContactId,
+    adapter,
   );
-  return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', externalContactId);
+  return buyerId;
 }
 
 async function ensureProductExists(

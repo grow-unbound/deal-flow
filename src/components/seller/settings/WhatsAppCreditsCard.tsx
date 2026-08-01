@@ -24,14 +24,14 @@ export function WhatsAppCreditsCard({
   return (
     <SettingsSectionCard
       title="WhatsApp credits"
-      subtitle="Used for buyer OTPs and notifications. Each message typically consumes one credit."
+      subtitle="Used for OTPs, transaction notifications, and broadcast messages."
       icon={MessageCircle}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1 space-y-2">
           <div>
             <span className="font-display text-3xl font-medium tracking-tight text-cream-900">{balance.toLocaleString()}</span>
-            <span className="ml-2 text-body-sm text-cream-600">credits remaining of {purchased.toLocaleString()} purchased</span>
+            <span className="ml-2 text-body-sm text-cream-600">credits remaining · 0 purchased</span> {/* {purchased.toLocaleString()} */}
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-cream-200">
             <div
@@ -40,9 +40,9 @@ export function WhatsAppCreditsCard({
             />
           </div>
         </div>
-        <Button type="button" variant={empty ? 'primary' : 'secondary'} disabled={isTopUpPending} onClick={() => onTopUp()}>
+        {/* <Button type="button" variant={empty ? 'primary' : 'secondary'} disabled={isTopUpPending} onClick={() => onTopUp()}>
           {isTopUpPending ? 'Working…' : empty ? 'Top up to send' : 'Top up credits'}
-        </Button>
+        </Button> */}
       </div>
 
       {lowBalance ? (
@@ -58,11 +58,11 @@ export function WhatsAppCreditsCard({
 
       <div className="rounded-lg border border-cream-200 bg-cream-50 px-3 py-2 text-body-sm text-cream-700">
         <p className="font-medium text-cream-800">What costs what</p>
-        <p className="mt-1">Most messages: 1 credit. Marketing broadcasts: 4 credits.</p>
+        <p className="mt-1">Most messages: 1 credit/message.<br />Marketing broadcasts: 6 credits/message.</p>
       </div>
 
       <p className="text-body-sm text-cream-600">
-        Credits do not expire. Self-serve purchase is coming soon — use Top up to see contact options.
+        Credits reset every month. Self-serve purchase is coming soon — Contact Yukti support to top up.
       </p>
     </SettingsSectionCard>
   );

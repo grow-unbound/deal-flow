@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { cn } from '@/lib/utils';
 
-import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { SellerMobileList, type SellerMobileListItem } from '@/components/seller/mobile';
 
 interface LandingTableColumn {
@@ -27,6 +26,14 @@ interface LandingTableProps {
   emptyState?: ReactNode;
   /** Compact phone rendering for the same rows; desktop table remains unchanged. */
   mobileRows?: SellerMobileListItem[];
+  /** Force the compact `mobileRows` card list regardless of viewport — used when this
+   * table is rendered in the split-pane list column, which is narrow on desktop too.
+   * Skips the wide `<table>` entirely rather than just CSS-hiding it. */
+  forceCompact?: boolean;
+  /** Array index at which to interleave the infinite-scroll sentinel (mid-list, not
+   * trailing) — forwarded to `SellerMobileList`. */
+  sentinelIndex?: number;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
 }
 
 export function LandingTable({
@@ -38,8 +45,23 @@ export function LandingTable({
   showEmptyState,
   emptyState,
   mobileRows,
+  forceCompact,
+  sentinelIndex,
+  sentinelRef,
 }: LandingTableProps) {
   const hasHeader = columns.some((column) => column.label != null && column.label !== '');
+
+  if (forceCompact) {
+    return mobileRows ? (
+      <SellerMobileList
+        items={showEmptyState ? [] : mobileRows}
+        emptyState={showEmptyState ? emptyState : undefined}
+        forceVisible
+        sentinelIndex={sentinelIndex}
+        sentinelRef={sentinelRef}
+      />
+    ) : null;
+  }
 
   return (
     <>
@@ -47,11 +69,20 @@ export function LandingTable({
         <SellerMobileList
           items={showEmptyState ? [] : mobileRows}
           emptyState={showEmptyState ? emptyState : undefined}
+          sentinelIndex={sentinelIndex}
+          sentinelRef={sentinelRef}
         />
       ) : null}
-      <ScrollableTableShell
+      {/* Single scroll container for BOTH axes (not a horizontal-only
+          ScrollableTableShell nested inside a vertical one) — sticky
+          positioning anchors to the nearest ancestor that establishes a
+          scroll container, on ANY axis. Splitting x/y overflow across two
+          nested divs made the horizontal-only wrapper "win" that anchor,
+          so the sticky `<thead>` stuck to a box that never itself scrolled
+          vertically, instead of the page's real scrolling ancestor. */}
+      <div
         className={cn(
-          'rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          'h-full min-h-0 w-full overflow-auto rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
           mobileRows && 'hidden md:block',
           className,
         )}
@@ -61,7 +92,7 @@ export function LandingTable({
           style={tableMinWidth != null ? { minWidth: tableMinWidth } : undefined}
         >
           {hasHeader ? (
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="border-y border-cream-300 bg-white">
                 {columns.map((column, index) => (
                   <th
@@ -96,7 +127,7 @@ export function LandingTable({
             )}
           </tbody>
         </table>
-      </ScrollableTableShell>
+      </div>
     </>
   );
 }

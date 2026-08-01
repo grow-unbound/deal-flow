@@ -8,6 +8,8 @@ const fetchSellerPageBootstrapMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useCustomersLanding', () => ({
@@ -41,7 +43,9 @@ vi.mock('@/components/seller/layout/SellerBootstrapBoundary', () => ({
   },
 }));
 
-import CustomersPage from '../../app/(seller)/customers/page';
+// List rendering moved from page.tsx into layout.tsx as part of the split-pane
+// rollout (the list now stays mounted across /customers <-> /customers/[id]).
+import CustomersLayout from '../../app/(seller)/customers/layout';
 
 describe('customers landing integration', () => {
   beforeEach(() => {
@@ -56,7 +60,7 @@ describe('customers landing integration', () => {
   it('renders flag-off state and does not fetch landing data', () => {
     useFlagMock.mockReturnValue(false);
 
-    return CustomersPage({ searchParams: Promise.resolve({}) }).then((element) => {
+    return CustomersLayout({ children: null }).then((element) => {
       render(element);
 
       expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();

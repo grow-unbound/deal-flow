@@ -3,20 +3,19 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { CircleDollarSign, MailPlus, PencilIcon, Trash2 } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FeatureGate } from '@/components/FeatureGate';
 import { ErrorState } from '@/components/ui/empty-state';
-import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { DetailActions, DetailHeader, DetailTabs, PerformanceCard, RankedList, type DetailActionItem } from '@/components/seller/detail';
 import { CollectCustomerPaymentDialog } from '@/components/seller/customers/detail';
 import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
 import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
 import { CustomerPriceListsTab } from '@/components/seller/customers/detail/CustomerPriceListsTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { toast } from 'sonner';
-import { CustomerDetailSkeleton as SharedCustomerDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const CustomerPerformanceTab = dynamic(
   () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
@@ -29,46 +28,6 @@ import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/ho
 import { formatNumberValue } from '@/lib/utils';
 
 type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists';
-
-function CustomerDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-52" />
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-[14px]" />
-              <div className="space-y-2">
-                <Skeleton className="h-7 w-56" />
-                <Skeleton className="h-4 w-80" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-28 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-28 rounded-full" />
-          ))}
-        </div>
-
-        <Skeleton className="h-[24rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
-}
 
 function formatLastActivity(subtitleMeta: {
   last_activity_kind: string | null;
@@ -97,6 +56,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const deleteMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
   const [collectPaymentOpen, setCollectPaymentOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const featureVisibility = useMemo(() => ({
     estimates: settings?.modules.orders.features.enquiries !== false,
@@ -157,101 +117,88 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     ];
   }, [data]);
 
-  if (isLoading) return <SharedCustomerDetailSkeleton />;
-  if (isError || !data) {
+  if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load customer" description={error?.message ?? 'There was a problem fetching this customer detail page.'} />;
   }
 
-  const hasOutstandingDues = data.meta_strip_4.credit_used > 0;
+  const hasOutstandingDues = (data?.meta_strip_4.credit_used ?? 0) > 0;
 
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
-      <PageWrap className="pt-7">
+      <div className="px-4 py-4 md:px-6 md:py-4">
         <DetailHeader
-          crumbPath={[
-            { label: 'Customers', href: '/customers' },
-            { label: data.header.buyer_name, current: true },
-          ]}
-          avatar={{ kind: 'brand', initials: data.header.initials, hue: data.header.hue }}
-          title={data.header.buyer_name}
-          status={{ label: data.header.status_label, tone: data.header.status_tone }}
-          subtitle={[
-            data.header.subtitle_meta.buyer_app_status_label,
-            data.header.subtitle_meta.city,
-            data.header.subtitle_meta.phone,
-            formatLastActivity(data.header.subtitle_meta),
-          ]}
+          loading={isLoading}
+          avatar={{ kind: 'brand', initials: data?.header.initials ?? 'CU', hue: data?.header.hue ?? 'cream' }}
+          title={data?.header.buyer_name ?? ''}
+          status={{ label: data?.header.status_label ?? '', tone: data?.header.status_tone ?? 'neutral' }}
+          subtitle={
+            data
+              ? [
+                  data.header.subtitle_meta.buyer_app_status_label,
+                  data.header.subtitle_meta.city,
+                  data.header.subtitle_meta.phone,
+                  formatLastActivity(data.header.subtitle_meta),
+                ]
+              : []
+          }
           actions={
-            <div className="flex items-center gap-2 pt-1">
-              {isSellerAdmin ? (
+            <DetailActions
+              inline={
                 <>
-                  {data.details.is_active ? (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button type="button" variant="ghost" size="sm" className="text-danger-700 hover:text-danger-800">
-                          <Trash2 size={16} />
-                          Delete buyer
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete buyer?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            The buyer will be marked as inactive. The buyer history will not be deleted.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              deleteMutation.mutate('deactivate');
-                            }}
-                          >
-                            {deleteMutation.isPending ? 'Saving…' : 'Delete Buyer'}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                  {hasOutstandingDues ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setCollectPaymentOpen(true)}
+                    >
+                      <CircleDollarSign size={16} />
+                      Collect payment
+                    </Button>
                   ) : null}
-
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="accent"
                     size="sm"
-                    onClick={() => setEditOpen(true)}
+                    onClick={() => toast.info('Send Message will be added in a later phase.')}
                   >
-                    <PencilIcon size={14} />
-                    Edit buyer
+                    <MailPlus size={16} />
+                    Send message
                   </Button>
                 </>
-              ) : null}
-
-              {hasOutstandingDues ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setCollectPaymentOpen(true)}
-                >
-                  <CircleDollarSign size={16} />
-                  Collect payment
-                </Button>
-              ) : null}
-            <Button
-              type="button"
-              variant="accent"
-              size="sm"
-              onClick={() => toast.info('Send Message will be added in a later phase.')}
-            >
-              <MailPlus size={16} />
-              Send message
-            </Button>
-            </div>
+              }
+              overflow={
+                isSellerAdmin && data
+                  ? ([
+                      data.details.is_active
+                        ? {
+                            label: 'Delete buyer',
+                            icon: <Trash2 size={14} />,
+                            onClick: () => setDeleteConfirmOpen(true),
+                            destructive: true,
+                          }
+                        : null,
+                      {
+                        label: 'Edit buyer',
+                        icon: <PencilIcon size={14} />,
+                        onClick: () => setEditOpen(true),
+                      },
+                    ].filter(Boolean) as DetailActionItem[])
+                  : []
+              }
+            />
           }
         />
 
-        <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
+        {data ? (
+          <InsightStrip4 className="mt-6" showSupportingText tiles={tiles} />
+        ) : (
+          <div className="mt-6 grid grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-28 rounded-[14px]" />
+            ))}
+          </div>
+        )}
 
         <DetailTabs
           tabs={tabs}
@@ -259,87 +206,130 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           onChange={(value) => setTab(value as TabId)}
         />
 
-        {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
+        {activeTab === 'details' ? (
+          data ? <CustomerDetailsTab id={id} details={data.details} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        ) : null}
         {showPerformanceTab && activeTab === 'performance' ? (
-          <CustomerPerformanceTab
-            performance={data.performance}
-            performanceV2={data.performance_v2}
-            performanceCards={data.performance_cards}
-          />
+          data ? (
+            <CustomerPerformanceTab
+              performance={data.performance}
+              performanceV2={data.performance_v2}
+              performanceCards={data.performance_cards}
+            />
+          ) : (
+            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+          )
         ) : null}
         {activeTab === 'estimates' ? (
-          <CustomerOrdersTab
-            buyerId={id}
-            buyerName={data.header.buyer_name}
-            kind="estimate"
-            title="Estimates"
-            routeBase="/estimates"
-          />
+          data ? (
+            <CustomerOrdersTab
+              buyerId={id}
+              buyerName={data.header.buyer_name}
+              kind="estimate"
+              title="Estimates"
+              routeBase="/estimates"
+            />
+          ) : (
+            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+          )
         ) : null}
-        {activeTab === 'orders' ? <CustomerOrdersTab buyerId={id} buyerName={data.header.buyer_name} kind="order" /> : null}
+        {activeTab === 'orders' ? (
+          data ? <CustomerOrdersTab buyerId={id} buyerName={data.header.buyer_name} kind="order" /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        ) : null}
         {activeTab === 'invoices' ? (
-          <CustomerOrdersTab
-            buyerId={id}
-            buyerName={data.header.buyer_name}
-            kind="invoice"
-            title="Invoices"
-            routeBase="/invoices"
-          />
+          data ? (
+            <CustomerOrdersTab
+              buyerId={id}
+              buyerName={data.header.buyer_name}
+              kind="invoice"
+              title="Invoices"
+              routeBase="/invoices"
+            />
+          ) : (
+            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+          )
         ) : null}
         {activeTab === 'cohorts' ? (
-          <section className="mt-5">
-            <PerformanceCard title="Customer groups" subtitle="Current memberships" bodyClassName="p-0">
-              <RankedList
-                items={data.cohorts_summary.rows.map((cohort) => ({
-                  id: cohort.id,
-                  label: cohort.name,
-                  value: 'Active',
-                  supporting: 'Buyer is assigned to this customer group.',
-                  initials: cohort.name.slice(0, 2).toUpperCase(),
-                  hue: 'cream',
-                }))}
-                emptyTitle="No customer group memberships yet"
-                emptyDescription="This buyer is not assigned to any customer groups."
-              />
-            </PerformanceCard>
-          </section>
+          data ? (
+            <section className="mt-5">
+              <PerformanceCard title="Customer groups" subtitle="Current memberships" bodyClassName="p-0">
+                <RankedList
+                  items={data.cohorts_summary.rows.map((cohort) => ({
+                    id: cohort.id,
+                    label: cohort.name,
+                    value: 'Active',
+                    supporting: 'Buyer is assigned to this customer group.',
+                    initials: cohort.name.slice(0, 2).toUpperCase(),
+                    hue: 'cream',
+                  }))}
+                  emptyTitle="No customer group memberships yet"
+                  emptyDescription="This buyer is not assigned to any customer groups."
+                />
+              </PerformanceCard>
+            </section>
+          ) : (
+            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+          )
         ) : null}
         {activeTab === 'price-lists' ? (
           <CustomerPriceListsTab buyerId={id} />
         ) : null}
 
-        <AddCustomerDialog
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          mode="edit"
-          customerId={id}
-          assignedPriceListName={data.details.assigned_price_list}
-          defaultValues={{
-            business_name: data.details.business_name,
-            contact_name: data.details.contact_name ?? '',
-            phone: data.details.phone ?? '',
-            email: data.details.email ?? '',
-            gstin: data.details.gstin ?? '',
-            credit_limit: data.details.credit_limit ?? 0,
-            payment_terms_days: data.details.payment_terms_days ?? 0,
-            default_cohort_id: data.details.default_cohort_id ?? null,
-            default_price_list_id: data.details.default_price_list_id ?? null,
-            buyer_app_enabled: data.details.buyer_app_enabled,
-            geography: {
-              city: data.details.city ?? '',
-              state: data.details.state ?? '',
-              pincode: data.details.pincode ?? '',
-              zone: data.details.zone ?? '',
-            },
-          }}
-        />
+        {data ? (
+          <AddCustomerDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            mode="edit"
+            customerId={id}
+            assignedPriceListName={data.details.assigned_price_list}
+            defaultValues={{
+              business_name: data.details.business_name,
+              contact_name: data.details.contact_name ?? '',
+              phone: data.details.phone ?? '',
+              email: data.details.email ?? '',
+              gstin: data.details.gstin ?? '',
+              credit_limit: data.details.credit_limit ?? 0,
+              payment_terms_days: data.details.payment_terms_days ?? 0,
+              default_cohort_id: data.details.default_cohort_id ?? null,
+              default_price_list_id: data.details.default_price_list_id ?? null,
+              buyer_app_enabled: data.details.buyer_app_enabled,
+              geography: {
+                city: data.details.city ?? '',
+                state: data.details.state ?? '',
+                pincode: data.details.pincode ?? '',
+                zone: data.details.zone ?? '',
+              },
+            }}
+          />
+        ) : null}
         <CollectCustomerPaymentDialog
           buyerId={id}
-          buyerName={data.header.buyer_name}
+          buyerName={data?.header.buyer_name ?? ''}
           open={collectPaymentOpen}
           onOpenChange={setCollectPaymentOpen}
         />
-      </PageWrap>
+        <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete buyer?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The buyer will be marked as inactive. The buyer history will not be deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  deleteMutation.mutate('deactivate');
+                }}
+              >
+                {deleteMutation.isPending ? 'Saving…' : 'Delete Buyer'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </FeatureGate>
   );
 }

@@ -11,6 +11,18 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
+    // Seller layouts (app/(seller)/<entity>/layout.tsx) call headers() via
+    // requireSellerServerTenantId(), making them dynamic. Next's default
+    // dynamic staleTime is 0, so every client navigation between /<entity>
+    // and /<entity>/[id] refetches+remounts the whole layout subtree —
+    // including the list component — wiping its local search/filter state
+    // even though the URL only changed a leaf segment. Middleware already
+    // gates auth on every request (see middleware.ts x-verified-* headers),
+    // so caching this dynamic render client-side for a short window doesn't
+    // weaken the auth check — it only avoids remounting on same-layout nav.
+    staleTimes: {
+      dynamic: 30,
+    },
     optimizePackageImports: [
       'lucide-react',
       '@radix-ui/react-accordion',

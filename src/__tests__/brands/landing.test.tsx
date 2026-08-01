@@ -8,6 +8,8 @@ const useFlagMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => '/brands',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useBrands', () => ({

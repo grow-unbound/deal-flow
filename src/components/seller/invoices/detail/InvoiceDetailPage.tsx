@@ -10,6 +10,7 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
   BuyerCardFilled,
   DocumentMetaCard,
@@ -192,7 +193,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       return <PermissionDenied />;
     }
     return (
-      <div className="mx-auto w-full max-w-[1920px] px-8 pt-7 pb-6">
+      <div className="px-4 py-4 md:px-6 md:py-4">
         <ErrorState
           heading="Couldn't load invoice"
           description={error instanceof Error ? error.message : 'Failed to load invoice.'}
@@ -254,11 +255,8 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       <div className="hidden md:block">
         <DocumentComposerShell
           mode="view"
+          containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           kind="invoice"
-          breadcrumbItems={[
-            { label: 'Invoices', href: '/invoices' },
-            { label: data.doc_number, current: true },
-          ]}
           title={data.doc_number}
           subtitle={buyerContext ? `${data.buyer.name} · ${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
           status={{
@@ -267,60 +265,61 @@ export function InvoiceDetailPage({ id }: { id: string }) {
             chipClassName: invoiceBandChipClass(invoiceBandStatus),
           }}
           titleActions={(
-            <>
-            {data.version > 1 ? (
-              <Badge variant="warning" icon>
-                v
-                {data.version}
-              </Badge>
-            ) : null}
-            {showVoidBtn ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setVoidOpen(true)}
-                disabled={voidMut.isPending}
-              >
-                <Ban className="h-4 w-4" />
-                Void invoice
-              </Button>
-            ) : null}
-            {showEdit ? (
-              <Button
-                type="button"
-                size="sm"
-                className="gap-2"
-                variant={data.status === 'draft' ? 'primary' : 'outline'}
-                onClick={() => {
-                  void prefetchInvoiceComposer(queryClient, id);
-                  router.push(`/invoices/${id}/edit`);
-                }}
-              >
-                <Edit2 className="h-4 w-4" />
-                {data.status === 'draft' ? 'Edit before send' : 'Edit invoice'}
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'draft' ? (
-              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
-                <Send className="h-4 w-4" />
-                Send invoice
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
-              <Button type="button" variant="primary" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
-                <IndianRupee className="h-4 w-4" />
-                Collect payment
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
-              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
-                <Mail className="h-4 w-4" />
-                Send reminder
-              </Button>
-            ) : null}
-          </>
+            <DetailActions
+              inline={(
+                <>
+                  {data.version > 1 ? (
+                    <Badge variant="warning" icon>
+                      v
+                      {data.version}
+                    </Badge>
+                  ) : null}
+                  {invoiceBandStatus === 'draft' ? (
+                    <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
+                      <Send className="h-4 w-4" />
+                      Send invoice
+                    </Button>
+                  ) : null}
+                  {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+                    <Button type="button" variant="primary" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
+                      <IndianRupee className="h-4 w-4" />
+                      Collect payment
+                    </Button>
+                  ) : null}
+                  {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+                    <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
+                      <Mail className="h-4 w-4" />
+                      Send reminder
+                    </Button>
+                  ) : null}
+                </>
+              )}
+              overflow={[
+                ...(showEdit
+                  ? [
+                      {
+                        label: data.status === 'draft' ? 'Edit before send' : 'Edit invoice',
+                        icon: <Edit2 className="h-4 w-4" />,
+                        onClick: () => {
+                          void prefetchInvoiceComposer(queryClient, id);
+                          router.push(`/invoices/${id}/edit`);
+                        },
+                      } satisfies DetailActionItem,
+                    ]
+                  : []),
+                ...(showVoidBtn
+                  ? [
+                      {
+                        label: 'Void invoice',
+                        icon: <Ban className="h-4 w-4" />,
+                        onClick: () => setVoidOpen(true),
+                        disabled: voidMut.isPending,
+                        destructive: true,
+                      } satisfies DetailActionItem,
+                    ]
+                  : []),
+              ]}
+            />
         )}
         basics={(
           <DocumentBasicsStrip
