@@ -247,7 +247,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         }))}
       />
       {asOfLabel ? (
-        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+        <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
       ) : null}
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <DetailCardRenderer
@@ -453,7 +453,7 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
         }))}
       />
       {asOfLabel ? (
-        <p className="-mt-2 mb-1 text-xs text-cream-600">{asOfLabel}</p>
+        <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
       ) : null}
       <div className={cn('mt-5 grid gap-5', assistant.feeds.length >= 3 ? 'grid-cols-1 xl:grid-cols-3' : assistant.feeds.length === 2 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1')}>
         {assistant.feeds.map((feed) => (

@@ -61,6 +61,9 @@ verify_jwt = false
 [functions.sync-customers]
 verify_jwt = false
 
+[functions.ensure-customer]
+verify_jwt = false
+
 [functions.sync-estimates]
 verify_jwt = false
 

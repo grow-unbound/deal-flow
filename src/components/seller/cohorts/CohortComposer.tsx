@@ -8,7 +8,6 @@ import {
   ComposerBasicsField,
   ComposerBasicsStrip,
   ComposerBodyGrid,
-  ComposerBreadcrumbs,
   ComposerCheckboxCell,
   ComposerFooterBar,
   ComposerMainCard,
@@ -547,13 +546,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
         <ComposerShell>
           <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <ComposerBreadcrumbs
-            items={[
-              { label: 'Customer Groups', href: '/customer-groups' },
-              { label: mode === 'edit' ? detailQuery.data?.details_rules.name ?? 'Edit customer group' : 'New customer group', current: true },
-            ]}
-          />
-
           <ComposerTitleRow
             title={mode === 'edit' ? 'Edit customer group' : 'Add a customer group'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}

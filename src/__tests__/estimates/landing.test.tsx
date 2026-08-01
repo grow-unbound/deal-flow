@@ -18,6 +18,8 @@ const useCreateFlagsMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => '/estimates',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/useEstimates', () => ({
@@ -215,21 +217,21 @@ describe('estimates landing page', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
     expect(screen.queryByText('Showing')).not.toBeInTheDocument();
-    const kpiArticles = screen.getAllByRole('article').slice(0, 4);
-    expect(kpiArticles[0]).toHaveTextContent('Estimate value · MTD');
-    expect(kpiArticles[0]).toHaveTextContent('3 estimates');
-    expect(kpiArticles[1]).toHaveTextContent('Open estimates');
-    expect(kpiArticles[1]).toHaveTextContent('1 open estimates');
-    expect(kpiArticles[2]).toHaveTextContent('Awaiting action 3+ days');
-    expect(kpiArticles[3]).toHaveTextContent('Expiring in 7 days');
+    // KPI tiles are clickable (selecting one drives the split-pane header title),
+    // so each renders with role="button" rather than the plain article role.
+    const gmvTile = screen.getByRole('button', { name: /Estimate value · 90D/ });
+    expect(gmvTile).toHaveTextContent('3 estimates in trailing 90 days');
+    expect(screen.getByRole('button', { name: /Open estimates/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Awaiting action 3\+ days/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Expiring in 7 days/ })).toBeInTheDocument();
   });
 
   it('shows converted and invoiced rows in the table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getByText('EST-2')).toBeInTheDocument();
-    expect(screen.getByText('EST-3')).toBeInTheDocument();
-    expect(screen.getByText('Converted')).toBeInTheDocument();
-    expect(screen.getByText('Invoiced')).toBeInTheDocument();
+    expect(screen.getAllByText('EST-2').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('EST-3').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Converted').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Invoiced').length).toBeGreaterThan(0);
   });
 
   it('shows source as supporting text beneath the estimate number on every row', () => {

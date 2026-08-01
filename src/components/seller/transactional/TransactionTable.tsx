@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -50,6 +51,14 @@ export interface TransactionTableProps {
   tableMinWidth?: number | string;
   rowClassName?: string;
   onRowClick?: (row: TransactionTableRow) => void;
+  /** Forwarded to `LandingTable` — forces the compact card list when this table
+   * renders in the split-pane list column. */
+  forceCompact?: boolean;
+  /** Highlights this row/card as the currently-open record in the split pane. */
+  selectedId?: string;
+  /** Mid-list infinite-scroll sentinel — forwarded to `LandingTable`. */
+  sentinelIndex?: number;
+  sentinelRef?: RefObject<HTMLDivElement | null>;
 }
 
 function deriveInitials(name: string) {
@@ -129,6 +138,10 @@ export function TransactionTable({
   tableMinWidth,
   rowClassName,
   onRowClick,
+  forceCompact,
+  selectedId,
+  sentinelIndex,
+  sentinelRef,
 }: TransactionTableProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -146,6 +159,9 @@ export function TransactionTable({
       className={className}
       tableClassName={cn('v2-table', tableClassName)}
       tableMinWidth={tableMinWidth}
+      forceCompact={forceCompact}
+      sentinelIndex={sentinelIndex}
+      sentinelRef={sentinelRef}
       mobileRows={rows.map((row) => ({
         id: row.id,
         href: row.href,
@@ -156,24 +172,31 @@ export function TransactionTable({
           : `${row.items_count} item${row.items_count === 1 ? '' : 's'} · ${row.created_at ? formatDate(row.created_at) : '—'}`,
         trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
         badge: row.realtime_badge,
+        selected: row.id === selectedId,
         onClick: () => {
           onRowClick?.(row);
         },
       }))}
     >
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const initials = row.buyer_initials ?? deriveInitials(row.buyer_name);
         const hue = row.buyer_hue ?? 'teal';
         const click = onRowClick ?? ((current: TransactionTableRow) => router.push(current.href));
 
         return (
+          <Fragment key={row.id}>
+          {index === sentinelIndex ? (
+            <tr aria-hidden="true" style={{ height: 0 }}>
+              <td colSpan={columns.length} className="p-0"><div ref={sentinelRef} /></td>
+            </tr>
+          ) : null}
           <tr
-            key={row.id}
             className={cn(
               // active:bg (not scale) — CSS transform on a <tr> renders inconsistently
               // across browsers (Safari in particular), so press feedback here is a
               // background flash instead of Pressable's usual scale-down.
-              'cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+              row.id === selectedId ? 'bg-ember-50' : 'bg-white',
               rowClassName,
             )}
             onClick={() => click(row)}
@@ -251,6 +274,7 @@ export function TransactionTable({
               </td>
             ) : null}
           </tr>
+          </Fragment>
         );
       })}
     </LandingTable>

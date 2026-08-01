@@ -740,14 +740,6 @@ export function DocComposerInvoice({
       <DocumentComposerShell
         mode={mode === 'edit' ? 'edit' : 'create'}
         kind="invoice"
-        breadcrumbItems={[
-          { label: 'Sales' },
-          { label: 'Invoices', href: '/invoices' },
-          {
-            label: mode === 'edit' ? documentState.invoice_number : 'New invoice',
-            current: true,
-          },
-        ]}
         title={mode === 'edit' ? 'Edit invoice' : 'New invoice'}
         subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this invoice.'}
         status={{ label: 'Draft', tone: 'draft' }}

@@ -73,7 +73,7 @@ function SettingsBilling({ tier = 'starter' }) {
           <div style={{ flex: 1 }}>
             <div style={{ marginBottom: 8 }}>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 500, color: 'var(--cream-900)', letterSpacing: '-0.01em' }}>{USAGE.credits.toLocaleString()}</span>
-              <span style={{ fontSize: 13, color: 'var(--cream-600)', marginLeft: 6 }}>credits remaining of {USAGE.creditTotal.toLocaleString()} purchased</span>
+              <span style={{ fontSize: 13, color: 'var(--cream-600)', marginLeft: 6 }}>credits remaining</span>
             </div>
             <div className="usage-bar-track">
               <div className="usage-bar-fill" style={{ width: `${Math.round(USAGE.credits / USAGE.creditTotal * 100)}%` }} />

@@ -659,14 +659,6 @@ async function saveDocumentNow(nextDocument: EstimateComposerDocument, nextLines
       <DocumentComposerShell
         mode={mode === 'edit' ? 'edit' : 'create'}
         kind="estimate"
-        breadcrumbItems={[
-          { label: 'Sales' },
-          { label: 'Estimates', href: '/estimates' },
-          {
-            label: mode === 'edit' ? documentState.estimate_number : 'Add an estimate',
-            current: true,
-          },
-        ]}
         title={mode === 'edit' ? 'Edit estimate' : 'Add an estimate'}
         subtitle={buyer ? `${buyer.business_name}` : 'Pick a buyer to begin composing this estimate.'}
         status={
