@@ -9,3 +9,8 @@ export const composerPageMinHeightClass = 'min-h-[calc(100dvh-10rem)]';
 /** Three-panel body: grows within a flex-1 min-h-0 column so side/center/right stretch to full height. */
 export const composerThreePanelGridClass =
   'grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] items-stretch gap-5 lg:grid-cols-[260px_minmax(0,1fr)_248px]';
+
+/** Two-panel body (no right column) — read-only document views that fold totals into
+ * the center panel instead of a dedicated sidebar. */
+export const composerTwoPanelGridClass =
+  'grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] items-stretch gap-5 lg:grid-cols-[260px_minmax(0,1fr)]';
