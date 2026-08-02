@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { EntityAvatar, type EntityAvatarHue, StatusTag, type StatusTone } from '@/components/seller/layout';
+import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface DetailAvatar {
@@ -42,6 +44,7 @@ function renderAvatar(avatar: DetailAvatar) {
 }
 
 export function DetailHeader({ avatar, title, status, subtitle, statusActions, actions, loading }: DetailHeaderProps) {
+  const closePane = useContext(SplitPaneCloseContext);
   return (
     <header>
       <div className="flex items-start justify-between gap-4 md:gap-8">
@@ -74,7 +77,19 @@ export function DetailHeader({ avatar, title, status, subtitle, statusActions, a
             </div>
           </div>
         </div>
-        <div className="hidden shrink-0 items-center gap-2 md:flex">{actions}</div>
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          {actions}
+          {closePane ? (
+            <button
+              type="button"
+              onClick={closePane}
+              aria-label="Close detail pane"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-cream-300 bg-white text-cream-600 shadow-sm transition-colors hover:bg-cream-100 hover:text-cream-900"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
     </header>
   );

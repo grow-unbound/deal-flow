@@ -28,6 +28,7 @@ import { cn, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile';
 
 type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Campaign age (most recent)';
 
@@ -59,7 +60,10 @@ const InviteUserDialog = dynamic(
   () => import('@/components/seller/InviteUserDialog').then((mod) => mod.InviteUserDialog),
 );
 
-function BrandLandingDataSkeleton() {
+function BrandLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+  if (isPaneOpen) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -343,13 +347,13 @@ function BrandLandingContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <BrandLandingDataSkeleton />
+        <BrandLandingDataSkeleton isPaneOpen={isPaneOpen} />
       ) : isError ? (
         <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} />
+        <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} forceCompact={isPaneOpen} />
       ) : (
       <LandingTable
         showEmptyState={filtered.length === 0 && !isLoading}
