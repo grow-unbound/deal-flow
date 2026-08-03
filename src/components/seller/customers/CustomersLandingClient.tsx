@@ -22,6 +22,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
@@ -65,7 +66,10 @@ function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolea
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function CustomersDataSkeleton() {
+function CustomersDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+  if (isPaneOpen) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -284,7 +288,7 @@ function CustomersLandingContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CustomersDataSkeleton />
+        <CustomersDataSkeleton isPaneOpen={isPaneOpen} />
       ) : isError ? (
         <ErrorState
           heading="Couldn't load customers"
@@ -293,7 +297,7 @@ function CustomersLandingContent({
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} />
+        <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} forceCompact={isPaneOpen} />
       ) : (
       <LandingTable
         showEmptyState={filtered.length === 0 && !isLoading}

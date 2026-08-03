@@ -9,7 +9,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
-import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
@@ -262,7 +261,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
           kind="estimate"
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.estimate_number}
-          subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address}` : 'No buyer assigned.'}
+          subtitle={buyer
+            ? `${buyer.business_name} · ${data.estimate_date || '—'} · valid until ${data.valid_until || '—'} · ${data.location_name || '—'}`
+            : 'No buyer assigned.'}
           status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
           titleActions={(
             <DetailActions
@@ -326,23 +327,6 @@ export function EstimateDetailPage({ id }: { id: string }) {
               ]}
             />
         )}
-        basics={(
-          <DocumentBasicsStrip
-            kind="estimate"
-            readOnly
-            docNumber={data.estimate_number}
-            locationId={data.location_id}
-            locationName={data.location_name}
-            availableLocations={data.available_locations}
-            dateIssued={data.estimate_date}
-            secondDate={data.valid_until}
-            buyerPoRef={data.buyer_po_ref}
-            onDateIssuedChange={noop}
-            onSecondDateChange={noop}
-            onBuyerPoRefChange={noop}
-            onLocationChange={noop}
-          />
-        )}
         left={buyer
           ? (
               <ComposerSidebarCard>
@@ -373,36 +357,34 @@ export function EstimateDetailPage({ id }: { id: string }) {
               </ComposerSidebarCard>
             )}
         center={(
-          <LinesTable
-            kind="estimate"
-            buyerSelected={Boolean(data.buyer_id)}
-            readOnly
-            lines={diffLines}
-            productQuery=""
-            productResults={[]}
-            searchOpen={false}
-            notesExpanded={false}
-            freightExpanded={false}
-            internalExpanded={false}
-            singleNoteMode
-            notesValue={data.seller_note ?? data.notes ?? ''}
-            freightValue={String(data.freight)}
-            internalValue=""
-            onProductQueryChange={noop}
-            onSearchOpenChange={noop}
-            onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
-            onLineChange={noop}
-            onRemoveLine={noop}
-            onNotesValueChange={noop}
-            onFreightValueChange={noop}
-            onInternalValueChange={noop}
-            onToggleNotes={noop}
-            onToggleFreight={noop}
-            onToggleInternal={noop}
-          />
-        )}
-        right={(
-          <div className="space-y-4">
+          <div className="flex h-full min-h-0 flex-col gap-4">
+            <LinesTable
+              kind="estimate"
+              buyerSelected={Boolean(data.buyer_id)}
+              readOnly
+              lines={diffLines}
+              productQuery=""
+              productResults={[]}
+              searchOpen={false}
+              notesExpanded={false}
+              freightExpanded={false}
+              internalExpanded={false}
+              singleNoteMode
+              notesValue={data.seller_note ?? data.notes ?? ''}
+              freightValue={String(data.freight)}
+              internalValue=""
+              onProductQueryChange={noop}
+              onSearchOpenChange={noop}
+              onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
+              onLineChange={noop}
+              onRemoveLine={noop}
+              onNotesValueChange={noop}
+              onFreightValueChange={noop}
+              onInternalValueChange={noop}
+              onToggleNotes={noop}
+              onToggleFreight={noop}
+              onToggleInternal={noop}
+            />
             <TotalsCard
               totals={totals}
               previousTotals={null}

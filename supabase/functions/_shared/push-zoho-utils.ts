@@ -110,14 +110,15 @@ export async function resolveBuyerGstInfo(
   const { data } = await admin
     .schema('app')
     .from('buyers')
-    .select('gstin')
+    .select('gstin, gst_treatment')
     .eq('id', buyerId)
     .maybeSingle();
 
   const gstin = (data?.gstin as string | null | undefined) ?? null;
+  const gstTreatment = (data?.gst_treatment as string | null | undefined) ?? null;
   return {
     gstin: gstin?.trim() || null,
-    gst_treatment: gstin?.trim() ? 'business_gst' : null,
+    gst_treatment: gstTreatment?.trim() || null,
   };
 }
 
@@ -126,16 +127,16 @@ export async function resolveZohoLocationId(
   tenantId: string,
   locationId: string | null | undefined,
 ): Promise<string | null> {
-  if (!locationId) return null;
-
-  const { data } = await admin
+  const query = admin
     .schema('app')
     .from('locations')
     .select('external_ref')
     .eq('tenant_id', tenantId)
-    .eq('id', locationId)
-    .is('deleted_at', null)
-    .maybeSingle();
+    .is('deleted_at', null);
+
+  const { data } = locationId
+    ? await query.eq('id', locationId).maybeSingle()
+    : await query.eq('is_default', true).limit(1).maybeSingle();
 
   const externalRef = (data?.external_ref as string | null | undefined) ?? null;
   return externalRef?.trim() || null;

@@ -1,6 +1,9 @@
 'use client';
 
-import { composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
+import { useContext } from 'react';
+import { X } from 'lucide-react';
+import { composerThreePanelGridClass, composerTwoPanelGridClass } from '@/lib/composer-viewport-classes';
+import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { cn } from '@/lib/utils';
 
 export function ComposerShell({
@@ -29,6 +32,7 @@ export function ComposerTitleRow({
   };
   actions?: React.ReactNode;
 }) {
+  const closePane = useContext(SplitPaneCloseContext);
   return (
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
@@ -57,7 +61,21 @@ export function ComposerTitleRow({
         <p className="mt-1.5 max-w-[72ch] text-base leading-[1.55] text-cream-700">{subtitle}</p>
       </div>
 
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions || closePane ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          {closePane ? (
+            <button
+              type="button"
+              onClick={closePane}
+              aria-label="Close detail pane"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-cream-300 bg-white text-cream-600 shadow-sm transition-colors hover:bg-cream-100 hover:text-cream-900"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -101,14 +119,14 @@ export function ComposerBodyGrid({
 }: {
   left: React.ReactNode;
   center: React.ReactNode;
-  right: React.ReactNode;
+  right?: React.ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cn(composerThreePanelGridClass, className)}>
+    <div className={cn(right ? composerThreePanelGridClass : composerTwoPanelGridClass, className)}>
       <div className="flex h-full min-h-0 flex-col">{left}</div>
       <div className="flex h-full min-h-0 min-w-0 flex-col">{center}</div>
-      <div className="flex h-full min-h-0 flex-col">{right}</div>
+      {right ? <div className="flex h-full min-h-0 flex-col">{right}</div> : null}
     </div>
   );
 }
