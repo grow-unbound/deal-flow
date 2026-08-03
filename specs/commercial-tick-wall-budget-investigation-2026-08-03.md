@@ -317,6 +317,70 @@ count/value/units, app_estimate_count). Zero mismatches.
 Also ran `VACUUM (ANALYZE) app.estimate_items` — its visibility map was stale, causing
 11,156 heap fetches on what should be index-only scans.
 
+## Third pass — pre-cutover correctness audit + full rebuild
+
+### A retracted finding, recorded so it is not "rediscovered"
+
+I initially reported that `get_landing_metrics_v4` was serving a `today` estimates KPI
+19x too low (₹380,443 vs ₹7,161,593). **That was wrong.** The snapshot's unique key
+includes `period_start`, and the read pins `s.period_start = v_bounds.period_start`
+recomputed from `p_as_of` — so a previous day's row can never be selected. I compared a
+stale row's payload against truth without checking the selection predicate.
+
+The read path is correct. Verified: `dashboard / this_month` invoiced_sales returns
+2,412,141, exactly matching `metrics_tenant_period_summary`.
+
+What *is* real from that thread: because the key includes `period_start`, every rollover
+of a relative window (`today`, `this_week`, `last_week`, `now`) leaves a **permanently
+orphaned row** — never updated, never read, never pruned. ~5–10 rows/day of pure growth.
+Needs a prune, not a correctness fix.
+
+### The real defect: reconciliation could not repair buyer summaries
+
+768 `metrics_buyer_period_summary` rows (442 month + 326 quarter) carried pre-predicate
+values, all `computed_at = 2026-08-02`. Root cause: `metrics_v4_key_collection_days` is
+capped to a **single day**, so an N-day reconciliation chunk only collects buyers active
+on day 1. Buyers transacting on days 2..N are never recomputed.
+
+**Consequence for any future backfill: `p_chunk_days` MUST be 1.** With chunk_days=1 each
+chunk's only dirty day is its key-collection day, so every affected buyer is covered.
+A wider chunk silently reintroduces this hole — that is exactly why the earlier 7-day
+chunk backfill left these rows stale while fixing tenant and product rows.
+
+### Full rebuild performed (live tenant, 2026-04-01 → today)
+
+- Wipe deliberately **not** performed. Evidence: 442 orphan rows existed but were
+  **all-zero** (`stale_nonzero = 0`) and none on the live tenant; no row anywhere carried
+  a stale non-zero value. A wipe would have been an irreversible step that fixed nothing.
+- `cron.unschedule` during the run rather than `metrics_set_dispatch_enabled(false)` —
+  **pausing dispatch would have broken the backfill**: the driver drains via the same
+  `metrics_refresh_tick('claim')` path, which returns `'disabled'`, and the driver treats
+  that as `CONTINUE` without incrementing its idle counter → 20,000 empty iterations.
+- Useful trick: calling `_metrics_v4_backfill_driver` with `p_backfill_start` in the
+  **future** skips the marking phase entirely and gives a pure drain loop. Each call
+  drains ~110 rows before the client statement timeout; repeat until the queue is empty.
+  Far faster than waiting on cron, which only ever claims one reconciliation row per tick.
+
+### Post-rebuild gate — all green
+
+| Table | Rows verified | Bad |
+|---|---|---|
+| `metrics_buyer_period_summary` | 14,035 | **0** |
+| `metrics_product_period_summary` | 2,107 | **0** |
+| `metrics_category_period_summary` | 160 | **0** |
+| `metrics_tenant_period_summary` | 151 | **0** |
+| `metrics_brand_period_summary` | 92 | **0** |
+| `metrics_cohort_period_summary` | 7 | **0** |
+| **Total** | **16,552** | **0** |
+
+Queue backlog 0, dead_letter 0, cron restored to 15s, runtime control at defaults.
+
+### Known, accepted gap
+
+v4 holds no data before **2026-04-01** for `d601c35c`, while raw invoices go back to
+**2025-08-18** — ~226 days absent. Scoped out by explicit decision; re-run the driver
+with an earlier `p_backfill_start` (and `p_chunk_days => 1`) if that history is needed.
+
 ## Still worth doing (not blocking)
 
 - Planning time is 11–290 ms *per statement* and pg_cron opens a fresh backend per run, so
