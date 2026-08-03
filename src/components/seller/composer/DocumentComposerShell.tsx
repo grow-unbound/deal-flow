@@ -32,10 +32,10 @@ export function DocumentComposerShell({
   subtitle: string;
   status?: { label: string; tone?: 'draft' | 'live'; chipClassName?: string };
   titleActions?: ReactNode;
-  basics: ReactNode;
+  basics?: ReactNode;
   left: ReactNode;
   center: ReactNode;
-  right: ReactNode;
+  right?: ReactNode;
   footer?: ReactNode;
   /** Overrides the default full-page `PageWrap` wrapper — used by the read-only
    * `view` mode when rendered inside the split-pane detail column, which is

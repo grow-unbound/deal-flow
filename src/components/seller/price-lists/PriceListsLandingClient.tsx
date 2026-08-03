@@ -244,7 +244,7 @@ function PriceListsLandingContent({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
         {showTableSkeleton ? (
-          <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} />
+          <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} forceCompact={isPaneOpen} />
         ) : (
         <LandingTable
           showEmptyState={filteredRows.length === 0 && !isLoading}

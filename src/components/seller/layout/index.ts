@@ -1,5 +1,5 @@
 export { PageWrap } from './PageWrap';
-export { EntitySplitShell } from './EntitySplitShell';
+export { EntitySplitShell, SplitPaneCloseContext } from './EntitySplitShell';
 export { PageHeader } from './PageHeader';
 export { InsightStrip4 } from './InsightStrip4';
 export type { InsightTile } from './InsightStrip4';

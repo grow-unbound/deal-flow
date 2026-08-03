@@ -9,7 +9,6 @@ import { Edit2, Loader2, PackageCheck, Send, Truck, X } from 'lucide-react';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
-import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
@@ -222,9 +221,6 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
     && buyer.seller_state.toLowerCase() !== buyer.place_of_supply.toLowerCase(),
   );
 
-  const orderDate = data.placed_at ? data.placed_at.slice(0, 10) : '';
-  const expectedYmd = data.expected_delivery ?? '';
-
   const statusLabel = bandStatus === 'draft' ? 'Draft' : SO_STATUS_TITLE[ui];
   const statusTone: 'draft' | 'live' = ui === 'cancelled' || ui === 'delivered' ? 'draft' : 'live';
   const mobileStatusTone =
@@ -269,7 +265,9 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           kind="so"
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.order_number}
-          subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply} · ${buyer.bill_address}` : 'No buyer assigned.'}
+          subtitle={buyer
+            ? `${buyer.business_name} · ${formatPlacedAt(data.placed_at)} · expected ${data.expected_delivery || '—'} · ${data.location_name || '—'}`
+            : 'No buyer assigned.'}
           status={{
             label: statusLabel,
             tone: statusTone,
@@ -338,23 +336,6 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               ]}
             />
         )}
-        basics={(
-          <DocumentBasicsStrip
-            kind="so"
-            readOnly
-            docNumber={data.order_number}
-            locationId={data.location_id}
-            availableLocations={[]}
-            dateIssued={orderDate}
-            secondDate={expectedYmd}
-            buyerPoRef={data.buyer_po_ref ?? ''}
-            locationName={data.location_name}
-            onDateIssuedChange={noop}
-            onSecondDateChange={noop}
-            onBuyerPoRefChange={noop}
-            onLocationChange={noop}
-          />
-        )}
         left={(
           <ComposerSidebarCard>
             <div className="space-y-4">
@@ -395,36 +376,34 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           </ComposerSidebarCard>
         )}
         center={(
-          <LinesTable
-            kind="so"
-            buyerSelected={Boolean(data.buyer_context)}
-            readOnly
-            lines={diffLines}
-            productQuery=""
-            productResults={[]}
-            searchOpen={false}
-            notesExpanded={false}
-            freightExpanded={false}
-            internalExpanded={false}
-            singleNoteMode
-            notesValue={data.notes ?? ''}
-            freightValue={String(data.freight)}
-            internalValue={data.seller_note ?? ''}
-            onProductQueryChange={noop}
-            onSearchOpenChange={noop}
-            onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
-            onLineChange={noop}
-            onRemoveLine={noop}
-            onNotesValueChange={noop}
-            onFreightValueChange={noop}
-            onInternalValueChange={noop}
-            onToggleNotes={noop}
-            onToggleFreight={noop}
-            onToggleInternal={noop}
-          />
-        )}
-        right={(
-          <div className="space-y-4">
+          <div className="flex h-full min-h-0 flex-col gap-4">
+            <LinesTable
+              kind="so"
+              buyerSelected={Boolean(data.buyer_context)}
+              readOnly
+              lines={diffLines}
+              productQuery=""
+              productResults={[]}
+              searchOpen={false}
+              notesExpanded={false}
+              freightExpanded={false}
+              internalExpanded={false}
+              singleNoteMode
+              notesValue={data.notes ?? ''}
+              freightValue={String(data.freight)}
+              internalValue={data.seller_note ?? ''}
+              onProductQueryChange={noop}
+              onSearchOpenChange={noop}
+              onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
+              onLineChange={noop}
+              onRemoveLine={noop}
+              onNotesValueChange={noop}
+              onFreightValueChange={noop}
+              onInternalValueChange={noop}
+              onToggleNotes={noop}
+              onToggleFreight={noop}
+              onToggleInternal={noop}
+            />
             <TotalsCard
               totals={totals}
               previousTotals={null}

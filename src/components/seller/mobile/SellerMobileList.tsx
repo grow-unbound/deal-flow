@@ -139,9 +139,9 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
   );
 }
 
-export function SellerMobileListSkeleton({ count = 6 }: { count?: number }) {
+export function SellerMobileListSkeleton({ count = 6, forceVisible }: { count?: number; forceVisible?: boolean }) {
   return (
-    <div className="md:hidden px-3 py-2" role="status" aria-label="Loading list">
+    <div className={cn('px-3 py-2', forceVisible ? undefined : 'md:hidden')} role="status" aria-label="Loading list">
       <div className="flex flex-col gap-2">
         {Array.from({ length: count }).map((_, index) => (
           <div key={index} className="rounded-[12px] border border-cream-200 bg-white px-3.5 py-3">

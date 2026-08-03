@@ -17,7 +17,7 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileTransactionTabs } from '@/components/seller/mobile';
+import { SellerMobileListSkeleton, SellerMobileTransactionTabs } from '@/components/seller/mobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -64,22 +64,29 @@ function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function SalesOrdersTableRowsSkeleton() {
+function SalesOrdersTableRowsSkeleton({ forceCompact }: { forceCompact?: boolean }) {
+  if (forceCompact) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
   );
 }
 
-function SalesOrdersDataSkeleton() {
+function SalesOrdersDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
   return (
     <>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <SalesOrdersTableRowsSkeleton />
+      {isPaneOpen ? null : (
+        <>
+          <div className="mt-5 grid grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+            ))}
+          </div>
+          <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        </>
+      )}
+      <SalesOrdersTableRowsSkeleton forceCompact={isPaneOpen} />
     </>
   );
 }
@@ -304,7 +311,7 @@ function SalesOrdersLandingContent({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
         {showRefreshingState ? (
-          <SalesOrdersDataSkeleton />
+          <SalesOrdersDataSkeleton isPaneOpen={isPaneOpen} />
         ) : isError ? (
           <ErrorState
             heading="Couldn't load sales orders"
@@ -314,7 +321,7 @@ function SalesOrdersLandingContent({
           <>
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
-                <SalesOrdersTableRowsSkeleton />
+                <SalesOrdersTableRowsSkeleton forceCompact={isPaneOpen} />
               ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<Package size={28} strokeWidth={1.5} />}
