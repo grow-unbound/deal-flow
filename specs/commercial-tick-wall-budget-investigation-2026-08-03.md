@@ -191,6 +191,9 @@ block(s) actually dominate. Reschedule the cron afterward (same jobname, new job
 | `20260803130704_fix_product_period_hoist_doc_scan.sql` | **The fix.** Hoists the parent doc scan out of the per-product LATERAL (INSERT + DELETE guard). |
 | `20260803131322_metrics_dirty_work_hot_updates_and_prune_cron.sql` | Restores HOT-update eligibility, fillfactor/autovacuum tuning, schedules the prune job. |
 | `20260803131547_bound_now_summary_lifetime_scans.sql` | Bounds the two `*_now_summary` all-time scans + 4 partial indexes. |
+| `20260803133952_skip_noop_summary_upserts.sql` | Makes all 11 summary upserts no-ops when the recomputed values match what is stored. |
+| `20260803170133_fix_tick_failure_bookkeeping_lost_on_rollback.sql` | Makes tick failures visible and retryable instead of silently looping. |
+| `20260803170807_tenant_period_single_scan_all_grains.sql` | `metrics_tenant_period_summary`: one scan per doc type instead of one per grain. |
 
 ## Measured results
 
@@ -243,6 +246,76 @@ block(s) actually dominate. Reschedule the cron afterward (same jobname, new job
 5. **`source_watermark` narrowed** on `metrics_buyer_now_summary` and
    `metrics_location_now_summary` — it now tracks only unsettled/open documents. Justified
    in the migration header; do not take an all-documents watermark from those two tables.
+
+## Second pass (same day) — remaining planned items
+
+### P1.4 — no-op summary upserts (`20260803133952`)
+
+Every `ON CONFLICT ... DO UPDATE` fired unconditionally, rewriting identical rows every
+15 s (`metrics_product_period_summary`: 419,081 updates over 2,122 live rows). All 11
+upserts now compare measures + `source_watermark` with `IS DISTINCT FROM` and skip when
+unchanged. `computed_at`/`updated_at`/`generation_id` are excluded (they change every
+run by construction); `source_watermark` is excluded for `metrics_campaign_period_summary`
+and `metrics_cohort_period_summary` only, because those two set it to `v_now` rather than
+a MAX over source rows — including it there would have made the guard dead code.
+
+**Verified:** forced a full reconciliation of an unchanged day. The tick recomputed
+everything and wrote **zero** row updates — all counters frozen (product 465,908,
+buyer 406,890, buyer_now 204,320, tenant 8,223).
+
+### Tick failures were invisible AND unretryable (`20260803170133`)
+
+Two compounding bugs in the pg_cron job body:
+
+1. `EXCEPTION WHEN OTHERS` never caught the wall-budget abort. It is raised with
+   ERRCODE `57014` (`query_canceled`), which PL/pgSQL deliberately excludes from
+   `WHEN OTHERS`. The `fail` stage was never reached for the *only* error actually
+   occurring. (`_metrics_v4_backfill_driver` had already hit and fixed this; the cron
+   body never got the same treatment.)
+2. The trailing bare `RAISE;` re-threw after `fail`/`release` ran, aborting the
+   transaction and discarding that bookkeeping *and* the claim.
+
+Net: a merely-too-slow tick looped forever, never incremented `attempts`, never set
+`last_error`, never reached `dead_letter`, and left `metrics_dirty_work` looking healthy.
+
+Fixed by handling `query_canceled` explicitly and replacing `RAISE;` with `RAISE WARNING`
+so the transaction commits. **Trade-off:** `cron.job_run_details` now records these runs
+as `succeeded`; the authoritative failure record is `app.metrics_execution_history`
+(`status='failed'`) and `app.metrics_dirty_work` (`attempts`/`last_error`).
+
+**Verified** by temporarily setting `tick_wall_budget_ms = 1`: produced
+`state='retry', attempts=2, last_error='metrics_compute_failed'` with exponential backoff
+and a matching `failed` history row. After restoring the budget the rows retried and
+completed on their own. Budget restored to 5000.
+
+### Phase 2 — `metrics_tenant_period_summary` (`20260803170807`)
+
+The block ran six correlated LATERALs *per period key*. One dirty day yields four keys
+(day/week/month/quarter) and each re-scanned the same rows — day ⊂ week ⊂ month ⊂ quarter,
+so the quarter scan already contained everything.
+
+```
+old: 565ms, shared hit=45055   (invoices rows=1488 loops=4;
+                                estimate-item loop 123ms x 4 = 30032 buffers,
+                                11156 heap fetches)
+new: 58ms / 4653 buffers for the invoice-header portion, rows=5278 loops=1
+```
+
+Now each document type is pulled **once** over `MIN(period_start)..MAX(period_end_exclusive)`
+into a `MATERIALIZED` CTE, then joined back to the period keys and grouped by
+`(grain, period_start)` — all grains derived in one pass. Header and item aggregates stay
+separate (joining them would fan `total_amount` out per line item).
+
+**This deliberately does NOT derive month/quarter from stored day rows.** It still reads
+raw source, so a dirty period is always recomputed from truth and the self-healing
+property is unchanged — which matters given the predicate-change incident above.
+
+**Verified:** all 151 stored rows for `d601c35c` exact against raw source across 4 grains
+× 9 measures (invoice count/value/buyer_count/units/product_count, estimate
+count/value/units, app_estimate_count). Zero mismatches.
+
+Also ran `VACUUM (ANALYZE) app.estimate_items` — its visibility map was stale, causing
+11,156 heap fetches on what should be index-only scans.
 
 ## Still worth doing (not blocking)
 
