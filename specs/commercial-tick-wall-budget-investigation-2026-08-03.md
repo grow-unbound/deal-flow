@@ -1,0 +1,258 @@
+# Commercial domain `tick_wall_budget_exceeded` — investigation handoff
+
+Companion to `specs/kpi-fix-execution-log.md` (full detail there). This is the condensed
+resumption point — read this first before re-investigating, so a fresh dive doesn't repeat
+already-ruled-out hypotheses or re-fix already-fixed bugs.
+
+**Target:** project `hcpzbnmumbykdqveyjhr`, tenant `d601c35c-1a78-4506-a556-a82118d72893`
+(live, `commercial` domain). pg_cron job `metrics-v2-refresh-tick` (jobid 76 as of this writing —
+job gets re-created with a new numeric id each time it's unscheduled/rescheduled, jobname stays
+constant).
+
+## Symptom
+
+`app._metrics_v4_refresh_claimed_periods(..., 'commercial')` intermittently/mostly exceeds the
+hard 5000ms `tick_wall_budget_ms` ceiling. Not a hard deadlock (unlike the separate
+`buyer_key_budget_exceeded` bug, now fixed) — the queue does drain, just slowly, with most ticks
+failing and retrying.
+
+## Bugs already found and fixed — do not re-investigate these
+
+1. **`metrics_v4_buyer_key_budget_exceeded` — FIXED, confirmed 0 occurrences post-fix.** Separate
+   bug from the wall-budget one. Root cause: (a) buyer/product/location key collection ran
+   unconditionally regardless of domain — a `buyer_app` tick paid for a collection its own branch
+   never reads; (b) the collection fanned out per dirty day to every buyer transacting tenant-wide
+   that day, uncapped (4 days → 434 buyers on ordinary volume, no spike). Fixed via domain-gating
+   the collection + capping it to a single dirty day
+   (`app.metrics_tenant_top80_cache`... no — see `metrics_v4_key_collection_days`) + gating
+   `buyer_app_activity` dirty-marking on `buyer_app_enabled`. Files:
+   `20260803101451_fix_buyer_key_budget_domain_scope_and_day_cap.sql`,
+   `20260803101652_gate_buyer_app_activity_dirty_marking.sql`.
+2. **`_metrics_v4_refresh_landing_kpis` tail call — ruled out as the wall-budget bottleneck.**
+   Measured directly (isolated call, no fencing needed): ~300ms–1.5s depending on cache warmth,
+   well under 5s. Already domain-scoped (only recomputes the calling domain's owned pages) from
+   an earlier pass. Added day-overlap scoping to its 7-iteration period-selector loop (skip a
+   selector period if no dirty day falls inside it) — verified the skip logic itself works
+   correctly (0 rows contributed for a non-overlapping day vs. full recompute for an overlapping
+   one), but **deploying it did not change the failure rate** — confirms this function was never
+   the dominant cost. File: `20260803121327_scope_landing_kpis_loop_by_dirty_day_overlap.sql` +
+   call-site update `20260803121617_pass_dirty_days_to_landing_kpis_call.sql`.
+3. **Unrelated bug caught in passing, fixed:** `CREATE OR REPLACE FUNCTION` does not replace
+   across an arity change — every earlier migration that appended a parameter to
+   `_metrics_v4_refresh_landing_kpis` (`p_domain`, then `p_dirty_days`) left the older-arity
+   version as a live orphaned overload instead of replacing it in place. Harmless in production
+   (the one real caller always passed the full arg list) but caused "function is not unique" for
+   any 3-arg-style call. Dropped both stale overloads:
+   `20260803121810_drop_orphaned_landing_kpis_overloads.sql`. **If continuing cleanup work, check
+   other functions touched this session for the same leftover-overload pattern.**
+
+## Hypotheses considered and ruled out
+
+- **Backfill / bulk import spike.** Ruled out — checked invoice `created_at` distribution for the
+  affected days, evenly spread across business hours, no burst.
+- **Wide reconciliation date ranges as a poison pill.** Confirmed real, not ruled out — a single
+  90-day `metrics_mark_reconciliation` call caused instant 100% failure (period-key fan-out from
+  one wide range, not the entity collection which is already capped). Fixed operationally by
+  chunking to ≤7-day windows, not a code bug. **Any future reconciliation marking must chunk
+  ≤7 days — this is a process rule now, not a system guarantee.**
+- **`_metrics_v4_refresh_landing_kpis` tail call as dominant cost.** Ruled out, see bug #2 above.
+- **7-iteration period-selector loop as dominant cost.** Ruled out, see bug #2 above.
+- **Traffic growth as the current cause.** Not confirmed either way — plausible long-term risk
+  (cost scales with daily transaction density, which grows with adoption) but not shown to be
+  today's actual trigger; today's failures happen at current, unremarkable volume.
+
+## Not yet investigated — where to look next
+
+The remaining suspect is **inside `_metrics_v4_refresh_claimed_periods`'s `commercial` branch
+itself**, not its landing_kpis tail call:
+- `metrics_tenant_period_summary` INSERT (LATERAL over `metrics_v4_period_keys`, invoice/estimate/
+  order header+item aggregates)
+- `metrics_buyer_period_summary` INSERT + DELETE guard (per buyer × month/quarter — scales with
+  how many distinct buyers the capped day touches, ~100–200+ on this tenant's ordinary days)
+- `metrics_product_period_summary` INSERT + DELETE guard (per product × month/quarter, same
+  scaling concern)
+- Brand/category rollups (`JOIN app.metrics_product_period_summary ps ... WHERE
+  ps.invoice_count > 0` — scans the full product-period set for that grain/period, cost scales
+  with distinct products invoiced that period)
+- `metrics_buyer_now_summary` / `metrics_location_now_summary` (smaller, likely not the driver)
+
+None of these have been isolated and timed directly yet — only the tail call has (that approach
+was easy since it needs no fencing token; these live inside the fenced function).
+
+**Also worth checking before profiling:** the 27 small reconciliation chunks marked this session
+(last 90 days for `d601c35c` + full history for the demo tenant, `550e8400-e29b-41d4-a716-446655440501`)
+are still draining. They may be inflating current batch sizes independent of any code issue — get
+a clean read after they fully drain (`app.metrics_inspect`) before trusting a new profiling
+baseline.
+
+## RESOLVED (2026-08-03, later session) — root cause found and fixed
+
+**Root cause: the parent document scan was never hoisted out of the per-product
+`LATERAL` in the `metrics_product_period_summary` INSERT and its DELETE guard.**
+
+The earlier `MATERIALIZED` fix (noted in `20260802060714`) pinned the *item*-side join
+order correctly, but the *parent* side — the `tenant_id + metric_day_ist` range scan of
+`invoices`/`estimates`/`orders` — was still re-executed once per product × grain key.
+
+Profiled on `d601c35c`, 100 products × 2 grains:
+
+```
+old: Execution 961ms   shared hit=625328
+     Index Scan on invoices ... rows=2624 loops=188   buffers=447850   <-- re-scanned 188x
+new: Execution 132ms   shared hit=33749
+```
+
+Cost was `O(products × period_rows)`; it is now `O(period_rows + item_rows)`. At the
+configured 250-key budget the old shape cost ~2.4 s for this one block alone.
+
+Fix: `supabase/migrations/20260803130704_fix_product_period_hoist_doc_scan.sql` —
+materializes per-`(product, grain, period)` aggregates once into
+`pg_temp.metrics_v4_product_agg`, which both the INSERT and the DELETE guard then read.
+Pure rewrite of the same computation; still reads raw source tables, so the self-healing
+property is preserved. Verified equal to the old formulation across day/month/quarter:
+540 rows, 0 mismatches on units/value/count/buyer_count.
+
+**Result:** ticks went from 100% failure (201 consecutive `tick_wall_budget_exceeded`,
+queue fully stalled for ~1 h) to succeeding at ~2.8 s avg / 4.3 s max, queue draining.
+
+### Hypotheses tested and rejected this session (do not re-investigate)
+
+- **Sort/hash spill from small `work_mem`.** `work_mem` is only 2184 kB and the database
+  has spilled 172 GB of temp files lifetime — but the tick's own sorts measured
+  520 kB–1221 kB, i.e. under the limit. The temp spill belongs to other workloads. Not
+  the tick's problem *today* (it would become one as the quarter fills).
+- **Missing/unusable indexes.** `app.metric_day_ist` is `IMMUTABLE` and matching
+  expression indexes exist on all three doc tables. Date predicates index correctly.
+- **Lock contention.** `lock_timeout` is 100 ms inside the tick, so contention aborts
+  fast with a different SQLSTATE. It cannot produce a 5 s wall-budget overrun.
+- **Temp-table catalog churn.** `pg_class` / `pg_attribute` are normal size.
+- **Tuning the runtime-control knobs.** `max_dirty_sources_per_tick` 100→10 made it
+  *worse* (7.5 s), because cost tracks product×period rows, not dirty sources.
+  `max_refresh_keys_per_tick` cannot be lowered as a throttle — exceeding it *raises*
+  `metrics_v4_*_key_budget_exceeded` rather than truncating the batch. And
+  `tick_wall_budget_ms` is capped at 5000 by the
+  `metrics_runtime_control_budget_check` CHECK constraint, so there is no config bridge.
+  Config was returned to defaults; no tuning drift left in place.
+
+### Still open / lower priority
+
+- `metrics_dirty_work` write amplification: `n_tup_hot_upd` = 0 across 948,704 updates,
+  because `metrics_dirty_work_tenant_domain_updated_idx` indexes `updated_at` and every
+  UPDATE sets it. Causes index bloat (824 kB partial index over 748 live rows) and 3,810
+  autovacuums. Fix: drop `updated_at` from that index key, set `fillfactor=70`, reindex.
+- `metrics_buyer_now_summary` / `metrics_location_now_summary` scan **all-time**
+  invoices/estimates/orders per entity every 15 s, filtering for open/overdue only after
+  the scan. `invoices_metrics_tenant_due_idx` (partial on `outstanding_balance > 0`) is
+  unusable as written; pushing that predicate into the `WHERE` is semantically free.
+- Planning time is significant: measured 11–290 ms *per statement*, and pg_cron opens a
+  fresh backend per run so nothing is ever plan-cached. ~30 statements/tick.
+- `app.metrics_prune_operational_history` exists but is not scheduled;
+  `metrics_execution_history` grows unbounded (26,470 rows).
+
+## SEPARATE BUG FOUND (2026-08-03) — estimate predicate deployed without backfill
+
+`20260803080607_add_estimate_status_counts_as_demand_predicate.sql` changed the demand
+predicate but nothing re-marked historical periods, so stored estimate metrics never
+caught up. Measured: **2,008 estimates missing** from `metrics_tenant_period_summary` on
+`d601c35c` at every grain (123/125 day rows, 18/19 week, 5/5 month, 2/2 quarter wrong),
+plus 7 on the demo tenant `550e8400-…0501`. Invoice metrics are unaffected — that
+predicate did not change.
+
+This is a data-correctness bug, not a performance one, and it is why day-grain rows
+could not be used to validate a derivation. **Repair still pending**: re-mark the
+affected ranges in ≤7-day chunks (standing process rule) once the queue is healthy.
+
+## Recommended next step
+
+Same technique that found the buyer-key bug: `cron.unschedule('metrics-v2-refresh-tick')` to stop
+racing the tick, manually claim a real `commercial` batch via
+`app.metrics_claim_dirty_work(gen_random_uuid())`, reconstruct the exact temp-table state
+(`dirty_days`, `key_collection_days`, `buyer_ids`, `product_ids`, `period_keys`) the function
+would build, then time each major INSERT's underlying SELECT standalone via a
+`clock_timestamp()`-diff CTE (same pattern used throughout this investigation) to find which
+block(s) actually dominate. Reschedule the cron afterward (same jobname, new jobid is fine).
+
+## Current live state (superseded — see "RESOLVED" section above)
+
+- All migrations above pushed and confirmed applied via `supabase migration list --linked`.
+- `app.metrics_runtime_control` back at defaults (`max_dirty_sources_per_tick=100`,
+  `max_refresh_keys_per_tick=250`) — no non-default tuning left in place from earlier
+  investigation.
+- Cron active, queue draining (slowly, due to the still-open wall-budget issue).
+
+---
+
+# Final state after the fix session (2026-08-03)
+
+## Migrations added
+
+| File | What |
+|---|---|
+| `20260803130704_fix_product_period_hoist_doc_scan.sql` | **The fix.** Hoists the parent doc scan out of the per-product LATERAL (INSERT + DELETE guard). |
+| `20260803131322_metrics_dirty_work_hot_updates_and_prune_cron.sql` | Restores HOT-update eligibility, fillfactor/autovacuum tuning, schedules the prune job. |
+| `20260803131547_bound_now_summary_lifetime_scans.sql` | Bounds the two `*_now_summary` all-time scans + 4 partial indexes. |
+
+## Measured results
+
+| Metric | Before | After |
+|---|---|---|
+| Tick outcome | **201 consecutive failures**, queue stalled ~1 h | succeeding |
+| Tick duration | 6.0–8.4 s (over the 5 s budget) | **294 ms avg, ~1.9 s max** on normal load |
+| `metrics_product_period_summary` block | 962 ms / 625,328 buffers | 132 ms / 33,749 buffers |
+| `metrics_location_now_summary` block | 124 ms / 15,135 buffers | 35 ms / 731 buffers |
+| `metrics_dirty_work` index footprint | ~2.6 MB over 748 live rows | ~390 kB |
+
+## ⚠ Outstanding — must be actioned
+
+1. **Runtime control is back at documented defaults** — verified:
+   `max_dirty_sources_per_tick=100`, `max_refresh_keys_per_tick=250`,
+   `tick_wall_budget_ms=5000`, `lease_ttl_seconds=15`, `statement_timeout_ms=3000`,
+   `lock_timeout_ms=100`, `max_statement_groups_per_tick=25`. **No tuning drift left in
+   place.** (`max_dirty_sources_per_tick` was temporarily 10, then 2, during the session;
+   both were reverted.)
+
+   **Correction to an intermediate diagnosis made during this session:** the stalled
+   reconciliation batch was *not* caused by many chunks being claimed at once.
+   `app.metrics_claim_dirty_work` charges any row with a non-NULL `dirty_from` a
+   `key_cost` equal to the *entire* `max_refresh_keys_per_tick`, and then claims only
+   while `cumulative_keys <= max_refresh_keys_per_tick` — so **exactly one reconciliation
+   row is ever claimed per tick**, regardless of `max_dirty_sources_per_tick`. A single
+   7-day chunk was blowing the 5 s budget on its own, pre-fix. Lowering
+   `max_dirty_sources_per_tick` therefore had no effect on reconciliation drain rate and
+   was never the right lever.
+
+2. **The rollback-hides-the-failure behaviour is real and still unfixed.** When compute
+   exceeds the wall budget, the claim and the compute share one transaction, so the
+   rollback also undoes the claim: `attempts` stays 0, `last_error` stays NULL, and the
+   row is re-claimed unchanged on the next tick. A tick that is merely *too slow* thus
+   retries forever and never reaches `dead_letter`, and `metrics_dirty_work` shows no
+   evidence of the problem — only `cron.job_run_details` does. Worth fixing: record the
+   attempt outside the aborted transaction, or bound a claim by dirty-day span.
+
+3. **Estimate backfill: COMPLETE and verified.** `d601c35c` is exact at all four grains
+   (0 rows wrong, 0 missing, from 2,008 missing). Full cross-measure gate over all four
+   tenants — invoice count/value/buyer_count, estimate count/value, order count — is
+   clean except for the current in-flight day/week/month/quarter on the live tenant,
+   which differ by exactly one document (normal eventual-consistency lag, absorbed by the
+   next tick).
+
+4. **Phase 3b not done.** The `*_now_summary` blocks are now cheap but still run every
+   15 s. Moving them to a 1–5 min job was deliberately skipped: 3a removed the cost, and
+   3b would make buyer-facing credit/overdue figures up to minutes stale.
+
+5. **`source_watermark` narrowed** on `metrics_buyer_now_summary` and
+   `metrics_location_now_summary` — it now tracks only unsettled/open documents. Justified
+   in the migration header; do not take an all-documents watermark from those two tables.
+
+## Still worth doing (not blocking)
+
+- Planning time is 11–290 ms *per statement* and pg_cron opens a fresh backend per run, so
+  nothing is ever plan-cached — roughly 0.5 s/tick of pure planning across ~30 statements.
+  Worth investigating a long-lived worker or fewer/simpler statements.
+- `work_mem` is 2184 kB. The tick's own sorts currently peak at ~1.2 MB, so it is not
+  spilling *yet*, but the quarter-grain sorts grow through the quarter and will cross it.
+  A transaction-local `set_config('work_mem', ...)` in `metrics_refresh_tick` is a cheap
+  pre-emptive fix.
+- The buyer block still uses per-buyer correlated LATERALs. They are index-driven and
+  cheap today (~41 ms for 200 keys), but they are the same shape that made the product
+  block pathological, and they scale with the buyer key budget.
