@@ -1,9 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { createContext, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+
+/** Set by `EntitySplitShell` while a detail pane is open in the split view; consumed by
+ * `DetailActions` to render the pane's close (X) button inline with the overflow menu,
+ * far-right of the title row, instead of a separate row above the detail content. */
+export const SplitPaneCloseContext = createContext<(() => void) | null>(null);
 
 interface EntitySplitShellProps {
   /** The list/landing content — always mounted, stays visible while browsing. */
@@ -61,7 +65,7 @@ export function EntitySplitShell({ listSlot, children, basePath }: EntitySplitSh
         <ResizablePanel
           id="seller-detail-split-list"
           order={1}
-          defaultSize={hasDetail ? 40 : 100}
+          defaultSize={hasDetail ? 30 : 100}
           minSize={hasDetail ? 28 : 100}
           className="h-full min-h-0"
         >
@@ -73,21 +77,15 @@ export function EntitySplitShell({ listSlot, children, basePath }: EntitySplitSh
         {hasDetail ? (
           <>
             <ResizableHandle id="seller-detail-split-handle" withHandle />
-            <ResizablePanel id="seller-detail-split-pane" order={2} defaultSize={60} minSize={40} className="h-full min-h-0">
+            <ResizablePanel id="seller-detail-split-pane" order={2} defaultSize={70} minSize={40} className="h-full min-h-0">
               <div className="flex h-full min-h-0 flex-col">
-                {/* Close button lives in its own row above the detail content —
-                    never overlaps the detail page's own title-row CTAs. */}
-                <div className="flex shrink-0 justify-end px-3 pt-3">
-                  <button
-                    type="button"
-                    onClick={() => router.push(basePath)}
-                    aria-label="Close detail pane"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-cream-300 bg-white text-cream-600 shadow-sm transition-colors hover:bg-cream-100 hover:text-cream-900"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+                {/* Close (X) button is rendered by `DetailActions`, inline with the
+                    overflow menu at the far right of the title row — see
+                    `SplitPaneCloseContext`. This keeps the detail pane's header on a
+                    single line instead of reserving a separate row above it. */}
+                <SplitPaneCloseContext.Provider value={() => router.push(basePath)}>
+                  <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+                </SplitPaneCloseContext.Provider>
               </div>
             </ResizablePanel>
           </>

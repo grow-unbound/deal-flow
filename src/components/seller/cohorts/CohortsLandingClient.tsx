@@ -21,6 +21,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
@@ -34,7 +35,10 @@ type SortOption = 'GMV (high → low)' | 'GMV (low → high)';
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)'];
 
-function CohortsDataSkeleton() {
+function CohortsDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+  if (isPaneOpen) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -242,7 +246,7 @@ function CohortsLandingContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CohortsDataSkeleton />
+        <CohortsDataSkeleton isPaneOpen={isPaneOpen} />
       ) : isError ? (
         <ErrorState
           heading="Couldn't load customer groups"

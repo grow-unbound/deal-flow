@@ -186,8 +186,10 @@ Deno.serve(async (req: Request) => {
     zohoBody.custom_fields = [{ api_name: 'cf_catalog_estimate', value: true }];
   }
 
-  if (gstInfo.gstin && gstInfo.gst_treatment) {
+  if (gstInfo.gst_treatment) {
     zohoBody.gst_treatment = gstInfo.gst_treatment;
+  }
+  if (gstInfo.gstin) {
     zohoBody.gst_no = gstInfo.gstin;
   }
 

@@ -22,6 +22,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -88,7 +89,10 @@ function matchesProductSearch(product: TenantProduct, query: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function ProductLandingDataSkeleton() {
+function ProductLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+  if (isPaneOpen) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -335,7 +339,7 @@ function ProductsLandingContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <ProductLandingDataSkeleton />
+        <ProductLandingDataSkeleton isPaneOpen={isPaneOpen} />
       ) : isError ? (
         <ErrorState
           heading="Couldn't load products"
@@ -344,7 +348,7 @@ function ProductsLandingContent({
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
+        <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} forceCompact={isPaneOpen} />
       ) : (
         <LandingTable
         showEmptyState={displayRows.length === 0 && !isLoading}

@@ -7,11 +7,20 @@ export function LandingTableRowsSkeleton({
   columns,
   rows = 6,
   tableMinWidth,
+  forceCompact,
 }: {
   columns: number;
   rows?: number;
   tableMinWidth?: number;
+  /** Force the compact list-row skeleton regardless of viewport — used when this
+   * skeleton is rendered in the split-pane list column, which is narrow on desktop
+   * too. Mirrors `LandingTable`'s `forceCompact`. */
+  forceCompact?: boolean;
 }) {
+  if (forceCompact) {
+    return <SellerMobileListSkeleton count={rows} forceVisible />;
+  }
+
   return (
     <>
       <SellerMobileListSkeleton count={rows} />

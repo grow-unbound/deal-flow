@@ -8,7 +8,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
-import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
@@ -258,7 +257,9 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           kind="invoice"
           title={data.doc_number}
-          subtitle={buyerContext ? `${data.buyer.name} · ${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
+          subtitle={buyerContext
+            ? `${data.buyer.name} · ${data.invoice_date || '—'} · due ${data.due_date || '—'} · ${data.location_name || '—'}`
+            : 'No buyer on this invoice.'}
           status={{
             label: INVOICE_CHIP_LABEL[invoiceBandStatus],
             tone: invoiceChipTone,
@@ -321,23 +322,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               ]}
             />
         )}
-        basics={(
-          <DocumentBasicsStrip
-            kind="invoice"
-            readOnly
-            docNumber={data.doc_number}
-            locationId={data.location_id}
-            availableLocations={[]}
-            dateIssued={data.invoice_date}
-            secondDate={data.due_date ?? ''}
-            buyerPoRef={data.buyer_po_ref ?? ''}
-            locationName={data.location_name}
-            onDateIssuedChange={noop}
-            onSecondDateChange={noop}
-            onBuyerPoRefChange={noop}
-            onLocationChange={noop}
-          />
-        )}
         left={buyerContext
           ? (
               <ComposerSidebarCard>
@@ -368,36 +352,34 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               </ComposerSidebarCard>
             )}
         center={(
-          <LinesTable
-            kind="invoice"
-            buyerSelected={Boolean(data.buyer_id)}
-            readOnly
-            lines={diffLines}
-            productQuery=""
-            productResults={[]}
-            searchOpen={false}
-            notesExpanded={false}
-            freightExpanded={false}
-            internalExpanded={false}
-            singleNoteMode
-            notesValue={data.seller_note}
-            freightValue={String(data.totals.freight)}
-            internalValue=""
-            onProductQueryChange={noop}
-            onSearchOpenChange={noop}
-            onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
-            onLineChange={noop}
-            onRemoveLine={noop}
-            onNotesValueChange={noop}
-            onFreightValueChange={noop}
-            onInternalValueChange={noop}
-            onToggleNotes={noop}
-            onToggleFreight={noop}
-            onToggleInternal={noop}
-          />
-        )}
-        right={(
-          <div className="space-y-4">
+          <div className="flex h-full min-h-0 flex-col gap-4">
+            <LinesTable
+              kind="invoice"
+              buyerSelected={Boolean(data.buyer_id)}
+              readOnly
+              lines={diffLines}
+              productQuery=""
+              productResults={[]}
+              searchOpen={false}
+              notesExpanded={false}
+              freightExpanded={false}
+              internalExpanded={false}
+              singleNoteMode
+              notesValue={data.seller_note}
+              freightValue={String(data.totals.freight)}
+              internalValue=""
+              onProductQueryChange={noop}
+              onSearchOpenChange={noop}
+              onAddProduct={((_product: EstimateComposerProductSearchRow) => {})}
+              onLineChange={noop}
+              onRemoveLine={noop}
+              onNotesValueChange={noop}
+              onFreightValueChange={noop}
+              onInternalValueChange={noop}
+              onToggleNotes={noop}
+              onToggleFreight={noop}
+              onToggleInternal={noop}
+            />
             <TotalsCard
               totals={totals}
               previousTotals={null}

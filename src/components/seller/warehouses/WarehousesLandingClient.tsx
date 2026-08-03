@@ -247,7 +247,7 @@ export function WarehousesLandingClient({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} />
+        <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} forceCompact={isPaneOpen} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Package2 size={28} strokeWidth={1.5} />}
