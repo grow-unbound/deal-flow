@@ -29,6 +29,7 @@ import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile';
 
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
@@ -36,7 +37,10 @@ const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
 
-function CategoriesDataSkeleton() {
+function CategoriesDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+  if (isPaneOpen) {
+    return <SellerMobileListSkeleton count={6} forceVisible />;
+  }
   return (
     <>
       <div className="mt-5 grid grid-cols-4 gap-3">
@@ -254,7 +258,7 @@ function CategoriesLandingContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CategoriesDataSkeleton />
+        <CategoriesDataSkeleton isPaneOpen={isPaneOpen} />
       ) : isError ? (
         <ErrorState
           heading="Couldn't load categories"
@@ -263,7 +267,7 @@ function CategoriesLandingContent({
       ) : (
         <>
           {showTableSkeleton ? (
-            <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
+            <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} forceCompact={isPaneOpen} />
           ) : (
           <LandingTable
           columns={[
