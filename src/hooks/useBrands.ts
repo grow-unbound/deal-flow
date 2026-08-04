@@ -130,6 +130,7 @@ export interface BrandDetailHeader {
   status_tone: 'success' | 'warning' | 'danger' | 'neutral';
   initials: string;
   hue: 'teal' | 'ember' | 'cream';
+  logo_url?: string | null;
 }
 
 export interface BrandDetailMetaStrip {

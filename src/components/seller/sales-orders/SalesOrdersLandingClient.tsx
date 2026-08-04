@@ -17,7 +17,8 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileListSkeleton, SellerMobileTransactionTabs } from '@/components/seller/mobile';
+import { SellerMobileTransactionTabs, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -64,29 +65,16 @@ function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function SalesOrdersTableRowsSkeleton({ forceCompact }: { forceCompact?: boolean }) {
-  if (forceCompact) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
-  return (
-    <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-  );
-}
-
-function SalesOrdersDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+function SalesOrdersDataSkeleton() {
   return (
     <>
-      {isPaneOpen ? null : (
-        <>
-          <div className="mt-5 grid grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-            ))}
-          </div>
-          <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        </>
-      )}
-      <SalesOrdersTableRowsSkeleton forceCompact={isPaneOpen} />
+      <div className="mt-5 grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+      <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
     </>
   );
 }
@@ -100,7 +88,7 @@ function SalesOrdersLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/sales-orders');
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -265,6 +253,12 @@ function SalesOrdersLandingContent({
     <>
       <PageWrap className="max-w-[1920px] flex h-full min-h-0 flex-col">
         <StickyListHeader>
+          <SplitPaneStickyHeaderSlot
+            isPaneOpen={isPaneOpen}
+            showRefreshingState={showRefreshingState}
+            isError={isError}
+            showTransactionTabs
+          >
           <PageHeader
             eyebrow={isPaneOpen ? 'Sales Orders' : 'Transactions'}
             title={isPaneOpen ? selectedOption.label : 'Sales Orders'}
@@ -277,41 +271,42 @@ function SalesOrdersLandingContent({
           />
           <SellerMobileTransactionTabs active="orders" />
 
-          {showRefreshingState || isError ? null : (
-            <>
-              {isPaneOpen ? null : (
-                <InsightStrip4
-                  tiles={kpiOptions.map((option): InsightTile => ({
-                    label: option.label,
-                    value: option.value,
-                    sub: option.sub,
-                    onClick: () => setSelectedKpiKey(option.id),
-                    selected: option.id === selectedKpiKey,
-                  }))}
-                />
-              )}
-
-              <FilterBar
-                count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
-                searchPlaceholder="Search order number…"
-                chips={[]}
-                activeChip=""
-                sortBy={sortBy}
-                hideViewToggle
-                compact={isPaneOpen}
-                groups={groups}
-                searchValue={search}
-                onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-                sortOptions={SORT_OPTIONS}
-                onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-              />
-            </>
+          {isPaneOpen ? null : (
+            <InsightStrip4
+              tiles={kpiOptions.map((option): InsightTile => ({
+                label: option.label,
+                value: option.value,
+                sub: option.sub,
+                onClick: () => setSelectedKpiKey(option.id),
+                selected: option.id === selectedKpiKey,
+              }))}
+            />
           )}
+
+          <FilterBar
+            count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
+            searchPlaceholder="Search order number…"
+            chips={[]}
+            activeChip=""
+            sortBy={sortBy}
+            hideViewToggle
+            compact={isPaneOpen}
+            groups={groups}
+            searchValue={search}
+            onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+          />
+          </SplitPaneStickyHeaderSlot>
         </StickyListHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
         {showRefreshingState ? (
-          <SalesOrdersDataSkeleton isPaneOpen={isPaneOpen} />
+          isPaneOpen ? (
+            <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
+          ) : (
+            <SalesOrdersDataSkeleton />
+          )
         ) : isError ? (
           <ErrorState
             heading="Couldn't load sales orders"
@@ -321,7 +316,11 @@ function SalesOrdersLandingContent({
           <>
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
-                <SalesOrdersTableRowsSkeleton forceCompact={isPaneOpen} />
+                isPaneOpen ? (
+                  <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
+                ) : (
+                  <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+                )
               ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<Package size={28} strokeWidth={1.5} />}

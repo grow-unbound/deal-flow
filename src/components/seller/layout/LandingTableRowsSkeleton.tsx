@@ -2,12 +2,14 @@
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import type { SellerSplitListVariant } from '@/lib/seller-split-list-ui';
 
 export function LandingTableRowsSkeleton({
   columns,
   rows = 6,
   tableMinWidth,
   forceCompact,
+  compactListVariant = 'entity',
 }: {
   columns: number;
   rows?: number;
@@ -16,15 +18,15 @@ export function LandingTableRowsSkeleton({
    * skeleton is rendered in the split-pane list column, which is narrow on desktop
    * too. Mirrors `LandingTable`'s `forceCompact`. */
   forceCompact?: boolean;
+  /** Split-pane list row shape — `transaction` for estimates/orders/invoices. */
+  compactListVariant?: SellerSplitListVariant;
 }) {
   if (forceCompact) {
-    return <SellerMobileListSkeleton count={rows} forceVisible />;
+    return <SellerMobileListSkeleton count={rows} forceVisible variant={compactListVariant} />;
   }
 
   return (
-    <>
-      <SellerMobileListSkeleton count={rows} />
-      <div className="hidden overflow-x-auto md:block">
+    <div className="hidden overflow-x-auto md:block">
         <div
           className="overflow-hidden rounded-[14px] border border-cream-300 bg-white"
           style={tableMinWidth ? { minWidth: `${tableMinWidth}px` } : undefined}
@@ -50,9 +52,8 @@ export function LandingTableRowsSkeleton({
                 </div>
               ))}
             </div>
-          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

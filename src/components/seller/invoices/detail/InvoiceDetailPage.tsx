@@ -113,6 +113,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       brand_name: line.brand_name,
       brand_initials: line.brand_initials,
       brand_hue: line.brand_hue,
+      image_url: line.image_url ?? null,
       hsn_code: line.hsn,
       on_hand: 0,
       qty: line.qty,

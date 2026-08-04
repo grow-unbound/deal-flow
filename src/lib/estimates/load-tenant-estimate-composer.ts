@@ -10,6 +10,7 @@ import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { computeLineTaxableAmount } from '@/lib/gst';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 import type { EstimateDetailActivity, EstimateDetailLineItem, EstimateDetailPayload } from '@/types/tenant-estimate-detail';
 import type { EstimateDbStatus, EstimateStatusTone } from '@/types/tenant-estimates';
@@ -131,7 +132,7 @@ export async function loadEstimateDocument(
 
   const { data: tenantProducts } = productIds.length > 0
     ? await d.schema('app').from('tenant_products')
-        .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp')
+        .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp, image_urls')
         .in('id', productIds).eq('tenant_id', tenantId)
     : { data: [] as Array<Record<string, unknown>> };
 
@@ -201,6 +202,7 @@ export async function loadEstimateDocument(
       brand_name: brandName,
       brand_initials: brandName.split(' ').map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase(),
       brand_hue: (['teal', 'ember', 'cream'][index % 3] ?? 'teal') as 'teal' | 'ember' | 'cream',
+      image_url: firstStoredImageUrl(product?.image_urls),
       hsn_code: (product?.hsn_code as string | null | undefined) ?? (master?.hsn_code as string | null | undefined) ?? null,
       on_hand: inventoryMap.get(row.tenant_product_id as string) ?? 0,
       qty: Number(row.qty ?? 0),

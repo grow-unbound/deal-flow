@@ -624,3 +624,312 @@ in a browser — local dev server requires WhatsApp-OTP login this session can't
 user's behalf (same blocker as the prior read-only pass); recommend the user click through the
 Locations/Dashboard pages and a callout "see all" sheet to visually confirm before considering
 this batch fully closed.
+
+### 2026-08-03 — v4 backend: estimate-demand predicate + expiring-7d fix, reconciliation blocked mid-flight
+
+**Context, different from everything above:** this item is against `specs/metrics-v4-final-2026-07.md`
+and the `metrics_v4_*` backend (`supabase/migrations/20260731081042_metrics_v4_period_summaries_landing_snapshots.sql`
+onward), not the `metrics_v2` RPCs every item above this one covers. **Confirmed via
+`supabase migration list --linked` that all v4 migrations are already pushed to prod, and its 15s
+cron tick is actively computing — but a repo-wide grep of `app/`/`src/` found zero callers of
+`get_landing_metrics_v4`/`get_buyer_home_metrics_v4`/any `metrics_v4_*` table. Every live page
+(Estimates/Orders/Invoices via `metrics_v2_transaction_landing`, Brands via
+`get_seller_brand_landing_summary`, Catalogs via `get_catalog_landing_metrics`) still reads the
+old v2 RPCs, which have the identical bug described below but were explicitly left untouched this
+pass** — scope was v4-only per user decision.
+
+**Bugs fixed (both confirmed via user-directed gap analysis against the spec):**
+1. `estimate_value`/`app_estimate_value`/`primary_demand_value` (feeds Estimate/Order value-created,
+   App-sourced Demand, Dashboard Demand, Locations Open Demand) filtered estimates with
+   `app.estimate_status_is_open(e.status) OR e.status = 'accepted'` (draft/sent/accepted only) —
+   silently dropped declined/expired/invoiced/converted estimates out of the period total. Fixed
+   to only exclude `void` (new predicate `app.estimate_status_counts_as_demand`). Order side
+   (`app.order_status_in_flow`) was already correct (only excludes `cancelled` among real
+   statuses) — untouched.
+2. Estimates "Expiring in 7 days" card filtered `app.estimate_status_is_open(e.status)` (draft/sent
+   only); spec wants draft/sent/accepted. Fixed by adding the `accepted` branch.
+
+**Files touched:** `supabase/migrations/20260803080607_add_estimate_status_counts_as_demand_predicate.sql`
+(new predicate, excludes only `'void'`); `supabase/migrations/20260803080706_fix_estimate_demand_predicate_claimed_periods.sql`
+(verbatim copy of the live `app._metrics_v4_refresh_claimed_periods` from
+`20260802080330_metrics_v4_fix_tenant_period_value_fanout.sql`, 21 mechanical substitutions of the
+old predicate substring — confirmed via `diff` that nothing else changed); `supabase/migrations/20260803080805_fix_estimates_expiring_7d_include_accepted.sql`
+(verbatim copy of the live `app._metrics_v4_refresh_landing_kpis` from
+`20260731081042_metrics_v4_period_summaries_landing_snapshots.sql`, single computation site
+patched, reused by both the this-month snapshot and the period-selector loop — confirmed via
+`diff`). All 3 migrations pushed via `supabase db push` (dry-run previewed first, matched exactly
+these 3 files) and confirmed applied remotely via `supabase migration list --linked`.
+
+**Verified how:** `npx tsc --noEmit -p .` clean (no TS touched — nothing reads v4 yet, per above).
+Balanced-parens/dollar-quote sanity check on all 3 new SQL files. Raw-SQL baseline computed
+directly against `app.estimates`/`app.orders` for the demo tenant
+(`550e8400-e29b-41d4-a716-446655440501`, single period July 2026): old predicate = 6 estimates /
+₹18,96,472.40 (draft+sent+accepted); new predicate = 13 estimates / ₹49,28,954.40 (all except
+void — demo tenant has no void estimates, so the exclusion itself isn't provable from this
+tenant's data, only the inclusion side). This baseline is the "dry run" — a literal
+transaction-rollback dry run using the real fenced compute function turned out to be impractical:
+each MCP `execute_sql` call is a fresh connection (confirmed a `BEGIN`+claim left no trace — state
+was back to `pending` on the next check, i.e. auto-rolled-back on disconnect as expected), and the
+claim function has no per-tenant targeting (picks whatever's globally oldest via strict FIFO), so
+a manual claim can't be pointed at a specific tenant for a scoped dry run anyway.
+
+**Reconciliation NOT completed — blocked, stopped per user decision, needs its own follow-up:**
+Marked `550e8400-e29b-41d4-a716-446655440501` dirty for `commercial`/`inventory`/`buyer_app` via
+`app.metrics_mark_reconciliation`, then discovered the entire refresh queue was already fully
+deadlocked (0% tick success) — `cron.job_run_details` showed every 15s tick for the prior several
+minutes failing identically with `metrics_v4_buyer_key_budget_exceeded` on tenant
+`d601c35c-1a78-4506-a556-a82118d72893`'s `buyer_app` domain (the globally-oldest pending group,
+strict-FIFO claim, so nothing else in the queue — including the demo-tenant marks just added —
+could be reached). **Confirmed via diff this is unrelated to the predicate fix** (the budget-check
+logic is untouched code, earlier in the function than anything patched today). Root cause: the
+claim step's per-row key-cost estimate for these individual entity-level dirty marks
+(`buyer_app_activity`/`estimate`/`buyer_access`, `dirty_from`/`dirty_to` both NULL) undercounts
+how many distinct buyers the downstream day-linked lookup actually touches, so a batch that looked
+under-budget at claim time blows the budget at compute time. With sign-off, temporarily tuned
+`app.metrics_runtime_control` (global row) from `max_dirty_sources_per_tick=100,
+max_refresh_keys_per_tick=250` → `5, 500` (both within the existing
+`metrics_runtime_control_budget_check` CHECK bounds) — this cleared the budget-exceeded error and
+produced one successful tick, but then revealed a **second, intermittent issue**:
+`metrics_tick_wall_budget_exceeded` (the actual compute for a 5-source batch on this tenant/domain
+sometimes exceeds the 5000ms hard ceiling) — a real data-volume/query-cost problem for this
+tenant's `buyer_app` domain, not something further config-tuning resolves cleanly. **Per explicit
+user decision, reverted the runtime_control tuning back to `100, 250`** (confirmed via `returning`
+clause) rather than keep iterating — the whole-queue deadlock is knowingly back in its original
+(pre-session) state, and the wall-budget-timeout issue is flagged as a separate follow-up
+investigation, not fixed here.
+
+**Outstanding for next session:**
+- Investigate why `_metrics_v4_refresh_claimed_periods`'s `buyer_app` domain compute for tenant
+  `d601c35c` is slow enough to hit `tick_wall_budget_exceeded` even at a 5-source batch size —
+  likely the day-linked dirty-mark expansion (`old_day`/`new_day` → all buyers transacting that
+  day) pulling in a much wider buyer set than the claim step's cost estimate assumes. This is a
+  pre-existing issue, confirmed unrelated to today's predicate fix via diff, but it fully
+  deadlocks the entire v4 refresh queue (all tenants, all domains) until resolved.
+- Once that's fixed: re-mark `550e8400-e29b-41d4-a716-446655440501` (commercial/inventory/buyer_app,
+  already has pending dirty rows from this session) and `d601c35c-1a78-4506-a556-a82118d72893` dirty,
+  let the queue drain, then reconcile against a raw-SQL baseline (same method as above) before
+  considering this item closed.
+- Out of scope, flagged for a separate pass: `app.metrics_v2_transaction_landing`,
+  `app.get_seller_brand_landing_summary`, `app.get_catalog_landing_metrics` have the identical
+  estimate-demand-predicate bug and are the RPCs actually serving live pages today — v4 is
+  unwired, so today's fix has no live user-facing effect yet.
+
+### 2026-08-03 (later same day) — root-caused and fixed tick_wall_budget_exceeded
+
+Investigated the `tick_wall_budget_exceeded` timeout flagged above (deliberately not fixing
+anything until root cause was confirmed, per explicit instruction). Found and fixed it; the
+outstanding `metrics_v4_buyer_key_budget_exceeded` deadlock from the previous entry is a
+**separate, still-open** issue (see bottom of this entry) — this pass did not touch it.
+
+**Root cause, confirmed by direct measurement:** `app._metrics_v4_refresh_landing_kpis` was called
+unconditionally at the tail of *every* tick regardless of domain (`commercial`/`inventory`/
+`buyer_app`) and fully recomputed all 14 landing pages every time. Isolated call against
+`d601c35c-1a78-4506-a556-a82118d72893` (11,162 buyers, 18,478 invoices, 6,345 estimates): **1.74s
+alone**, before any domain-specific work ran — over a third of the hard 5000ms
+`tick_wall_budget_ms` ceiling. Its 7-iteration period-selector loop
+(`app.metrics_v4_period_windows()`: today/this_week/last_week/this_month/last_month/this_quarter/
+last_quarter) also recomputed the "Top 80% locations" window-function ranking **twice inline per
+iteration** (value arg + entity_count arg, copy-paste not variable reuse) despite
+`specs/metrics-v4-final-2026-07.md` fixing that card's time basis at "Month" — it never should
+have varied per selector period at all.
+
+**Fix, in 2 parts, both confirmed with the user before implementing (including a table tracing
+every page back to which domain writes its source table — see the plan file for the full
+mapping):**
+1. **Domain-scope the tail call.** Added `p_domain text DEFAULT NULL` to
+   `app._metrics_v4_refresh_landing_kpis` and wrapped each page's existing, unmodified
+   computation + upsert call in `IF v_run_commercial / v_run_inventory / v_run_buyer_app THEN`
+   per its traced ownership (pages spanning 2 domains — `customer_groups`, `locations` — run on
+   either tick, never skipped; `price_lists` is config-only so pinned to `commercial` alone to
+   kill 2/3 redundant runs with zero staleness risk). `app._metrics_v4_refresh_claimed_periods`'s
+   one call site now passes its own `p_domain` through (`p_domain => p_domain`, preserving the
+   default `p_as_of`).
+2. **Dedupe + move top-80% off the tick.** Removed the entire `locations` page block from the
+   period-selector loop (per spec it has no selector at all — this was never correct, not just
+   inefficient, and was the literal duplicate-subquery site). Added
+   `app.metrics_tenant_top80_cache` (tenant_id, entity_kind, grain, period_start, top80_count) and
+   `app.metrics_v4_refresh_top80_daily()` — 3 set-based `PARTITION BY tenant_id` queries computing
+   top-80% for every tenant in one pass each, scheduled via a new pg_cron job
+   (`metrics-v4-top80-daily`, 01:00 UTC, same slot as the existing v2 daily sweep, mirroring
+   `app.ensure_metrics_v2_daily_reconciliation_cron_scheduled()`'s exact pattern). The 3 live
+   window-function computations in `_metrics_v4_refresh_landing_kpis` (customers/quarter,
+   brands/month, locations/month) now point-read this cache, `COALESCE`'d to 0 if empty.
+
+**Files touched (4 new migrations, all pushed and confirmed applied via
+`supabase migration list --linked`):**
+`supabase/migrations/20260803091513_add_metrics_tenant_top80_cache.sql`,
+`20260803091558_add_metrics_v4_top80_daily_refresh.sql`,
+`20260803091852_domain_scope_landing_kpis_and_top80_cache.sql` (full verbatim copy of the live
+`_metrics_v4_refresh_landing_kpis` body, `diff`-verified against the prior definition — every
+change traced to an intentional domain-gate/cache-read/loop-removal, nothing else touched; a
+first draft accidentally dropped the `invoices` loop block entirely, caught by that same diff
+check and fixed before push),
+`20260803092609_pass_domain_to_landing_kpis_tail_call.sql` (single call-site change in
+`_metrics_v4_refresh_claimed_periods`, `diff`-verified — first draft used the wrong `tail -n`
+offset and silently dropped the function's own signature line + 2 params, caught by the same
+`diff` check before push).
+
+**Verified how:** `npx tsc --noEmit -p .` clean (no TS touched). Balanced-parens/dollar-quote +
+`diff` checks on all 4 migrations before push; `supabase db push --dry-run` confirmed exactly
+these 4 files before the real push. Direct isolated timing (same MATERIALIZED-CTE technique used
+to find the original 1.74s baseline) against `d601c35c` post-fix:
+`_metrics_v4_refresh_landing_kpis(..., 'commercial')` = **1.48s**,
+`(..., 'inventory')` = **38ms**, `(..., 'buyer_app')` = **67ms** — the domain that was actually
+deadlocking dropped from 1.74s to 67ms. Manually invoked `app.metrics_v4_refresh_top80_daily()`
+(15 rows written, 5 tenants × 3 entity kinds); cache values for both `d601c35c`
+(customers=328, brands=1, locations=4) and the demo tenant `550e8400-e29b-41d4-a716-446655440501`
+(customers=2, brands=0, locations=0) matched a fresh ad-hoc run of the original live
+window-function query exactly. Spot-checked `metrics_landing_kpi_snapshot` for `d601c35c` post-fix
+— every page_key still carries its expected KPI count (4 each), no page silently dropped by the
+domain gating.
+
+**Known limitation, not a regression:** live-cron end-to-end verification (mark dirty → tick
+succeeds → drains) could not be completed this pass — re-marked `d601c35c`'s `buyer_app` domain
+dirty and confirmed the queue is still 100% failing (60/60 ticks in the last 15 minutes), but on
+`metrics_v4_buyer_key_budget_exceeded`, a **different, pre-existing, still-unfixed** bug from
+before this session touched anything (the claim step's per-row cost estimate for individual
+entity-level dirty marks undercounts how many distinct buyers the downstream day-linked lookup
+actually touches — see the "Outstanding for next session" bullet above). Confirmed
+`app.metrics_runtime_control` is back at its original `100, 250` values (not the temporarily-tuned
+`5, 500` from earlier), so this isn't the earlier tuning bleeding through — it's simply that the
+old, much larger backlog is still globally-oldest and blocks the queue before it can ever reach
+the small dirty batch this session added, so the *live* effect of today's fix couldn't be
+observed end-to-end. The isolated direct-call timing above is the correctness evidence instead.
+
+### 2026-08-03 (later same day, second pass) — root-caused and fixed metrics_v4_buyer_key_budget_exceeded
+
+Investigated the `buyer_key_budget_exceeded` deadlock flagged above. Ruled out both a backfill and
+unusual traffic (checked `buyer_app_activity` dirty-mark cadence — steady ~4/hour organic trickle,
+no burst; checked invoice `created_at` distribution for the affected days — 10-15/hour spread
+evenly across business hours, not a bulk-import spike).
+
+**Root cause, confirmed by tracing every read of the collected temp tables in
+`app._metrics_v4_refresh_claimed_periods`:**
+1. The buyer/product/location key-collection block (shared prep, ran before the domain dispatch)
+   collected keys **unconditionally on every tick regardless of domain** — but the `buyer_app`
+   branch only builds `metrics_campaign_period_summary`/`metrics_cohort_period_summary`, both
+   period-keys-driven, and **never reads** `metrics_v4_buyer_ids`/`metrics_v4_buyer_period_keys`/
+   `metrics_v4_product_ids`/`metrics_v4_product_period_keys` at all. A `buyer_app` tick was paying
+   the full cost and budget-exceeded risk of a collection it then threw away unused.
+2. Even for `commercial`/`inventory` (which do need it), the buyer-id collection fans out per
+   dirty day to *every* buyer who transacted tenant-wide that day, uncapped. Confirmed on
+   `d601c35c-1a78-4506-a556-a82118d72893`: 4 distinct dirty days → 434 distinct buyers (each
+   ordinary day alone already carries 60-200+ — this tenant's normal daily volume, not a spike).
+   No distinct-day cap existed anywhere in this collection or in
+   `app.metrics_claim_dirty_work`'s claim-time budgeting.
+3. Separately, `app.metrics_capture_buyer_app_activity()` (the trigger on `app.buyer_app_activity`)
+   marked `buyer_app` domain dirty for *every* route/page-view event from any buyer, regardless of
+   `app.buyers.buyer_app_enabled` — inflating that domain's queue volume with non-qualifying
+   buyers.
+
+**Fix, in 3 parts, all confirmed with the user before implementing (including which domain
+branch reads which temp table, traced precisely via grep, not guessed):**
+1. Domain-gated the buyer+product key collection to `commercial` only, and the location key
+   collection to `commercial` **or** `inventory` (both read `metrics_v4_location_keys`) — zero risk,
+   nothing downstream reads these tables outside the branches that already gate them.
+2. Added a separate, tighter day subset (`metrics_v4_key_collection_days`, capped to the single
+   oldest dirty day via `ORDER BY day LIMIT 1`) used only by the buyer/product/location fan-out
+   subqueries — `metrics_v4_period_keys` (period-summary date-range coverage) still reads the full
+   (up to 100-row) `metrics_v4_dirty_days`, unaffected, since period summaries legitimately need
+   every touched day/week/month/quarter.
+3. Gated `app.metrics_capture_buyer_app_activity()`'s `metrics_mark_dirty` call on
+   `NEW/OLD.qualifies_for_engagement` **and** a join confirming `app.buyers.buyer_app_enabled =
+   true` for the relevant buyer — doesn't touch `app.record_buyer_app_activity` (the app-facing
+   RPC) or the activity table itself, only whether the metrics pipeline gets told to recompute.
+
+**Files touched (2 new migrations, pushed and confirmed applied via
+`supabase migration list --linked`):**
+`supabase/migrations/20260803101451_fix_buyer_key_budget_domain_scope_and_day_cap.sql` (full
+verbatim copy of the live `_metrics_v4_refresh_claimed_periods` body,
+`20260803092609_pass_domain_to_landing_kpis_tail_call.sql`, `diff`-verified — every changed line
+traced to an intentional domain-gate or day-cap substitution, nothing else touched);
+`supabase/migrations/20260803101652_gate_buyer_app_activity_dirty_marking.sql` (full verbatim copy
+of `app.metrics_capture_buyer_app_activity()`, `20260717091741_metrics_v2_capture_buyer_app_activity.sql`,
+`diff`-verified — only the new gate added).
+
+**Verified how:** `npx tsc --noEmit -p .` clean. Balanced-parens/dollar-quote + `diff` checks on
+both migrations before push; `supabase db push --dry-run` confirmed exactly these 2 files.
+Live-verified end-to-end (not just isolated, unlike the prior fix — the queue was actually
+unstuck this time): paused the `metrics-v2-refresh-tick` cron job (`cron.unschedule`, not a
+config/data change) to manually claim without racing the 15s tick, reconstructed the exact claimed
+batch (19 real dirty-work rows for `d601c35c` `commercial`) and computed the real post-fix buyer
+count by hand (2 — trivially under the 250 budget, confirming the day-cap works), then
+re-scheduled the cron (new jobid, same jobname `metrics-v2-refresh-tick`, identical command,
+confirmed via `cron.job_run_details`). Over the next several minutes: **0 of 296 ticks failed with
+`metrics_v4_buyer_key_budget_exceeded`** (fully gone) — `app.metrics_inspect` showed real drain
+across all 4 domains for `d601c35c` (`commercial` 47→41, `inventory` 7→2, `setup` 13→7, each with a
+fresh `last_successful_computation_at`). `app.metrics_runtime_control` confirmed untouched at its
+original `100, 250` — no config tuning needed this time, unlike the previous fix attempt.
+Buyer-app-enabled gate verified both directions on the demo tenant
+(`550e8400-e29b-41d4-a716-446655440501`): temporarily flipped one buyer's `buyer_app_enabled` to
+`false`, called `app.record_buyer_app_activity` — 0 dirty-work rows created; flipped back to
+`true` (original state restored), called again — 1 dirty-work row created as expected; test
+activity rows soft-deleted afterward, no state left behind.
+
+**Known limitation, not a regression:** 266 of 296 ticks failed with `metrics_tick_wall_budget_exceeded`
+during the verification window — this is the **separate, already-fixed-once-before** timeout issue
+from the first entry above, not `buyer_key_budget_exceeded`. It's expected to still occur
+occasionally on `commercial` (which does more work than just the now-fast buyer/product
+collection — full tenant/buyer/product period-summary rebuilds across day/week/month/quarter
+grains for the remaining ~41 dirty rows). Queue still drains (confirmed via the `pending_count`
+deltas above and rising `last_successful_computation_at` timestamps for every domain), just not on
+every single tick. Not addressed further this pass — today's scope was `buyer_key_budget_exceeded`
+specifically, which is fully resolved.
+
+**Outstanding for next session:**
+- `metrics_tick_wall_budget_exceeded` still recurs on `commercial` for `d601c35c` under heavier
+  batches. Worth a follow-up profiling pass on `commercial`'s per-tick cost now that buyer/product
+  collection is fast — likely the tenant/buyer/product period-summary INSERT/DELETE statements
+  themselves (day/week/month/quarter grain fan-out) are the remaining cost driver.
+- Once the queue fully drains: reconcile `550e8400-e29b-41d4-a716-446655440501` and
+  `d601c35c-1a78-4506-a556-a82118d72893` against a raw-SQL baseline (method already established
+  in the first entry above) before closing out the original estimate-demand-predicate
+  reconciliation task.
+
+### 2026-08-03 (third pass) — day-overlap loop scoping: correct, but did not fix tick_wall_budget_exceeded
+
+Attempted to reduce `commercial`'s remaining per-tick cost by scoping
+`_metrics_v4_refresh_landing_kpis`'s 7-iteration period-selector loop (today/this_week/
+last_week/this_month/last_month/this_quarter/last_quarter) to only recompute a period if the
+tick's actual dirty day falls within it — data-driven skip, not calendar-driven, so a backdated
+correction to an old period still gets recomputed correctly on the tick that touches it.
+
+**Files:** `supabase/migrations/20260803121327_scope_landing_kpis_loop_by_dirty_day_overlap.sql`
+(added `p_dirty_days date[] DEFAULT NULL` param + `CONTINUE` guard in the loop, `diff`-verified
+against the live body); `supabase/migrations/20260803121617_pass_dirty_days_to_landing_kpis_call.sql`
+(single call-site change in `_metrics_v4_refresh_claimed_periods` passing
+`array_agg(day) FROM pg_temp.metrics_v4_dirty_days`, `diff`-verified).
+
+**Bug caught during this pass, also fixed:** discovered `CREATE OR REPLACE FUNCTION` does **not**
+replace across an arity change — every prior migration this session that appended a new
+parameter to `_metrics_v4_refresh_landing_kpis` (`p_domain`, then `p_dirty_days`) left the
+older-arity version behind as a live orphaned overload instead of replacing it. Production was
+unaffected (the one real caller always passed the full current arg list, resolving unambiguously),
+but any other caller passing exactly 3 args now hit "function is not unique" — caught this
+directly while manually timing the fix. Added
+`supabase/migrations/20260803121810_drop_orphaned_landing_kpis_overloads.sql` to `DROP FUNCTION`
+the two dead overloads, leaving only the current 4-arg signature.
+
+**Verified the scoping logic itself works:** called `_metrics_v4_refresh_landing_kpis` directly
+with a day outside all 7 selector windows (`2025-05-04`) — loop contributed 0 rows (12 total vs.
+51 with no day filter), confirming the skip fires correctly.
+
+**But it did not fix the underlying problem.** Isolated timing showed
+`_metrics_v4_refresh_landing_kpis('commercial')` alone runs in ~300ms regardless of the loop
+scoping — it was never the dominant cost, so removing its redundant iterations barely moves the
+needle. Post-deploy monitoring (7 ticks since push): 0 succeeded, 7 failed, all
+`tick_wall_budget_exceeded`. The real remaining cost is inside
+`_metrics_v4_refresh_claimed_periods`'s own `commercial` branch (the
+`tenant_period_summary`/`buyer_period_summary`/`product_period_summary`/brand/category rebuild
+itself) — not yet isolated or timed directly. Also possible the 27-chunk reconciliation marked
+earlier this session (last 90 days for `d601c35c`, full history for the demo tenant) is inflating
+batch sizes independent of any code issue.
+
+**Outstanding for next session:**
+- Directly profile `_metrics_v4_refresh_claimed_periods`'s `commercial` branch (not the tail
+  landing_kpis call, confirmed fast) — likely needs the same "reconstruct claimed batch manually,
+  time each INSERT block" approach used earlier for the buyer-key investigation, this time against
+  `tenant_period_summary`/`buyer_period_summary`/`product_period_summary`/brand/category
+  specifically.
+- Keep the day-overlap scoping regardless (task 22-24's migrations) — it's a correct,
+  low-risk efficiency win on its own merits, just not sufficient alone.

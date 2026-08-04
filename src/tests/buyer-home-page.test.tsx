@@ -7,6 +7,20 @@ const apiFetchMock = vi.fn();
 const setRefreshFnMock = vi.fn();
 const useCartMock = vi.fn();
 
+vi.mock('posthog-js/react', () => ({
+  usePostHog: () => ({ capture: vi.fn() }),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
+  usePathname: () => '/buy/home',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock('@/hooks/usePointerPrefetch', () => ({
+  usePointerPrefetch: () => () => undefined,
+}));
+
 vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
@@ -31,6 +45,16 @@ vi.mock('@/contexts/BuyerCartContext', () => ({
 vi.mock('@/hooks/useInfiniteScroll', () => ({
   getSentinelInsertIndex: () => -1,
   useInfiniteScroll: () => ({ sentinelRef: { current: null } }),
+}));
+
+vi.mock('@/hooks/useBuyerMe', () => ({
+  useBuyerMe: () => ({
+    data: {
+      greeting_name: 'Rajan',
+      contact_name: 'Rajan',
+      order_features: { enquiries: true, sales_orders: true, invoices: true },
+    },
+  }),
 }));
 
 import HomePage from '../../app/(buyer)/buy/home/page';
@@ -67,21 +91,41 @@ describe('buyer home page', () => {
     } as typeof IntersectionObserver;
   });
 
-  it('renders the new hierarchy and links', async () => {
+  it('renders the V4 KPI hierarchy and independent section fetches', async () => {
     apiFetchMock.mockImplementation((url: string) => {
-      if (url === '/api/buyer/home') {
+      if (url === '/api/buyer/home/metrics') {
         return jsonResponse({
-          greeting_name: 'Rajan',
-          summary_card: { gmv_mtd: 1854000, gmv_ytd: 3250000, invoice_count_ytd: 47 },
-          dues_card: { outstanding_dues: 240000, open_invoice_count: 4, earliest_due_date: '2026-06-22', days_until_earliest_due: 2 },
-          credit_card: { credit_limit: 250000, available_credit: 10000, credit_used: 240000 },
-          order_again_preview: [
-            { tenant_product_id: 'tp-1', display_name: 'Cabernet Sauvignon', image_urls: [], price: 900 },
-          ],
+          period: {
+            period_key: 'this_quarter',
+            grain: 'quarter',
+            period_start: '2026-07-01',
+            period_end_exclusive: '2026-10-01',
+          },
+          spend_qtd: 3250000,
+          invoice_count_qtd: 47,
+          demand_qtd: 1854000,
+          demand_document_count_qtd: 12,
+          demand_kind: 'orders',
+          credit_limit: 250000,
+          outstanding: 240000,
+          overdue: 50000,
+          available_credit: 10000,
+          computed_at: '2026-08-04T06:30:00.000Z',
+        });
+      }
+      if (url === '/api/buyer/home/promotions') {
+        return jsonResponse({
           latest_promotions_preview: [
             { id: 'promo-1', name: 'Monsoon Promo', product_count: 12, valid_until: null, share_token: 'tok', hero_image_url: null },
           ],
-          recent_activity: { items: [], next_cursor: null },
+        });
+      }
+      if (url === '/api/buyer/home/reco') {
+        return jsonResponse({
+          order_again_preview: [
+            { tenant_product_id: 'tp-1', display_name: 'Cabernet Sauvignon', image_urls: [], price: 900 },
+          ],
+          bestsellers: [],
         });
       }
       if (url.startsWith('/api/buyer/activity?')) {
@@ -107,20 +151,26 @@ describe('buyer home page', () => {
 
     renderWithQueryClient(<HomePage />);
 
-    expect(await screen.findByRole('heading', { name: 'Your shelf, this month.' })).toHaveStyle({ fontSize: 'var(--b-text-page-sm)' });
+    expect(await screen.findByRole('heading', { name: 'Your shelf, this quarter.' })).toBeInTheDocument();
     expect(await screen.findByText(/Good (morning|afternoon|evening), Rajan/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /notifications/i })).toHaveClass('h-12', 'w-12');
-    expect(screen.getByText('Promotions')).toBeInTheDocument();
+    expect(screen.getByText('Spend this quarter')).toBeInTheDocument();
+    expect(screen.getByText('Orders this quarter')).toBeInTheDocument();
     expect(screen.getByText('₹32,50,000')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /browse all/i })).toHaveAttribute('href', '/buy/buy-again');
+    expect(screen.getByText('47 invoices')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding')).toBeInTheDocument();
+    expect(screen.getByText('Available credit')).toBeInTheDocument();
+    expect(screen.getByText(/as of /)).toBeInTheDocument();
+    expect(screen.getByText('Promotions')).toBeInTheDocument();
     const seeAllLinks = screen.getAllByRole('link', { name: /see all/i });
     expect(seeAllLinks.map((link) => link.getAttribute('href'))).toEqual(
       expect.arrayContaining(['/buy/promotions', '/buy/orders']),
     );
-    expect(screen.queryByText('Your distributor')).not.toBeInTheDocument();
-    expect(await screen.findByText('SO-001')).toBeInTheDocument();
-    expect(screen.getByText('Sales order')).toBeInTheDocument();
-
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('link', { name: /spend this quarter/i })).toHaveAttribute('href', '/buy/orders?tab=invoices');
+    expect(screen.getByRole('link', { name: /orders this quarter/i })).toHaveAttribute('href', '/buy/orders?tab=orders');
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/metrics');
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/promotions');
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/reco');
+    });
   });
 });

@@ -18,6 +18,11 @@ vi.mock('posthog-js', () => ({
   },
 }));
 
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlagState: () => true,
+  useFlag: () => true,
+}));
+
 vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
@@ -149,7 +154,7 @@ describe('buyer pages avoid idle refetch loops', () => {
     expect(apiFetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('fetches orders tab data once on idle mount and not again on rerender', async () => {
+  it('fetches only the default invoices tab on idle mount and not again on rerender', async () => {
     apiFetchMock.mockImplementation((url: string) => {
       if (url === '/api/buyer/me') {
         return jsonResponse(emptyBuyerMe);
@@ -175,7 +180,21 @@ describe('buyer pages avoid idle refetch loops', () => {
         return jsonResponse({ estimates: [], nextCursor: null, total: 0 });
       }
       if (url.startsWith('/api/buyer/invoices?')) {
-        return jsonResponse({ invoices: [], nextCursor: null, total: 0 });
+        return jsonResponse({
+          invoices: [
+            {
+              id: 'inv-1',
+              invoice_number: 'INV-001',
+              status: 'sent',
+              total_amount: 1200,
+              outstanding_balance: 1200,
+              invoice_date: '2026-06-10',
+              due_date: '2026-06-20',
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+        });
       }
       throw new Error(`Unexpected URL: ${url}`);
     });
@@ -187,8 +206,16 @@ describe('buyer pages avoid idle refetch loops', () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText('SO-001');
-    await waitFor(() => expect(apiFetchMock.mock.calls.length).toBeGreaterThanOrEqual(4));
+    await screen.findByText('INV-001');
+    await waitFor(() => {
+      const urls = apiFetchMock.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url === '/api/buyer/me')).toBe(true);
+      expect(urls.some((url) => url.startsWith('/api/buyer/invoices?'))).toBe(true);
+    });
+
+    const urlsAfterMount = apiFetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urlsAfterMount.some((url) => url.startsWith('/api/buyer/orders?'))).toBe(false);
+    expect(urlsAfterMount.some((url) => url.startsWith('/api/buyer/estimates?'))).toBe(false);
 
     const callCountAfterMount = apiFetchMock.mock.calls.length;
     rerender(

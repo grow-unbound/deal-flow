@@ -643,7 +643,7 @@ export interface BuyerEstimatesPage {
   total: number | null;
 }
 
-export function useBuyerEstimatesInfinite() {
+export function useBuyerEstimatesInfinite(options?: { enabled?: boolean }) {
   return useInfiniteQuery({
     queryKey: ['buyer-estimates-infinite'],
     queryFn: async ({ pageParam }): Promise<BuyerEstimatesPage> => {
@@ -658,5 +658,6 @@ export function useBuyerEstimatesInfinite() {
     placeholderData: keepPreviousData,
     staleTime: BUYER_QUERY_STALE_TIME,
     gcTime: BUYER_QUERY_GC_TIME,
+    enabled: options?.enabled ?? true,
   });
 }

@@ -3,9 +3,15 @@
 import { formatNumberValue } from '@/lib/utils';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, Search, Package, Receipt, FileText, ClipboardList } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
-;
+import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
+import {
+  buyerDeliveryStockSignature,
+  prefetchBuyerProductDetail,
+} from '@/hooks/useBuyerProducts';
 
 interface BuyerSearchItem {
   id: string;
@@ -43,6 +49,10 @@ const ENTITY_LABEL: Record<string, string> = {
 
 export function BuyerSearchOverlay() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const prefetchOnPress = usePointerPrefetch();
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const [open, setOpen]       = useState(false);
   const [scope, setScope]     = useState<Scope>('catalog');
   const [query, setQuery]     = useState('');
@@ -280,11 +290,19 @@ export function BuyerSearchOverlay() {
 
           {displayedItems.map((item) => {
             const Icon = ENTITY_ICON[item.entity_type] ?? Search;
+            const productHref = item.entity_type === 'product' ? `/buy/product/${item.id}` : null;
+            const prefetchProduct = productHref
+              ? prefetchOnPress(productHref, () => {
+                  prefetchBuyerProductDetail(queryClient, item.id, stockSignature);
+                })
+              : undefined;
             return (
               <button
                 key={`${item.entity_type}-${item.id}`}
                 type="button"
                 onClick={() => navigate(item)}
+                onPointerDown={prefetchProduct}
+                onTouchStart={prefetchProduct}
                 style={{
                   width: '100%', textAlign: 'left',
                   display: 'flex', alignItems: 'center', gap: 12,

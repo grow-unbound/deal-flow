@@ -226,11 +226,13 @@ export function SellerMobileTopbar({ tenantBrandingPromise, featureAvailabilityP
                           href={item.href}
                           onClick={() => setMenuOpen(false)}
                           className={cn(
-                            'flex h-11 items-center gap-3 rounded-xl px-3 text-[var(--b-text-body)] font-medium',
-                            active ? 'bg-ember-50 text-cream-950' : 'text-cream-800 active:bg-cream-100',
+                            'flex h-11 items-center gap-3 rounded-xl px-3 text-[var(--b-text-body)]',
+                            active
+                              ? 'bg-[rgba(181,100,47,0.12)] font-semibold text-cream-950'
+                              : 'font-medium text-cream-800 active:bg-cream-100',
                           )}
                         >
-                          <item.icon size={17} />
+                          <item.icon size={17} className={active ? 'text-ember-500' : undefined} />
                           <span>{item.label}</span>
                         </Link>
                       </Pressable>

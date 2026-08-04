@@ -3,34 +3,12 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
-import { apiFetch } from '@/lib/api-fetch';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem } from '@/types/buyer';
-
-interface BuyerReorderResponse {
-  has_history: boolean;
-  recent_orders: Array<{ id: string; order_number: string; placed_at: string; items: BuyerCatalogItem[] }>;
-  by_category: Array<{ category_id: string; category_name: string; items: BuyerCatalogItem[] }>;
-}
-
-function mergeReorderItems(data: BuyerReorderResponse): BuyerCatalogItem[] {
-  const map = new Map<string, BuyerCatalogItem>();
-  for (const o of data.recent_orders) {
-    for (const i of o.items) {
-      map.set(i.tenant_product_id, i);
-    }
-  }
-  for (const c of data.by_category) {
-    for (const i of c.items) {
-      map.set(i.tenant_product_id, i);
-    }
-  }
-  return Array.from(map.values());
-}
 
 function matchesQuery(item: BuyerCatalogItem, q: string): boolean {
   if (!q.trim()) return true;
@@ -54,9 +32,6 @@ export function BuyerSearchPageClient() {
 
   const [q, setQ] = React.useState(initialQ);
   const [debounced, setDebounced] = React.useState(initialQ.trim());
-  const [buyAgainPool, setBuyAgainPool] = React.useState<BuyerCatalogItem[] | null>(null);
-  const [buyAgainLoading, setBuyAgainLoading] = React.useState(scope === 'buy-again');
-  const [buyAgainError, setBuyAgainError] = React.useState(false);
   const searchEventKeyRef = React.useRef<string | null>(null);
 
   const catalogSearchQuery = useBuyerCatalogSearchInfinite(
@@ -66,7 +41,7 @@ export function BuyerSearchPageClient() {
       brandId: brandId || undefined,
       campaignId: catalogId || undefined,
     },
-    scope !== 'buy-again',
+    true,
   );
 
   const catalogPages = catalogSearchQuery.data?.pages ?? [];
@@ -77,11 +52,9 @@ export function BuyerSearchPageClient() {
   const catalogHasMore = catalogPages.at(-1)?.has_more ?? false;
   const catalogLoadingMore = catalogSearchQuery.isFetchingNextPage;
 
-  const sentinelIndex = scope === 'buy-again'
-    ? -1
-    : getSentinelInsertIndex(catalogItems.length, BUYER_INFINITE_SCROLL_RATIO);
+  const sentinelIndex = getSentinelInsertIndex(catalogItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
-    hasMore: scope !== 'buy-again' && catalogHasMore,
+    hasMore: catalogHasMore,
     isLoading: catalogLoadingMore,
     onLoadMore: () => { void catalogSearchQuery.fetchNextPage(); },
   });
@@ -91,45 +64,14 @@ export function BuyerSearchPageClient() {
     return () => clearTimeout(t);
   }, [q]);
 
-  React.useEffect(() => {
-    if (scope !== 'buy-again') {
-      setBuyAgainPool(null);
-      setBuyAgainLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setBuyAgainLoading(true);
-    setBuyAgainError(false);
-    apiFetch('/api/buyer/reorder')
-      .then((r) => r.json() as Promise<BuyerReorderResponse>)
-      .then((data) => {
-        if (cancelled) return;
-        setBuyAgainPool(mergeReorderItems(data));
-      })
-      .catch(() => {
-        if (!cancelled) setBuyAgainError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setBuyAgainLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scope]);
+  const shownItems = React.useMemo(
+    () => catalogItems.filter((item) => matchesQuery(item, q)),
+    [catalogItems, q],
+  );
 
-  const shownItems = React.useMemo(() => {
-    if (scope === 'buy-again') {
-      const pool = buyAgainPool ?? [];
-      return pool.filter((i) => matchesQuery(i, debounced));
-    }
-    return catalogItems.filter((item) => matchesQuery(item, q));
-  }, [scope, buyAgainPool, debounced, catalogItems, q]);
-
-  const loading = scope === 'buy-again'
-    ? buyAgainLoading
-    : catalogSearchQuery.isLoading && catalogItems.length === 0;
-  const error = scope === 'buy-again' ? buyAgainError : catalogSearchQuery.isError;
-  const refreshing = scope !== 'buy-again' && catalogSearchQuery.isFetching && catalogItems.length > 0;
+  const loading = catalogSearchQuery.isLoading && catalogItems.length === 0;
+  const error = catalogSearchQuery.isError;
+  const refreshing = catalogSearchQuery.isFetching && catalogItems.length > 0;
 
   React.useEffect(() => {
     if (!posthog || debounced.length === 0 || loading || refreshing) return;
@@ -141,7 +83,7 @@ export function BuyerSearchPageClient() {
       search_scope: scope,
       query_length: debounced.length,
       result_count: shownItems.length,
-      has_more: scope === 'buy-again' ? false : catalogHasMore,
+      has_more: catalogHasMore,
       status: error ? 'error' : 'success',
       has_category_filter: Boolean(categoryId),
       has_brand_filter: Boolean(brandId),
@@ -203,9 +145,9 @@ export function BuyerSearchPageClient() {
         ) : (
           <ProductGrid
             items={shownItems}
-            loadingMore={scope !== 'buy-again' && catalogLoadingMore}
-            sentinelIndex={scope !== 'buy-again' ? sentinelIndex : -1}
-            sentinelRef={scope !== 'buy-again' ? sentinelRef : undefined}
+            loadingMore={catalogLoadingMore}
+            sentinelIndex={sentinelIndex}
+            sentinelRef={sentinelRef}
           />
         )}
       </div>

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { EstimatesLandingClient } from '@/components/seller/estimates/EstimatesLandingClient';
 import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { TenantEstimatesResponse } from '@/types/tenant-estimates';
@@ -23,7 +24,15 @@ export default async function EstimatesLayout({ children }: { children: ReactNod
       listSlot={
         <SellerBootstrapBoundary<TenantEstimatesResponse>
           path={`/api/tenant/estimates?limit=500&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
-          fallback={<EstimatesLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/estimates"
+              ariaLabel="Loading estimates"
+              showTransactionTabs
+              variant="transaction"
+              expandedFallback={<EstimatesLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <EstimatesLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;

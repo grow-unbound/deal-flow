@@ -27,25 +27,37 @@ function storageKeyFor(kind: BuyerEntityChipNavProps['kind'], mode: ChipNavMode)
   return `buyer-chip-scroll:${kind}:${mode}`;
 }
 
+/**
+ * Restores chip-rail scroll from sessionStorage before paint (avoids jump-from-0),
+ * then smoothly centers the selected chip only when it isn't fully visible.
+ */
 function useChipScrollIntoView(
   kind: BuyerEntityChipNavProps['kind'],
   mode: ChipNavMode,
   selectedId: string | null,
-): React.RefObject<HTMLDivElement | null> {
+  chipCount: number,
+): {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  persistScrollNow: () => void;
+} {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const restoredRef = React.useRef(false);
 
+  // Restore saved offset synchronously before paint so remounts never flash at scrollLeft=0.
   React.useLayoutEffect(() => {
-    if (restoredRef.current || !containerRef.current || typeof window === 'undefined') return;
+    const node = containerRef.current;
+    if (!node || chipCount === 0 || typeof window === 'undefined') return;
+    if (restoredRef.current) return;
+
     const raw = window.sessionStorage.getItem(storageKeyFor(kind, mode));
     if (raw) {
       const scrollLeft = Number(raw);
       if (!Number.isNaN(scrollLeft)) {
-        containerRef.current.scrollLeft = scrollLeft;
+        node.scrollLeft = scrollLeft;
       }
     }
     restoredRef.current = true;
-  }, [kind, mode]);
+  }, [chipCount, kind, mode]);
 
   React.useEffect(() => {
     const node = containerRef.current;
@@ -55,13 +67,17 @@ function useChipScrollIntoView(
     };
     node.addEventListener('scroll', onScroll, { passive: true });
     return () => node.removeEventListener('scroll', onScroll);
-  }, [kind, mode]);
+  }, [chipCount, kind, mode]);
 
+  // Smooth recenter only when the selected chip is clipped — after restore, movement is minimal.
   React.useEffect(() => {
-    if (!selectedId || !containerRef.current) return;
-    const active = containerRef.current.querySelector<HTMLElement>(`[data-chip-id="${selectedId}"]`);
+    const node = containerRef.current;
+    if (!selectedId || !node || chipCount === 0) return;
+
+    const active = node.querySelector<HTMLElement>(`[data-chip-id="${selectedId}"]`);
     if (!active || typeof active.scrollIntoView !== 'function') return;
-    const containerRect = containerRef.current.getBoundingClientRect();
+
+    const containerRect = node.getBoundingClientRect();
     const activeRect = active.getBoundingClientRect();
     const fullyVisible =
       activeRect.left >= containerRect.left + 8
@@ -69,16 +85,29 @@ function useChipScrollIntoView(
     if (!fullyVisible) {
       active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     }
-  }, [selectedId]);
+  }, [chipCount, selectedId]);
 
-  return containerRef;
+  const persistScrollNow = React.useCallback(() => {
+    const node = containerRef.current;
+    if (!node || typeof window === 'undefined') return;
+    window.sessionStorage.setItem(storageKeyFor(kind, mode), String(node.scrollLeft));
+  }, [kind, mode]);
+
+  return { containerRef, persistScrollNow };
 }
 
 export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactNode {
   const router = useRouter();
-  const containerRef = useChipScrollIntoView(props.kind, props.mode, props.selectedId);
+  const chipCount = props.kind === 'category' ? props.categories.length : props.brands.length;
+  const { containerRef, persistScrollNow } = useChipScrollIntoView(
+    props.kind,
+    props.mode,
+    props.selectedId,
+    chipCount,
+  );
 
   function navigateTo(path: string, replace: boolean): void {
+    persistScrollNow();
     markBuyerNavigationForward();
     if (replace) {
       router.replace(path);
@@ -108,39 +137,40 @@ export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactN
   if (props.kind === 'category') {
     if (props.categories.length === 0) return null;
     return (
-      <div ref={containerRef}>
-        <CategoryFilterWithDataAttrs
-          categories={props.categories}
-          selected={props.selectedId}
-          onChange={handleCategoryChange}
-        />
-      </div>
+      <CategoryFilterWithDataAttrs
+        containerRef={containerRef}
+        categories={props.categories}
+        selected={props.selectedId}
+        onChange={handleCategoryChange}
+      />
     );
   }
 
   if (props.brands.length === 0) return null;
   return (
-    <div ref={containerRef}>
-      <BrandFilterWithDataAttrs
-        brands={props.brands}
-        selected={props.selectedId}
-        onChange={handleBrandChange}
-      />
-    </div>
+    <BrandFilterWithDataAttrs
+      containerRef={containerRef}
+      brands={props.brands}
+      selected={props.selectedId}
+      onChange={handleBrandChange}
+    />
   );
 }
 
 function CategoryFilterWithDataAttrs({
+  containerRef,
   categories,
   selected,
   onChange,
 }: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
   categories: BuyerCategory[];
   selected: string | null;
   onChange: (id: string | null) => void;
 }): React.ReactNode {
   return (
     <div
+      ref={containerRef}
       className="flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       aria-label="Filter by category"
     >
@@ -170,16 +200,19 @@ function CategoryFilterWithDataAttrs({
 }
 
 function BrandFilterWithDataAttrs({
+  containerRef,
   brands,
   selected,
   onChange,
 }: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
   brands: Array<{ id: string; name: string }>;
   selected: string | null;
   onChange: (id: string | null) => void;
 }): React.ReactNode {
   return (
     <div
+      ref={containerRef}
       className="flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       aria-label="Filter by brand"
     >

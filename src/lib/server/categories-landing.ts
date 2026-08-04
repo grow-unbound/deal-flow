@@ -4,6 +4,7 @@ import type {
   CategoryTableRow,
 } from '@/hooks/useCategories';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { r2Url } from '@/lib/r2-url';
 
 export interface CategoriesLandingFilters {
   search: string;
@@ -74,7 +75,7 @@ export async function getCategoriesLandingPayload(
   const categoriesQuery = db
     .schema('app')
     .from('tenant_categories')
-    .select('id, name, slug, is_active, deleted_at, created_at')
+    .select('id, name, slug, is_active, deleted_at, created_at, r2_image_thumb_key, r2_image_medium_key')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('name', { ascending: true });
@@ -126,6 +127,8 @@ export async function getCategoriesLandingPayload(
     is_active: boolean;
     deleted_at: string | null;
     created_at: string;
+    r2_image_thumb_key: string | null;
+    r2_image_medium_key: string | null;
   }>;
   const metricsByCategory = new Map(
     ((metricsRes.data ?? []) as CategoryMetricRow[]).map((row) => [row.tenant_category_id, row]),
@@ -139,6 +142,7 @@ export async function getCategoriesLandingPayload(
       name: cat.name,
       slug: cat.slug,
       initials: getInitials(cat.name),
+      image_url: r2Url(cat.r2_image_thumb_key) ?? r2Url(cat.r2_image_medium_key),
       is_active: cat.is_active,
       active_sku_count: Number(metric?.active_sku_count ?? 0),
       oos_sku_count: Number(metric?.oos_sku_count ?? 0),

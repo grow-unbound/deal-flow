@@ -20,7 +20,9 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
@@ -29,7 +31,7 @@ import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
@@ -37,20 +39,17 @@ const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
 
-function CategoriesDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function CategoriesDataSkeleton() {
   return (
-    <>
-      <div className="mt-5 grid grid-cols-4 gap-3">
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
         ))}
       </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-2 h-[320px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-    </>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
+    </div>
   );
 }
 
@@ -63,7 +62,7 @@ function CategoriesLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/categories');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
@@ -212,6 +211,11 @@ function CategoriesLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Categories' : 'Catalog'}
           title={isPaneOpen ? selectedOption.label : 'Categories'}
@@ -224,41 +228,42 @@ function CategoriesLandingContent({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`${filtered.length} categories`}
-              searchPlaceholder="Search category…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
-              sortOptions={SORT_OPTIONS}
-              onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`${filtered.length} categories`}
+          searchPlaceholder="Search category…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={groups}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
+          sortOptions={SORT_OPTIONS}
+          onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CategoriesDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+        ) : (
+          <CategoriesDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState
           heading="Couldn't load categories"
@@ -267,7 +272,11 @@ function CategoriesLandingContent({
       ) : (
         <>
           {showTableSkeleton ? (
-            <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} forceCompact={isPaneOpen} />
+            isPaneOpen ? (
+              <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+            ) : (
+              <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
+            )
           ) : (
           <LandingTable
           columns={[
@@ -302,9 +311,12 @@ function CategoriesLandingContent({
             mobileRows={visibleRows.map((row) => ({
               id: row.id,
               href: `/categories/${row.id}`,
+              leading: (
+                <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} imageUrl={row.image_url} size={32} />
+              ),
+              eyebrow: `${row.brand_count} brands`,
               primary: row.name,
-              supporting: `${row.brand_count} brands`,
-              meta: `${formatNumberValue(row.active_sku_count, 'COUNT')} products`,
+              supporting: `${formatNumberValue(row.active_sku_count, 'COUNT')} products`,
               trailing: row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—',
               selected: row.id === openId,
             }))}
@@ -324,27 +336,27 @@ function CategoriesLandingContent({
                 onClick={() => router.push(`/categories/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
-                <td className="px-3 py-2">
+                <td className="px-3 py-3">
                   <div className="flex items-center gap-3">
-                    <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
+                    <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} imageUrl={row.image_url} size={38} />
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.brand_count}
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </td>
-                <td className="px-3 py-2 text-right text-medium text-cream-700">
+                <td className="px-3 py-3 text-right text-medium text-cream-700">
                   {formatNumberValue(row.active_sku_count, 'COUNT')}
                 </td>
-                <td className="px-3 py-2 text-right text-medium text-cream-700">
+                <td className="px-3 py-3 text-right text-medium text-cream-700">
                   {row.oos_sku_count > 0 ? formatNumberValue(row.oos_sku_count, 'COUNT') : '—'}
                 </td>
-                <td className="px-3 py-2 text-right text-cream-400">
+                <td className="px-3 py-3 text-right text-cream-400">
                   <ChevronRight size={16} />
                 </td>
               </tr>

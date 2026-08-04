@@ -274,6 +274,7 @@ export function mapSalesOrderDetailToComposerLines(detail: SalesOrderDetail): Es
     brand_name: line.brand,
     brand_initials: line.brand_initials || initialsForBrand(line.brand),
     brand_hue: line.brand_hue ?? brandHueFromIndex(index),
+    image_url: line.image_url ?? null,
     hsn_code: line.hsn_code,
     on_hand: line.on_hand,
     qty: line.qty,

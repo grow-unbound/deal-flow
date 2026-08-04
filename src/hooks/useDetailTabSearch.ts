@@ -38,6 +38,7 @@ export interface BrandProductDetailRow {
   tenant_product_id: string; product_name: string; sku: string; category_name: string;
   mrp: number | null; base_selling_price: number | null; cost_price: number | null;
   on_hand: number; days_cover: number; units_mtd: number; gmv_mtd: number; growth_pct: number;
+  image_url: string | null;
 }
 
 export function useBrandProductsDetail(id: string, filters: DetailFilters) {

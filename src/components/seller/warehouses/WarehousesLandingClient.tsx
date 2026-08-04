@@ -19,6 +19,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding } from '@/hooks/useWarehouses';
 import { cn, formatDate, formatNumberValue } from '@/lib/utils';
@@ -27,6 +28,7 @@ import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteSc
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { WarehousesLandingResponse, WarehouseStockStatus } from '@/types/tenant-warehouses';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 
 type SortOption = 'Tracked SKUs (high → low)' | 'Sellable units (high → low)' | 'Idle stock SKUs (high → low)';
@@ -38,6 +40,20 @@ const SORT_OPTIONS: SortOption[] = [
   'Sellable units (high → low)',
   'Idle stock SKUs (high → low)',
 ];
+
+function WarehousesDataSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} />
+    </div>
+  );
+}
 
 function stockTone(status: WarehouseStockStatus): 'success' | 'warning' | 'danger' {
   if (status === 'out_of_stock') return 'danger';
@@ -60,7 +76,7 @@ export function WarehousesLandingClient({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/warehouses');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('warehouses-in-operation');
@@ -201,6 +217,11 @@ export function WarehousesLandingClient({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Warehouses' : 'Inventory'}
           title={isPaneOpen ? selectedOption.label : 'Warehouses'}
@@ -213,41 +234,54 @@ export function WarehousesLandingClient({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`${filtered.length} warehouses`}
-              searchPlaceholder="Search warehouse…"
-              chips={[]}
-              activeChip=""
-              sortBy={routeState.sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={groups}
-              searchValue={routeState.search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={[...SORT_OPTIONS]}
-              onSortChange={(value) => setRouteState((current) => ({ ...current, sortBy: value as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`${filtered.length} warehouses`}
+          searchPlaceholder="Search warehouse…"
+          chips={[]}
+          activeChip=""
+          sortBy={routeState.sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={groups}
+          searchValue={routeState.search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          sortOptions={[...SORT_OPTIONS]}
+          onSortChange={(value) => setRouteState((current) => ({ ...current, sortBy: value as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} forceCompact={isPaneOpen} />
+      {showRefreshingState ? (
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <WarehousesDataSkeleton />
+        )
+      ) : isError ? (
+        <ErrorState
+          heading="Couldn't load warehouses"
+          description="There was a problem fetching your warehouses. Please try again."
+          onRetry={() => refetch()}
+        />
+      ) : showTableSkeleton ? (
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} />
+        )
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Package2 size={28} strokeWidth={1.5} />}
@@ -276,9 +310,9 @@ export function WarehousesLandingClient({
           mobileRows={filtered.map((row) => ({
             id: row.id,
             href: `/warehouses/${row.id}`,
-            primary: `${row.name}${row.is_default ? ' · Default' : ''}`,
-            supporting: [row.city, row.state].filter(Boolean).join(', ') || '—',
-            meta: `${row.tracked_skus} tracked SKUs`,
+            eyebrow: [row.city, row.state].filter(Boolean).join(', ') || '—',
+            primary: row.name,
+            supporting: `${row.tracked_skus} tracked SKUs`,
             trailing: `${formatNumberValue(row.sellable_units, 'COUNT')} units`,
             selected: row.id === openId,
           }))}
@@ -298,7 +332,7 @@ export function WarehousesLandingClient({
                 row.id === openId ? 'bg-ember-50' : 'bg-white',
               )}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="flex items-center gap-3">
                   <EntityAvatar size={38} initials={row.initials} hue="teal" />
                   <div className="min-w-0">
@@ -312,12 +346,12 @@ export function WarehousesLandingClient({
                   </div>
                 </div>
               </td>
-              <td className="px-3 py-2 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
-              <td className="px-3 py-2 text-right text-cream-500">
+              <td className="px-3 py-3 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
+              <td className="px-3 py-3 text-right text-cream-500">
                 <ChevronRight size={14} className="text-cream-400" />
               </td>
             </tr>

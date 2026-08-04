@@ -20,6 +20,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
@@ -28,7 +29,8 @@ import { cn, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 
 type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Campaign age (most recent)';
 
@@ -60,10 +62,7 @@ const InviteUserDialog = dynamic(
   () => import('@/components/seller/InviteUserDialog').then((mod) => mod.InviteUserDialog),
 );
 
-function BrandLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function BrandLandingDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -72,7 +71,7 @@ function BrandLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
-      <Skeleton className="h-[28rem] rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} />
     </div>
   );
 }
@@ -120,7 +119,7 @@ function BrandLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/brands');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
@@ -280,6 +279,11 @@ function BrandLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Brands' : 'Portfolio'}
           title={isPaneOpen ? selectedOption.label : 'Brands'}
@@ -292,68 +296,73 @@ function BrandLandingContent({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`${filtered.length} brands`}
-              searchPlaceholder="Search brand or category…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={[
-                {
-                  key: 'categories',
-                  label: 'Categories',
-                  options: categoryOptions.map((value) => ({ value, label: value })),
-                  values: filters.categories,
-                  onChange: (values) => setRouteState((current) => ({
-                    ...current,
-                    filters: { ...(current.filters ?? filters), categories: values, cohorts: current.filters?.cohorts ?? filters.cohorts },
-                  })),
-                },
-                {
-                  key: 'cohorts',
-                  label: 'Customer Groups',
-                  options: cohortOptions,
-                  values: filters.cohorts,
-                  onChange: (values) => setRouteState((current) => ({
-                    ...current,
-                    filters: { ...(current.filters ?? filters), categories: current.filters?.categories ?? filters.categories, cohorts: values },
-                  })),
-                },
-              ]}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={[...SORT_OPTIONS]}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`${filtered.length} brands`}
+          searchPlaceholder="Search brand or category…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={[
+            {
+              key: 'categories',
+              label: 'Categories',
+              options: categoryOptions.map((value) => ({ value, label: value })),
+              values: filters.categories,
+              onChange: (values) => setRouteState((current) => ({
+                ...current,
+                filters: { ...(current.filters ?? filters), categories: values, cohorts: current.filters?.cohorts ?? filters.cohorts },
+              })),
+            },
+            {
+              key: 'cohorts',
+              label: 'Customer Groups',
+              options: cohortOptions,
+              values: filters.cohorts,
+              onChange: (values) => setRouteState((current) => ({
+                ...current,
+                filters: { ...(current.filters ?? filters), categories: current.filters?.categories ?? filters.categories, cohorts: values },
+              })),
+            },
+          ]}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          sortOptions={[...SORT_OPTIONS]}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <BrandLandingDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+        ) : (
+          <BrandLandingDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} forceCompact={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+        ) : (
+          <LandingTableRowsSkeleton columns={6} tableMinWidth={1400} />
+        )
       ) : (
       <LandingTable
         showEmptyState={filtered.length === 0 && !isLoading}
@@ -393,9 +402,12 @@ function BrandLandingContent({
         mobileRows={visibleRows.map((brand) => ({
           id: brand.id,
           href: `/brands/${brand.id}`,
+          leading: (
+            <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={32} />
+          ),
+          eyebrow: brand.category,
           primary: brand.name,
-          supporting: `${brand.skus} SKUs · ${brand.category}`,
-          meta: brand.catalogName ?? 'No published campaign',
+          supporting: joinSplitListMeta(`${brand.skus} SKUs`, brand.catalogName ?? 'No published campaign'),
           trailing: formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD'),
           selected: brand.id === openId,
         }))}
@@ -415,7 +427,7 @@ function BrandLandingContent({
             onClick={() => router.push(`/brands/${brand.id}`)}
             onPointerDown={() => triggerHaptic()}
           >
-            <td className="px-3 py-2 text-base text-cream-900">
+            <td className="px-3 py-3 text-base text-cream-900">
               <div className="ent flex items-center gap-3">
                 <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={38} />
                 <div className="min-w-0">
@@ -424,10 +436,10 @@ function BrandLandingContent({
                 </div>
               </div>
             </td>
-            <td className="px-3 py-2 text-right text-base text-cream-900">
+            <td className="px-3 py-3 text-right text-base text-cream-900">
               <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatNumberValue(brand.gmv, 'CURRENCY_THRESHOLD')}</span>
             </td>
-            <td className="px-3 py-2 text-right text-base text-cream-900">
+            <td className="px-3 py-3 text-right text-base text-cream-900">
               <div className="mb-1 h-[5px] w-[184px] overflow-hidden rounded-full bg-cream-200">
                 <div
                   className={`h-[5px] rounded-full ${brand.hue === 'ember' ? 'bg-ember-400' : brand.hue === 'cream' ? 'bg-cream-600' : 'bg-teal-500'}`}
@@ -436,13 +448,13 @@ function BrandLandingContent({
               </div>
               <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatNumberValue(portfolioGmv, 'CURRENCY_THRESHOLD')}</p>
             </td>
-            <td className="px-3 py-2 text-right font-mono text-base text-cream-900 tabular-nums">
+            <td className="px-3 py-3 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>
             </td>
-            <td className="px-3 py-2 text-base text-cream-900">
+            <td className="px-3 py-3 text-base text-cream-900">
               <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published campaign'}</p>
             </td>
-            <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
+            <td className="chev px-3 py-3 pr-4 text-right text-md text-cream-500">›</td>
           </tr>
           </Fragment>
         ))}
