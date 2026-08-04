@@ -8,7 +8,7 @@ const migrationSql = fs.readFileSync(
 );
 
 const runtimeFiles = [
-  'app/api/tenant/customers/summary/route.ts',
+  'app/api/tenant/customers/metrics/route.ts',
   'src/lib/server/cohort-composer.ts',
   'src/lib/server/seller-dashboard.ts',
 ];

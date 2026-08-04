@@ -26,6 +26,11 @@ export interface BuyerDetailShellProps {
   showLocationControl?: boolean;
   /** Hide the search icon in the header row. */
   hideSearch?: boolean;
+  /**
+   * Fallback when the tab has no stacked history (`history.state.idx` missing/0).
+   * Catalog tree details should pass `/buy/catalog` — default is buyer home.
+   */
+  backFallbackHref?: string;
   children: React.ReactNode;
 }
 
@@ -38,13 +43,14 @@ export function BuyerDetailShell({
   stickyToolbar,
   showLocationControl = false,
   hideSearch = false,
+  backFallbackHref,
   children,
 }: BuyerDetailShellProps) {
   const router = useRouter();
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
 
   function handleBack(): void {
-    navigateBuyerBack(router);
+    navigateBuyerBack(router, backFallbackHref);
   }
 
   return (

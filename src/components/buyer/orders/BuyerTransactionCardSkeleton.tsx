@@ -6,7 +6,7 @@ export function BuyerTransactionCardSkeleton({ count = 3 }: { count?: number }) 
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="h-[88px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100 px-3.5 py-3"
+          className="min-h-[88px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100 px-3.5 py-3"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-2">

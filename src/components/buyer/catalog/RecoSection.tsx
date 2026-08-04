@@ -8,7 +8,7 @@ import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { RecoCarousel } from '@/components/buyer/catalog/RecoCarousel';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
 import { BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
-import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -17,10 +17,16 @@ interface RecoSectionProps {
   widget: string;
   items: BuyerCatalogItem[];
   sourceProductId?: string;
-  /** When true, render the section header even with no items (placeholder body). */
+  /** @deprecated Empty sections always hide after load; use isLoading for skeleton. */
   alwaysShow?: boolean;
+  /** Independent loading — keep title visible, skeleton body only. */
+  isLoading?: boolean;
   href?: string;
   linkLabel?: string;
+  /** Override BuyerSectionRow horizontal padding (default px-4). */
+  sectionClassName?: string;
+  /** Override horizontal scroll gutter (default gap-3 px-4). */
+  scrollClassName?: string;
 }
 
 export function RecoSection({
@@ -28,59 +34,65 @@ export function RecoSection({
   widget,
   items,
   sourceProductId,
-  alwaysShow = false,
+  alwaysShow: _alwaysShow = false,
+  isLoading = false,
   href,
   linkLabel,
+  sectionClassName = 'px-4 pb-3',
+  scrollClassName = 'gap-3 px-4',
 }: RecoSectionProps): React.ReactNode {
   const posthog = usePostHog();
   const firedKey = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     const impressionKey = `${widget}:${sourceProductId ?? ''}:${items.length}`;
-    if (items.length === 0 || firedKey.current === impressionKey) return;
+    if (isLoading || items.length === 0 || firedKey.current === impressionKey) return;
     firedKey.current = impressionKey;
     posthog?.capture('reco_widget_shown', {
       widget,
       product_id: sourceProductId,
       result_count: items.length,
     });
-  }, [posthog, widget, sourceProductId, items.length]);
+  }, [posthog, widget, sourceProductId, items.length, isLoading]);
 
-  if (items.length === 0 && !alwaysShow) return null;
+  // Hide after settle when empty (home bestsellers pattern). Loading keeps title + skeleton.
+  if (!isLoading && items.length === 0) return null;
 
   return (
     <div className="pb-4">
-      <BuyerSectionRow title={title} href={href} linkLabel={linkLabel} />
-      {items.length > 0 ? (
-        <RecoWidgetProvider value={{ widget, sourceProductId }}>
-          <RecoCarousel items={items} />
-        </RecoWidgetProvider>
+      <BuyerSectionRow title={title} href={href} linkLabel={linkLabel} className={sectionClassName} />
+      {isLoading ? (
+        <RecoSectionSkeleton scrollClassName={scrollClassName} />
       ) : (
-        <RecoSectionSkeleton />
+        <RecoWidgetProvider value={{ widget, sourceProductId }}>
+          <RecoCarousel items={items} scrollClassName={scrollClassName} />
+        </RecoWidgetProvider>
       )}
     </div>
   );
 }
 
-function RecoSectionSkeleton(): React.ReactNode {
+export function RecoSectionSkeleton({
+  scrollClassName = 'gap-3 px-4',
+}: {
+  scrollClassName?: string;
+}): React.ReactNode {
   return (
-    <BuyerHorizontalScroll className="gap-3 px-4">
+    <BuyerHorizontalScroll className={scrollClassName}>
       {Array.from({ length: 3 }).map((_, index) => (
         <div
           key={index}
           className={cn(
             BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
             BUYER_CARD_RADIUS_CLASS,
-            'shrink-0 overflow-hidden border border-cream-200 bg-white',
+            'shrink-0 overflow-hidden border border-cream-200 bg-cream-50',
           )}
         >
-          <div className="aspect-[0.92] animate-pulse bg-cream-100" />
-          <div className="space-y-2.5 px-4 py-4">
-            <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-4/5 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-3/5 animate-pulse rounded bg-cream-200" />
-            <div className="h-5 w-24 animate-pulse rounded bg-cream-200" />
-            <div className="h-10 w-full animate-pulse rounded-xl bg-cream-100" />
+          <div className="aspect-square animate-pulse bg-cream-100" />
+          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+            <div className={`${BUYER_TWO_LINE_TITLE_CLASS} animate-pulse rounded bg-cream-200`} />
+            <div className="mt-0.5 h-3.5 w-2/5 animate-pulse rounded bg-cream-200" />
+            <div className="mt-2 h-5 w-24 animate-pulse rounded bg-cream-200" />
           </div>
         </div>
       ))}

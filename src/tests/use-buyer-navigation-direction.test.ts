@@ -51,4 +51,21 @@ describe('navigateBuyerBack', () => {
     expect(router.replace).toHaveBeenCalledWith('/buy/home');
     expect(window.sessionStorage.getItem('df_buyer_nav_direction')).toBe('back');
   });
+
+  it('uses an explicit fallback when provided (catalog tree details)', () => {
+    const router = {
+      back: vi.fn(),
+      replace: vi.fn(),
+    };
+
+    Object.defineProperty(window.history, 'state', {
+      configurable: true,
+      value: { idx: 0 },
+    });
+
+    navigateBuyerBack(router, '/buy/catalog');
+
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/buy/catalog');
+  });
 });

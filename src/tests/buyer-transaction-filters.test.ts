@@ -51,6 +51,15 @@ describe('buyer transaction status chips', () => {
       { status: 'sent', due_date: '2020-01-01', outstanding_balance: 100 },
       'Overdue',
     )).toBe(true);
+    // Due includes overdue open balances (Outstanding KPI deep-link).
+    expect(matchesInvoiceStatusChip(
+      { status: 'overdue', due_date: '2020-01-01', outstanding_balance: 100 },
+      'Due',
+    )).toBe(true);
+    expect(matchesInvoiceStatusChip(
+      { status: 'paid', due_date: null, outstanding_balance: 0 },
+      'Due',
+    )).toBe(false);
     expect(matchesInvoiceStatusChip(
       { status: 'paid', due_date: null, outstanding_balance: 0 },
       'Paid',

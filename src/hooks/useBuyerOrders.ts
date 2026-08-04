@@ -24,7 +24,7 @@ export interface BuyerOrdersPage {
   seller_preview?: boolean;
 }
 
-export function useBuyerOrdersInfinite() {
+export function useBuyerOrdersInfinite(options?: { enabled?: boolean }) {
   return useInfiniteQuery({
     queryKey: ['buyer-orders-infinite'],
     queryFn: async ({ pageParam }): Promise<BuyerOrdersPage> => {
@@ -42,5 +42,6 @@ export function useBuyerOrdersInfinite() {
     placeholderData: keepPreviousData,
     staleTime: BUYER_QUERY_STALE_TIME,
     gcTime: BUYER_QUERY_GC_TIME,
+    enabled: options?.enabled ?? true,
   });
 }
