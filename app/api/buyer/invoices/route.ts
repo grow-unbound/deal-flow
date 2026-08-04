@@ -109,7 +109,11 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
     const invoices: BuyerInvoice[] = rows.map((inv) => ({
       id: inv.id,
       invoice_number: inv.invoice_number,
-      status: effectiveInvoiceStatus({ status: inv.status, due_date: inv.due_date }),
+      status: effectiveInvoiceStatus({
+        status: inv.status,
+        due_date: inv.due_date,
+        outstanding_balance: inv.outstanding_balance != null ? Number(inv.outstanding_balance) : null,
+      }),
       total_amount: Number(inv.total_amount ?? 0),
       outstanding_balance: inv.outstanding_balance != null ? Number(inv.outstanding_balance) : null,
       invoice_date: inv.invoice_date,

@@ -1,36 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireBuyerAccessProfileMock = vi.fn();
-const loadBuyerActivityFeedMock = vi.fn();
-const getVisibleBuyerCatalogsMock = vi.fn();
-const assembleBuyerCatalogItemsForProductIdsMock = vi.fn();
+const loadBuyerHomePromotionsMock = vi.fn();
+const loadBuyerHomeRecoMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
-const campaignItemsSelectMock = vi.fn();
-const campaignItemsTenantEqMock = vi.fn();
-const campaignItemsInMock = vi.fn();
-const campaignItemsIsMock = vi.fn();
-const orderItemsSelectMock = vi.fn();
-const orderItemsTenantEqMock = vi.fn();
-const orderItemsBuyerEqMock = vi.fn();
-const orderItemsInMock = vi.fn();
-const orderItemsIsMock = vi.fn();
-const invoiceItemsSelectMock = vi.fn();
-const invoiceItemsTenantEqMock = vi.fn();
-const invoiceItemsBuyerEqMock = vi.fn();
-const invoiceItemsInMock = vi.fn();
-const invoiceItemsIsMock = vi.fn();
+const getBuyerHomeMetricsRpcMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
-  getVisibleBuyerCatalogs: (...args: unknown[]) => getVisibleBuyerCatalogsMock(...args),
 }));
 
-vi.mock('@/lib/server/buyer-activity', () => ({
-  loadBuyerActivityFeed: (...args: unknown[]) => loadBuyerActivityFeedMock(...args),
+vi.mock('@/lib/server/buyer-home-promotions', () => ({
+  loadBuyerHomePromotions: (...args: unknown[]) => loadBuyerHomePromotionsMock(...args),
 }));
 
-vi.mock('@/lib/server/buyer-assemble-catalog-items', () => ({
-  assembleBuyerCatalogItemsForProductIds: (...args: unknown[]) => assembleBuyerCatalogItemsForProductIdsMock(...args),
+vi.mock('@/lib/server/buyer-home-reco', () => ({
+  loadBuyerHomeReco: (...args: unknown[]) => loadBuyerHomeRecoMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-app-activity', () => ({
@@ -40,300 +25,69 @@ vi.mock('@/lib/server/buyer-app-activity', () => ({
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn((schemaName: string) => ({
-      rpc: vi.fn((fnName: string) => {
-        if (schemaName === 'app' && fnName === 'reco_get_home') {
-          return Promise.resolve({ data: null, error: null });
+      rpc: (...args: unknown[]) => {
+        if (schemaName === 'app' && args[0] === 'get_buyer_home_metrics_v4') {
+          return getBuyerHomeMetricsRpcMock(...args);
         }
-
-        throw new Error(`Unexpected rpc: ${schemaName}.${fnName}`);
-      }),
-      from: vi.fn((tableName: string) => {
-        if (schemaName === 'app' && tableName === 'metrics_buyer_snapshot') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  is: vi.fn(() => ({
-                    maybeSingle: vi.fn(async () => ({
-                      data: {
-                        receivable_amount: 8000,
-                        overdue_amount: 5000,
-                        oldest_due_at: '2026-06-22',
-                        credit_limit: 50000,
-                        credit_available: 42000,
-                      },
-                      error: null,
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'orders') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  is: vi.fn(() => ({
-                    order: vi.fn(() => ({
-                      limit: vi.fn(async () => ({
-                        data: [{ id: 'ord-1', status: 'received', placed_at: '2026-06-10T00:00:00.000Z' }],
-                        error: null,
-                      })),
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'invoices') {
-          return {
-            select: vi.fn((selection: string) => {
-              const invoiceRows = selection.includes('status')
-                ? [
-                    {
-                      id: 'inv-1',
-                      invoice_date: '2026-07-10T00:00:00.000Z',
-                      total_amount: 10000,
-                      outstanding_balance: 3000,
-                      due_date: '2026-06-22',
-                      status: 'sent',
-                    },
-                    {
-                      id: 'inv-2',
-                      invoice_date: '2026-06-10T00:00:00.000Z',
-                      total_amount: 8000,
-                      outstanding_balance: 5000,
-                      due_date: '2026-06-25',
-                      status: 'void',
-                    },
-                    {
-                      id: 'inv-3',
-                      invoice_date: '2026-01-15T00:00:00.000Z',
-                      total_amount: 27000,
-                      outstanding_balance: 0,
-                      due_date: '2026-02-15',
-                      status: 'paid',
-                    },
-                  ]
-                : [];
-
-              return {
-                eq: vi.fn(() => ({
-                  eq: vi.fn(() => ({
-                    is: vi.fn(() => ({
-                      order: vi.fn(() => ({
-                        limit: vi.fn(async () => ({
-                          data: invoiceRows,
-                          error: null,
-                        })),
-                      })),
-                      gte: vi.fn(() => ({
-                        lt: vi.fn(async () => ({
-                          data: invoiceRows,
-                          error: null,
-                        })),
-                      })),
-                    })),
-                  })),
-                })),
-              };
-            }),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'order_items') {
-          return {
-            select: orderItemsSelectMock.mockImplementation(() => ({
-              eq: orderItemsTenantEqMock.mockImplementation(() => ({
-                eq: orderItemsBuyerEqMock.mockImplementation(() => ({
-                  in: orderItemsInMock.mockImplementation(() => ({
-                    is: orderItemsIsMock.mockImplementation(async () => ({
-                      data: [{ order_id: 'ord-1', tenant_product_id: 'tp-1' }],
-                      error: null,
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'invoice_items') {
-          return {
-            select: invoiceItemsSelectMock.mockImplementation(() => ({
-              eq: invoiceItemsTenantEqMock.mockImplementation(() => ({
-                eq: invoiceItemsBuyerEqMock.mockImplementation(() => ({
-                  in: invoiceItemsInMock.mockImplementation(() => ({
-                    is: invoiceItemsIsMock.mockImplementation(async () => ({
-                      data: [{ invoice_id: 'inv-1', tenant_product_id: 'tp-1' }],
-                      error: null,
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'estimate_items') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => ({
-                    is: vi.fn(async () => ({
-                      data: [],
-                      error: null,
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'estimates') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  is: vi.fn(() => ({
-                    is: vi.fn(() => ({
-                      is: vi.fn(() => ({
-                        order: vi.fn(() => ({
-                          limit: vi.fn(async () => ({
-                            data: [],
-                            error: null,
-                          })),
-                        })),
-                      })),
-                    })),
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'campaign_items') {
-          return {
-            select: campaignItemsSelectMock.mockImplementation(() => ({
-              eq: campaignItemsTenantEqMock.mockImplementation(() => ({
-                in: campaignItemsInMock.mockImplementation(() => ({
-                  is: campaignItemsIsMock.mockImplementation(async () => ({
-                    data: [{ campaign_id: 'promo-1' }],
-                    error: null,
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'buyers') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  maybeSingle: vi.fn(async () => ({
-                    data: { default_cohort_id: null },
-                    error: null,
-                  })),
-                })),
-              })),
-            })),
-          };
-        }
-
-        if (schemaName === 'app' && tableName === 'cohort_members') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(async () => ({
-                data: [],
-                error: null,
-              })),
-            })),
-          };
-        }
-
-        throw new Error(`Unexpected query: ${schemaName}.${tableName}`);
-      }),
+        throw new Error(`Unexpected rpc: ${schemaName}.${String(args[0])}`);
+      },
     })),
   },
 }));
 
-describe('buyer home route', () => {
+describe('buyer home metrics route', () => {
   beforeEach(() => {
     requireBuyerAccessProfileMock.mockReset();
-    loadBuyerActivityFeedMock.mockReset();
-    getVisibleBuyerCatalogsMock.mockReset();
-    assembleBuyerCatalogItemsForProductIdsMock.mockReset();
     recordBuyerAppActivitySafeMock.mockReset();
-    campaignItemsSelectMock.mockReset();
-    campaignItemsTenantEqMock.mockReset();
-    campaignItemsInMock.mockReset();
-    campaignItemsIsMock.mockReset();
-    orderItemsSelectMock.mockReset();
-    orderItemsTenantEqMock.mockReset();
-    orderItemsBuyerEqMock.mockReset();
-    orderItemsInMock.mockReset();
-    orderItemsIsMock.mockReset();
-    invoiceItemsSelectMock.mockReset();
-    invoiceItemsTenantEqMock.mockReset();
-    invoiceItemsBuyerEqMock.mockReset();
-    invoiceItemsInMock.mockReset();
-    invoiceItemsIsMock.mockReset();
+    getBuyerHomeMetricsRpcMock.mockReset();
   });
 
-  it('returns the new dashboard aggregate shape and scopes second-hop lookups', async () => {
+  it('returns V4 metrics as-is from get_buyer_home_metrics_v4', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue({
       context: { tenant_id: 'tenant-1', mode: 'buyer' },
       buyer: { id: 'buyer-1', business_name: 'Rajan Stores', contact_name: 'Rajan', credit_limit: 50000 },
       greeting_name: 'Rajan',
     });
-    loadBuyerActivityFeedMock.mockResolvedValue({ items: [{ id: 'order:1' }], next_cursor: 'next' });
-    getVisibleBuyerCatalogsMock.mockResolvedValue([
-      { id: 'promo-1', name: 'June Promo', share_token: 'tok', valid_to: null, hero_image_url: null },
-    ]);
-    assembleBuyerCatalogItemsForProductIdsMock.mockResolvedValue(new Map([
-      ['tp-1', { tenant_product_id: 'tp-1', display_name: 'Bullet Camera', image_urls: [], price: 900 }],
-    ]));
-
-    const { GET } = await import('../../app/api/buyer/home/route');
-    const request = Object.assign(new Request('http://localhost/api/buyer/home'), {
-      nextUrl: new URL('http://localhost/api/buyer/home'),
+    getBuyerHomeMetricsRpcMock.mockResolvedValue({
+      data: {
+        period: {
+          period_key: 'this_quarter',
+          grain: 'quarter',
+          period_start: '2026-07-01',
+          period_end_exclusive: '2026-10-01',
+        },
+        spend_qtd: 12500,
+        invoice_count_qtd: 4,
+        demand_qtd: 8200,
+        demand_document_count_qtd: 2,
+        demand_kind: 'orders',
+        credit_limit: 50000,
+        outstanding: 8000,
+        overdue: 5000,
+        available_credit: 42000,
+        computed_at: '2026-08-04T06:30:00.000Z',
+      },
+      error: null,
     });
-    const response = await GET(request as any);
+
+    const { GET } = await import('../../app/api/buyer/home/metrics/route');
+    const request = Object.assign(new Request('http://localhost/api/buyer/home/metrics'), {
+      nextUrl: new URL('http://localhost/api/buyer/home/metrics'),
+    });
+    const response = await GET(request as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.greeting_name).toBe('Rajan');
-    expect(body.summary_card.invoice_count_ytd).toBe(3);
-    expect(body.summary_card.gmv_ytd).toBe(45000);
-    expect(body.open_orders_count).toBe(1);
-    expect(body.dues_card.outstanding_dues).toBe(8000);
-    expect(body.dues_card.open_invoice_count).toBe(1);
-    expect(body.dues_card.earliest_due_date).toBe('2026-06-22');
-    expect(body.credit_card.available_credit).toBe(42000);
-    expect(body.latest_promotions_preview[0].name).toBe('June Promo');
-    expect(body.order_again_preview[0].display_name).toBe('Bullet Camera');
-    expect(body.recent_activity.items).toHaveLength(1);
-    expect(campaignItemsSelectMock).toHaveBeenCalledWith('campaign_id, campaigns!inner(tenant_id)');
-    expect(campaignItemsTenantEqMock).toHaveBeenCalledWith('campaigns.tenant_id', 'tenant-1');
-    expect(campaignItemsInMock).toHaveBeenCalledWith('campaign_id', ['promo-1']);
-    expect(orderItemsSelectMock).toHaveBeenCalledWith('order_id, tenant_product_id, orders!inner(tenant_id, buyer_id)');
-    expect(orderItemsTenantEqMock).toHaveBeenCalledWith('orders.tenant_id', 'tenant-1');
-    expect(orderItemsBuyerEqMock).toHaveBeenCalledWith('orders.buyer_id', 'buyer-1');
-    expect(orderItemsInMock).toHaveBeenCalledWith('order_id', ['ord-1']);
-    expect(invoiceItemsSelectMock).toHaveBeenCalledWith('invoice_id, tenant_product_id, invoices!inner(tenant_id, buyer_id)');
-    expect(invoiceItemsTenantEqMock).toHaveBeenCalledWith('invoices.tenant_id', 'tenant-1');
-    expect(invoiceItemsBuyerEqMock).toHaveBeenCalledWith('invoices.buyer_id', 'buyer-1');
-    expect(invoiceItemsInMock).toHaveBeenCalledWith('invoice_id', ['inv-1', 'inv-2', 'inv-3']);
+    expect(body.spend_qtd).toBe(12500);
+    expect(body.invoice_count_qtd).toBe(4);
+    expect(body.demand_kind).toBe('orders');
+    expect(body.outstanding).toBe(8000);
+    expect(body.available_credit).toBe(42000);
+    expect(getBuyerHomeMetricsRpcMock).toHaveBeenCalledWith('get_buyer_home_metrics_v4', {
+      p_tenant_id: 'tenant-1',
+      p_buyer_id: 'buyer-1',
+      p_as_of: expect.any(String),
+    });
     expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -342,5 +96,64 @@ describe('buyer home route', () => {
         eventName: 'home_viewed',
       }),
     );
+  });
+});
+
+describe('buyer home promotions route', () => {
+  beforeEach(() => {
+    requireBuyerAccessProfileMock.mockReset();
+    loadBuyerHomePromotionsMock.mockReset();
+  });
+
+  it('returns promotions preview payload', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: { tenant_id: 'tenant-1', mode: 'buyer' },
+      buyer: { id: 'buyer-1' },
+    });
+    loadBuyerHomePromotionsMock.mockResolvedValue({
+      latest_promotions_preview: [
+        { id: 'promo-1', name: 'June Promo', product_count: 1, share_token: 'tok', valid_until: null, hero_image_url: null },
+      ],
+    });
+
+    const { GET } = await import('../../app/api/buyer/home/promotions/route');
+    const request = Object.assign(new Request('http://localhost/api/buyer/home/promotions'), {
+      nextUrl: new URL('http://localhost/api/buyer/home/promotions'),
+    });
+    const response = await GET(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.latest_promotions_preview[0].name).toBe('June Promo');
+    expect(loadBuyerHomePromotionsMock).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'buyer-1');
+  });
+});
+
+describe('buyer home reco route', () => {
+  beforeEach(() => {
+    requireBuyerAccessProfileMock.mockReset();
+    loadBuyerHomeRecoMock.mockReset();
+  });
+
+  it('returns order again and bestsellers preview payload', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: { tenant_id: 'tenant-1', mode: 'buyer' },
+      buyer: { id: 'buyer-1' },
+    });
+    loadBuyerHomeRecoMock.mockResolvedValue({
+      order_again_preview: [{ tenant_product_id: 'tp-1', display_name: 'Bullet Camera', image_urls: [], price: 900 }],
+      bestsellers: [],
+    });
+
+    const { GET } = await import('../../app/api/buyer/home/reco/route');
+    const request = Object.assign(new Request('http://localhost/api/buyer/home/reco'), {
+      nextUrl: new URL('http://localhost/api/buyer/home/reco'),
+    });
+    const response = await GET(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.order_again_preview[0].display_name).toBe('Bullet Camera');
+    expect(loadBuyerHomeRecoMock).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'buyer-1');
   });
 });

@@ -21,6 +21,13 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    tenantProfile: { role: 'seller_admin' },
+    currentTenantId: 'tenant-1',
+  }),
+}));
+
 vi.mock('@/components/seller/customers/CustomersLandingClient', () => ({
   CustomersLandingClient: () => <div>This feature isn't enabled yet.</div>,
 }));
@@ -43,6 +50,19 @@ vi.mock('@/components/seller/layout/SellerBootstrapBoundary', () => ({
   },
 }));
 
+vi.mock('@/components/seller/layout', async () => {
+  const actual = await vi.importActual<typeof import('@/components/seller/layout')>('@/components/seller/layout');
+  return {
+    ...actual,
+    EntitySplitShell: ({ listSlot, children }: { listSlot: React.ReactNode; children: React.ReactNode }) => (
+      <div>
+        {listSlot}
+        {children}
+      </div>
+    ),
+  };
+});
+
 // List rendering moved from page.tsx into layout.tsx as part of the split-pane
 // rollout (the list now stays mounted across /customers <-> /customers/[id]).
 import CustomersLayout from '../../app/(seller)/customers/layout';
@@ -57,13 +77,14 @@ describe('customers landing integration', () => {
     fetchSellerPageBootstrapMock.mockReturnValue({ data: null, status: 200 });
   });
 
-  it('renders flag-off state and does not fetch landing data', () => {
+  it('bootstraps customers metrics and does not fetch landing data when feature gate mocks off', () => {
     useFlagMock.mockReturnValue(false);
 
     return CustomersLayout({ children: null }).then((element) => {
       render(element);
 
       expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();
+      expect(fetchSellerPageBootstrapMock).toHaveBeenCalledWith('/api/tenant/customers/metrics');
       expect(useCustomersLandingMock).not.toHaveBeenCalled();
     });
   });

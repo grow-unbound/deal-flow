@@ -1,29 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
-const useCustomersLandingMock = vi.fn();
+const useCustomersLandingMetricsMock = vi.fn();
 const useCustomersLandingInfiniteMock = vi.fn();
 const useFlagMock = vi.fn();
-const customerFilterGroups = [
-  {
-    key: 'status',
-    label: 'Status',
-    options: [
-      { value: 'Active', label: 'Active' },
-      { value: 'Inactive', label: 'Inactive' },
-      { value: 'Dormant', label: 'Dormant' },
-    ],
-  },
-  {
-    key: 'due',
-    label: 'Due',
-    options: [
-      { value: 'Due', label: 'Due' },
-      { value: 'Overdue', label: 'Overdue' },
-    ],
-  },
-];
+const setRouteStateMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -33,7 +15,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/hooks/useCustomersLanding', () => ({
-  useCustomersLanding: () => useCustomersLandingMock(),
+  useCustomersLandingMetrics: () => useCustomersLandingMetricsMock(),
+  useCustomersLanding: () => useCustomersLandingMetricsMock(),
   useCreateCustomerOptimistic: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCustomersLandingInfinite: (...args: unknown[]) => useCustomersLandingInfiniteMock(...args),
 }));
@@ -41,6 +24,27 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+const useTenantSettingsMock = vi.fn(() => ({
+  data: {
+    modules: {
+      orders: {
+        features: {
+          enquiries: true,
+          sales_orders: true,
+          invoices: true,
+        },
+      },
+      buyer_app: {
+        enabled: true,
+      },
+    },
+  },
+}));
+
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: (...args: unknown[]) => useTenantSettingsMock(...args),
 }));
 
 vi.mock('@/hooks/useBusinessPolicy', () => ({
@@ -56,9 +60,6 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('@/components/seller/InviteUserDialog', () => ({ InviteUserDialog: () => null }));
 
-// WhatsApp Broadcast (Phase E) — out of scope for this landing-page test
-// suite, which renders without a QueryClientProvider. Stub the composer/
-// history components and the data hooks they'd otherwise call.
 vi.mock('@/components/seller/customers/BroadcastComposerSheet', () => ({
   BroadcastComposerSheet: () => null,
 }));
@@ -66,181 +67,216 @@ vi.mock('@/components/seller/customers/BroadcastHistorySection', () => ({
   BroadcastHistorySection: () => null,
 }));
 
+vi.mock('@/hooks/useRouteSnapshot', () => ({
+  useRouteSnapshot: () => ({
+    state: {
+      filters: { filter_preset: null, selected_kpi_id: null },
+      sortBy: 'Sales (high → low)',
+      search: '',
+    },
+    setState: setRouteStateMock,
+  }),
+  useSeedRouteSearch: () => undefined,
+  useRouteScrollRestoration: () => undefined,
+}));
+
+vi.mock('@/hooks/useRetainedValue', () => ({
+  useRetainedValue: (value: unknown) => value,
+}));
+
+vi.mock('@/hooks/useDebounce', () => ({
+  useDebounce: (value: unknown) => value,
+}));
+
+vi.mock('@/hooks/useInfiniteScroll', () => ({
+  useInfiniteScroll: () => ({ sentinelRef: { current: null } }),
+  getSentinelInsertIndex: () => -1,
+}));
+
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 
-let landingBuyers: Array<any> = [];
-
-function getInfiniteResult(filters: { status?: string[]; due?: string[] }) {
-  const status = filters?.status ?? [];
-  const due = filters?.due ?? [];
-  const dormantCutoff = new Date('2026-06-01T00:00:00Z').toISOString();
-  const overdueIds = new Set(landingBuyers.filter((buyer) => buyer.dues > 0).map((buyer) => buyer.id));
-  const buyers = landingBuyers.filter((buyer) => {
-    const dormant = !buyer.last_order_at || buyer.last_order_at < dormantCutoff;
-    const statusMatch =
-      status.length === 0 ||
-      status.some((value) => {
-        if (value === 'Active') return buyer.is_active && !dormant;
-        if (value === 'Inactive') return !buyer.is_active;
-        if (value === 'Dormant') return buyer.is_active && dormant;
-        return false;
-      });
-    const dueMatch =
-      due.length === 0 ||
-      due.some((value) => {
-        if (value === 'Due') return buyer.dues > 0;
-        if (value === 'Overdue') return overdueIds.has(buyer.id);
-        return false;
-      });
-    return statusMatch && dueMatch;
-  });
-
-  return {
-    isLoading: false,
-    isError: false,
-    data: {
-      pages: [
-        {
-          buyers,
-          total: buyers.length,
-          kpis: { total: buyers.length, active: buyers.filter((buyer) => buyer.orders_mtd > 0).length },
-        },
-      ],
+const v4Metrics = {
+  page_key: 'customers',
+  period: {
+    period_key: 'this_quarter',
+    grain: 'quarter',
+    period_start: '2026-04-01',
+    period_end_exclusive: '2026-07-01',
+    label: 'This Quarter',
+  },
+  computed_at: null,
+  source_watermark: null,
+  cards: [
+    {
+      id: 'active_customers',
+      label: 'Active Customers',
+      value: 6,
+      supporting_text: 'purchased at least once',
+      filter_preset: { purchased_gte: 1, period: 'this_quarter' },
     },
-    fetchNextPage: vi.fn(),
-    hasNextPage: false,
-    isFetchingNextPage: false,
+    {
+      id: 'dormant_customers',
+      label: 'Dormant Customers',
+      value: 2,
+      supporting_text: 'no purchase in quarter',
+      filter_preset: { dormant_period: 'this_quarter' },
+    },
+    {
+      id: 'overdue_receivables',
+      label: 'Overdue receivables',
+      value: 50000,
+      entity_count: 2,
+      document_count: 3,
+      supporting_text: 'customers and invoices',
+      filter_preset: { overdue: true },
+    },
+    {
+      id: 'top80_customers',
+      label: 'Top customers driving 80% of revenue',
+      value: 4,
+      supporting_text: 'customers in revenue concentration set',
+      filter_preset: { sort: 'invoice_value_desc', cutoff: 'top80' },
+    },
+  ],
+};
+
+function row(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'buyer-1',
+    business_name: 'Credit Buyer',
+    phone: '9876543210',
+    is_active: true,
+    buyer_app_enabled: true,
+    invoice_value: 10000,
+    invoice_count: 2,
+    estimate_value: 3000,
+    estimate_count: 1,
+    order_value: 4000,
+    order_count: 1,
+    app_demand_value: 2500,
+    app_demand_count: 3,
+    receivable_amount: 9000,
+    overdue_amount: 4500,
+    credit_limit: 10000,
+    credit_available: 1000,
+    credit_used: 9000,
+    ...overrides,
   };
 }
 
 describe('customers landing page', () => {
   beforeEach(() => {
     pushMock.mockReset();
-    useCustomersLandingMock.mockReset();
-    useCustomersLandingInfiniteMock.mockImplementation((_period: unknown, filters: { status?: string[]; due?: string[] }) => getInfiniteResult(filters));
+    setRouteStateMock.mockReset();
+    useCustomersLandingMetricsMock.mockReset();
+    useCustomersLandingInfiniteMock.mockReset();
     useFlagMock.mockReset();
     useFlagMock.mockReturnValue(true);
-    landingBuyers = [];
-  });
-
-  it('shows active buyers based on backend values', () => {
-    useCustomersLandingMock.mockReturnValue({
-      isLoading: false,
+    useTenantSettingsMock.mockReset();
+    useTenantSettingsMock.mockReturnValue({
       data: {
-        kpis: { cohort_count: 1, total: 10, active: 6, active_pct: 60, spend_mtd: 100000, spend_growth_pct: 10, dormant_over_30d: 2, outstanding_dues: 50000, buyers_with_dues: 2, invoiced_customer_count: 6, overdue_sum: 0, overdue_customer_count: 0, dormant_prior_year_value: 0 },
-        callouts: { needs_call: [], win_back: [] },
-        filters: { groups: customerFilterGroups },
-        buyers: [],
+        modules: {
+          orders: {
+            features: {
+              enquiries: true,
+              sales_orders: true,
+              invoices: true,
+            },
+          },
+          buyer_app: {
+            enabled: true,
+          },
+        },
       },
     });
 
-    render(<CustomersLandingClient initialData={null} />);
-
-    expect(screen.getByText('Customers who purchased')).toBeInTheDocument();
-    expect(screen.getByText('6')).toBeInTheDocument();
+    useCustomersLandingMetricsMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: v4Metrics,
+    });
+    useCustomersLandingInfiniteMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      data: {
+        pages: [{ buyers: [row()], nextCursor: null, total: 1 }],
+      },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    });
   });
 
-  it('has due filter hides zero-dues buyers and no longer exposes city/state filters', () => {
-    useCustomersLandingMock.mockReturnValue({
-      isLoading: false,
-      data: {
-        kpis: { cohort_count: 1, total: 2, active: 2, active_pct: 100, spend_mtd: 20000, spend_growth_pct: 5, dormant_over_30d: 0, outstanding_dues: 1000, buyers_with_dues: 1 },
-        callouts: { needs_call: [], top_spenders: [], top_risers: [] },
-        filters: { groups: customerFilterGroups },
-        buyers: [
-          { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' } },
-          { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' } },
-        ],
-      },
-    });
-    landingBuyers = [
-      { id: 'b1', business_name: 'Due Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 1000, dues: 1000, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'DB', hue: 'teal' }, is_active: true },
-      { id: 'b2', business_name: 'Zero Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-05-18T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'ZB', hue: 'cream' }, is_active: true },
-    ];
-
+  it('shows V4 active customers KPI', () => {
     render(<CustomersLandingClient initialData={null} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Due: All' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Due' }));
 
-    expect(screen.getByText('Due Buyer')).toBeInTheDocument();
-    expect(screen.queryByText('Zero Buyer')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'City: All' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'State: All' })).not.toBeInTheDocument();
+    expect(screen.getByText('Active Customers')).toBeInTheDocument();
+    expect(screen.getByText('purchased at least once')).toBeInTheDocument();
   });
 
-  it('status filter uses lifecycle buckets instead of the table status chip', () => {
-    useCustomersLandingMock.mockReturnValue({
-      isLoading: false,
-      data: {
-        kpis: { cohort_count: 1, total: 3, active: 2, active_pct: 67, spend_mtd: 30000, spend_growth_pct: 8, dormant_over_30d: 1, outstanding_dues: 0, buyers_with_dues: 0 },
-        callouts: { needs_call: [], top_spenders: [], top_risers: [] },
-        filters: { groups: customerFilterGroups },
-        buyers: [
-          { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
-          { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
-          { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
-        ],
-      },
-    });
-    landingBuyers = [
-      { id: 'b1', business_name: 'Active Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 15000, spend_prev_mtd: 12000, growth_pct: 25, orders_mtd: 2, last_order_at: '2026-06-20T00:00:00Z', credit_limit: 10000, credit_used: 1000, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'AB', hue: 'teal' }, is_active: true },
-      { id: 'b2', business_name: 'Dormant Buyer', tier: 'B', city: 'Mysuru', cohort: 'Growth', spend_mtd: 5000, spend_prev_mtd: 5000, growth_pct: 0, orders_mtd: 1, last_order_at: '2026-01-01T00:00:00Z', credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Dormant', tone: 'danger' }, avatar: { initials: 'DB', hue: 'cream' }, is_active: true },
-      { id: 'b3', business_name: 'Inactive Buyer', tier: 'C', city: 'Delhi', cohort: 'Growth', spend_mtd: 0, spend_prev_mtd: 0, growth_pct: 0, orders_mtd: 0, last_order_at: null, credit_limit: 10000, credit_used: 0, overdue_amount: 0, dues: 0, status: { label: 'Healthy', tone: 'success' }, avatar: { initials: 'IB', hue: 'ember' }, is_active: false },
-    ];
-
+  it('applies KPI filter_preset on card click', () => {
     render(<CustomersLandingClient initialData={null} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dormant' }));
 
-    expect(useCustomersLandingInfiniteMock).toHaveBeenLastCalledWith('last90', expect.objectContaining({ status: ['Dormant'] }));
-    expect(screen.getByRole('button', { name: 'Status: Dormant' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Active Customers'));
+
+    expect(setRouteStateMock).toHaveBeenCalled();
   });
 
   it('credit bar uses warning color above 75%', () => {
-    useCustomersLandingMock.mockReturnValue({
-      isLoading: false,
-      data: {
-        kpis: { cohort_count: 1, total: 1, active: 1, active_pct: 100, spend_mtd: 20000, spend_growth_pct: 5, dormant_over_30d: 0, outstanding_dues: 9000, buyers_with_dues: 1 },
-        callouts: { needs_call: [], top_spenders: [], top_risers: [] },
-        filters: { groups: customerFilterGroups },
-        buyers: [
-          { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' } },
-        ],
-      },
-    });
-    landingBuyers = [
-      { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 9000, dues: 9000, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' }, is_active: true },
-    ];
-
     const { container } = render(<CustomersLandingClient initialData={null} />);
     expect(container.querySelector('.bg-warning-500')).toBeTruthy();
   });
 
-  it('shows overdue days separately from outstanding due in the table', () => {
-    useCustomersLandingMock.mockReturnValue({
-      isLoading: false,
+  it('renders amount and count supporting text for QTD columns', () => {
+    render(<CustomersLandingClient initialData={null} />);
+
+    expect(screen.getByText('Sales · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Invoices')).toBeInTheDocument();
+    expect(screen.getByText('Estimate Value · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Estimates')).toBeInTheDocument();
+    expect(screen.getByText('Order Value · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Orders')).toBeInTheDocument();
+    expect(screen.getByText('App Demand · QTD')).toBeInTheDocument();
+    expect(screen.getByText('App docs')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Buyer App enabled').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Buyer App enabled')).not.toBeInTheDocument();
+    expect(screen.getAllByText('9876543210').length).toBeGreaterThan(0);
+    expect(screen.getByText('Outstanding')).toBeInTheDocument();
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getByText('Status: All')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding: All')).toBeInTheDocument();
+    expect(screen.getByText('Buyer App: All')).toBeInTheDocument();
+  });
+
+  it('hides estimate and order columns when those modules are disabled', () => {
+    useFlagMock.mockImplementation((flag: string) => {
+      if (flag === 'ESTIMATES' || flag === 'SALES_ORDERS') return false;
+      return true;
+    });
+    useTenantSettingsMock.mockReturnValue({
       data: {
-        kpis: { cohort_count: 1, total: 1, active: 1, active_pct: 100, spend_mtd: 20000, spend_growth_pct: 5, dormant_over_30d: 0, outstanding_dues: 9000, buyers_with_dues: 1, invoiced_customer_count: 1, overdue_sum: 9000, overdue_customer_count: 1, dormant_prior_year_value: 0 },
-        callouts: { needs_call: [], win_back: [] },
-        filters: { groups: customerFilterGroups },
-        buyers: [
-          { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 4500, dues: 9000, overdue_days: 12, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' } },
-        ],
+        modules: {
+          orders: {
+            features: {
+              enquiries: false,
+              sales_orders: false,
+              invoices: true,
+            },
+          },
+          buyer_app: {
+            enabled: true,
+          },
+        },
       },
     });
-    landingBuyers = [
-      { id: 'buyer-1', business_name: 'Credit Buyer', tier: 'A', city: 'Bengaluru', cohort: 'Premium', spend_mtd: 10000, spend_prev_mtd: 9000, growth_pct: 11, orders_mtd: 1, last_order_at: '2026-05-20T00:00:00Z', credit_limit: 10000, credit_used: 9000, overdue_amount: 4500, dues: 9000, overdue_days: 12, status: { label: 'Needs follow-up', tone: 'warning' }, avatar: { initials: 'CB', hue: 'teal' }, is_active: true },
-    ];
 
     render(<CustomersLandingClient initialData={null} />);
 
-    expect(screen.getByText('Overdue')).toBeInTheDocument();
-    expect(screen.getByText('Outstanding Due')).toBeInTheDocument();
-    expect(screen.getByText('12d overdue')).toBeInTheDocument();
-    const row = screen.getByText('Credit Buyer').closest('tr');
-    expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByText('₹4,500')).toBeInTheDocument();
-    expect(within(row as HTMLElement).getAllByText('₹9,000')).toHaveLength(2);
-    expect(within(row as HTMLElement).getByText('12d overdue')).toBeInTheDocument();
+    expect(screen.getByText('Sales · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Invoices')).toBeInTheDocument();
+    expect(screen.queryByText('Estimate Value · QTD')).not.toBeInTheDocument();
+    expect(screen.queryByText('Order Value · QTD')).not.toBeInTheDocument();
+    expect(screen.getByText('Outstanding')).toBeInTheDocument();
   });
 });

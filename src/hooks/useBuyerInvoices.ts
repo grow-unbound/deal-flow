@@ -21,7 +21,7 @@ export interface BuyerInvoicesPage {
   total: number | null;
 }
 
-export function useBuyerInvoicesInfinite() {
+export function useBuyerInvoicesInfinite(options?: { enabled?: boolean }) {
   return useInfiniteQuery({
     queryKey: ['buyer-invoices-infinite'],
     queryFn: async ({ pageParam }): Promise<BuyerInvoicesPage> => {
@@ -39,5 +39,6 @@ export function useBuyerInvoicesInfinite() {
     placeholderData: keepPreviousData,
     staleTime: BUYER_QUERY_STALE_TIME,
     gcTime: BUYER_QUERY_GC_TIME,
+    enabled: options?.enabled ?? true,
   });
 }

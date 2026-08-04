@@ -179,7 +179,6 @@ export function BuyerDeliveryProvider({
           || key === 'buyer-categories'
           || key === 'buyer-brands'
           || key === 'buyer-resolved-products'
-          || key === 'buyer-reorder'
         );
       },
     });

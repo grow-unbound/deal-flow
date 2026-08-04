@@ -60,7 +60,9 @@ describe('buyer pull to refresh', () => {
 
 describe('buyer refresh query selection', () => {
   it('matches buyer-facing active keys and skips seller keys', () => {
-    expect(isBuyerRefreshQueryKey(['buyer-home'])).toBe(true);
+    expect(isBuyerRefreshQueryKey(['buyer-home-metrics'])).toBe(true);
+    expect(isBuyerRefreshQueryKey(['buyer-home-promotions'])).toBe(true);
+    expect(isBuyerRefreshQueryKey(['buyer-home-reco'])).toBe(true);
     expect(isBuyerRefreshQueryKey(['buyer-catalog-search', 'camera'])).toBe(true);
     expect(isBuyerRefreshQueryKey(['cart-bundles'])).toBe(true);
     expect(isBuyerRefreshQueryKey(['reco-category', 'cat-1'])).toBe(true);
