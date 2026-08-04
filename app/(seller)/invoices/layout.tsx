@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { InvoicesLandingClient } from '@/components/seller/invoices/InvoicesLandingClient';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { TenantInvoicesResponse } from '@/hooks/useInvoices';
@@ -23,7 +24,15 @@ export default async function InvoicesLayout({ children }: { children: ReactNode
       listSlot={
         <SellerBootstrapBoundary<TenantInvoicesResponse>
           path={`/api/tenant/invoices?limit=200&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
-          fallback={<InvoicesLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/invoices"
+              ariaLabel="Loading invoices"
+              showTransactionTabs
+              variant="transaction"
+              expandedFallback={<InvoicesLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <InvoicesLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;

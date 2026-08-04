@@ -22,9 +22,11 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useCustomersLandingInfinite,
@@ -66,10 +68,7 @@ function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolea
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function CustomersDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function CustomersDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -77,29 +76,8 @@ function CustomersDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
           <Skeleton key={i} className="h-36 rounded-[14px]" />
         ))}
       </div>
-      <div className="space-y-2">
-        <Skeleton className="h-14 rounded-[14px]" />
-        <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-200 p-3">
-            <div className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <Skeleton key={`head-${i}`} className="h-3 w-full" />
-              ))}
-            </div>
-          </div>
-          <div className="p-3">
-            <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, rowIndex) => (
-                <div key={`row-${rowIndex}`} className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
-                  {Array.from({ length: 9 }).map((_, colIndex) => (
-                    <Skeleton key={`cell-${rowIndex}-${colIndex}`} className="h-10 rounded-md" />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} />
     </div>
   );
 }
@@ -111,7 +89,7 @@ function CustomersLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/customers');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('active-customers');
@@ -232,6 +210,11 @@ function CustomersLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Customers' : 'Buyers'}
           title={isPaneOpen ? selectedOption.label : 'Customers'}
@@ -254,41 +237,42 @@ function CustomersLandingContent({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`Showing ${filtered.length} of ${filteredTotal}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
-              searchPlaceholder="Search buyer, city, GSTIN…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={SORT_OPTIONS}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`Showing ${filtered.length} of ${filteredTotal}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+          searchPlaceholder="Search buyer, city, GSTIN…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={groups}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          sortOptions={SORT_OPTIONS}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CustomersDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <CustomersDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState
           heading="Couldn't load customers"
@@ -297,7 +281,11 @@ function CustomersLandingContent({
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} forceCompact={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} />
+        )
       ) : (
       <LandingTable
         showEmptyState={filtered.length === 0 && !isLoading}
@@ -331,9 +319,12 @@ function CustomersLandingContent({
         mobileRows={filtered.map((buyer: CustomersLandingBuyer) => ({
           id: buyer.id,
           href: `/customers/${buyer.id}`,
+          eyebrow: buyer.cohort,
           primary: buyer.business_name,
-          supporting: `${buyer.phone || 'No phone'} · ${buyer.cohort}`,
-          meta: `Last sale ${formatDate(buyer.last_order_at)}`,
+          supporting: joinSplitListMeta(
+            buyer.phone || 'No phone',
+            `Last sale ${formatDate(buyer.last_order_at)}`,
+          ),
           trailing: buyer.dues > 0
             ? formatNumberValue(buyer.dues, 'CURRENCY_THRESHOLD')
             : formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD'),
@@ -364,7 +355,7 @@ function CustomersLandingContent({
               onClick={() => router.push(`/customers/${buyer.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="ent flex items-center gap-3">
                   {/* <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} /> */}
                   <div className="min-w-0">
@@ -375,24 +366,24 @@ function CustomersLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-3 py-2 text-sm text-cream-800">
+              <td className="px-3 py-3 text-sm text-cream-800">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-cream-900">{buyer.cohort}</p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <div className="min-w-0 text-left">
                   <p className="truncate text-sm text-cream-900">{priceListLabel}</p>
                   <p className="mt-1 truncate text-xs text-cream-500">{priceListSubtext}</p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(buyer.spend_mtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-3 py-2 text-right text-md font-medium tabular-nums text-cream-800">
+              <td className="px-3 py-3 text-right text-md font-medium tabular-nums text-cream-800">
                 <span className="tabular-inline">{formatNumberValue(buyer.dues, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-3 py-2 text-right text-sm text-cream-800">
+              <td className="px-3 py-3 text-right text-sm text-cream-800">
                 <div className="flex flex-col items-end">
                   <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
                     {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatNumberValue(buyer.overdue_amount, 'CURRENCY_THRESHOLD') : '-'}
@@ -400,8 +391,8 @@ function CustomersLandingContent({
                   {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
                 </div>
               </td>
-              <td className="px-3 py-2 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
+              <td className="px-3 py-3">
                 <div className="flex flex-col gap-1">
                   <div className="h-[5px] w-[120px] overflow-hidden rounded-full bg-cream-200">
                     <div
@@ -414,7 +405,7 @@ function CustomersLandingContent({
                   </span>
                 </div>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <StatusTag label={buyer.status.label} tone={buyer.status.tone} className="whitespace-nowrap" />
                   {buyer.whatsapp_opted_out ? (
@@ -424,7 +415,7 @@ function CustomersLandingContent({
                   ) : null}
                 </div>
               </td>
-              <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
+              <td className="chev px-3 py-3 pr-4 text-right text-md text-cream-500">›</td>
             </tr>
             </Fragment>
           );

@@ -17,7 +17,7 @@ export type { StatusTone } from './StatusTag';
 export { GrowthPill } from './GrowthPill';
 export { EntityAvatar } from './EntityAvatar';
 export type { EntityAvatarHue } from './EntityAvatar';
-export { LandingTable } from './LandingTable';
+export { LandingTable, LANDING_TABLE_CELL_CLASS } from './LandingTable';
 export { ScrollableTableShell } from './ScrollableTableShell';
 export { SeeAllSheet } from './SeeAllSheet';
 export type { SeeAllSheetColumn, SeeAllSheetProps } from './SeeAllSheet';

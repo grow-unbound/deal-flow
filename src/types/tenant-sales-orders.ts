@@ -41,6 +41,7 @@ export const SalesOrderLineSchema = z.object({
   brand: z.string(),
   brand_initials: z.string(),
   brand_hue: z.enum(['teal', 'ember', 'cream']),
+  image_url: z.string().nullable().optional(),
   sku: z.string(),
   qty: z.number(),
   unit_price: z.number(),

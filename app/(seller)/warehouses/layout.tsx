@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { WarehousesLandingClient } from '@/components/seller/warehouses/WarehousesLandingClient';
 import { WarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { WarehousesLandingResponse } from '@/types/tenant-warehouses';
@@ -22,7 +23,13 @@ export default async function WarehousesLayout({ children }: { children: ReactNo
       listSlot={
         <SellerBootstrapBoundary<WarehousesLandingResponse>
           path="/api/tenant/warehouses/landing?period=today&limit=50"
-          fallback={<WarehousesLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/warehouses"
+              ariaLabel="Loading warehouses"
+              expandedFallback={<WarehousesLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
             return <WarehousesLandingClient initialData={initialData} initialPeriod="today" />;

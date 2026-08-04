@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { LocationsLandingClient } from '@/components/seller/locations/LocationsLandingClient';
 import { LocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { LocationsLandingResponse } from '@/hooks/useLocations';
@@ -21,7 +22,13 @@ export default async function LocationsLayout({ children }: { children: ReactNod
       listSlot={
         <SellerBootstrapBoundary<LocationsLandingResponse>
           path="/api/tenant/locations/landing?period=last90&limit=50"
-          fallback={<LocationsLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/locations"
+              ariaLabel="Loading locations"
+              expandedFallback={<LocationsLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
             return <LocationsLandingClient initialData={initialData} initialPeriod="last90" />;

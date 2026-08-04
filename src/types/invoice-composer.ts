@@ -15,6 +15,7 @@ export interface InvoiceComposerLineInput {
   brand_name: string;
   brand_initials: string;
   brand_hue: 'teal' | 'ember' | 'cream';
+  image_url?: string | null;
   hsn_code: string | null;
   on_hand: number;
   qty: number;

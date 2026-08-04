@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { detailSearchResponse, getDetailSearchContext } from '@/lib/server/detail-tab-search-route';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 
 function monthBounds() {
   const now = new Date();
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const productsRes = await context.db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, mrp, base_selling_price, cost_price, tenant_category_id, master_product_id')
+    .select('id, internal_sku, name_override, mrp, base_selling_price, cost_price, tenant_category_id, master_product_id, image_urls')
     .eq('tenant_id', context.tenantId)
     .eq('tenant_brand_id', id)
     .is('deleted_at', null);
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     cost_price: number | null;
     tenant_category_id: string | null;
     master_product_id: string | null;
+    image_urls: string[] | null;
   }>;
   const productIds = products.map((row) => row.id);
   const categoryIds = Array.from(new Set(products.flatMap((row) => row.tenant_category_id ? [row.tenant_category_id] : [])));
@@ -154,6 +156,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         units_mtd: monthly.unitsMtd,
         gmv_mtd: monthly.gmvMtd,
         growth_pct: growthPct,
+        image_url: firstStoredImageUrl(product.image_urls),
         sort_gmv_90d: Number(metric?.invoice_value_90d ?? monthly.gmvMtd),
         low_stock: Boolean(metric?.low_stock),
         out_of_stock: Boolean(metric?.out_of_stock),

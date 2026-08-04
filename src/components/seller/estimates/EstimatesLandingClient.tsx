@@ -17,7 +17,8 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileListSkeleton, SellerMobileTransactionTabs } from '@/components/seller/mobile';
+import { SellerMobileTransactionTabs, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
@@ -62,6 +63,11 @@ function sourceLabel(row: EstimateLandingRow) {
   return row.source_kind === 'buyer_app' ? 'Buyer App' : 'Direct';
 }
 
+function estimateSourceDisplayLabel(row: EstimateLandingRow) {
+  if (row.source_kind === 'buyer_app') return 'BUYER APP';
+  return row.source_label?.trim() ?? '';
+}
+
 function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
@@ -78,29 +84,16 @@ function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean 
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function EstimatesTableRowsSkeleton({ forceCompact }: { forceCompact?: boolean }) {
-  if (forceCompact) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
-  return (
-    <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-  );
-}
-
-function EstimatesDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
+function EstimatesDataSkeleton() {
   return (
     <>
-      {isPaneOpen ? null : (
-        <>
-          <div className="mt-5 grid grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-            ))}
-          </div>
-          <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        </>
-      )}
-      <EstimatesTableRowsSkeleton forceCompact={isPaneOpen} />
+      <div className="mt-5 grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+      <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
     </>
   );
 }
@@ -114,7 +107,7 @@ function EstimatesLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/estimates');
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -282,53 +275,60 @@ function EstimatesLandingContent({
     <>
       <PageWrap className="max-w-[1920px] flex h-full min-h-0 flex-col">
         <StickyListHeader>
-          <PageHeader
-            eyebrow={isPaneOpen ? 'Estimates' : 'Enquiries'}
-            title={isPaneOpen ? selectedOption.label : 'Estimates'}
-            subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
-            horizon={horizonLabel}
-            showHorizonControl={false}
-            primary={createEstimates ? 'Add an estimate' : undefined}
-            onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
-            compact={isPaneOpen}
-          />
-          <SellerMobileTransactionTabs active="estimates" />
+          <SplitPaneStickyHeaderSlot
+            isPaneOpen={isPaneOpen}
+            showRefreshingState={showRefreshingState}
+            isError={isError}
+            showTransactionTabs
+          >
+            <PageHeader
+              eyebrow={isPaneOpen ? 'Estimates' : 'Enquiries'}
+              title={isPaneOpen ? selectedOption.label : 'Estimates'}
+              subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+              horizon={horizonLabel}
+              showHorizonControl={false}
+              primary={createEstimates ? 'Add an estimate' : undefined}
+              onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
+              compact={isPaneOpen}
+            />
+            <SellerMobileTransactionTabs active="estimates" />
 
-          {showRefreshingState || isError ? null : (
-            <>
-              {isPaneOpen ? null : (
-                <InsightStrip4
-                  tiles={kpiOptions.map((option): InsightTile => ({
-                    label: option.label,
-                    value: option.value,
-                    sub: option.sub,
-                    onClick: () => setSelectedKpiKey(option.id),
-                    selected: option.id === selectedKpiKey,
-                  }))}
-                />
-              )}
-
-              <FilterBar
-                count={`Showing ${filteredRows.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
-                searchPlaceholder="Search estimate number…"
-                chips={[]}
-                activeChip=""
-                sortBy={sortBy}
-                hideViewToggle
-                compact={isPaneOpen}
-                groups={groups}
-                searchValue={search}
-                onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-                sortOptions={SORT_OPTIONS}
-                onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+            {isPaneOpen ? null : (
+              <InsightStrip4
+                tiles={kpiOptions.map((option): InsightTile => ({
+                  label: option.label,
+                  value: option.value,
+                  sub: option.sub,
+                  onClick: () => setSelectedKpiKey(option.id),
+                  selected: option.id === selectedKpiKey,
+                }))}
               />
-            </>
-          )}
+            )}
+
+            <FilterBar
+              count={`Showing ${filteredRows.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search estimate number…"
+              chips={[]}
+              activeChip=""
+              sortBy={sortBy}
+              hideViewToggle
+              compact={isPaneOpen}
+              groups={groups}
+              searchValue={search}
+              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+              sortOptions={SORT_OPTIONS}
+              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+            />
+          </SplitPaneStickyHeaderSlot>
         </StickyListHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
         {showRefreshingState ? (
-          <EstimatesDataSkeleton isPaneOpen={isPaneOpen} />
+          isPaneOpen ? (
+            <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
+          ) : (
+            <EstimatesDataSkeleton />
+          )
         ) : isError ? (
           <ErrorState
             heading="Couldn't load estimates"
@@ -338,7 +338,11 @@ function EstimatesLandingContent({
           <>
             <div className="overflow-x-auto">
               {showTableSkeleton ? (
-                <EstimatesTableRowsSkeleton forceCompact={isPaneOpen} />
+                isPaneOpen ? (
+                  <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
+                ) : (
+                  <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+                )
               ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={28} strokeWidth={1.5} />}
@@ -374,7 +378,7 @@ function EstimatesLandingContent({
                     document_number: row.estimate_number,
                     realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
                     source_kind: row.source_kind,
-                    source_label: row.source_label,
+                    source_label: estimateSourceDisplayLabel(row),
                     buyer_name: row.buyer_name,
                     buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
                     buyer_initials: row.buyer_initials,

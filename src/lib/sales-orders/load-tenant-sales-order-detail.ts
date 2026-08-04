@@ -5,6 +5,7 @@ import type { JWTClaims } from '@/lib/auth';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { canAccessDocumentLocation } from '@/lib/server/seller-location-access';
 import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import {
   buildActivityFromAudit,
@@ -162,7 +163,7 @@ export async function loadTenantSalesOrderDetail(
       ? await d
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, image_urls')
           .in('id', productIds)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
@@ -244,6 +245,7 @@ export async function loadTenantSalesOrderDetail(
       brand: brandName,
       brand_initials: initials,
       brand_hue: hue,
+      image_url: firstStoredImageUrl(product?.image_urls),
       sku,
       qty: Number(row.qty ?? 0),
       unit_price: Number(row.unit_price ?? 0),

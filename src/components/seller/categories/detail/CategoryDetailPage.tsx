@@ -120,7 +120,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
         loading={isLoading}
-        avatar={{ kind: 'brand', initials: h?.initials ?? 'CT', hue: 'teal' }}
+        avatar={{ kind: 'brand', initials: h?.initials ?? 'CT', hue: 'teal', imageUrl: h?.image_url }}
         title={h?.name ?? ''}
         status={{ label: h?.is_active ? 'Active' : 'Archived', tone: h?.is_active ? 'success' : 'neutral' }}
         subtitle={h ? [h.description ?? '', `${h.active_sku_count} SKUs · ${h.brand_count} brands`, `Created ${carriedSince}`].filter(Boolean) : []}

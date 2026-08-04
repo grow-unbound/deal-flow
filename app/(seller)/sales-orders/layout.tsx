@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SalesOrdersLandingClient } from '@/components/seller/sales-orders/SalesOrdersLandingClient';
 import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { TenantOrdersResponse } from '@/hooks/useOrders';
@@ -23,7 +24,15 @@ export default async function SalesOrdersLayout({ children }: { children: ReactN
       listSlot={
         <SellerBootstrapBoundary<TenantOrdersResponse>
           path={`/api/tenant/orders?limit=200&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
-          fallback={<SalesOrdersLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/sales-orders"
+              ariaLabel="Loading sales orders"
+              showTransactionTabs
+              variant="transaction"
+              expandedFallback={<SalesOrdersLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <SalesOrdersLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;

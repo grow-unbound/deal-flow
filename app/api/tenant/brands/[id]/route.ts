@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { TenantBrandUpdateSchema } from '@/lib/zod';
+import { r2Url } from '@/lib/r2-url';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 type OrderRow = {
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: tenantBrand, error: brandError } = await db
     .schema('app')
     .from('tenant_brands')
-    .select('id, tenant_id, master_brand_id, display_name_override, slug, description, logo_url, margin_pct, exclusivity, is_active, external_ref, principal_name, principal_email, principal_phone, principal_location, contact_name, contact_email, contact_phone, default_cohort_id, created_at, updated_at, deleted_at')
+    .select('id, tenant_id, master_brand_id, display_name_override, slug, description, logo_url, r2_logo_thumb_key, margin_pct, exclusivity, is_active, external_ref, principal_name, principal_email, principal_phone, principal_location, contact_name, contact_email, contact_phone, default_cohort_id, created_at, updated_at, deleted_at')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const detailV2 = (detailV2Res.data ?? {}) as any;
   const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
   const brandName = tenantBrand.display_name_override ?? masterBrandRes.data?.name ?? 'Brand';
+  const brandLogoUrl = r2Url(tenantBrand.r2_logo_thumb_key) ?? tenantBrand.logo_url ?? masterBrandRes.data?.logo_url ?? null;
   const products = tenantProductsRes.data ?? [];
   const productCount = Number(kpiByLabel.get('Products') ?? products.length ?? 0);
   const invoicedSales90d = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
@@ -157,6 +159,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       brand_name: brandName,
       initials: brandName.split(' ').map((part: string) => part[0] ?? '').join('').slice(0, 2).toUpperCase(),
       hue: 'teal',
+      logo_url: brandLogoUrl,
       status_label: tenantBrand.is_active ? 'Active' : 'Inactive',
       status_tone: tenantBrand.is_active ? 'success' : 'neutral',
       category: 'Portfolio',

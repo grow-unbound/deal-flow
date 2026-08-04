@@ -22,7 +22,8 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -30,6 +31,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
@@ -89,10 +91,7 @@ function matchesProductSearch(product: TenantProduct, query: string): boolean {
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function ProductLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function ProductLandingDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -101,7 +100,7 @@ function ProductLandingDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
-      <Skeleton className="h-[28rem] rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
     </div>
   );
 }
@@ -113,7 +112,7 @@ function ProductsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/products');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const { isSellerAssistant } = useRole();
   const period = 'last90';
@@ -285,6 +284,11 @@ function ProductsLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Products' : 'Catalog'}
           title={isPaneOpen ? selectedOption.label : 'Products'}
@@ -305,8 +309,6 @@ function ProductsLandingContent({
         compact={isPaneOpen}
       />
 
-      {showRefreshingState || isError ? null : (
-        <>
       {isPaneOpen ? null : (
         <InsightStrip4
           tiles={kpiOptions.map((option): InsightTile => ({
@@ -333,13 +335,16 @@ function ProductsLandingContent({
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
-        </>
-      )}
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <ProductLandingDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+        ) : (
+          <ProductLandingDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState
           heading="Couldn't load products"
@@ -348,7 +353,11 @@ function ProductsLandingContent({
       ) : (
         <>
       {showTableSkeleton ? (
-        <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} forceCompact={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+        ) : (
+          <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
+        )
       ) : (
         <LandingTable
         showEmptyState={displayRows.length === 0 && !isLoading}
@@ -374,30 +383,40 @@ function ProductsLandingContent({
         columns={[
           { label: 'Product', width: 320, minWidth: 320, maxWidth: 420, className: 'px-5' },
           { label: 'Brand', width: 200, minWidth: 200, maxWidth: 260, className: 'px-5' },
-          { label: 'Category', width: 150, minWidth: 150, maxWidth: 220, className: 'px-5' },
           { label: 'Status', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
-          { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
-          { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: `Sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Stock status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: 'Available stock', align: 'right', width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
+          { label: 'Stock days left', align: 'right', width: 160, minWidth: 130, maxWidth: 200, className: 'px-5' },
+          { label: `Units sold · ${metricSuffix}`, align: 'right', width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right' as const, width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
+          { label: 'Stock status', align: 'right', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
-        tableMinWidth={1800}
+        tableMinWidth={1000}
         forceCompact={isPaneOpen}
         sentinelIndex={sentinelIndex}
         sentinelRef={sentinelRef}
-        mobileRows={displayRows.map((product: TenantProduct) => {
+        mobileRows={displayRows.map((product: TenantProduct, index: number) => {
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = product.days_cover ?? null;
           const sku = product.master_product?.master_sku ?? product.internal_sku;
           return {
             id: product.id,
             href: `/products/${product.id}`,
+            leading: (
+              <EntityAvatar
+                initials={getInitials(product.display_name)}
+                hue={getBrandHue(index)}
+                imageUrl={product.image_urls?.[0] ?? null}
+                size={32}
+              />
+            ),
+            eyebrow: sku,
             primary: product.display_name,
-            supporting: `${sku} · ${product.brand_name ?? 'Unknown brand'}`,
-            meta: `${product.category_name ? toLabelCase(product.category_name) : 'Uncategorized'} · ${daysCover == null ? 'No cover data' : `${Math.round(daysCover)}d cover`}`,
-            trailing: `${onHand} on hand`,
+            supporting: joinSplitListMeta(
+              product.brand_name ?? 'Unknown brand',
+              daysCover == null ? 'No cover data' : `${Math.round(daysCover)}d cover`,
+            ),
+            trailing: `${onHand}`,
             selected: product.id === openId,
           };
         })}
@@ -429,7 +448,7 @@ function ProductsLandingContent({
               onClick={() => router.push(`/products/${product.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-3 py-2 text-base text-cream-900">
+              <td className="px-3 py-3 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <EntityAvatar
                     initials={getInitials(product.display_name)}
@@ -440,30 +459,26 @@ function ProductsLandingContent({
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
                     <p className="mt-0.5 text-sm text-cream-700">
-                      {sku}
+                      {sku} · {toLabelCase(category)}
                     </p>
                   </div>
                 </div>
               </td>
-              <td className="px-3 py-2 text-base text-cream-900">
+              <td className="px-3 py-3 text-base text-cream-900">
                 <div className="inline-flex items-center gap-2">
                   <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} imageUrl={product.master_product?.brand_logo_url ?? null} size={22} />
                   <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>
-              <td className="px-3 py-2 text-base text-cream-900">
-                <span className="text-sm text-cream-900">{toLabelCase(category)}</span>
-              </td>
-              <td className="px-3 py-2 text-base text-cream-900">
+              <td className="px-3 py-3 text-base text-cream-900">
                 <StatusTag tone={product.is_active ? 'success' : 'neutral'} label={product.is_active ? 'Active' : 'Inactive'} />
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <div className="flex flex-col items-end">
                   <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
-                  <span className="mt-1 text-xs text-cream-500">{uom}</span>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                 <div className="flex flex-col items-end">
                   {daysCover == null ? (
                     <span className="text-cream-500">—</span>
@@ -476,14 +491,14 @@ function ProductsLandingContent({
                   )}
                 </div>
               </td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-3 py-2 text-right text-base text-cream-900">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              <td className="px-3 py-3 text-right text-base text-cream-900">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_THRESHOLD')}</span>
               </td>
-              <td className="px-3 py-2 text-base text-cream-900">
+              <td className="px-3 py-3 text-right text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
-              <td className="px-3 py-2 text-right text-md text-cream-500">›</td>
+              <td className="px-3 py-3 text-right text-md text-cream-500">›</td>
             </tr>
             </Fragment>
           );

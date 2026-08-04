@@ -104,7 +104,7 @@ export function ComposerBasicsField({
   className?: string;
 }) {
   return (
-    <div className={cn('relative border-b border-cream-300 px-3 py-2 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
+    <div className={cn('relative border-b border-cream-300 px-3 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
@@ -222,7 +222,7 @@ export function ComposerCheckboxCell({
   className?: string;
 }) {
   return (
-    <td className={cn('w-9 px-3 py-2 align-middle', className)} onClick={(event) => event.stopPropagation()}>
+    <td className={cn('w-9 px-3 py-3 align-middle', className)} onClick={(event) => event.stopPropagation()}>
       <div className="flex items-center justify-center">
         <input
           type="checkbox"

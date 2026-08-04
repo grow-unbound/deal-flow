@@ -73,19 +73,19 @@ export function FieldMappingsPanel({ tenantIntegrationId }: { tenantIntegrationI
             <table className="w-full text-sm">
               <thead className="bg-cream-50 text-xs uppercase tracking-[0.08em] text-cream-600">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Entity</th>
-                  <th className="px-3 py-2 text-left font-semibold">Zoho field</th>
-                  <th className="px-3 py-2 text-left font-semibold">Maps to</th>
-                  <th className="px-3 py-2 text-left font-semibold">Status</th>
+                  <th className="px-3 py-3 text-left font-semibold">Entity</th>
+                  <th className="px-3 py-3 text-left font-semibold">Zoho field</th>
+                  <th className="px-3 py-3 text-left font-semibold">Maps to</th>
+                  <th className="px-3 py-3 text-left font-semibold">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id} className="border-t border-cream-200">
-                    <td className="px-3 py-2 text-cream-900">{labelizeEntity(row.entity_type)}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-cream-800">{row.zoho_field_name}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-cream-800">{row.target_column}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-3 text-cream-900">{labelizeEntity(row.entity_type)}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-cream-800">{row.zoho_field_name}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-cream-800">{row.target_column}</td>
+                    <td className="px-3 py-3">
                       <StatusTag
                         label={row.is_active ? 'Active' : 'Inactive'}
                         tone={row.is_active ? 'success' : 'neutral'}

@@ -20,8 +20,9 @@ import {
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useLocationsLanding,
@@ -30,6 +31,7 @@ import {
 } from '@/hooks/useLocations';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
@@ -41,10 +43,7 @@ const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'] as const;
 const DUE_OPTIONS = ['Due', 'Overdue'] as const;
 const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Outstanding (high → low)'];
 
-function LocationsDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function LocationsDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -53,7 +52,7 @@ function LocationsDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
-      <Skeleton className="h-[320px] rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={12} tableMinWidth={1700} />
     </div>
   );
 }
@@ -79,7 +78,7 @@ function LocationsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/locations');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
@@ -271,6 +270,11 @@ function LocationsLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Locations' : 'Operations'}
           title={isPaneOpen ? selectedOption.label : 'Locations'}
@@ -283,41 +287,42 @@ function LocationsLandingContent({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`${filtered.length} locations`}
-              searchPlaceholder="Search location…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={[...SORT_OPTIONS]}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`${filtered.length} locations`}
+          searchPlaceholder="Search location…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={groups}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          sortOptions={[...SORT_OPTIONS]}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <LocationsDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <LocationsDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState
           heading="Couldn't load locations"
@@ -327,7 +332,11 @@ function LocationsLandingContent({
       ) : (
         <>
           {showTableSkeleton ? (
-            <LandingTableRowsSkeleton columns={12} tableMinWidth={1700} forceCompact={isPaneOpen} />
+            isPaneOpen ? (
+              <SplitPaneListRowsSkeleton isPaneOpen />
+            ) : (
+              <LandingTableRowsSkeleton columns={12} tableMinWidth={1700} />
+            )
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
@@ -358,9 +367,12 @@ function LocationsLandingContent({
               mobileRows={filtered.map((row) => ({
                 id: row.id,
                 href: `/locations/${row.id}`,
+                eyebrow: row.city || row.address_text || '—',
                 primary: row.name,
-                supporting: row.address_text || row.city || '—',
-                meta: `${row.active_buyers} active customers`,
+                supporting: joinSplitListMeta(
+                  row.address_text || row.city,
+                  `${row.active_buyers} active customers`,
+                ),
                 trailing: row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—',
                 selected: row.id === openId,
               }))}
@@ -383,7 +395,7 @@ function LocationsLandingContent({
                     row.id === openId ? 'bg-ember-50' : 'bg-white',
                   )}
                 >
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       <EntityAvatar size={38} initials={row.initials} hue="teal" />
                       <div className="min-w-0">
@@ -392,28 +404,28 @@ function LocationsLandingContent({
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.active_buyers}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.outstanding_dues > 0 ? formatNumberValue(row.outstanding_dues, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.invoice_count_90d > 0 ? row.invoice_count_90d : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : demandCount > 0 ? demandCount : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                  <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                     {kpis.open_primary_demand_kind === 'none' ? '—' : row.conversion_90d > 0 ? `${row.conversion_90d}%` : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right text-cream-500">
+                  <td className="px-3 py-3 text-right text-cream-500">
                     <ChevronRight size={14} className="text-cream-400" />
                   </td>
                 </tr>

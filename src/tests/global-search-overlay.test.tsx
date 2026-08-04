@@ -88,7 +88,7 @@ describe('GlobalSearchOverlay', () => {
     ['order', 'SO-001', '/sales-orders/o-1'],
     ['invoice', 'INV-001', '/invoices/i-1'],
     ['estimate', 'EST-001', '/estimates/e-1'],
-  ])('navigates %s results to detail pages', async (entityType, label, urlPath) => {
+  ])('navigates %s results to detail pages with the active search query', async (entityType, label, urlPath) => {
     apiFetchMock.mockResolvedValueOnce(makeResponse([
       {
         entity_type: entityType,
@@ -100,7 +100,7 @@ describe('GlobalSearchOverlay', () => {
 
     fireEvent.click(screen.getByRole('button', { name: new RegExp(label, 'i') }));
 
-    expect(pushMock).toHaveBeenCalledWith(urlPath);
+    expect(pushMock).toHaveBeenCalledWith(`${urlPath}?search=alpha`);
   });
 
   it.each([

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
+import { withSellerLandingSearch } from '@/lib/seller-search-navigation';
 import { cn } from '@/lib/utils';
 
 interface SearchItem {
@@ -220,8 +221,8 @@ export function GlobalSearchOverlay({ className }: Props) {
     const full: RecentItem = { ...item, entity_type: entityType };
     saveRecent(full);
     setOpen(false);
-    router.push(item.url_path);
-  }, [router]);
+    router.push(withSellerLandingSearch(item.url_path, query));
+  }, [query, router]);
 
   const showRecent = open && !query.trim() && recent.length > 0;
   const showResults = open && !!query.trim();

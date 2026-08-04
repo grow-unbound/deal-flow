@@ -207,7 +207,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
           {isLoading ? (
             Array.from({ length: 6 }).map((_, index) => (
               <tr key={`loading-${index}`} className="border-b border-cream-300 bg-white">
-                <td colSpan={columnCount} className="px-3 py-2">
+                <td colSpan={columnCount} className="px-3 py-3">
                   <div className="h-5 animate-pulse rounded bg-cream-100" aria-hidden="true" />
                 </td>
               </tr>
@@ -224,22 +224,22 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
                 key={member.id}
                 className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
               >
-                <td className="px-3 py-2 text-base text-cream-900">
+                <td className="px-3 py-3 text-base text-cream-900">
                   {member.full_name ?? <span className="text-cream-400">—</span>}
                 </td>
-                <td className="px-3 py-2 text-base text-cream-700">{member.email}</td>
-                <td className="px-3 py-2 text-base text-cream-700">{member.phone ?? '—'}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-3 text-base text-cream-700">{member.email}</td>
+                <td className="px-3 py-3 text-base text-cream-700">{member.phone ?? '—'}</td>
+                <td className="px-3 py-3">
                   <RoleChip role={member.role} />
                 </td>
-                <td className="px-3 py-2 text-base text-cream-700">
+                <td className="px-3 py-3 text-base text-cream-700">
                   {formatLocationSummary(member)}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-3">
                   <StatusChip status={member.status} />
                 </td>
                 {isAdmin ? (
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <RowActionButton
                         label="Edit access"
