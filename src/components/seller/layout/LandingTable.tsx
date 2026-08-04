@@ -3,6 +3,9 @@ import { cn } from '@/lib/utils';
 
 import { SellerMobileList, type SellerMobileListItem } from '@/components/seller/mobile';
 
+/** Standard body-cell padding for seller landing / data tables. */
+export const LANDING_TABLE_CELL_CLASS = 'px-3 py-3';
+
 interface LandingTableColumn {
   label?: ReactNode;
   align?: 'left' | 'right' | 'center';
@@ -30,6 +33,10 @@ interface LandingTableProps {
    * table is rendered in the split-pane list column, which is narrow on desktop too.
    * Skips the wide `<table>` entirely rather than just CSS-hiding it. */
   forceCompact?: boolean;
+  /** When true, only horizontal overflow scrolls on this shell — vertical scroll stays on
+   * an ancestor (e.g. split-pane detail column). Avoids nested `overflow-auto` fighting
+   * trackpad/wheel horizontal gestures. */
+  horizontalScrollOnly?: boolean;
   /** Array index at which to interleave the infinite-scroll sentinel (mid-list, not
    * trailing) — forwarded to `SellerMobileList`. */
   sentinelIndex?: number;
@@ -46,6 +53,7 @@ export function LandingTable({
   emptyState,
   mobileRows,
   forceCompact,
+  horizontalScrollOnly,
   sentinelIndex,
   sentinelRef,
 }: LandingTableProps) {
@@ -82,7 +90,8 @@ export function LandingTable({
           vertically, instead of the page's real scrolling ancestor. */}
       <div
         className={cn(
-          'h-full min-h-0 w-full overflow-auto rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          'h-full min-h-0 w-full rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          horizontalScrollOnly ? 'overflow-x-auto overflow-y-visible' : 'overflow-auto',
           mobileRows && 'hidden md:block',
           className,
         )}

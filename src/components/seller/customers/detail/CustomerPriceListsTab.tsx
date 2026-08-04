@@ -26,7 +26,7 @@ export function CustomerPriceListsTab({ buyerId }: { buyerId: string }) {
 
   return (
     <section className="mt-5">
-      <div className="rounded-t-[14px] border border-cream-300 bg-white px-3 py-2">
+      <div className="rounded-t-[14px] border border-cream-300 bg-white px-3 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="font-display text-md text-cream-950">Assigned price lists</h3>
@@ -51,21 +51,21 @@ export function CustomerPriceListsTab({ buyerId }: { buyerId: string }) {
             <table className="min-w-full divide-y divide-cream-200">
               <thead className="bg-cream-50">
                 <tr className="text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">
-                  <th className="px-3 py-2">Price list</th>
-                  <th className="px-3 py-2">Assignment</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Validity</th>
-                  <th className="px-3 py-2 text-right">Priority</th>
+                  <th className="px-3 py-3">Price list</th>
+                  <th className="px-3 py-3">Assignment</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Validity</th>
+                  <th className="px-3 py-3 text-right">Priority</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cream-200">
                 {rows.map((row) => (
                   <tr key={`${row.id}-${row.target_type}`} className="bg-white text-sm text-cream-900">
-                    <td className="px-3 py-2 font-medium">{row.name}</td>
-                    <td className="px-3 py-2 text-cream-700">{row.target_label}</td>
-                    <td className="px-3 py-2"><PriceListStatusPill status={row.status} /></td>
-                    <td className="px-3 py-2 text-cream-700">{formatValidityWindow(row.valid_from, row.valid_to)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-cream-700">{row.priority ?? '—'}</td>
+                    <td className="px-3 py-3 font-medium">{row.name}</td>
+                    <td className="px-3 py-3 text-cream-700">{row.target_label}</td>
+                    <td className="px-3 py-3"><PriceListStatusPill status={row.status} /></td>
+                    <td className="px-3 py-3 text-cream-700">{formatValidityWindow(row.valid_from, row.valid_to)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-cream-700">{row.priority ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

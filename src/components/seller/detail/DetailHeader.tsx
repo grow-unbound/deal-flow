@@ -36,11 +36,19 @@ function renderAvatar(avatar: DetailAvatar) {
     return <EntityAvatar initials={avatar.initials ?? 'CT'} hue="ember" imageUrl={avatar.imageUrl} size={48} className="rounded-[14px]" />;
   }
 
-  return (
-    <div className="inline-flex h-12 w-12 shrink-0 items-end justify-center rounded-[14px] border border-teal-200 bg-gradient-to-b from-teal-50 to-teal-100 pb-[6px]">
-      <div className="h-[24px] w-[9px] rounded-t-[3px] rounded-b-[2px] bg-gradient-to-b from-teal-500 to-teal-700" />
-    </div>
-  );
+  if (avatar.kind === 'product') {
+    return (
+      <EntityAvatar
+        initials={avatar.initials ?? 'PR'}
+        hue={avatar.hue ?? 'teal'}
+        imageUrl={avatar.imageUrl}
+        size={48}
+        className="rounded-[14px]"
+      />
+    );
+  }
+
+  return null;
 }
 
 export function DetailHeader({ avatar, title, status, subtitle, statusActions, actions, loading }: DetailHeaderProps) {

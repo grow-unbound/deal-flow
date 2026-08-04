@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 import { PriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { PriceListsLandingResponse } from '@/hooks/usePriceLists';
@@ -19,7 +20,13 @@ export default async function PriceListsLayout({ children }: { children: ReactNo
       listSlot={
         <SellerBootstrapBoundary<PriceListsLandingResponse>
           path="/api/price-lists?limit=50"
-          fallback={<PriceListsLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/price-lists"
+              ariaLabel="Loading price lists"
+              expandedFallback={<PriceListsLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <PriceListsLandingClient initialData={initialData} />;

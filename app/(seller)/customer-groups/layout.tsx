@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 import { CohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { CohortsLandingResponse } from '@/hooks/useCohorts';
@@ -20,7 +21,13 @@ export default async function CohortsLayout({ children }: { children: ReactNode 
       listSlot={
         <SellerBootstrapBoundary<CohortsLandingResponse>
           path="/api/tenant/cohorts?limit=50"
-          fallback={<CohortsLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/customer-groups"
+              ariaLabel="Loading customer groups"
+              expandedFallback={<CohortsLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <CohortsLandingClient initialData={initialData} />;

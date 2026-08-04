@@ -119,7 +119,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
         loading={isLoading}
-        avatar={{ kind: 'brand', initials: data?.header.initials ?? 'BR', hue: data?.header.hue ?? 'cream' }}
+        avatar={{ kind: 'brand', initials: data?.header.initials ?? 'BR', hue: data?.header.hue ?? 'cream', imageUrl: data?.header.logo_url }}
         title={data?.header.brand_name ?? ''}
         status={{ label: data?.header.status_label ?? '', tone: data?.header.status_tone ?? 'neutral' }}
         subtitle={data ? subtitle(data.header) : []}

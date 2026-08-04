@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
 import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { TenantBrandsResponse } from '@/hooks/useBrands';
@@ -24,7 +25,14 @@ export default async function BrandsLayout({ children }: { children: ReactNode }
       listSlot={
         <SellerBootstrapBoundary<TenantBrandsResponse>
           path="/api/tenant/brands?period=last90&limit=50"
-          fallback={<BrandsLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/brands"
+              ariaLabel="Loading brands"
+              showLeading
+              expandedFallback={<BrandsLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <BrandsLandingClient initialData={initialData} initialPeriod="last90" />;

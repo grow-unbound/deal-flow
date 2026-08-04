@@ -614,7 +614,7 @@ export function PriceListComposer({
               />
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Pricing strategy" className="px-3 py-2">
+            <ComposerBasicsField label="Pricing strategy" className="px-3 py-3">
               <div className="mt-2 text-base font-medium leading-snug text-cream-950">
                 {formatStrategySummary(
                   pricingStrategy,
@@ -793,7 +793,7 @@ export function PriceListComposer({
                       </span>
                       <div
                         className={cn(
-                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-sm',
+                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-3 font-mono text-sm',
                           pricingStrategy === 'margin_from_mrp'
                             ? 'border-ember-400 bg-white shadow-[0_0_0_3px_rgba(194,110,58,0.20)]'
                             : 'border-cream-300 bg-cream-100 text-cream-600',
@@ -824,7 +824,7 @@ export function PriceListComposer({
                       </span>
                       <div
                         className={cn(
-                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-sm',
+                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-3 font-mono text-sm',
                           pricingStrategy === 'flat_off_base'
                             ? 'border-ember-400 bg-white shadow-[0_0_0_3px_rgba(194,110,58,0.20)]'
                             : 'border-cream-300 bg-cream-100 text-cream-600',
@@ -841,7 +841,7 @@ export function PriceListComposer({
                       </div>
                     </label>
 
-                    <div className="rounded-[8px] border border-dashed border-cream-400 bg-cream-50 px-3 py-2 text-sm leading-[1.45] text-cream-700">
+                    <div className="rounded-[8px] border border-dashed border-cream-400 bg-cream-50 px-3 py-3 text-sm leading-[1.45] text-cream-700">
                       {pricingStrategy === 'edit_each' ? (
                         <>
                           <strong className="font-medium text-cream-900">Edit each price inline.</strong> No global rule is applied.
@@ -863,7 +863,7 @@ export function PriceListComposer({
             }
             center={
               <ComposerMainCard>
-              <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-3 py-3">
                 <div>
                   <div className="text-base font-semibold text-cream-900">
                     {mode === 'edit'
@@ -875,7 +875,7 @@ export function PriceListComposer({
                   </div>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                  <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
+                  <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-3 text-base text-cream-700">
                     <Search className="h-4 w-4 text-cream-600" />
                     <input
                       value={search}
@@ -986,7 +986,7 @@ export function PriceListComposer({
                                 });
                               }}
                             />
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-3">
                               <div className="flex items-center gap-3">
                                 {imageUrl ? (
                                   <Image
@@ -1011,10 +1011,10 @@ export function PriceListComposer({
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.cost_price, 'CURRENCY_EXACT')}</td>
-                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.mrp, 'CURRENCY_EXACT')}</td>
-                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT')}</td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.cost_price, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.mrp, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(product.base_selling_price, 'CURRENCY_EXACT')}</td>
+                            <td className="px-3 py-3 text-right">
                               <div
                                 className={cn(
                                   'ml-auto inline-flex h-9 w-[108px] items-center justify-end gap-1 rounded-[6px] border bg-white px-2.5 font-mono text-sm',
@@ -1042,7 +1042,7 @@ export function PriceListComposer({
                               </div>
                             </td>
                             <td className={cn(
-                              'px-3 py-2 text-right font-mono text-xs font-medium',
+                              'px-3 py-3 text-right font-mono text-xs font-medium',
                               discountVsBase == null ? 'text-cream-500' : discountVsBase >= 0 ? 'text-teal-700' : 'text-danger-700',
                             )}>
                               {discountVsBase == null
@@ -1050,7 +1050,7 @@ export function PriceListComposer({
                                 : `${discountVsBase >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(discountVsBase), 'PERCENTAGE')}`}
                             </td>
                             <td className={cn(
-                              'px-3 py-2 text-right font-mono text-xs font-medium',
+                              'px-3 py-3 text-right font-mono text-xs font-medium',
                               marginPct == null ? 'text-cream-500' : 'text-cream-900',
                             )}>
                               {marginPct == null ? '—' : `${formatNumberValue(marginPct, 'PERCENTAGE')}`}
@@ -1061,7 +1061,7 @@ export function PriceListComposer({
                     </tbody>
                   </table>
                   {productsQuery.hasNextPage ? (
-                    <div className="border-t border-cream-300 bg-white px-3 py-2 text-center">
+                    <div className="border-t border-cream-300 bg-white px-3 py-3 text-center">
                       <Button
                         type="button"
                         variant="ghost"

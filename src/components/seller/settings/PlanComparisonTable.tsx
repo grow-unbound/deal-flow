@@ -26,7 +26,7 @@ function Cell({
 }) {
   if (val === true) {
     return (
-      <td className={cn('border-b border-cream-100 px-3 py-2 text-center align-middle', current && 'bg-teal-50/80')}>
+      <td className={cn('border-b border-cream-100 px-3 py-3 text-center align-middle', current && 'bg-teal-50/80')}>
         <Check className="mx-auto h-4 w-4 text-success-600" strokeWidth={2.5} aria-label="Included" />
       </td>
     );
@@ -35,7 +35,7 @@ function Cell({
     return (
       <td
         className={cn(
-          'border-b border-cream-100 px-3 py-2 text-center align-middle text-base text-cream-400',
+          'border-b border-cream-100 px-3 py-3 text-center align-middle text-base text-cream-400',
           current && 'bg-teal-50/80',
         )}
       >
@@ -46,7 +46,7 @@ function Cell({
   return (
     <td
       className={cn(
-        'border-b border-cream-100 px-3 py-2 text-center align-middle font-mono text-sm tabular-nums font-medium text-cream-800',
+        'border-b border-cream-100 px-3 py-3 text-center align-middle font-mono text-sm tabular-nums font-medium text-cream-800',
         current && 'bg-teal-50/80',
       )}
     >
@@ -61,10 +61,10 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
       <table className="w-full min-w-max border-collapse text-base">
         <thead>
           <tr className="border-b border-cream-200 bg-cream-50">
-            <th className="table-label w-[40%] px-3 py-2 text-left">Feature</th>
+            <th className="table-label w-[40%] px-3 py-3 text-left">Feature</th>
             <th
               className={cn(
-                'table-label px-3 py-2 text-center',
+                'table-label px-3 py-3 text-center',
                 currentPlan === 'lite' && 'bg-teal-50/60 text-teal-900',
               )}
             >
@@ -72,7 +72,7 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
             </th>
             <th
               className={cn(
-                'table-label px-3 py-2 text-center',
+                'table-label px-3 py-3 text-center',
                 currentPlan === 'starter' && 'bg-teal-50/60 text-teal-900',
               )}
             >
@@ -80,7 +80,7 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
             </th>
             <th
               className={cn(
-                'table-label px-3 py-2 text-center',
+                'table-label px-3 py-3 text-center',
                 currentPlan === 'growth' && 'bg-teal-50/60 text-teal-900',
               )}
             >
@@ -88,7 +88,7 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
             </th>
             <th
               className={cn(
-                'table-label px-3 py-2 text-center',
+                'table-label px-3 py-3 text-center',
                 currentPlan === 'scale' && 'bg-teal-50/60 text-teal-900',
               )}
             >
@@ -99,7 +99,7 @@ export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) 
         <tbody>
           {ROWS.map((row) => (
             <tr key={row.feature} className="bg-white">
-              <td className="border-b border-cream-100 px-3 py-2 font-medium text-cream-900">{row.feature}</td>
+              <td className="border-b border-cream-100 px-3 py-3 font-medium text-cream-900">{row.feature}</td>
               <Cell val={row.lite} current={currentPlan === 'lite'} />
               <Cell val={row.starter} current={currentPlan === 'starter'} />
               <Cell val={row.growth} current={currentPlan === 'growth'} />

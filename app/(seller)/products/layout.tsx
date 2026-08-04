@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { ProductsLandingClient } from '@/components/seller/products/ProductsLandingClient';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { TenantProductsResponse } from '@/hooks/useProducts';
@@ -19,7 +20,14 @@ export default async function ProductsLayout({ children }: { children: ReactNode
       listSlot={
         <SellerBootstrapBoundary<TenantProductsResponse>
           path="/api/tenant/products?period=last90"
-          fallback={<ProductsLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/products"
+              ariaLabel="Loading products"
+              showLeading
+              expandedFallback={<ProductsLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <ProductsLandingClient initialData={initialData} />;

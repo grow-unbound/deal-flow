@@ -599,7 +599,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                 <button
                   type="button"
                   onClick={() => setBrandSheetOpen(true)}
-                  className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-cream-50 px-3 py-2 text-left transition-colors hover:bg-white"
+                  className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-cream-50 px-3 py-3 text-left transition-colors hover:bg-white"
                 >
                   <span className="text-base font-medium text-cream-900">
                     {selectedBrandIds.length > 0
@@ -775,7 +775,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     </p>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
+                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-3 text-base text-cream-700">
                       <Search className="h-4 w-4 shrink-0 text-cream-600" />
                       <input
                         value={search}
@@ -866,7 +866,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                                   : toggleRuleRow(buyer.id, nextChecked)
                               }
                             />
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-3">
                               <div className="flex items-center gap-3">
                                 <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
                                 <div className="min-w-0">
@@ -877,21 +877,21 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-cream-900">{buyer.geography_label}</td>
-                            <td className="px-3 py-2 font-mono text-cream-900">
+                            <td className="px-3 py-3 text-cream-900">{buyer.geography_label}</td>
+                            <td className="px-3 py-3 font-mono text-cream-900">
                               {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                             </td>
-                            <td className="px-3 py-2 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
-                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
-                            <td className="px-3 py-2 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
-                            <td className="px-3 py-2 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
+                            <td className="px-3 py-3 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
+                            <td className="px-3 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.mtd_spend, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-3 py-3 text-right font-mono font-medium text-cream-900">{formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')}</td>
+                            <td className="px-3 py-3 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
                           </ComposerSelectableRow>
                         );
                       })}
                     </tbody>
                     </table>
                     {buyerResultsQuery.hasNextPage ? (
-                      <div className="border-t border-cream-300 bg-white px-3 py-2 text-center">
+                      <div className="border-t border-cream-300 bg-white px-3 py-3 text-center">
                         <Button
                           type="button"
                           variant="ghost"

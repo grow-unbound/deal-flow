@@ -12,6 +12,7 @@ import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { computeLineTaxableAmount } from '@/lib/gst';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 
 type DbClient = {
@@ -111,7 +112,7 @@ export async function loadTenantSalesOrderComposer(
       ? await d
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp, image_urls')
           .in('id', productIds)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
@@ -199,6 +200,7 @@ export async function loadTenantSalesOrderComposer(
       brand_name: brandName,
       brand_initials: initials,
       brand_hue: hue,
+      image_url: firstStoredImageUrl(product?.image_urls),
       hsn_code: hsn,
       on_hand: onHand,
       qty: Number(row.qty ?? 0),

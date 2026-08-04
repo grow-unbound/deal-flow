@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CategoriesLandingClient } from '@/components/seller/categories/CategoriesLandingClient';
 import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
@@ -24,7 +25,14 @@ export default async function CategoriesLayout({ children }: { children: ReactNo
       listSlot={
         <SellerBootstrapBoundary<CategoriesLandingResponse>
           path="/api/tenant/categories/landing?period=last90&limit=50"
-          fallback={<CategoriesLandingSkeleton />}
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/categories"
+              ariaLabel="Loading categories"
+              showLeading
+              expandedFallback={<CategoriesLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
             return <CategoriesLandingClient initialData={initialData} initialPeriod="last90" />;

@@ -15,6 +15,7 @@ interface EstimateRow {
   sent_at: string | null;
   accepted_at: string | null;
   expires_at: string | null;
+  valid_until?: string | null;
   source: string | null;
   is_buyer_app_estimate?: boolean;
   campaign_id?: string | null;
@@ -381,6 +382,24 @@ describe('estimates landing API route', () => {
         created_by: 'u-seller',
         updated_at: '2026-06-05T14:00:00.000Z',
       },
+      {
+        id: 'e5',
+        location_id: 'loc-2',
+        estimate_number: 'EST-2026-0005',
+        buyer_id: 'b1',
+        status: 'sent',
+        total_amount: 9000,
+        estimate_date: '2026-06-06T10:00:00.000Z',
+        created_at: '2026-06-06T10:00:00.000Z',
+        sent_at: '2026-06-06T11:00:00.000Z',
+        accepted_at: null,
+        expires_at: null,
+        valid_until: '2026-06-20',
+        source: 'buyer_app',
+        is_buyer_app_estimate: false,
+        campaign_id: null,
+        updated_at: '2026-06-06T11:00:00.000Z',
+      },
     ];
     queryState.estimateItems = [
       { estimate_id: 'e1' },
@@ -534,6 +553,11 @@ describe('estimates landing API route', () => {
     const sellerRow = body.estimates.find((r: { id: string }) => r.id === 'e3');
     expect(sellerRow.source_label).toBe('');
     expect(sellerRow.source_detail).toBe('');
+
+    const legacyBuyerAppRow = body.estimates.find((r: { id: string }) => r.id === 'e5');
+    expect(legacyBuyerAppRow.source_kind).toBe('buyer_app');
+    expect(legacyBuyerAppRow.source_label).toBe('BUYER APP');
+    expect(legacyBuyerAppRow.expires_at).toBe('2026-06-20T23:59:59.000Z');
 
     expect(body.todays_read.needs_follow_up.length).toBeGreaterThanOrEqual(1);
     expect(body.todays_read.needs_follow_up[0].estimate_number).toBe('EST-2026-0002');

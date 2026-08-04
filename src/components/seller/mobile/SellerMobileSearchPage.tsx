@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Clock, Search } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-fetch';
+import { withSellerLandingSearch } from '@/lib/seller-search-navigation';
 
 interface SearchItem {
   id: string;
@@ -192,7 +193,7 @@ export function SellerMobileSearchPage() {
                   {group.items.map((item) => (
                     <Link
                       key={item.id}
-                      href={item.url_path}
+                      href={withSellerLandingSearch(item.url_path, query)}
                       onClick={() => remember(item, group.entity_type)}
                       className="block rounded-[12px] border border-cream-200 bg-white px-3.5 py-3"
                     >

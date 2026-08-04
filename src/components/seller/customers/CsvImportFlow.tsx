@@ -264,11 +264,11 @@ export function CsvImportFlow() {
             <table className="w-full border-collapse text-body-sm">
               <thead>
                 <tr className="bg-cream-200 text-cream-700 font-semibold text-caption">
-                  <th className="text-left px-3 py-2">#</th>
-                  <th className="text-left px-3 py-2">Business Name</th>
-                  <th className="text-left px-3 py-2">Phone</th>
-                  <th className="text-left px-3 py-2">Tier</th>
-                  <th className="text-left px-3 py-2">Status</th>
+                  <th className="text-left px-3 py-3">#</th>
+                  <th className="text-left px-3 py-3">Business Name</th>
+                  <th className="text-left px-3 py-3">Phone</th>
+                  <th className="text-left px-3 py-3">Tier</th>
+                  <th className="text-left px-3 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,17 +281,17 @@ export function CsvImportFlow() {
                         : 'bg-danger-50 border-l-2 border-danger-500'
                     }
                   >
-                    <td className="px-3 py-2 text-cream-500">{row.rowIndex}</td>
-                    <td className="px-3 py-2 text-cream-900 font-medium">
+                    <td className="px-3 py-3 text-cream-500">{row.rowIndex}</td>
+                    <td className="px-3 py-3 text-cream-900 font-medium">
                       {row.raw.business_name || '—'}
                     </td>
-                    <td className="px-3 py-2 font-mono text-cream-700">
+                    <td className="px-3 py-3 font-mono text-cream-700">
                       {row.raw.phone || '—'}
                     </td>
-                    <td className="px-3 py-2 text-cream-700">
+                    <td className="px-3 py-3 text-cream-700">
                       {row.raw.tier || '—'}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-3">
                       {row.valid ? (
                         <span className="text-teal-600 font-medium">Valid</span>
                       ) : (
@@ -338,23 +338,23 @@ export function CsvImportFlow() {
             <table className="w-full border-collapse text-body-sm">
               <thead>
                 <tr className="bg-cream-200 text-cream-700 font-semibold text-caption">
-                  <th className="text-left px-3 py-2">#</th>
-                  <th className="text-left px-3 py-2">Business Name</th>
-                  <th className="text-left px-3 py-2">Phone</th>
-                  <th className="text-left px-3 py-2">Tier</th>
-                  <th className="text-left px-3 py-2">Credit Limit</th>
+                  <th className="text-left px-3 py-3">#</th>
+                  <th className="text-left px-3 py-3">Business Name</th>
+                  <th className="text-left px-3 py-3">Phone</th>
+                  <th className="text-left px-3 py-3">Tier</th>
+                  <th className="text-left px-3 py-3">Credit Limit</th>
                 </tr>
               </thead>
               <tbody>
                 {validRows.map((row) => (
                   <tr key={row.rowIndex} className="bg-cream-50 border-b border-cream-100 last:border-0">
-                    <td className="px-3 py-2 text-cream-500">{row.rowIndex}</td>
-                    <td className="px-3 py-2 text-cream-900 font-medium">
+                    <td className="px-3 py-3 text-cream-500">{row.rowIndex}</td>
+                    <td className="px-3 py-3 text-cream-900 font-medium">
                       {row.raw.business_name}
                     </td>
-                    <td className="px-3 py-2 font-mono text-cream-700">{row.raw.phone}</td>
-                    <td className="px-3 py-2 text-cream-700">{row.raw.tier || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-cream-700">
+                    <td className="px-3 py-3 font-mono text-cream-700">{row.raw.phone}</td>
+                    <td className="px-3 py-3 text-cream-700">{row.raw.tier || '—'}</td>
+                    <td className="px-3 py-3 font-mono text-cream-700">
                       {row.raw.credit_limit ? formatNumberValue(Number(row.raw.credit_limit), 'CURRENCY_EXACT') : '—'}
                     </td>
                   </tr>
@@ -364,7 +364,7 @@ export function CsvImportFlow() {
           </div>
 
           {importError && (
-            <div className="flex items-center gap-2 text-danger-500 text-body-sm bg-danger-50 rounded-md px-3 py-2">
+            <div className="flex items-center gap-2 text-danger-500 text-body-sm bg-danger-50 rounded-md px-3 py-3">
               <AlertCircle size={16} />
               {importError}
             </div>

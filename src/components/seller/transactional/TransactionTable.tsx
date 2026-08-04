@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { EntityAvatar, LandingTable, StatusTag } from '@/components/seller/layout';
+import { LandingTable, LANDING_TABLE_CELL_CLASS, StatusTag } from '@/components/seller/layout';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
 import { prefetchEstimateComposer } from '@/hooks/useEstimates';
@@ -71,9 +71,30 @@ function deriveInitials(name: string) {
     .toUpperCase();
 }
 
-function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_label'>): string {
-  return row.source_label ?? '';
+function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_label' | 'source_kind'>): string {
+  const label = row.source_label?.trim();
+  if (label) return label;
+  if (row.source_kind === 'buyer_app') return 'BUYER APP';
+  return '';
 }
+
+function buildTransactionListSupportingText(kind: TransactionTableKind, row: TransactionTableRow): string {
+  const itemsPart = `${row.items_count} item${row.items_count === 1 ? '' : 's'}`;
+  const createdPart = row.created_at ? formatDate(row.created_at) : '—';
+
+  if (kind === 'estimate') {
+    const expiryPart = row.expires_at ? `Exp ${formatDate(row.expires_at)}` : null;
+    return [itemsPart, createdPart, expiryPart].filter(Boolean).join(' · ');
+  }
+
+  if (kind === 'invoice') {
+    const duePart = row.due_at ? `Due ${formatDate(row.due_at)}` : null;
+    return [itemsPart, createdPart, duePart].filter(Boolean).join(' · ');
+  }
+
+  return `${itemsPart} · ${createdPart}`;
+}
+
 
 function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   const base = {
@@ -165,12 +186,14 @@ export function TransactionTable({
       mobileRows={rows.map((row) => ({
         id: row.id,
         href: row.href,
-        primary: row.document_number,
-        supporting: row.buyer_name,
-        meta: kind === 'invoice'
-          ? `${row.location_name ?? '—'} · Due ${row.due_at ? formatDate(row.due_at) : '—'}`
-          : `${row.items_count} item${row.items_count === 1 ? '' : 's'} · ${row.created_at ? formatDate(row.created_at) : '—'}`,
+        eyebrow: row.document_number,
+        primary: row.buyer_name,
+        supporting: buildTransactionListSupportingText(kind, row),
         trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
+        status: {
+          label: row.status_label,
+          tone: row.status_tone,
+        },
         badge: row.realtime_badge,
         selected: row.id === selectedId,
         onClick: () => {
@@ -206,7 +229,7 @@ export function TransactionTable({
             }}
             onTouchStart={prefetchOnPress(row.href, composerPrefetchFor(row.id))}
           >
-            <td className="px-3 py-2">
+            <td className={LANDING_TABLE_CELL_CLASS}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
@@ -221,55 +244,55 @@ export function TransactionTable({
               </div>
             </td>
 
-            <td className="px-3 py-2">
+            <td className={LANDING_TABLE_CELL_CLASS}>
               <div className="flex items-center gap-3">
                 {/* <EntityAvatar initials={initials} hue={hue} size={30} /> */}
                 <div className="min-w-0">
-                  <p className="truncate text-base font-medium text-cream-900">{row.buyer_name}</p>
-                  <p className="mt-0.5 truncate text-xs text-cream-600">{row.buyer_place_of_supply ?? '—'}</p>
+                  <p className="truncate text-base font-medium text-cream-900 leading-snug">{row.buyer_name}</p>
+                  {/* <p className="mt-0.5 truncate text-xs text-cream-600">{row.buyer_place_of_supply ?? '—'}</p> */}
                 </div>
               </div>
             </td>
 
-            <td className="px-3 py-2 text-sm text-cream-900">{row.location_name ?? '—'}</td>
+            <td className={cn(LANDING_TABLE_CELL_CLASS, 'text-sm text-cream-900')}>{row.location_name ?? '—'}</td>
 
             {showCampaignColumn ? (
-              <td className="px-3 py-2 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
+              <td className={cn(LANDING_TABLE_CELL_CLASS, 'text-sm text-cream-900')}>{row.campaign_name ?? '—'}</td>
             ) : null}
 
             {kind !== 'invoice' ? (
-              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{row.items_count}</td>
+              <td className={cn(LANDING_TABLE_CELL_CLASS, 'text-right font-mono text-base text-cream-900')}>{row.items_count}</td>
             ) : null}
 
-            <td className="px-3 py-2 text-right">
-              <p className="font-display text-md text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
+            <td className={cn(LANDING_TABLE_CELL_CLASS, 'text-right')}>
+              <p className="font-display text-base font-medium leading-snug text-cream-950">{formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD')}</p>
               {kind === 'invoice' && row.amount_subtext ? (
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
               ) : null}
             </td>
 
             {kind === 'invoice' ? (
-              <td className="px-3 py-2 text-right font-mono text-base text-cream-900">
+              <td className={cn(LANDING_TABLE_CELL_CLASS, 'text-right font-mono text-base text-cream-900')}>
                 {row.outstanding_amount ? formatNumberValue(row.outstanding_amount, 'CURRENCY_THRESHOLD') : '—'}
               </td>
             ) : null}
 
-            <td className="px-3 py-2">
+            <td className={LANDING_TABLE_CELL_CLASS}>
               <StatusTag label={row.status_label} tone={row.status_tone} />
             </td>
 
-            <td className="px-3 py-2 font-mono text-sm text-cream-700">
+            <td className={cn(LANDING_TABLE_CELL_CLASS, 'font-mono text-sm text-cream-700')}>
               {row.created_at ? formatDate(row.created_at) : '—'}
             </td>
 
             {kind === 'estimate' ? (
-              <td className="px-3 py-2 font-mono text-sm text-cream-700">
+              <td className={cn(LANDING_TABLE_CELL_CLASS, 'font-mono text-sm text-cream-700')}>
                 {row.expires_at ? formatDate(row.expires_at) : '—'}
               </td>
             ) : null}
 
             {kind === 'invoice' ? (
-              <td className="px-3 py-2 font-mono text-sm text-cream-700">
+              <td className={cn(LANDING_TABLE_CELL_CLASS, 'font-mono text-sm text-cream-700')}>
                 {row.due_at ? formatDate(row.due_at) : '—'}
               </td>
             ) : null}

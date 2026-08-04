@@ -22,6 +22,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
@@ -30,6 +31,8 @@ import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { PriceListFormSheet } from './PriceListFormSheet';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
@@ -37,6 +40,20 @@ type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' 
 
 const STATUS_OPTIONS: LandingChip[] = ['Draft', 'Active', 'Expired'];
 const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)', 'Priority (high → low)'];
+
+function PriceListsDataSkeleton({ isSellerAssistant }: { isSellerAssistant: boolean }) {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} />
+    </div>
+  );
+}
 
 function titleCaseStatus(status: PriceListLandingRow['status']): 'Active' | 'Draft' | 'Expired' {
   if (status === 'active') return 'Active';
@@ -67,7 +84,7 @@ function PriceListsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/price-lists');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [formOpen, setFormOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('products-with-custom-prices');
@@ -178,6 +195,7 @@ function PriceListsLandingContent({
     },
   ];
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  const showRefreshingState = isLoading && !data;
 
   if (isError) {
     return (
@@ -195,6 +213,11 @@ function PriceListsLandingContent({
     <>
       <PageWrap className="flex h-full min-h-0 flex-col">
         <StickyListHeader>
+          <SplitPaneStickyHeaderSlot
+            isPaneOpen={isPaneOpen}
+            showRefreshingState={showRefreshingState}
+            isError={isError}
+          >
           <PageHeader
             eyebrow={isPaneOpen ? 'Price Lists' : 'Pricing'}
             title={isPaneOpen ? selectedOption.label : 'Price Lists'}
@@ -210,41 +233,48 @@ function PriceListsLandingContent({
           />
           <PriceListFormSheet open={formOpen} onOpenChange={setFormOpen} mode="create" />
 
-          {isLoading || isError ? null : (
-            <>
-              {isPaneOpen ? null : (
-                <InsightStrip4
-                  tiles={kpiOptions.map((option): InsightTile => ({
-                    label: option.label,
-                    value: option.value,
-                    sub: option.sub,
-                    onClick: () => setSelectedKpiKey(option.id),
-                    selected: option.id === selectedKpiKey,
-                  }))}
-                />
-              )}
-
-              <FilterBar
-                count={`${filteredRows.length} price lists`}
-                searchPlaceholder="Search price list…"
-                chips={[]}
-                activeChip=""
-                sortBy={sortBy}
-                hideViewToggle
-                compact={isPaneOpen}
-                groups={groups}
-                searchValue={search}
-                onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-                sortOptions={SORT_OPTIONS}
-                onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-              />
-            </>
+          {isPaneOpen ? null : (
+            <InsightStrip4
+              tiles={kpiOptions.map((option): InsightTile => ({
+                label: option.label,
+                value: option.value,
+                sub: option.sub,
+                onClick: () => setSelectedKpiKey(option.id),
+                selected: option.id === selectedKpiKey,
+              }))}
+            />
           )}
+
+          <FilterBar
+            count={`${filteredRows.length} price lists`}
+            searchPlaceholder="Search price list…"
+            chips={[]}
+            activeChip=""
+            sortBy={sortBy}
+            hideViewToggle
+            compact={isPaneOpen}
+            groups={groups}
+            searchValue={search}
+            onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+          />
+          </SplitPaneStickyHeaderSlot>
         </StickyListHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-        {showTableSkeleton ? (
-          <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} forceCompact={isPaneOpen} />
+        {showRefreshingState ? (
+          isPaneOpen ? (
+            <SplitPaneListRowsSkeleton isPaneOpen />
+          ) : (
+            <PriceListsDataSkeleton isSellerAssistant={isSellerAssistant} />
+          )
+        ) : showTableSkeleton ? (
+          isPaneOpen ? (
+            <SplitPaneListRowsSkeleton isPaneOpen />
+          ) : (
+            <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} />
+          )
         ) : (
         <LandingTable
           showEmptyState={filteredRows.length === 0 && !isLoading}
@@ -288,10 +318,14 @@ function PriceListsLandingContent({
             return {
               id: row.id,
               href: `/price-lists/${row.id}`,
+              eyebrow: titleCaseStatus(row.status),
               primary: row.name,
-              supporting: row.description ?? strategySub,
-              meta: `${validity} · ${row.product_count} products`,
-              trailing: titleCaseStatus(row.status),
+              supporting: joinSplitListMeta(
+                row.description ?? strategySub,
+                validity,
+                `${row.product_count} products`,
+              ),
+              trailing: `${row.product_count}`,
               selected: row.id === openId,
             };
           })}
@@ -316,7 +350,7 @@ function PriceListsLandingContent({
                 onClick={() => router.push(`/price-lists/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
-                <td className="px-3 py-2 text-base text-cream-900">
+                <td className="px-3 py-3 text-base text-cream-900">
                   <div className="ent flex items-center gap-3">
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
@@ -327,19 +361,19 @@ function PriceListsLandingContent({
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-sm text-cream-800">
+                <td className="px-3 py-3 text-sm text-cream-800">
                   {strategySub}
                 </td>
-                <td className="px-3 py-2 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
+                <td className="px-3 py-3 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.priority}
                 </td>
-                <td className="px-3 py-2 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
+                <td className="px-3 py-3 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.product_count}
                 </td>
-                <td className={`px-3 py-2 font-mono text-sm ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
+                <td className={`px-3 py-3 font-mono text-sm ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
                   {validity}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-3 text-right">
                   {row.avg_discount_pct != null ? (
                     <span
                       className={cn(
@@ -355,7 +389,7 @@ function PriceListsLandingContent({
                   )}
                 </td>
                 {!isSellerAssistant ? (
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-3 text-right">
                     {row.avg_margin_pct != null ? (
                       <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
                         {formatNumberValue(row.avg_margin_pct, 'PERCENTAGE')}
@@ -365,10 +399,10 @@ function PriceListsLandingContent({
                     )}
                   </td>
                 ) : null}
-                <td className="px-3 py-2">
+                <td className="px-3 py-3">
                   <StatusTag label={titleCaseStatus(row.status)} tone={toStatusTone(row.status)} />
                 </td>
-                <td className="chev px-3 py-2 pr-4 text-right text-md text-cream-500">›</td>
+                <td className="chev px-3 py-3 pr-4 text-right text-md text-cream-500">›</td>
               </tr>
               </Fragment>
             );

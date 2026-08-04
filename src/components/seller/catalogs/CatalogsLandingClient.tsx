@@ -251,7 +251,7 @@ function CatalogsLandingContent({
               onClick={() => router.push(`/campaigns/${catalog.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="flex items-center gap-3">
                   <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
                   <div className="min-w-0">
@@ -262,7 +262,7 @@ function CatalogsLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="space-y-1">
                   <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
                   <p className="text-xs text-cream-600">
@@ -270,18 +270,18 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                 {catalog.order_count > 0 ? catalog.order_count : '—'}
               </td>
               {estimatesEnabled ? (
-                <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                   {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
                 </td>
               ) : null}
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                 {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
                     {catalog.views > 0 ? catalog.views : '—'}
@@ -291,7 +291,7 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
                     {catalog.demand_customers ?? 0}
@@ -299,7 +299,7 @@ function CatalogsLandingContent({
                   <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
                 </div>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="space-y-1">
                   <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
                   <p className="text-xs text-cream-600">
@@ -317,7 +317,7 @@ function CatalogsLandingContent({
                   </p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right text-cream-500">›</td>
+              <td className="px-3 py-3 text-right text-cream-500">›</td>
             </tr>
           ))}
         </LandingTable>

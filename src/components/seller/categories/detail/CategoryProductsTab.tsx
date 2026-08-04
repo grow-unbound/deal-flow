@@ -95,43 +95,43 @@ export function CategoryProductsTab({ products, categoryId: _categoryId }: Categ
               onClick={() => router.push(`/products/${p.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="flex items-center gap-3">
-                  <EntityAvatar initials={getInitials(p.name)} hue="teal" size={38} />
+                  <EntityAvatar initials={getInitials(p.name)} hue="teal" imageUrl={p.image_url} size={38} />
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{p.name}</p>
                     {p.sku_code ? <p className="mt-0.5 text-sm text-cream-700">{p.sku_code}</p> : null}
                   </div>
                 </div>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="flex items-center gap-2">
                   <EntityAvatar initials={getInitials(p.brand_name)} hue="teal" imageUrl={p.brand_logo_url} size={22} />
                   <span className="text-sm text-cream-900">{p.brand_name}</span>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 {onHand <= 0 ? (
                   <span className="rounded-full bg-danger-100 px-2 py-0.5 text-xs font-medium text-danger-700">OOS</span>
                 ) : (
                   <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
                 )}
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <DaysCoverBadge value={p.days_cover == null ? null : Math.round(p.days_cover)} />
               </td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-700">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-700">
                 {p.units_mtd > 0 ? p.units_mtd : '—'}
               </td>
-              <td className="px-3 py-2 text-right">
+              <td className="px-3 py-3 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">
                   {p.gmv_mtd > 0 ? formatNumberValue(p.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
                 </span>
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <StatusTag tone={tone} label={statusLabel} />
               </td>
-              <td className="px-3 py-2 text-right text-cream-400">
+              <td className="px-3 py-3 text-right text-cream-400">
                 <ChevronRight size={16} />
               </td>
             </tr>

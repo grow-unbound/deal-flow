@@ -48,3 +48,11 @@ export function r2Urls<T extends Record<string, string | null | undefined>>(
   const entries = Object.entries(keys).map(([variant, key]) => [variant, r2Url(key)]);
   return Object.fromEntries(entries) as { [K in keyof T]: string | null };
 }
+
+export function firstStoredImageUrl(values: unknown): string | null {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const first = values[0];
+  if (typeof first !== 'string' || !first.trim()) return null;
+  if (/^https?:\/\//i.test(first)) return first;
+  return r2Url(first);
+}

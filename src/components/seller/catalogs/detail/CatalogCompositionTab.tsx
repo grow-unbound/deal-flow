@@ -157,7 +157,7 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
               {summary.included_count} products selected across {summary.brands_covered} brands.
             </p>
           </div>
-          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
+          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-right">
             <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">In stock</p>
             <p className="mt-1 font-display text-2xl leading-none text-cream-950">{summary.in_stock_count}</p>
           </div>
@@ -249,8 +249,8 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
               const isEditing = editingProductId === row.tenant_product_id;
               return (
                 <SelectableRow key={row.tenant_product_id} selected={isSelected}>
-                  <td className="px-3 py-2"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-3"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
+                  <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       <ProductImageCell src={row.image_url} alt={row.product_name} />
                       <div className="min-w-0">
@@ -259,9 +259,9 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
-                  <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
-                  <td className="group px-3 py-2 text-right font-mono text-base text-cream-900">
+                  <td className="px-3 py-3"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
+                  <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
+                  <td className="group px-3 py-3 text-right font-mono text-base text-cream-900">
                     {isEditing ? (
                       <div className="flex justify-end gap-2">
                         <div className="inline-flex h-9 w-32 items-center rounded-[8px] border border-cream-300 bg-white px-2 focus-within:border-ember-400">
@@ -284,17 +284,17 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-3 text-right">
                     <p className="font-mono text-base text-cream-900">{row.base_selling_price != null ? formatNumberValue(row.base_selling_price, 'CURRENCY_EXACT') : '—'}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{row.discount_pct == null ? '—' : `${row.discount_pct >= 0 ? '-' : '+'}${formatNumberValue(Math.abs(row.discount_pct), 'PERCENTAGE')}`}</p>
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-3 text-right">
                     <p className="font-mono text-base text-cream-900">{row.cost_price != null && row.cost_price > 0 ? formatNumberValue(row.cost_price, 'CURRENCY_EXACT') : '—'}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{row.margin_pct == null ? '—' : formatNumberValue(row.margin_pct, 'PERCENTAGE')}</p>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{stockLabel(row.on_hand)}</td>
-                  <td className="px-3 py-2 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
+                  <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{stockLabel(row.on_hand)}</td>
+                  <td className="px-3 py-3 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
+                  <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
                 </SelectableRow>
               );
             })
