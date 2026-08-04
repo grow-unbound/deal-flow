@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { CustomersLandingResponse } from '@/hooks/useCustomersLanding';
-import { PAGE_SIZE } from '@/lib/pagination';
+import type { CustomersLandingMetricsV4 } from '@/lib/customers-landing-v4-types';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 // Note: `?search=` seeding now happens client-side inside CustomersLandingClient via
@@ -18,13 +18,16 @@ export default async function CustomersLayout({ children }: { children: ReactNod
     <EntitySplitShell
       basePath="/customers"
       listSlot={
-        <SellerBootstrapBoundary<CustomersLandingResponse>
-          // Only `.kpis`/`.callouts` from this response are consumed on first paint (both
-          // computed server-side from unbounded queries, independent of this limit) — the
-          // `.buyers` row array itself is discarded and refetched by a separate cursor-paginated
-          // query (useCustomersLandingInfinite). Keep this limit small; it's pure serialization cost.
-          path={`/api/tenant/customers?limit=${PAGE_SIZE.SELLER}&period=last90`}
-          fallback={<CustomersLandingSkeleton />}
+        <SellerBootstrapBoundary<CustomersLandingMetricsV4>
+          // Bootstrap Pulse cards only — table rows are fetched by the infinite query.
+          path="/api/tenant/customers/metrics"
+          fallback={
+            <SplitPaneBootstrapFallback
+              basePath="/customers"
+              ariaLabel="Loading customers"
+              expandedFallback={<CustomersLandingSkeleton />}
+            />
+          }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
             return <CustomersLandingClient initialData={initialData} />;

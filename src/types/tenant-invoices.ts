@@ -214,6 +214,7 @@ export interface InvoiceDetailItemDto {
   brand_name: string;
   brand_initials: string;
   brand_hue: 'teal' | 'ember' | 'cream';
+  image_url?: string | null;
   hsn: string | null;
   qty: number;
   unit: string;

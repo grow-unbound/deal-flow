@@ -36,6 +36,15 @@ function matchesLineFilter(line: EstimateComposerLineRow, query: string): boolea
   return hay.includes(q);
 }
 
+function productInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'PR';
+}
+
 export function LinesTable({
   kind = 'estimate',
   buyerSelected,
@@ -333,7 +342,7 @@ export function LinesTable({
                   <td className="pl-6 pr-5 py-3 tabular-nums text-cream-600">{index + 1}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
-                      <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
+                      <EntityAvatar initials={productInitials(line.product_name)} hue={line.brand_hue} imageUrl={line.image_url} size={32} />
                       <div className="min-w-0 w-full">
                         <p className="truncate font-medium text-cream-900" title={line.product_name}>{line.product_name}</p>
                         <p className="truncate text-xs text-cream-600">

@@ -36,6 +36,7 @@ export interface CategoryTableRow {
   name: string;
   slug: string;
   initials: string;
+  image_url: string | null;
   is_active: boolean;
   active_sku_count: number;
   oos_sku_count: number;
@@ -147,6 +148,7 @@ export interface CategoryDetailHeader {
   r2_image_original_key: string | null;
   r2_image_medium_key: string | null;
   deleted_at: string | null;
+  image_url: string | null;
   active_sku_count: number;
   brand_count: number;
   created_at: string;
@@ -184,6 +186,7 @@ export interface CategoryDetailProduct {
   brand_id: string;
   brand_name: string;
   brand_logo_url: string | null;
+  image_url: string | null;
   on_hand: number;
   days_cover: number | null;
   units_mtd: number;

@@ -53,6 +53,7 @@ interface EstimateDbRow {
   sent_at: string | null;
   accepted_at: string | null;
   expires_at: string | null;
+  valid_until: string | null;
   source: string | null;
   is_buyer_app_estimate: boolean;
   campaign_id: string | null;
@@ -148,6 +149,31 @@ function getEstimateDocumentTimestamp(row: Pick<EstimateDbRow, 'estimate_date' |
   return row.estimate_date ?? row.created_at;
 }
 
+function isBuyerAppEstimate(row: Pick<EstimateDbRow, 'is_buyer_app_estimate' | 'source'>): boolean {
+  return row.is_buyer_app_estimate || row.source === 'buyer_app';
+}
+
+function resolveEstimateExpiresAt(row: Pick<EstimateDbRow, 'expires_at' | 'valid_until'>): string | null {
+  if (row.expires_at) return row.expires_at;
+  const validUntil = toText(row.valid_until);
+  if (!validUntil) return null;
+  return validUntil.includes('T') ? validUntil : `${validUntil}T23:59:59.000Z`;
+}
+
+function applyEstimateSourceFilter<T extends {
+  eq: (column: string, value: unknown) => T;
+  or: (filter: string) => T;
+}>(query: T, sourceParams: string[]): T {
+  if (sourceParams.length !== 1) return query;
+  if (sourceParams[0] === 'Buyer App') {
+    return query.or('is_buyer_app_estimate.eq.true,source.eq.buyer_app');
+  }
+  if (sourceParams[0] === 'Direct') {
+    return query.eq('is_buyer_app_estimate', false).or('source.is.null,source.neq.buyer_app');
+  }
+  return query;
+}
+
 function applyEstimateDocumentPeriod<T extends { or: (filter: string) => T }>(query: T, start: string, endExclusive: string): T {
   return query.or(
     `and(estimate_date.gte.${start},estimate_date.lt.${endExclusive}),and(estimate_date.is.null,created_at.gte.${start},created_at.lt.${endExclusive})`,
@@ -202,7 +228,7 @@ export async function GET(req: NextRequest) {
           .schema('app')
           .from('estimates')
           .select(
-            'id, location_id, estimate_number, buyer_id, status, total_amount, estimate_date, created_at, sent_at, accepted_at, expires_at, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
+            'id, location_id, estimate_number, buyer_id, status, total_amount, estimate_date, created_at, sent_at, accepted_at, expires_at, valid_until, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
           )
           .eq('tenant_id', tenantId)
           .is('deleted_at', null) as any,
@@ -220,9 +246,7 @@ export async function GET(req: NextRequest) {
       scopedEstimatesQuery = applyEstimateCursor(scopedEstimatesQuery, cursorParam);
     }
     scopedEstimatesQuery = applyTransactionTableSearch(scopedEstimatesQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
-    if (sourceParams.length === 1) {
-      scopedEstimatesQuery = scopedEstimatesQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
-    }
+    scopedEstimatesQuery = applyEstimateSourceFilter(scopedEstimatesQuery, sourceParams);
     if (statusParams.length > 0) {
       scopedEstimatesQuery = scopedEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
     }
@@ -242,9 +266,7 @@ export async function GET(req: NextRequest) {
     );
     estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
     estimateTotalQuery = applyTransactionTableSearch(estimateTotalQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
-    if (sourceParams.length === 1) {
-      estimateTotalQuery = estimateTotalQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
-    }
+    estimateTotalQuery = applyEstimateSourceFilter(estimateTotalQuery, sourceParams);
     if (statusParams.length > 0) {
       estimateTotalQuery = estimateTotalQuery.in('status', estimateStatusesForFilters(statusParams));
     }
@@ -393,7 +415,7 @@ export async function GET(req: NextRequest) {
     const creatorIds = Array.from(
       new Set(
         lookupRows
-          .filter((row) => !row.is_buyer_app_estimate && row.created_by)
+          .filter((row) => !isBuyerAppEstimate(row) && row.created_by)
           .map((row) => row.created_by as string),
       ),
     );
@@ -449,7 +471,8 @@ export async function GET(req: NextRequest) {
       const buyerState = toText(geography?.state);
       const placeOfSupply = toText(row.place_of_supply) ?? buyerCity ?? buyerState ?? null;
       const meta = statusMeta(norm);
-      const source: 'buyer_app' | 'seller' = row.is_buyer_app_estimate ? 'buyer_app' : 'seller';
+      const buyerApp = isBuyerAppEstimate(row);
+      const source: 'buyer_app' | 'seller' = buyerApp ? 'buyer_app' : 'seller';
       const createdByLabel = source === 'seller' ? creatorMap.get(row.created_by ?? '') ?? 'Team member' : null;
       const catalogName = row.campaign_id ? catalogById.get(row.campaign_id) ?? null : null;
       const landing: EstimateLandingRow = {
@@ -466,14 +489,14 @@ export async function GET(req: NextRequest) {
         buyer_hue: getHue(index),
         source,
         source_kind: source,
-        source_label: source === 'buyer_app' ? 'BUYER APP' : '',
+        source_label: buyerApp ? 'BUYER APP' : '',
         source_detail: '',
         campaign_name: catalogName,
         catalog_name: catalogName,
         created_by_label: createdByLabel,
         items_count: itemCountByEstimate.get(row.id) ?? 0,
         total_amount: Number(row.total_amount ?? 0),
-        expires_at: row.expires_at,
+        expires_at: resolveEstimateExpiresAt(row),
         created_at: getEstimateDocumentTimestamp(row),
         accepted_at: row.accepted_at,
         sent_at: row.sent_at,

@@ -16,15 +16,20 @@ export const REFERENCE_QUERY_GC_TIME = 60 * 60 * 1000;
 export const BUYER_QUERY_STALE_TIME = 30_000;
 export const BUYER_QUERY_GC_TIME = 2 * 60_000;
 
-// Buyer PWA reference tier — catalog browse data (categories, brands, catalogs list,
-// buyer profile/business policy): changes rarely within a session, safe to cache long.
+// Buyer PWA reference tier — non-priced data that changes rarely within a session:
+// categories, brands, catalogs list, buyer profile/policy, home promotions,
+// home reco rails (product identity; rails refresh weekly). Prefer this over
+// BUYER_QUERY_* so tab hops stay instant (gcTime keeps cache warm).
+// Home KPI metrics stay on BUYER_QUERY_* — same cadence as recent activity,
+// since new docs/payments can move those totals.
 export const BUYER_REFERENCE_QUERY_STALE_TIME = 15 * 60 * 1000;
 export const BUYER_REFERENCE_QUERY_GC_TIME = 60 * 60 * 1000;
 
-// Buyer PWA price tier — any response carrying a per-item selling price (catalog
-// grid/search/product-detail, recommendations, cart bundles, resolved cart items):
-// distributors edit prices directly and buyers must see the change immediately, so
-// this stays far shorter than BUYER_QUERY_STALE_TIME. Pair with BUYER_CACHE_PRICED
-// on the API route (buyer-cache-headers.ts) so the HTTP layer doesn't add its own lag.
+// Buyer PWA price tier — any response whose primary job is per-item selling price
+// (catalog grid/search/product-detail, cart bundles, resolved cart items):
+// distributors edit prices through the day, so this stays the shortest TTL.
+// Pair with BUYER_CACHE_PRICED on the API route (buyer-cache-headers.ts).
+// Home reco embeds prices but uses REFERENCE client cache for rail UX; pull-to-
+// refresh and post-stale refetch still revalidate via BUYER_CACHE_PRICED HTTP.
 export const BUYER_PRICE_QUERY_STALE_TIME = 15_000;
 export const BUYER_PRICE_QUERY_GC_TIME = 60_000;

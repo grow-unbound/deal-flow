@@ -14,8 +14,15 @@ import {
   hasBuyerCampaignPrice,
 } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
+import {
+  buyerDeliveryStockSignature,
+  prefetchBuyerProductDetail,
+} from '@/hooks/useBuyerProducts';
+import { useQueryClient } from '@tanstack/react-query';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface ProductCardProps {
@@ -62,6 +69,10 @@ export function ProductCard({
 }: ProductCardProps): React.ReactNode {
   const isCompact = variant === 'compact';
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
+  const prefetchOnPress = usePointerPrefetch();
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const { items, addItem, updateQty } = useCart();
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
@@ -72,6 +83,9 @@ export function ProductCard({
   const isOos = item.stock_status === 'out_of_stock';
   const productHref = `/buy/product/${item.tenant_product_id}`;
   const showCampaignPrice = hasBuyerCampaignPrice(item);
+  const prefetchProduct = prefetchOnPress(productHref, () => {
+    prefetchBuyerProductDetail(queryClient, item.tenant_product_id, stockSignature);
+  });
 
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
   const categoryImg = !productImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
@@ -147,6 +161,8 @@ export function ProductCard({
           <Link
             href={productHref}
             onClick={() => markBuyerNavigationForward()}
+            onPointerDown={prefetchProduct}
+            onTouchStart={prefetchProduct}
             className="absolute inset-0 flex items-center justify-center no-underline"
             aria-label={item.display_name}
           >
@@ -259,6 +275,8 @@ export function ProductCard({
         <Link
           href={productHref}
           onClick={() => markBuyerNavigationForward()}
+          onPointerDown={prefetchProduct}
+          onTouchStart={prefetchProduct}
           className="flex flex-1 flex-col no-underline"
         >
           <div

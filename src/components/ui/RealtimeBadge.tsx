@@ -15,7 +15,7 @@ const kindConfig = {
 export function RealtimeBadge({ type, className }: RealtimeBadgeProps) {
   const { variant, label } = kindConfig[type];
   return (
-    <Badge variant={variant} className={className}>
+    <Badge variant={variant} icon className={className}>
       {label}
     </Badge>
   );

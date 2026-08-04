@@ -135,7 +135,7 @@ export function BundlesTable({
               key={bundle.id}
               className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             >
-              <td className="px-3 py-2 align-middle">
+              <td className="px-3 py-3 align-middle">
                 <div className="flex items-center gap-2">
                   <span className="text-base font-medium text-cream-900">{bundle.name}</span>
                   {bundle.source ? (
@@ -148,7 +148,7 @@ export function BundlesTable({
                   <p className="mt-0.5 text-sm text-cream-500">{bundle.description}</p>
                 ) : null}
               </td>
-              <td className="px-3 py-2 align-middle">
+              <td className="px-3 py-3 align-middle">
                 <div className="flex flex-wrap gap-1.5">
                   {bundle.slots.length === 0 ? (
                     <span className="text-sm text-cream-500">No slots defined</span>
@@ -162,7 +162,7 @@ export function BundlesTable({
                   )}
                 </div>
               </td>
-              <td className="px-3 py-2 text-right align-middle">
+              <td className="px-3 py-3 text-right align-middle">
                 <div className="flex items-center justify-end gap-1">
                   <RecommendationsTableIconButton
                     label="Edit bundle"

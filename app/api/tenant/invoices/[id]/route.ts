@@ -9,6 +9,7 @@ import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import {
   getBuyerDocumentSendState,
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? await db
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, mrp')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, mrp, image_urls')
           .in('id', productIds)
           .eq('tenant_id', claims.tenant_id)
           .is('deleted_at', null)
@@ -294,6 +295,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       brand_name: brandName,
       brand_initials: brandInitials,
       brand_hue: brandHue,
+      image_url: firstStoredImageUrl(product?.image_urls),
       hsn,
       qty: Number(row.qty ?? 0),
       unit,

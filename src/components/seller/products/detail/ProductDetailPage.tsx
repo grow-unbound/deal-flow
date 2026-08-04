@@ -25,6 +25,16 @@ const ProductPerformanceTab = dynamic(
 
 type TabId = 'details' | 'performance' | 'pricing';
 
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 interface ProductDetailPageProps {
   id: string;
 }
@@ -97,7 +107,12 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
     <div className="px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
         loading={isLoading}
-        avatar={{ kind: 'product' }}
+        avatar={{
+          kind: 'product',
+          initials: getInitials(data?.detail.header.name ?? 'Product'),
+          hue: 'teal',
+          imageUrl: data?.product.image_urls?.[0] ?? null,
+        }}
         title={data?.detail.header.name ?? ''}
         status={{ label: data?.detail.header.status_label ?? '', tone: data?.detail.header.status_tone ?? 'neutral' }}
         subtitle={

@@ -48,9 +48,16 @@ export function matchesInvoiceStatusChip(
   chip: BuyerInvoiceStatusChip,
 ): boolean {
   if (chip === 'All') return true;
-  const effective = effectiveInvoiceStatus({ status: invoice.status, due_date: invoice.due_date });
+  const effective = effectiveInvoiceStatus({
+    status: invoice.status,
+    due_date: invoice.due_date,
+    outstanding_balance: invoice.outstanding_balance,
+  });
   if (chip === 'Paid') return effective === 'paid';
   if (chip === 'Void') return effective === 'void';
   if (chip === 'Overdue') return effective === 'overdue';
-  return effective === 'sent' && (invoice.outstanding_balance ?? 0) > 0;
+  // Due = open receivables (current + overdue). Overdue chip is the tighter subset.
+  // Home Outstanding KPI deep-links here — excluding overdue emptied the list for
+  // buyers whose balance is past due.
+  return (effective === 'sent' || effective === 'overdue') && (invoice.outstanding_balance ?? 0) > 0;
 }

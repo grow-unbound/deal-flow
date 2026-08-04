@@ -15,68 +15,29 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerCreateInput } from '@/lib/zod';
-import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
-import type { LandingFilterMeta } from '@/lib/landing-filter-params';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
+import type {
+  CustomersLandingMetricsV4,
+  CustomersLandingTableResponseV4,
+  CustomersLandingTableRowV4,
+  CustomersLandingTableSort,
+} from '@/lib/customers-landing-v4-types';
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 export type AvatarHue = 'teal' | 'ember' | 'cream';
 
-export interface CustomersLandingBuyer {
-  id: string;
-  business_name: string;
-  tier: 'A' | 'B' | 'C' | null;
-  phone: string | null;
-  gst_treatment?: string | null;
-  zoho_status?: string | null;
-  city: string;
-  state?: string | null;
-  cohort: string;
-  active_price_list?: {
-    name: string;
-    source: 'direct' | 'cohort';
-    cohort_name?: string | null;
-  } | null;
-  spend_mtd: number;
-  spend_prev_mtd: number;
-  growth_pct: number;
-  orders_mtd: number;
-  last_order_at: string | null;
-  credit_limit: number;
-  credit_used: number;
-  overdue_amount?: number;
-  dues: number;
-  overdue_days?: number | null;
-  status: { label: string; tone: StatusTone };
-  avatar: { initials: string; hue: AvatarHue };
-  whatsapp_opted_out?: boolean;
-}
+/** @deprecated Use CustomersLandingTableRowV4 — kept as alias for gradual call-site updates. */
+export type CustomersLandingBuyer = CustomersLandingTableRowV4;
 
-export interface CustomersLandingResponse {
-  period?: SellerLandingPeriodMeta;
-  kpis: {
-    total: number;
-    cohort_count: number;
-    active: number;
-    active_pct: number;
-    spend_mtd: number;
-    spend_growth_pct: number;
-    dormant_over_30d: number;
-    outstanding_dues: number;
-    buyers_with_dues: number;
-    invoiced_customer_count: number;
-    overdue_sum: number;
-    overdue_customer_count: number;
-    dormant_prior_year_value: number;
-  };
-  callouts: {
-    needs_call: Array<CustomersLandingBuyer & { last_order_label: string; invoice_count: number; days_overdue: number | null }>;
-    needs_call_total?: number;
-    win_back: Array<CustomersLandingBuyer & { last_order_label: string; prior_value: number; days_inactive: number | null }>;
-    win_back_total?: number;
-  };
-  buyers: CustomersLandingBuyer[];
-  filters?: LandingFilterMeta;
-}
+/** @deprecated V2 landing response — use CustomersLandingMetricsV4 / CustomersLandingTableResponseV4. */
+export type CustomersLandingResponse = CustomersLandingTableResponseV4;
+
+export type {
+  CustomersLandingMetricsV4,
+  CustomersLandingTableResponseV4,
+  CustomersLandingTableRowV4,
+  CustomersLandingTableSort,
+};
 
 export interface TenantCustomerDetailResponse {
   header: {
@@ -271,12 +232,12 @@ export interface CustomerOutstandingInvoiceRow {
   status: 'sent' | 'overdue';
 }
 
-export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
+export function useCustomersLandingMetrics(initialData?: CustomersLandingMetricsV4 | null) {
   return useQuery({
-    queryKey: ['tenant-customers'],
-    queryFn: async (): Promise<CustomersLandingResponse> => {
-      const res = await apiFetch('/api/tenant/customers');
-      if (!res.ok) throw new Error('Failed to fetch customers landing');
+    queryKey: ['tenant-customers-metrics'],
+    queryFn: async (): Promise<CustomersLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/customers/metrics');
+      if (!res.ok) throw new Error('Failed to fetch customers metrics');
       return res.json();
     },
     initialData: initialData ?? undefined,
@@ -285,29 +246,41 @@ export function useCustomersLanding(period: SellerLandingPeriod = 'month', initi
   });
 }
 
-export interface CustomersInfiniteFilters {
-  search?: string;
-  status?: string[];
-  due?: string[];
+/** @deprecated Prefer useCustomersLandingMetrics — kept for invalidate call sites. */
+export function useCustomersLanding(
+  _period?: SellerLandingPeriod,
+  initialData?: CustomersLandingMetricsV4 | null,
+) {
+  return useCustomersLandingMetrics(initialData);
 }
 
-export interface CustomersLandingPage extends CustomersLandingResponse {
+export interface CustomersInfiniteFilters {
+  search?: string;
+  sort?: CustomersLandingTableSort;
+  filter_preset?: Record<string, unknown> | null;
+}
+
+export interface CustomersLandingPage extends CustomersLandingTableResponseV4 {
   nextCursor: string | null;
   total: number | null;
 }
 
-export function useCustomersLandingInfinite(
-  period: SellerLandingPeriod = 'month',
-  filters: CustomersInfiniteFilters = {},
-) {
+export function useCustomersLandingInfinite(filters: CustomersInfiniteFilters = {}) {
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
   return useInfiniteQuery({
-    queryKey: ['tenant-customers-infinite', filters],
+    queryKey: ['tenant-customers-infinite', {
+      search: filters.search ?? '',
+      sort: filters.sort ?? 'invoice_value',
+      filter_preset: presetKey,
+    }],
     queryFn: async ({ pageParam }): Promise<CustomersLandingPage> => {
       const params = new URLSearchParams();
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
-      appendArrayParam(params, 'status', filters.status);
-      appendArrayParam(params, 'due', filters.due);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/customers?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json() as Promise<CustomersLandingPage>;
@@ -481,7 +454,8 @@ export function useCollectCustomerInvoicePayment(customerId: string) {
         queryClient.invalidateQueries({ queryKey: ['tenant-customer-outstanding-invoices', customerId] }),
         queryClient.invalidateQueries({ queryKey: ['tenant-customer-documents', customerId] }),
         queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] }),
-        queryClient.invalidateQueries({ queryKey: ['tenant-customers'] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-customers-metrics'] }),
+        queryClient.invalidateQueries({ queryKey: ['tenant-customers-infinite'] }),
         queryClient.invalidateQueries({ queryKey: ['tenant-invoice', payload.invoiceId] }),
       ]);
     },
@@ -560,7 +534,8 @@ export function useToggleCustomerStatusOptimistic(id: string) {
     onMutate: async (action) => {
       const snapshots = await takeSnapshots(queryClient, [
         ['tenant-customer-detail', id],
-        ['tenant-customers'],
+        ['tenant-customers-metrics'],
+        ['tenant-customers-infinite'],
       ]);
 
       queryClient.setQueryData<TenantCustomerDetailResponse>(['tenant-customer-detail', id], (old) => {
@@ -580,24 +555,6 @@ export function useToggleCustomerStatusOptimistic(id: string) {
         };
       });
 
-      queryClient.setQueryData<CustomersLandingResponse>(['tenant-customers'], (old) => {
-        if (!old) return old;
-        const isActive = action === 'reactivate';
-        return {
-          ...old,
-          buyers: old.buyers.map((buyer) => {
-            if (buyer.id !== id) return buyer;
-            return {
-              ...buyer,
-              status: {
-                label: isActive ? 'Healthy' : 'Inactive',
-                tone: isActive ? 'success' : 'neutral',
-              },
-            };
-          }),
-        };
-      });
-
       return { snapshots };
     },
     onError: (error, _action, context) => {
@@ -609,7 +566,8 @@ export function useToggleCustomerStatusOptimistic(id: string) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', id] });
-      queryClient.invalidateQueries({ queryKey: ['tenant-customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-customers-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-customers-infinite'] });
       queryClient.invalidateQueries({ queryKey: ['customer', id] });
     },
   });
@@ -627,52 +585,23 @@ export function useCreateCustomerOptimistic() {
       }
       return res.json();
     },
-    onMutate: async (payload) => {
-      const snapshots = await takeSnapshots(queryClient, [['tenant-customers']]);
-
-      queryClient.setQueryData<CustomersLandingResponse>(['tenant-customers'], (old) => {
-        if (!old) return old;
-
-        const optimisticBuyer: CustomersLandingBuyer = {
-          id: `optimistic-${Date.now()}`,
-          business_name: payload.business_name,
-          tier: null,
-          phone: payload.phone ?? null,
-          gst_treatment: null,
-          zoho_status: null,
-          city: payload.geography?.city ?? 'Unknown',
-          cohort: '—',
-          active_price_list: null,
-          spend_mtd: 0,
-          spend_prev_mtd: 0,
-          growth_pct: 0,
-          orders_mtd: 0,
-          last_order_at: null,
-          credit_limit: payload.credit_limit ?? 0,
-          credit_used: 0,
-          dues: 0,
-          status: { label: 'Healthy', tone: 'success' },
-          avatar: { initials: payload.business_name.slice(0, 2).toUpperCase(), hue: 'teal' },
-        };
-
-        return {
-          ...old,
-          kpis: {
-            ...old.kpis,
-            total: old.kpis.total + 1,
-          },
-          buyers: [optimisticBuyer, ...old.buyers],
-        };
-      });
-
+    onMutate: async () => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['tenant-customers-metrics'],
+        ['tenant-customers-infinite'],
+      ]);
       return { snapshots };
     },
     onError: (error, __, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
       toast.error(error instanceof Error ? error.message : 'Failed to create customer');
     },
+    onSuccess: () => {
+      toast.success('Customer created');
+    },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenant-customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-customers-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-customers-infinite'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
   });

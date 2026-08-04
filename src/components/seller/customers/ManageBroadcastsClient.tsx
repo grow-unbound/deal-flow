@@ -252,13 +252,13 @@ function ManageBroadcastsInner({
               key={broadcast.id}
               className="border-b border-cream-300 bg-white"
             >
-              <td className="px-3 py-2 text-sm text-cream-800">{formatBroadcastDate(broadcast)}</td>
-              <td className="px-3 py-2 text-sm font-medium text-cream-900">{broadcast.name}</td>
-              <td className="px-3 py-2 text-sm text-cream-800">
+              <td className="px-3 py-3 text-sm text-cream-800">{formatBroadcastDate(broadcast)}</td>
+              <td className="px-3 py-3 text-sm font-medium text-cream-900">{broadcast.name}</td>
+              <td className="px-3 py-3 text-sm text-cream-800">
                 {broadcast.template_name ?? '—'}
               </td>
-              <td className="px-3 py-2 text-sm text-cream-800">{broadcast.target_label}</td>
-              <td className="px-3 py-2 text-sm text-cream-800">{formatDeliveryStatus(broadcast)}</td>
+              <td className="px-3 py-3 text-sm text-cream-800">{broadcast.target_label}</td>
+              <td className="px-3 py-3 text-sm text-cream-800">{formatDeliveryStatus(broadcast)}</td>
             </tr>
           ))}
         </LandingTable>

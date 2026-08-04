@@ -311,11 +311,11 @@ export function CustomersLandingSkeleton() {
       topGridClassName="grid grid-cols-4 gap-3"
       topCount={4}
       topCardHeight="h-36 rounded-[14px]"
-      tableHeaderGridClassName="grid-cols-[1.8fr_1.1fr_1.25fr_0.9fr_0.8fr_0.95fr_0.8fr_0.9fr_0.9fr_40px]"
-      tableHeaderCount={9}
-      tableRowGridClassName="grid-cols-[1.8fr_1.1fr_1.25fr_0.9fr_0.8fr_0.95fr_0.8fr_0.9fr_0.9fr_40px]"
+      tableHeaderGridClassName="grid-cols-[1.6fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.8fr_0.9fr_40px]"
+      tableHeaderCount={12}
+      tableRowGridClassName="grid-cols-[1.6fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.8fr_0.9fr_40px]"
       tableRowCount={6}
-      tableCellCount={9}
+      tableCellCount={12}
       tableCellHeight="h-10 rounded-md"
     />
   );

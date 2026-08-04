@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost, type ApiFetchInit } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
@@ -20,6 +20,48 @@ import {
   BUYER_PRICE_QUERY_GC_TIME,
 } from '@/lib/query-navigation';
 
+export type BuyerProductDetailApiResponse = { item: BuyerCatalogItem };
+
+const EMPTY_RECOS: BuyerProductPageRecos = { co_order: [], co_buyer: [], same_category: [] };
+
+export function buyerProductDetailQueryKey(tenantProductId: string, stockSignature: string) {
+  return ['buyer-product-detail', tenantProductId, stockSignature] as const;
+}
+
+export function buyerProductRecommendationsQueryKey(tenantProductId: string) {
+  return ['buyer-product-recommendations', tenantProductId] as const;
+}
+
+export function buyerProductDetailUrl(tenantProductId: string): string {
+  return `/api/buyer/products/${encodeURIComponent(tenantProductId)}`;
+}
+
+export function buyerProductRecommendationsUrl(tenantProductId: string): string {
+  return `/api/buyer/recommendations?product_id=${encodeURIComponent(tenantProductId)}`;
+}
+
+/** Warm both PDP queries on pointerdown — shared by ProductCard / search. */
+export function prefetchBuyerProductDetail(
+  queryClient: QueryClient,
+  tenantProductId: string,
+  stockSignature: string,
+): void {
+  void queryClient.prefetchQuery({
+    queryKey: buyerProductDetailQueryKey(tenantProductId, stockSignature),
+    queryFn: async () =>
+      fetchJson<BuyerProductDetailApiResponse>(buyerProductDetailUrl(tenantProductId), { fresh: true }),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+  void queryClient.prefetchQuery({
+    queryKey: buyerProductRecommendationsQueryKey(tenantProductId),
+    queryFn: async () =>
+      fetchJson<BuyerProductPageRecos>(buyerProductRecommendationsUrl(tenantProductId)),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
 type FilterMode = 'category' | 'brand' | 'list';
 
 const PAGE_SIZE = 40;
@@ -28,7 +70,7 @@ const BUYER_CATEGORIES_KEY = ['buyer-categories'] as const;
 const BUYER_BRANDS_KEY = ['buyer-brands'] as const;
 const BUYER_CATALOGS_KEY = ['buyer-catalogs'] as const;
 
-function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | null | undefined): string {
+export function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | null | undefined): string {
   if (!selected) return 'no-delivery';
   return [
     selected.nearest_warehouse_id ?? 'no-warehouse',
@@ -85,34 +127,6 @@ export function useBuyerCatalogs() {
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
-}
-
-export function useBuyerCatalogLandingData() {
-  const catalogsQuery = useBuyerCatalogs();
-  const categoriesQuery = useBuyerCategories();
-  const brandsQuery = useBuyerBrands();
-
-  return {
-    data:
-      catalogsQuery.data !== undefined &&
-      categoriesQuery.data !== undefined &&
-      brandsQuery.data !== undefined
-        ? {
-            catalogs: catalogsQuery.data,
-            categories: categoriesQuery.data,
-            brands: brandsQuery.data,
-          }
-        : undefined,
-    isLoading: catalogsQuery.isLoading || categoriesQuery.isLoading || brandsQuery.isLoading,
-    isError: catalogsQuery.isError || categoriesQuery.isError || brandsQuery.isError,
-    refetch: async () => {
-      await Promise.all([
-        catalogsQuery.refetch(),
-        categoriesQuery.refetch(),
-        brandsQuery.refetch(),
-      ]);
-    },
-  };
 }
 
 export interface BuyerCatalogSearchFilters {
@@ -197,9 +211,9 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
 
 export function useBuyerProductRecommendations(tenantProductId: string) {
   return useQuery<BuyerProductPageRecos>({
-    queryKey: ['buyer-product-recommendations', tenantProductId],
+    queryKey: buyerProductRecommendationsQueryKey(tenantProductId),
     queryFn: async () =>
-      fetchJson<BuyerProductPageRecos>(`/api/buyer/recommendations?product_id=${encodeURIComponent(tenantProductId)}`),
+      fetchJson<BuyerProductPageRecos>(buyerProductRecommendationsUrl(tenantProductId)),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
@@ -208,34 +222,24 @@ export function useBuyerProductRecommendations(tenantProductId: string) {
 export function useBuyerProductDetail(tenantProductId: string) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
-  const productQuery = useQuery<{ items?: BuyerCatalogItem[] }>({
-    queryKey: ['buyer-product-detail', tenantProductId, stockSignature],
+  const productQuery = useQuery<BuyerProductDetailApiResponse>({
+    queryKey: buyerProductDetailQueryKey(tenantProductId, stockSignature),
     queryFn: async () =>
-      fetchJson<{ items?: BuyerCatalogItem[] }>(
-        `/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`,
-        { fresh: true },
-      ),
+      fetchJson<BuyerProductDetailApiResponse>(buyerProductDetailUrl(tenantProductId), { fresh: true }),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
 
-  const item = productQuery.data?.items?.[0] ?? null;
-
+  const item = productQuery.data?.item ?? null;
   const recommendationsQuery = useBuyerProductRecommendations(tenantProductId);
 
   return {
     item,
-    recos: recommendationsQuery.data ?? { co_order: [], co_buyer: [], same_category: [] },
+    recos: recommendationsQuery.data ?? EMPTY_RECOS,
     isLoading: productQuery.isLoading,
     isError: productQuery.isError || (!productQuery.isLoading && !item),
+    isRecosLoading: recommendationsQuery.isLoading,
   };
-}
-
-export function useBuyerReorderData() {
-  return useQuery({
-    queryKey: ['buyer-reorder'],
-    queryFn: async () => fetchJson('/api/buyer/reorder'),
-  });
 }
 
 export function useBuyerResolvedProducts(

@@ -84,6 +84,12 @@ export function InvoicesTab({
               {`No invoices matching "${search}"`}
             </p>
           </div>
+        ) : statusFilter !== 'All' ? (
+          <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
+            <p className="text-[var(--b-text-body)] font-medium text-[var(--cream-600)]">
+              {`No ${statusFilter.toLowerCase()} invoices.`}
+            </p>
+          </div>
         ) : (
           <BuyerEmptyState
             icon={<Receipt size={28} strokeWidth={1.5} />}

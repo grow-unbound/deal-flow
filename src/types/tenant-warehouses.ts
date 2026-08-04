@@ -143,6 +143,7 @@ export interface WarehouseDetailInventoryItem {
   sellable_units: number;
   reorder_point: number | null;
   stock_status: WarehouseStockStatus;
+  image_url: string | null;
   last_updated: string;
   last_demand_at: string | null;
   is_idle: boolean;

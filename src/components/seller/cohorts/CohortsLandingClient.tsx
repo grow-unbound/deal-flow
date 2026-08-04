@@ -21,24 +21,23 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SellerMobileListSkeleton } from '@/components/seller/mobile';
+import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { CustomerGroupFormSheet } from './CustomerGroupFormSheet';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)';
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)'];
 
-function CohortsDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
-  if (isPaneOpen) {
-    return <SellerMobileListSkeleton count={6} forceVisible />;
-  }
+function CohortsDataSkeleton() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-3">
@@ -47,11 +46,7 @@ function CohortsDataSkeleton({ isPaneOpen }: { isPaneOpen?: boolean }) {
         ))}
       </div>
       <Skeleton className="h-14 rounded-[14px]" />
-      <div className="mt-2 grid grid-cols-2 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-[220px] rounded-[14px]" />
-        ))}
-      </div>
+      <LandingTableRowsSkeleton columns={7} tableMinWidth={1260} />
     </div>
   );
 }
@@ -63,7 +58,7 @@ function CohortsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = openId != null;
+  const isPaneOpen = useSplitPaneOpen('/customer-groups');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [formOpen, setFormOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('customers-assigned');
@@ -172,6 +167,7 @@ function CohortsLandingContent({
     );
   }
   const showRefreshingState = isLoading && !data;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   const kpis = landingData?.kpis;
 
@@ -200,6 +196,11 @@ function CohortsLandingContent({
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError}
+        >
         <PageHeader
           eyebrow={isPaneOpen ? 'Customer Groups' : 'Segmentation'}
           title={isPaneOpen ? selectedOption.label : 'Customer Groups'}
@@ -212,41 +213,42 @@ function CohortsLandingContent({
           compact={isPaneOpen}
         />
 
-        {showRefreshingState || isError ? null : (
-          <>
-            {isPaneOpen ? null : (
-              <InsightStrip4
-                tiles={kpiOptions.map((option): InsightTile => ({
-                  label: option.label,
-                  value: option.value,
-                  sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
-                  selected: option.id === selectedKpiKey,
-                }))}
-              />
-            )}
-
-            <FilterBar
-              count={`${filtered.length} customer groups`}
-              searchPlaceholder="Search customer group…"
-              chips={[]}
-              activeChip=""
-              sortBy={sortBy}
-              hideViewToggle
-              compact={isPaneOpen}
-              groups={groups}
-              searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              sortOptions={[...SORT_OPTIONS]}
-              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-            />
-          </>
+        {isPaneOpen ? null : (
+          <InsightStrip4
+            tiles={kpiOptions.map((option): InsightTile => ({
+              label: option.label,
+              value: option.value,
+              sub: option.sub,
+              onClick: () => setSelectedKpiKey(option.id),
+              selected: option.id === selectedKpiKey,
+            }))}
+          />
         )}
+
+        <FilterBar
+          count={`${filtered.length} customer groups`}
+          searchPlaceholder="Search customer group…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          compact={isPaneOpen}
+          groups={groups}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          sortOptions={[...SORT_OPTIONS]}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+        />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       {showRefreshingState ? (
-        <CohortsDataSkeleton isPaneOpen={isPaneOpen} />
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <CohortsDataSkeleton />
+        )
       ) : isError ? (
         <ErrorState
           heading="Couldn't load customer groups"
@@ -257,7 +259,13 @@ function CohortsLandingContent({
         <>
       <CustomerGroupFormSheet open={formOpen} onOpenChange={setFormOpen} mode="create" />
 
-      {filtered.length === 0 ? (
+      {showTableSkeleton ? (
+        isPaneOpen ? (
+          <SplitPaneListRowsSkeleton isPaneOpen />
+        ) : (
+          <LandingTableRowsSkeleton columns={7} tableMinWidth={1260} />
+        )
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Users size={28} strokeWidth={1.5} />}
           heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching customer groups' : 'No customer groups yet'}
@@ -291,9 +299,9 @@ function CohortsLandingContent({
           mobileRows={filtered.map((cohort) => ({
             id: cohort.id,
             href: `/customer-groups/${cohort.id}`,
+            eyebrow: cohort.is_static ? 'Manual selection' : 'Rule based',
             primary: cohort.name,
-            supporting: cohort.is_static ? 'Manual selection' : 'Rule based',
-            meta: `${cohort.active_members}/${cohort.total_members} members`,
+            supporting: `${cohort.active_members}/${cohort.total_members} members`,
             trailing: formatNumberValue(cohort.gmv_mtd, 'CURRENCY_THRESHOLD'),
             selected: cohort.id === openId,
           }))}
@@ -313,26 +321,26 @@ function CohortsLandingContent({
               onClick={() => router.push(`/customer-groups/${cohort.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{cohort.name}</p>
                   <p className="mt-0.5 truncate text-xs text-cream-600">{cohort.description ?? '—'}</p>
                 </div>
               </td>
-              <td className="px-3 py-2 text-sm text-cream-800">{cohort.is_static ? 'Manual selection' : 'Rule based'}</td>
-              <td className="px-3 py-2 text-sm text-cream-800">{formatAllowedBrands(cohort)}</td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-3 text-sm text-cream-800">{cohort.is_static ? 'Manual selection' : 'Rule based'}</td>
+              <td className="px-3 py-3 text-sm text-cream-800">{formatAllowedBrands(cohort)}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                 {cohort.active_members}/{cohort.total_members}
               </td>
-              <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
                 {formatNumberValue(cohort.gmv_mtd, 'CURRENCY_THRESHOLD')}
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-3">
                 <div className="space-y-1">
                   <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
                 </div>
               </td>
-              <td className="px-3 py-2 text-right text-cream-500">›</td>
+              <td className="px-3 py-3 text-right text-cream-500">›</td>
             </tr>
             </Fragment>
           ))}

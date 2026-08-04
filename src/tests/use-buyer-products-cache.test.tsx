@@ -73,7 +73,7 @@ describe('useBuyerProducts cache policy', () => {
   it('bypasses browser cache for product detail stock fetches', async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse({
-        items: [],
+        item: null,
       }),
     );
 
@@ -85,7 +85,7 @@ describe('useBuyerProducts cache policy', () => {
       expect(
         apiFetchMock.mock.calls.some(([url, init]) =>
           typeof url === 'string'
-          && url.includes('tenant_product_id=tp-1')
+          && url.includes('/api/buyer/products/tp-1')
           && Boolean(init && typeof init === 'object' && 'fresh' in init && init.fresh === true),
         ),
       ).toBe(true),

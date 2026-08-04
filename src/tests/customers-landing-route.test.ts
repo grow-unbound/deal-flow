@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
-const rpcMock = vi.fn();
+const fetchCustomersLandingTableMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -14,12 +14,18 @@ vi.mock('@/lib/flags', () => ({
 }));
 
 vi.mock('@/lib/supabase', () => ({
-  supabaseAdmin: {
-    schema: vi.fn(() => ({
-      rpc: (...args: unknown[]) => rpcMock(...args),
-    })),
-  },
+  supabaseAdmin: { schema: vi.fn() },
 }));
+
+vi.mock('@/lib/server/customers-landing-table', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/server/customers-landing-table')>(
+    '@/lib/server/customers-landing-table',
+  );
+  return {
+    ...actual,
+    fetchCustomersLandingTable: (...args: unknown[]) => fetchCustomersLandingTableMock(...args),
+  };
+});
 
 import { GET } from '../../app/api/tenant/customers/route';
 
@@ -34,64 +40,43 @@ describe('customers landing route', () => {
       location_ids: null,
     });
     getFlagMock.mockResolvedValue(true);
-    rpcMock.mockResolvedValue({
-      data: {
-        buyers: [],
-        callouts: {
-          needs_call: [],
-          win_back: [],
-        },
-        kpis: {
-          total: 0,
-          cohort_count: 0,
-          active: 0,
-          active_pct: 0,
-          spend_mtd: 0,
-          spend_growth_pct: 0,
-          dormant_over_30d: 0,
-          outstanding_dues: 0,
-          buyers_with_dues: 0,
-          invoiced_customer_count: 0,
-          overdue_sum: 0,
-          overdue_customer_count: 0,
-          dormant_prior_year_value: 0,
-        },
-        total: 0,
-        nextCursor: { n: 'Acme', i: 'buyer-1' },
-      },
-      error: null,
+    fetchCustomersLandingTableMock.mockResolvedValue({
+      buyers: [],
+      nextCursor: null,
+      total: null,
+      sort: 'invoice_value',
+      period_start: '2026-04-01',
+      grain: 'quarter',
     });
   });
 
-  it('uses bounded preview mode by default', async () => {
+  it('reads V4 table with bounded limit', async () => {
     const response = await GET(new NextRequest('http://localhost:3000/api/tenant/customers?limit=50'));
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith('metrics_v2_customers_landing', expect.objectContaining({
-      p_tenant_id: 'tenant-1',
-      p_limit: 50,
-      p_full_callout: null,
-    }));
-
-    const body = await response.json();
-    expect(body.nextCursor).toBe(Buffer.from(JSON.stringify({ n: 'Acme', i: 'buyer-1' })).toString('base64url'));
+    expect(fetchCustomersLandingTableMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        limit: 50,
+        sort: 'invoice_value',
+        filterPreset: null,
+      }),
+    );
   });
 
-  it('opts into a full lazy callout payload only when requested', async () => {
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/customers?callout=needs_call'));
+  it('forwards filter_preset JSON to the table helper', async () => {
+    const preset = encodeURIComponent(JSON.stringify({ overdue: true }));
+    const response = await GET(
+      new NextRequest(`http://localhost:3000/api/tenant/customers?filter_preset=${preset}`),
+    );
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith('metrics_v2_customers_landing', expect.objectContaining({
-      p_full_callout: 'needs_call',
-    }));
-  });
-
-  it('ignores unknown callout ids and stays in preview mode', async () => {
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/customers?callout=not-real'));
-
-    expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith('metrics_v2_customers_landing', expect.objectContaining({
-      p_full_callout: null,
-    }));
+    expect(fetchCustomersLandingTableMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        filterPreset: { overdue: true },
+      }),
+    );
   });
 });

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-const useCustomersLandingMock = vi.fn();
+const useCustomersLandingMetricsMock = vi.fn();
 const useCustomersLandingInfiniteMock = vi.fn();
 const useRouteSnapshotMock = vi.fn();
 const useRetainedValueMock = vi.fn();
@@ -13,6 +13,7 @@ const useRouteScrollRestorationMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   useParams: () => ({}),
+  usePathname: () => '/customers',
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -25,7 +26,8 @@ vi.mock('@/components/seller/customers/AddCustomerDialog', () => ({
 }));
 
 vi.mock('@/hooks/useCustomersLanding', () => ({
-  useCustomersLanding: (...args: unknown[]) => useCustomersLandingMock(...args),
+  useCustomersLandingMetrics: (...args: unknown[]) => useCustomersLandingMetricsMock(...args),
+  useCustomersLanding: (...args: unknown[]) => useCustomersLandingMetricsMock(...args),
   useCustomersLandingInfinite: (...args: unknown[]) => useCustomersLandingInfiniteMock(...args),
 }));
 
@@ -45,14 +47,36 @@ vi.mock('@/hooks/useDebounce', () => ({
 
 vi.mock('@/hooks/useInfiniteScroll', () => ({
   useInfiniteScroll: (...args: unknown[]) => useInfiniteScrollMock(...args),
+  getSentinelInsertIndex: () => -1,
 }));
 
-// WhatsApp Broadcast (Phase E) — out of scope for this test suite, which
-// doesn't provide an AuthContext/QueryClient wrapper. Keep the flag off so
-// neither the composer sheet nor the history section mount.
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: () => false,
-  useFlagState: () => false,
+  useFlagState: () => true,
+}));
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => ({
+    data: {
+      modules: {
+        orders: {
+          features: {
+            enquiries: true,
+            sales_orders: true,
+            invoices: true,
+          },
+        },
+        buyer_app: {
+          enabled: true,
+        },
+      },
+    },
+  }),
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    tenantProfile: { role: 'seller_admin' },
+    currentTenantId: 'tenant-1',
+  }),
 }));
 vi.mock('@/hooks/useRole', () => ({
   useRole: () => ({ isSellerAssistant: false, isSellerAdmin: true }),
@@ -66,9 +90,31 @@ vi.mock('@/components/seller/customers/BroadcastHistorySection', () => ({
 
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 
+const emptyMetrics = {
+  page_key: 'customers',
+  period: {
+    period_key: 'this_quarter',
+    grain: 'quarter',
+    period_start: '2026-04-01',
+    period_end_exclusive: '2026-07-01',
+    label: 'This Quarter',
+  },
+  computed_at: null,
+  source_watermark: null,
+  cards: [
+    {
+      id: 'active_customers',
+      label: 'Active Customers',
+      value: 12,
+      supporting_text: 'purchased at least once',
+      filter_preset: { purchased_gte: 1, period: 'this_quarter' },
+    },
+  ],
+};
+
 describe('customers landing client', () => {
   beforeEach(() => {
-    useCustomersLandingMock.mockReset();
+    useCustomersLandingMetricsMock.mockReset();
     useCustomersLandingInfiniteMock.mockReset();
     useRouteSnapshotMock.mockReset();
     useRetainedValueMock.mockReset();
@@ -76,30 +122,13 @@ describe('customers landing client', () => {
     useInfiniteScrollMock.mockReset();
     useRouteScrollRestorationMock.mockReset();
 
-    useCustomersLandingMock.mockReturnValue({
-      data: {
-        kpis: {
-          total: 0,
-          cohort_count: 0,
-          active: 0,
-          active_pct: 0,
-          spend_mtd: 0,
-          spend_growth_pct: 0,
-          dormant_over_30d: 0,
-          outstanding_dues: 0,
-          buyers_with_dues: 0,
-        },
-        callouts: {
-          needs_call: [],
-          top_spenders: [],
-          top_risers: [],
-        },
-        buyers: [],
-        filters: { groups: [] },
-      },
+    useCustomersLandingMetricsMock.mockReturnValue({
+      data: emptyMetrics,
+      isLoading: false,
+      isError: false,
     });
     useCustomersLandingInfiniteMock.mockReturnValue({
-      data: { pages: [] },
+      data: { pages: [{ buyers: [], nextCursor: null, total: 0 }] },
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -109,8 +138,8 @@ describe('customers landing client', () => {
     });
     useRouteSnapshotMock.mockReturnValue({
       state: {
-        filters: { status: [], due: [] },
-        sortBy: 'Spend (high → low)',
+        filters: { filter_preset: null, selected_kpi_id: null },
+        sortBy: 'Sales (high → low)',
         search: '',
       },
       setState: vi.fn(),
@@ -129,77 +158,10 @@ describe('customers landing client', () => {
     expect(screen.getByText('Add buyer form')).toBeInTheDocument();
   });
 
-  it('shows full callout counts and the complete overlay list', async () => {
-    useCustomersLandingMock.mockReturnValue({
-      data: {
-        kpis: {
-          total: 4,
-          cohort_count: 0,
-          active: 4,
-          active_pct: 100,
-          spend_mtd: 0,
-          spend_growth_pct: 0,
-          dormant_over_30d: 0,
-          outstanding_dues: 0,
-          buyers_with_dues: 0,
-          invoiced_customer_count: 0,
-          overdue_sum: 0,
-          overdue_customer_count: 0,
-          dormant_prior_year_value: 0,
-        },
-        callouts: {
-          needs_call: [
-            {
-              id: 'buyer-1',
-              business_name: 'Acme Retail',
-              invoice_count: 2,
-              days_overdue: 14,
-              dues: 12000,
-              avatar: { initials: 'AR', hue: 'teal' },
-            },
-            {
-              id: 'buyer-2',
-              business_name: 'Beacon Stores',
-              invoice_count: 1,
-              days_overdue: 9,
-              dues: 8000,
-              avatar: { initials: 'BS', hue: 'ember' },
-            },
-            {
-              id: 'buyer-3',
-              business_name: 'Cedar Mart',
-              invoice_count: 3,
-              days_overdue: 21,
-              dues: 15000,
-              avatar: { initials: 'CM', hue: 'cream' },
-            },
-            {
-              id: 'buyer-4',
-              business_name: 'Delta Traders',
-              invoice_count: 2,
-              days_overdue: 5,
-              dues: 6000,
-              avatar: { initials: 'DT', hue: 'teal' },
-            },
-          ],
-          win_back: [],
-        },
-        buyers: [],
-        filters: { groups: [] },
-      },
-    });
-
+  it('renders V4 KPI cards from metrics snapshot', () => {
     render(<CustomersLandingClient initialData={null} />);
 
-    const button = screen.getByRole('button', { name: /open full collect overdue balances list/i });
-    expect(button).toHaveTextContent('4');
-    expect(screen.queryByText('Cedar Mart')).not.toBeInTheDocument();
-    expect(screen.queryByText('Delta Traders')).not.toBeInTheDocument();
-
-    fireEvent.click(button);
-
-    expect(await screen.findByText('4 items')).toBeInTheDocument();
-    expect(screen.getByText('Cedar Mart')).toBeInTheDocument();
-    expect(screen.getByText('Delta Traders')).toBeInTheDocument();
+    expect(screen.getByText('Active Customers')).toBeInTheDocument();
+    expect(screen.getByText('purchased at least once')).toBeInTheDocument();
   });
 });

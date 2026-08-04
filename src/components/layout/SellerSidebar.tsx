@@ -202,15 +202,15 @@ export function SellerSidebar({
         <Link
           href={item.href}
           className={[
-            'flex items-center rounded-[12px] py-2 text-base font-medium transition-colors duration-fast',
+            'flex items-center rounded-[12px] py-2 text-base transition-colors duration-fast',
             showExpandedContent ? 'gap-3 px-3 justify-start' : 'justify-center px-0',
             active
-              ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]'
-              : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
+              ? 'bg-[rgba(181,100,47,0.12)] font-semibold text-cream-950'
+              : 'font-medium text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
           ].join(' ')}
           title={!showExpandedContent ? item.label : undefined}
         >
-          <item.icon size={17} className={active ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
+          <item.icon size={17} className={active ? 'text-ember-500' : 'text-[#3D3630]'} />
           {showExpandedContent && item.label}
         </Link>
       </Pressable>

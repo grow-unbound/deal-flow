@@ -7,7 +7,7 @@ import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { r2Url } from '@/lib/r2-url';
+import { firstStoredImageUrl, r2Url } from '@/lib/r2-url';
 import { UpdateCategoryInputSchema } from '@/types/tenant-categories';
 import type { CategoryDetailResponse } from '@/hooks/useCategories';
 
@@ -77,7 +77,7 @@ export async function GET(
     db
       .schema('app')
       .from('tenant_products')
-      .select('id, internal_sku, name_override, tenant_brand_id, is_active, tenant_brands(id, display_name_override, logo_url, r2_logo_thumb_key)')
+      .select('id, internal_sku, name_override, tenant_brand_id, is_active, image_urls, tenant_brands(id, display_name_override, logo_url, r2_logo_thumb_key)')
       .eq('tenant_id', tenantId)
       .eq('tenant_category_id', id)
       .is('deleted_at', null)
@@ -258,6 +258,7 @@ export async function GET(
     header: {
       ...category,
       initials: getInitials(category.name),
+      image_url: r2Url(category.r2_image_thumb_key) ?? r2Url(category.r2_image_medium_key),
       active_sku_count,
       brand_count: brandIds.size,
     },
@@ -301,6 +302,7 @@ export async function GET(
         brand_id: String(p.tenant_brand_id ?? ''),
         brand_name: productBrandNameMap.get(String(p.id)) ?? '—',
         brand_logo_url: brandLogo,
+        image_url: firstStoredImageUrl(p.image_urls),
         on_hand: snapshot ? Number(snapshot.available ?? 0) : 0,
         days_cover: snapshot?.days_cover != null ? Number(snapshot.days_cover) : null,
         units_mtd: snapshot ? Number(snapshot.invoice_units_90d ?? 0) : 0,

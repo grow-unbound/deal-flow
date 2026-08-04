@@ -83,7 +83,7 @@ export function CategoryBrandsTab({ brands }: CategoryBrandsTabProps) {
             onClick={() => router.push(`/brands/${b.id}`)}
             onPointerDown={() => triggerHaptic()}
           >
-            <td className="px-3 py-2">
+            <td className="px-3 py-3">
               <div className="flex items-center gap-3">
                 <EntityAvatar
                   initials={getInitials(b.name)}
@@ -99,32 +99,32 @@ export function CategoryBrandsTab({ brands }: CategoryBrandsTabProps) {
                 </div>
               </div>
             </td>
-            <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-900">
+            <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
               {b.sku_count}
             </td>
-            <td className="px-3 py-2 text-right">
+            <td className="px-3 py-3 text-right">
               <span className="font-display text-md font-medium tabular-nums text-cream-900">
                 {b.gmv_mtd > 0 ? formatNumberValue(b.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
               </span>
             </td>
-            <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-700">
+            <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-700">
               {b.units_90d > 0 ? formatNumberValue(b.units_90d, 'COUNT') : '—'}
             </td>
-            <td className="px-3 py-2 text-right">
+            <td className="px-3 py-3 text-right">
               <span className="font-display text-md font-medium tabular-nums text-cream-900">
                 {b.demand_90d > 0 ? formatNumberValue(b.demand_90d, 'CURRENCY_THRESHOLD') : '—'}
               </span>
             </td>
-            <td className="px-3 py-2 text-right font-mono text-base tabular-nums text-cream-700">
+            <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-700">
               {b.demand_units_90d > 0 ? formatNumberValue(b.demand_units_90d, 'COUNT') : '—'}
             </td>
-            <td className="px-3 py-2">
+            <td className="px-3 py-3">
               <StatusTag
                 tone={b.is_active ? 'success' : 'neutral'}
                 label={b.is_active ? 'Active' : 'Archived'}
               />
             </td>
-            <td className="px-3 py-2 text-right text-cream-400">
+            <td className="px-3 py-3 text-right text-cream-400">
               <ChevronRight size={16} />
             </td>
           </tr>

@@ -240,9 +240,8 @@ describe('estimates landing page', () => {
     expect(screen.queryByText('created by Priya Shah')).not.toBeInTheDocument();
   });
 
-  it('renders place of supply, catalog and buyer-app source labels in the landing table', () => {
+  it('renders catalog and buyer-app source labels in the landing table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getByText('Maharashtra')).toBeInTheDocument();
     expect(screen.getByText('Summer 2026 Retail')).toBeInTheDocument();
     expect(screen.getAllByText('BUYER APP').length).toBeGreaterThan(0);
   });

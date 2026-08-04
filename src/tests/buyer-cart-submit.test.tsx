@@ -48,6 +48,11 @@ vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlagState: () => true,
+  useFlag: () => true,
+}));
+
 vi.mock('@/hooks/useBuyerProducts', () => ({
   useBuyerResolvedProducts: (...args: unknown[]) => useBuyerResolvedProductsMock(...args),
 }));
@@ -337,12 +342,23 @@ describe('buyer orders page tab URL precedence', () => {
     window.sessionStorage.clear();
     useSearchParamsMock.mockReset();
     apiFetchMock.mockReset();
+    useBuyerMeMock.mockReset();
     (globalThis as typeof globalThis & { IntersectionObserver?: typeof IntersectionObserver }).IntersectionObserver =
       class IntersectionObserver {
         observe() {}
         disconnect() {}
         unobserve() {}
       } as typeof IntersectionObserver;
+
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        mode: 'buyer',
+        seller_preview: false,
+        order_features: { enquiries: true, sales_orders: true, invoices: true },
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+      },
+      isLoading: false,
+    });
 
     apiFetchMock.mockImplementation((url: string) => {
       if (url.startsWith('/api/buyer/me')) {

@@ -1,0 +1,21 @@
+-- CREATE OR REPLACE FUNCTION does not replace across an arity change --
+-- Postgres treats a different parameter count as a distinct overload, even
+-- when the new parameter is appended with a DEFAULT. Every prior migration
+-- this session that added a trailing parameter to
+-- app._metrics_v4_refresh_landing_kpis (p_domain, then p_dirty_days)
+-- therefore left the OLDER-arity version behind as a live, orphaned
+-- overload instead of replacing it in place. Production behavior was
+-- unaffected -- the one real caller (app._metrics_v4_refresh_claimed_periods)
+-- always explicitly passed the full current argument list, which resolves
+-- unambiguously to the newest overload -- but any other caller passing
+-- exactly 3 arguments now hits "is not unique" ambiguity between the old
+-- 3-arg (uuid, timestamptz, text) version and the current 4-arg version
+-- (confirmed by hitting this directly during manual timing verification).
+--
+-- Drops the two now-dead overloads, leaving only the current
+-- (uuid, timestamptz, text, date[]) signature. Confirmed via repo-wide grep
+-- that nothing in app/ or src/ calls this function at all (v4 isn't wired to
+-- the frontend yet), and the only in-database caller already uses the
+-- current signature.
+DROP FUNCTION IF EXISTS app._metrics_v4_refresh_landing_kpis(uuid, timestamptz);
+DROP FUNCTION IF EXISTS app._metrics_v4_refresh_landing_kpis(uuid, timestamptz, text);

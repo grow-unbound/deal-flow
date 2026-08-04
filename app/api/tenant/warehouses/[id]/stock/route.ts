@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       p_offset: (page - 1) * pageSize,
     });
     if (searchError) throw searchError;
+    const productIds = Array.from(
+      new Set((rows ?? []).map((row: { tenant_product_id?: string }) => String(row.tenant_product_id ?? '')).filter(Boolean)),
+    );
+    const { data: productImages } = productIds.length > 0
+      ? await db
+          .schema('app')
+          .from('tenant_products')
+          .select('id, image_urls')
+          .eq('tenant_id', claims.tenant_id)
+          .in('id', productIds)
+          .is('deleted_at', null)
+      : { data: [] as Array<{ id: string; image_urls: string[] | null }> };
+    const imageByProductId = new Map(
+      (productImages ?? []).map((row: { id: string; image_urls: string[] | null }) => [String(row.id), firstStoredImageUrl(row.image_urls)]),
+    );
     const total = Number(rows?.[0]?.total_count ?? 0);
     const stockPage = {
       items: (rows ?? []).map((row: any) => ({
@@ -63,6 +79,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         sku: String(row.sku ?? ''),
         product_name: String(row.product_name ?? row.sku ?? ''),
         brand_name: String(row.brand_name ?? '—'),
+        image_url: imageByProductId.get(String(row.tenant_product_id)) ?? null,
         qty_available: Number(row.qty_available ?? 0),
         qty_reserved: Number(row.qty_reserved ?? 0),
         sellable_units: Number(row.sellable_units ?? 0),
