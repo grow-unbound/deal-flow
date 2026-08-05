@@ -30,6 +30,9 @@ export default async function CategoriesLayout({ children }: { children: ReactNo
               basePath="/categories"
               ariaLabel="Loading categories"
               showLeading
+              eyebrowWidth="w-20"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<CategoriesLandingSkeleton />}
             />
           }

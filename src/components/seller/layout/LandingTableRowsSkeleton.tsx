@@ -6,7 +6,7 @@ import type { SellerSplitListVariant } from '@/lib/seller-split-list-ui';
 
 export function LandingTableRowsSkeleton({
   columns,
-  rows = 6,
+  rows = 14,
   tableMinWidth,
   forceCompact,
   compactListVariant = 'entity',
@@ -26,9 +26,9 @@ export function LandingTableRowsSkeleton({
   }
 
   return (
-    <div className="hidden overflow-x-auto md:block">
+    <div className="hidden h-full min-h-[calc(100dvh-var(--topbar-h)-20rem)] overflow-x-auto md:block">
         <div
-          className="overflow-hidden rounded-[14px] border border-cream-300 bg-white"
+          className="min-h-full overflow-hidden rounded-[14px] border border-cream-300 bg-white"
           style={tableMinWidth ? { minWidth: `${tableMinWidth}px` } : undefined}
         >
           <div className="border-b border-cream-200 p-3">

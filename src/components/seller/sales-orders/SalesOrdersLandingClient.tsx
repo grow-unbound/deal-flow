@@ -330,68 +330,66 @@ function SalesOrdersLandingContent({
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              {showTableSkeleton ? (
-                isPaneOpen ? (
-                  <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-                ) : (
-                  <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-                )
-              ) : filteredRows.length === 0 ? (
-                <EmptyState
-                  icon={<Package size={28} strokeWidth={1.5} />}
-                  heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching sales orders' : 'No sales orders yet'}
-                  description={
-                    search.trim() || groups.some((group) => group.values.length > 0)
-                      ? 'Try a different search or filter combination.'
-                      : 'Create a sales order to track fulfilment.'
-                  }
-                  action={
-                    createSalesOrders ? (
-                      <Button variant="accent" asChild>
-                        <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
-                          <Plus size={13} />
-                          Add a sales order
-                        </Link>
-                      </Button>
-                    ) : undefined
-                  }
-                />
+            {showTableSkeleton ? (
+              isPaneOpen ? (
+                <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
               ) : (
-                <TransactionTable
-                  kind="order"
-                  showCampaignColumn={showCampaignColumn}
-                  tableMinWidth={showCampaignColumn ? 1380 : 1180}
-                  forceCompact={isPaneOpen}
-                  selectedId={openId}
-                  sentinelIndex={sentinelIndex}
-                  sentinelRef={sentinelRef}
-                  rows={visibleRows.map((row) => ({
-                    id: row.id,
-                    href: `/sales-orders/${row.id}`,
-                    document_number: row.order_id,
-                    realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
-                    source_kind: row.source_kind,
-                    source_label: row.source_label,
-                    buyer_name: row.buyer_name,
-                    buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
-                    buyer_initials: row.buyer_initials,
-                    buyer_hue: row.buyer_hue,
-                    location_name: row.location_name,
-                    campaign_name: row.campaign_name ?? row.catalog_name,
-                    items_count: row.items_count,
-                    total_amount: row.total_amount,
-                    status_label: row.status.label,
-                    status_tone: row.status.tone,
-                    created_at: row.placed_at,
-                  }))}
-                  onRowClick={(row) => {
-                    markSeen(row.id);
-                    router.push(row.href);
-                  }}
-                />
-              )}
-            </div>
+                <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+              )
+            ) : filteredRows.length === 0 ? (
+              <EmptyState
+                icon={<Package size={28} strokeWidth={1.5} />}
+                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching sales orders' : 'No sales orders yet'}
+                description={
+                  search.trim() || groups.some((group) => group.values.length > 0)
+                    ? 'Try a different search or filter combination.'
+                    : 'Create a sales order to track fulfilment.'
+                }
+                action={
+                  createSalesOrders ? (
+                    <Button variant="accent" asChild>
+                      <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add a sales order
+                      </Link>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <TransactionTable
+                kind="order"
+                showCampaignColumn={showCampaignColumn}
+                tableMinWidth={showCampaignColumn ? 1380 : 1180}
+                forceCompact={isPaneOpen}
+                selectedId={openId}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
+                rows={visibleRows.map((row) => ({
+                  id: row.id,
+                  href: `/sales-orders/${row.id}`,
+                  document_number: row.order_id,
+                  realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
+                  source_kind: row.source_kind,
+                  source_label: row.source_label,
+                  buyer_name: row.buyer_name,
+                  buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                  buyer_initials: row.buyer_initials,
+                  buyer_hue: row.buyer_hue,
+                  location_name: row.location_name,
+                  campaign_name: row.campaign_name ?? row.catalog_name,
+                  items_count: row.items_count,
+                  total_amount: row.total_amount,
+                  status_label: row.status.label,
+                  status_tone: row.status.tone,
+                  created_at: row.placed_at,
+                }))}
+                onRowClick={(row) => {
+                  markSeen(row.id);
+                  router.push(row.href);
+                }}
+              />
+            )}
           </>
         )}
         </div>

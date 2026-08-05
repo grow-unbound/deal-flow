@@ -236,7 +236,13 @@ function BrandLandingContent({
 
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading brands" showLeading />
+      <SellerSplitPaneLandingSkeleton
+        ariaLabel="Loading brands"
+        showLeading
+        eyebrowWidth="w-16"
+        titleWidth="w-44"
+        subtitleWidth="w-52"
+      />
     ) : (
       <BrandsLandingSkeleton />
     );

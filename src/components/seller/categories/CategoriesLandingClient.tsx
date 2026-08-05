@@ -151,7 +151,13 @@ function CategoriesLandingContent({
   const showRefreshingState = isLoading && !data;
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading categories" showLeading />
+      <SellerSplitPaneLandingSkeleton
+        ariaLabel="Loading categories"
+        showLeading
+        eyebrowWidth="w-20"
+        titleWidth="w-44"
+        subtitleWidth="w-52"
+      />
     ) : (
       <CategoriesLandingSkeleton />
     );

@@ -191,7 +191,12 @@ function CohortsLandingContent({
 
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading customer groups" />
+      <SellerSplitPaneLandingSkeleton
+        ariaLabel="Loading customer groups"
+        eyebrowWidth="w-28"
+        titleWidth="w-52"
+        subtitleWidth="w-44"
+      />
     ) : (
       <CohortsLandingSkeleton />
     );

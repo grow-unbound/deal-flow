@@ -330,67 +330,65 @@ function InvoicesLandingContent({
       <div className="min-h-0 flex-1 overflow-y-auto">
       {(
         <>
-          <div className="overflow-x-auto">
-            {showTableSkeleton ? (
-              isPaneOpen ? (
-                <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-              ) : (
-                <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-              )
-            ) : displayRows.length === 0 ? (
-              <EmptyState
-                icon={<Receipt size={28} strokeWidth={1.5} />}
-                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
-                description={
-                  search.trim() || groups.some((group) => group.values.length > 0)
-                    ? 'Try a different search or filter combination.'
-                    : 'Create an invoice to bill a buyer.'
-                }
-                action={
-                  createInvoices ? (
-                    <Button variant="accent" asChild>
-                      <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
-                        <Plus size={13} />
-                        Add an invoice
-                      </Link>
-                    </Button>
-                  ) : undefined
-                }
-              />
+          {showTableSkeleton ? (
+            isPaneOpen ? (
+              <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
             ) : (
-              <TransactionTable
-                kind="invoice"
-                forceCompact={isPaneOpen}
-                selectedId={openId}
-                showCampaignColumn={showCampaignColumn}
-                tableMinWidth={showCampaignColumn ? 1480 : 1260}
-                sentinelIndex={sentinelIndex}
-                sentinelRef={sentinelRef}
-                rows={displayRows.map((row) => ({
-                  id: row.id,
-                  href: `/invoices/${row.id}`,
-                  document_number: row.invoice_number,
-                  source_kind: row.source_kind,
-                  source_label: row.source_label,
-                  buyer_name: row.buyer_name,
-                  buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
-                  buyer_initials: row.buyer_initials,
-                  buyer_hue: row.buyer_hue,
-                  location_name: row.location_name,
-                  campaign_name: row.campaign_name,
-                  items_count: row.items_count,
-                  total_amount: row.total_amount,
-                  outstanding_amount: row.outstanding_amount,
-                  amount_subtext: null,
-                  status_label: row.status.label,
-                  status_tone: row.status.tone,
-                  created_at: row.created_at,
-                  due_at: row.due_date,
-                }))}
-                onRowClick={(row) => router.push(row.href)}
-              />
-            )}
-          </div>
+              <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+            )
+          ) : displayRows.length === 0 ? (
+            <EmptyState
+              icon={<Receipt size={28} strokeWidth={1.5} />}
+              heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
+              description={
+                search.trim() || groups.some((group) => group.values.length > 0)
+                  ? 'Try a different search or filter combination.'
+                  : 'Create an invoice to bill a buyer.'
+              }
+              action={
+                createInvoices ? (
+                  <Button variant="accent" asChild>
+                    <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
+                      <Plus size={13} />
+                      Add an invoice
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <TransactionTable
+              kind="invoice"
+              forceCompact={isPaneOpen}
+              selectedId={openId}
+              showCampaignColumn={showCampaignColumn}
+              tableMinWidth={showCampaignColumn ? 1480 : 1260}
+              sentinelIndex={sentinelIndex}
+              sentinelRef={sentinelRef}
+              rows={displayRows.map((row) => ({
+                id: row.id,
+                href: `/invoices/${row.id}`,
+                document_number: row.invoice_number,
+                source_kind: row.source_kind,
+                source_label: row.source_label,
+                buyer_name: row.buyer_name,
+                buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                buyer_initials: row.buyer_initials,
+                buyer_hue: row.buyer_hue,
+                location_name: row.location_name,
+                campaign_name: row.campaign_name,
+                items_count: row.items_count,
+                total_amount: row.total_amount,
+                outstanding_amount: row.outstanding_amount,
+                amount_subtext: null,
+                status_label: row.status.label,
+                status_tone: row.status.tone,
+                created_at: row.created_at,
+                due_at: row.due_date,
+              }))}
+              onRowClick={(row) => router.push(row.href)}
+            />
+          )}
 
           {isFetchingNextPage && (
             <div className="flex justify-center py-4">

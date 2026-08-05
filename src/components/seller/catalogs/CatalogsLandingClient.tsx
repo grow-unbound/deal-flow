@@ -14,6 +14,7 @@ import {
   PageHeader,
   PageWrap,
   StatusTag,
+  StickyListHeader,
   FilterBar,
   type FilterBarGroup,
 } from '@/components/seller/layout';
@@ -199,169 +200,179 @@ function CatalogsLandingContent({
     { width: 20, className: 'px-4' },
   ];
 
+  const hasActiveFilters = Boolean(
+    search.trim() || statusFilter.length > 0 || conversionFilter.length > 0 || filterPreset,
+  );
+
   return (
-    <PageWrap>
-      <PageHeader
-        eyebrow="Growth"
-        title="Campaigns"
-        subtitle={`${landingData?.total ?? catalogs.length} campaigns · ${landingData?.kpis.live_catalogs ?? 0} live · ${landingData?.kpis.scheduled_catalogs ?? 0} scheduled.`}
-        horizon={horizonLabel}
-        primary="Add a campaign"
-        onPrimaryClick={() => setCampaignFormOpen(true)}
-      />
-      <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
-
-      {isError ? (
-        <ErrorState
-          heading="Couldn't load campaigns"
-          description="There was a problem fetching campaign funnel metrics. Please try again."
+    <PageWrap className="flex min-h-0 flex-col md:h-[calc(100vh-var(--topbar-h))] md:overflow-hidden">
+      <StickyListHeader>
+        <PageHeader
+          eyebrow="Growth"
+          title="Campaigns"
+          subtitle={`${landingData?.total ?? catalogs.length} campaigns · ${landingData?.kpis.live_catalogs ?? 0} live · ${landingData?.kpis.scheduled_catalogs ?? 0} scheduled.`}
+          horizon={horizonLabel}
+          primary="Add a campaign"
+          onPrimaryClick={() => setCampaignFormOpen(true)}
         />
-      ) : (
-        <>
-      <InsightStrip4
-        tiles={metricCards.slice(0, 4).map((card, index) => ({
-          label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
-          value: formatMetricCard(card),
-          sub: card.supporting_text ?? '',
-          tone: index === 2 ? 'accent' : undefined,
-          selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
-          onClick: () => {
-            const preset = card.filter_preset ?? null;
-            setRouteState((current) => ({
-              ...current,
-              filter_preset: preset,
-              filters: filtersFromCampaignPreset(preset ?? undefined),
-            }));
-          },
-        }))}
-      />
 
-      <FilterBar
-        count={`${filtered.length} campaigns`}
-        searchPlaceholder="Search campaign…"
-        chips={[]}
-        activeChip=""
-        sortBy={sortBy}
-        hideViewToggle
-        groups={groups}
-        searchValue={search}
-        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
-        sortOptions={SORT_OPTIONS}
-        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-      />
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<Library size={28} strokeWidth={1.5} />}
-          heading={search.trim() || statusFilter.length > 0 ? 'No matching campaigns' : 'No campaigns yet'}
-          description={
-            search.trim() || statusFilter.length > 0
-              ? 'Try a different search or status filter.'
-              : 'Publish a campaign to share products with a customer group.'
-          }
-          action={
-            <Button variant="accent" onClick={() => setCampaignFormOpen(true)}>
-                <Plus size={13} />
-                Add a campaign
-            </Button>
-          }
+        <InsightStrip4
+          tiles={metricCards.slice(0, 4).map((card, index) => ({
+            label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+            value: formatMetricCard(card),
+            sub: card.supporting_text ?? '',
+            tone: index === 2 ? 'accent' : undefined,
+            selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
+            onClick: () => {
+              const preset = card.filter_preset ?? null;
+              setRouteState((current) => ({
+                ...current,
+                filter_preset: preset,
+                filters: filtersFromCampaignPreset(preset ?? undefined),
+              }));
+            },
+          }))}
         />
-      ) : (
-        <LandingTable
-          columns={tableColumns}
-          tableClassName={estimatesEnabled ? 'min-w-[1400px]' : 'min-w-[1270px]'}
-        >
-          {filtered.map((catalog) => (
-            <tr
-              key={catalog.id}
-              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
-              onClick={() => router.push(`/campaigns/${catalog.id}`)}
-              onPointerDown={() => triggerHaptic()}
-            >
-              <td className="px-3 py-3">
-                <div className="flex items-center gap-3">
-                  <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
-                  <div className="min-w-0">
-                    <p className="truncate text-base font-medium text-cream-900">{catalog.name}</p>
-                    <p className="mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
-                      {catalog.products_count} products · {catalog.brands_count} brands
-                    </p>
-                  </div>
-                </div>
-              </td>
-              <td className="px-3 py-3">
-                <div className="space-y-1">
-                  <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
-                  <p className="text-xs text-cream-600">
-                    {catalog.audience_count != null ? `${catalog.audience_count} buyers` : '—'}
-                  </p>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                {catalog.order_count > 0 ? catalog.order_count : '—'}
-              </td>
-              {estimatesEnabled ? (
-                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                  {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
-                </td>
-              ) : null}
-              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
-              </td>
-              <td className="px-3 py-3 text-right">
-                <div className="space-y-1">
-                  <p className="font-mono text-sm text-cream-900">
-                    {(catalog.invoice_value ?? 0) > 0 ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD') : '—'}
-                  </p>
-                  <p className="text-xs text-cream-600">
-                    {(catalog.invoice_count ?? 0) > 0 ? `${catalog.invoice_count} invoices · ${catalog.revenue_buyer_count ?? 0} customers` : '—'}
-                  </p>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right">
-                <div className="space-y-1">
-                  <p className="font-mono text-sm text-cream-900">
-                    {catalog.views > 0 ? catalog.views : '—'}
-                  </p>
-                  <p className="text-xs text-cream-600">
-                    {catalog.audience_count ? `${catalog.view_pct}% of buyers` : '—'}
-                  </p>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right">
-                <div className="space-y-1">
-                  <p className="font-mono text-sm text-cream-900">
-                    {catalog.demand_customers ?? 0}
-                  </p>
-                  <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
-                </div>
-              </td>
-              <td className="px-3 py-3">
-                <div className="space-y-1">
-                  <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
-                  <p className="text-xs text-cream-600">
-                    {catalog.status.label === 'Draft'
-                      ? 'Not yet sent'
-                      : catalog.status.label === 'Scheduled'
-                        ? `Starts ${catalog.valid_from ? new Date(catalog.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'soon'}`
-                        : catalog.status.label === 'Live · Unpublished Changes'
-                          ? 'Live campaign has unpublished changes'
-                          : catalog.status.label === 'Expired' || catalog.status.label === 'Archived'
-                        ? catalog.valid_until_label
-                        : catalog.days_left != null
-                          ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
-                          : catalog.valid_until_label}
-                  </p>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right text-cream-500">›</td>
-            </tr>
-          ))}
-        </LandingTable>
-      )}
-      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
-        </>
-      )}
+
+        <FilterBar
+          count={`${filtered.length} campaigns`}
+          searchPlaceholder="Search campaign…"
+          chips={[]}
+          activeChip=""
+          sortBy={sortBy}
+          hideViewToggle
+          groups={groups}
+          searchValue={search}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
+          sortOptions={SORT_OPTIONS}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+        />
+      </StickyListHeader>
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {isError ? (
+          <ErrorState
+            heading="Couldn't load campaigns"
+            description="There was a problem fetching campaign funnel metrics. Please try again."
+          />
+        ) : (
+          <>
+            <div className="min-h-0 flex-1">
+              <LandingTable
+                showEmptyState={filtered.length === 0 && !isLoading}
+                emptyState={
+                  <EmptyState
+                    icon={<Library size={28} strokeWidth={1.5} />}
+                    heading={hasActiveFilters ? 'No matching campaigns' : 'No campaigns yet'}
+                    description={
+                      hasActiveFilters
+                        ? 'Try a different search or status filter.'
+                        : 'Publish a campaign to share products with a customer group.'
+                    }
+                    action={
+                      <Button variant="accent" onClick={() => setCampaignFormOpen(true)} className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add a campaign
+                      </Button>
+                    }
+                  />
+                }
+                columns={tableColumns}
+                tableClassName={estimatesEnabled ? 'min-w-[1400px]' : 'min-w-[1270px]'}
+              >
+                {filtered.map((catalog) => (
+                  <tr
+                    key={catalog.id}
+                    className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
+                    onClick={() => router.push(`/campaigns/${catalog.id}`)}
+                    onPointerDown={() => triggerHaptic()}
+                  >
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-3">
+                        <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-medium text-cream-900">{catalog.name}</p>
+                          <p className="mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
+                            {catalog.products_count} products · {catalog.brands_count} brands
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-1">
+                        <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
+                        <p className="text-xs text-cream-600">
+                          {catalog.audience_count != null ? `${catalog.audience_count} buyers` : '—'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                      {catalog.order_count > 0 ? catalog.order_count : '—'}
+                    </td>
+                    {estimatesEnabled ? (
+                      <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                        {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
+                      </td>
+                    ) : null}
+                    <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                      {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="space-y-1">
+                        <p className="font-mono text-sm text-cream-900">
+                          {(catalog.invoice_value ?? 0) > 0 ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD') : '—'}
+                        </p>
+                        <p className="text-xs text-cream-600">
+                          {(catalog.invoice_count ?? 0) > 0 ? `${catalog.invoice_count} invoices · ${catalog.revenue_buyer_count ?? 0} customers` : '—'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="space-y-1">
+                        <p className="font-mono text-sm text-cream-900">
+                          {catalog.views > 0 ? catalog.views : '—'}
+                        </p>
+                        <p className="text-xs text-cream-600">
+                          {catalog.audience_count ? `${catalog.view_pct}% of buyers` : '—'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="space-y-1">
+                        <p className="font-mono text-sm text-cream-900">
+                          {catalog.demand_customers ?? 0}
+                        </p>
+                        <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-1">
+                        <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
+                        <p className="text-xs text-cream-600">
+                          {catalog.status.label === 'Draft'
+                            ? 'Not yet sent'
+                            : catalog.status.label === 'Scheduled'
+                              ? `Starts ${catalog.valid_from ? new Date(catalog.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'soon'}`
+                              : catalog.status.label === 'Live · Unpublished Changes'
+                                ? 'Live campaign has unpublished changes'
+                                : catalog.status.label === 'Expired' || catalog.status.label === 'Archived'
+                              ? catalog.valid_until_label
+                              : catalog.days_left != null
+                                ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
+                                : catalog.valid_until_label}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-cream-500">›</td>
+                  </tr>
+                ))}
+              </LandingTable>
+            </div>
+            <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
+            <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
+          </>
+        )}
+      </div>
     </PageWrap>
   );
 }

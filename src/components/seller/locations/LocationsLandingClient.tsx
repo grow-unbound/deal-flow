@@ -156,7 +156,12 @@ function LocationsLandingContent({
 
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading locations" />
+      <SellerSplitPaneLandingSkeleton
+        ariaLabel="Loading locations"
+        eyebrowWidth="w-20"
+        titleWidth="w-44"
+        subtitleWidth="w-52"
+      />
     ) : (
       <LocationsLandingSkeleton />
     );

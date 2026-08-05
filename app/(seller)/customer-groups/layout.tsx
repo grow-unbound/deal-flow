@@ -34,6 +34,9 @@ export default async function CohortsLayout({ children }: { children: ReactNode 
             <SplitPaneBootstrapFallback
               basePath="/customer-groups"
               ariaLabel="Loading customer groups"
+              eyebrowWidth="w-28"
+              titleWidth="w-52"
+              subtitleWidth="w-44"
               expandedFallback={<CohortsLandingSkeleton />}
             />
           }

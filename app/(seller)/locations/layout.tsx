@@ -27,6 +27,9 @@ export default async function LocationsLayout({ children }: { children: ReactNod
             <SplitPaneBootstrapFallback
               basePath="/locations"
               ariaLabel="Loading locations"
+              eyebrowWidth="w-20"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<LocationsLandingSkeleton />}
             />
           }

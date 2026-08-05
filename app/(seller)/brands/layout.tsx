@@ -30,6 +30,9 @@ export default async function BrandsLayout({ children }: { children: ReactNode }
               basePath="/brands"
               ariaLabel="Loading brands"
               showLeading
+              eyebrowWidth="w-16"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<BrandsLandingSkeleton />}
             />
           }
