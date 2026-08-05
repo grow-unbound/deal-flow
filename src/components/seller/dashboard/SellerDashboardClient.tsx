@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
-import { useSellerDashboard } from '@/hooks/useSellerDashboard';
+import { useSellerDashboard, useSellerDashboardMetrics } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -24,6 +24,7 @@ import type {
   SellerDashboardCustomerActivityMeta,
   SellerDashboardFeed,
   SellerDashboardLocationComparisonEntry,
+  SellerDashboardMetricsV4,
   SellerDashboardMixEntry,
   SellerDashboardResponse,
   SellerDashboardSalesMixMeta,
@@ -31,6 +32,17 @@ import type {
 
 type SalesMixDimension = 'brand' | 'category' | 'location';
 const DASHBOARD_SCROLL_CARD_HEIGHT = 'h-[320px]';
+
+function formatDashboardMetricCard(card: SellerDashboardMetricsV4['cards'][number]) {
+  const idLabel = `${card.id} ${card.label}`.toLowerCase();
+  if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
+    return `${card.value ?? 0}%`;
+  }
+  if (idLabel.includes('count') || idLabel.includes('customers') || idLabel.includes('orders') || idLabel.includes('invoices') || idLabel.includes('estimates')) {
+    return formatNumberValue(card.value ?? 0, 'COUNT');
+  }
+  return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+}
 
 function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   return (
@@ -169,7 +181,17 @@ function ScrollCardBody({ children }: { children: ReactNode }) {
   );
 }
 
-function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
+function AdminSection({
+  data,
+  metrics,
+  newEntityIds,
+  markSeen,
+}: {
+  data: SellerDashboardResponse;
+  metrics: SellerDashboardMetricsV4 | null | undefined;
+  newEntityIds: Map<string, 'new'>;
+  markSeen: (id: string) => void;
+}) {
   const admin = data.admin;
   const [salesMixDimension, setSalesMixDimension] = useState<SalesMixDimension>('brand');
   const [salesMixSheetOpen, setSalesMixSheetOpen] = useState(false);
@@ -239,11 +261,10 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
   return (
     <>
       <InsightStrip4
-        tiles={admin.metrics.map((metric) => ({
-          label: metric.label,
-          value: formatNumberValue(metric.value, metric.label === 'Recently sold products out of stock' || metric.label === 'Low-stock alerts' || metric.label === 'Open estimates' || metric.label === 'Orders to confirm' || metric.label === 'Overdue invoices' ? 'COUNT' : 'CURRENCY_THRESHOLD'),
-          sub: metric.sub,
-          tone: metric.tone,
+        tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
+          label: metric.time_basis ? `${metric.label} · ${metric.time_basis}` : metric.label,
+          value: formatDashboardMetricCard(metric),
+          sub: metric.supporting_text ?? '',
         }))}
       />
       {asOfLabel ? (
@@ -437,7 +458,17 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
   );
 }
 
-function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
+function AssistantSection({
+  data,
+  metrics,
+  newEntityIds,
+  markSeen,
+}: {
+  data: SellerDashboardResponse;
+  metrics: SellerDashboardMetricsV4 | null | undefined;
+  newEntityIds: Map<string, 'new'>;
+  markSeen: (id: string) => void;
+}) {
   const assistant = data.assistant;
   if (!assistant) return null;
   const asOfLabel = formatAsOfLabel(data.portfolio?.as_of);
@@ -445,11 +476,10 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
   return (
     <>
       <InsightStrip4
-        tiles={assistant.metrics.map((metric) => ({
-          label: metric.label,
-          value: formatNumberValue(metric.value, metric.label === 'Recently sold products out of stock' || metric.label === 'Low-stock alerts' || metric.label === 'Open estimates' || metric.label === 'Orders to confirm' || metric.label === 'Overdue invoices' ? 'COUNT' : 'CURRENCY_THRESHOLD'),
-          sub: metric.sub,
-          tone: metric.tone,
+        tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
+          label: metric.time_basis ? `${metric.label} · ${metric.time_basis}` : metric.label,
+          value: formatDashboardMetricCard(metric),
+          sub: metric.supporting_text ?? '',
         }))}
       />
       {asOfLabel ? (
@@ -466,24 +496,23 @@ function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashbo
 
 export function SellerDashboardClient({
   initialData,
+  initialMetrics = null,
   initialPeriod,
 }: {
   initialData: SellerDashboardResponse | null;
+  initialMetrics?: SellerDashboardMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const period = initialPeriod;
   const horizonLabel = 'Last 90 Days';
   const { data, isLoading, isError } = useSellerDashboard(period, initialData);
+  const { data: metricsData } = useSellerDashboardMetrics(period, initialMetrics);
   const retainedData = useRetainedValue(data);
   const dashboard = data ?? retainedData;
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
 
   if (!dashboard && isLoading) {
-    return (
-      <PageWrap>
-        <DashboardSkeleton />
-      </PageWrap>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (!dashboard || isError) {
@@ -509,11 +538,9 @@ export function SellerDashboardClient({
         />
       </div>
 
-      {isLoading && !dashboard ? <DashboardSkeleton /> : (
-        <>
-          {dashboard.role === 'seller_admin' ? <AdminSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} /> : <AssistantSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} />}
-        </>
-      )}
+      {dashboard.role === 'seller_admin'
+        ? <AdminSection data={dashboard} metrics={metricsData} newEntityIds={newEntityIds} markSeen={markSeen} />
+        : <AssistantSection data={dashboard} metrics={metricsData} newEntityIds={newEntityIds} markSeen={markSeen} />}
     </PageWrap>
   );
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 const useTenantBrandsMock = vi.fn();
+const useTenantBrandsMetricsMock = vi.fn();
 const useFlagMock = vi.fn();
 const requireSellerServerTenantIdMock = vi.fn();
 const resolveSellerLandingPeriodMock = vi.fn();
@@ -15,10 +17,23 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useBrands', () => ({
   useTenantBrands: () => useTenantBrandsMock(),
+  useTenantBrandsMetrics: () => useTenantBrandsMetricsMock(),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+vi.mock('@/components/FeatureGate', () => ({
+  FeatureGate: ({ children }: { children: ReactNode }) => <>{children}</>,
+  FeatureDisabledState: () => <div>This feature isn't enabled yet.</div>,
+}));
+
+vi.mock('@/components/seller/mobile', () => ({
+  SellerMobileList: () => null,
+  SplitPaneBootstrapFallback: () => <div data-testid="split-pane-bootstrap-fallback" />,
+  SplitPaneListRowsSkeleton: () => <div data-testid="split-pane-list-skeleton" />,
+  SplitPaneStickyHeaderSlot: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/lib/server/seller-server-claims', () => ({
@@ -58,7 +73,21 @@ import BrandsLayout from '../../app/(seller)/brands/layout';
 
 describe('brands landing integration', () => {
   beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
     useTenantBrandsMock.mockReset();
+    useTenantBrandsMetricsMock.mockReset();
     useFlagMock.mockReset();
     requireSellerServerTenantIdMock.mockReset();
     resolveSellerLandingPeriodMock.mockReset();

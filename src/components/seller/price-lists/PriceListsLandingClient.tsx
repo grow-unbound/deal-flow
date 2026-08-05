@@ -21,7 +21,6 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -31,8 +30,9 @@ import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
-import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
+import { PriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { PriceListFormSheet } from './PriceListFormSheet';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
@@ -40,20 +40,6 @@ type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' 
 
 const STATUS_OPTIONS: LandingChip[] = ['Draft', 'Active', 'Expired'];
 const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)', 'Priority (high → low)'];
-
-function PriceListsDataSkeleton({ isSellerAssistant }: { isSellerAssistant: boolean }) {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <Skeleton className="h-14 rounded-[14px]" />
-      <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} />
-    </div>
-  );
-}
 
 function titleCaseStatus(status: PriceListLandingRow['status']): 'Active' | 'Draft' | 'Expired' {
   if (status === 'active') return 'Active';
@@ -197,6 +183,14 @@ function PriceListsLandingContent({
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
   const showRefreshingState = isLoading && !data;
 
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading price lists" />
+    ) : (
+      <PriceListsLandingSkeleton />
+    );
+  }
+
   if (isError) {
     return (
       <PageWrap>
@@ -263,13 +257,7 @@ function PriceListsLandingContent({
         </StickyListHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-        {showRefreshingState ? (
-          isPaneOpen ? (
-            <SplitPaneListRowsSkeleton isPaneOpen />
-          ) : (
-            <PriceListsDataSkeleton isSellerAssistant={isSellerAssistant} />
-          )
-        ) : showTableSkeleton ? (
+        {showTableSkeleton ? (
           isPaneOpen ? (
             <SplitPaneListRowsSkeleton isPaneOpen />
           ) : (

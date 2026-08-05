@@ -20,45 +20,52 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
+import {
+  useCategoriesLandingMetrics,
+  useCategoryLanding,
+  type CategoriesLandingKpiCardV4,
+  type CategoriesLandingMetricsV4,
+  type CategoryLandingSort,
+} from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
-import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
+type SortOption = 'Sales (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)' | 'Invoices (high → low)' | 'Customers (high → low)';
+type CategoryLandingFilters = { status: string[]; products: string[]; stock: string[] };
 
-const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
-const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)', 'Invoices (high → low)', 'Customers (high → low)'];
+const SORT_TO_API: Record<SortOption, CategoryLandingSort> = {
+  'Sales (high → low)': 'invoice_value_desc',
+  'Name (A → Z)': 'name_asc',
+  'OOS SKUs (high → low)': 'oos_sku_count_desc',
+  'Invoices (high → low)': 'invoice_count_desc',
+  'Customers (high → low)': 'invoice_buyer_count_desc',
+};
 
-function CategoriesDataSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <Skeleton className="h-14 rounded-[14px]" />
-      <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
-    </div>
-  );
+function filtersFromCategoryPreset(preset: Record<string, unknown> | null | undefined): CategoryLandingFilters {
+  const filters: CategoryLandingFilters = { status: [], products: [], stock: [] };
+  if (!preset) return filters;
+  if (typeof preset.sold_period === 'string') filters.status = ['active'];
+  if (typeof preset.not_sold_period === 'string') filters.status = ['dormant'];
+  if (preset.stock === 'out' || preset.stock_lte === 0) filters.stock = ['out_of_stock'];
+  else if (preset.stock === 'low') filters.stock = ['low_stock'];
+  else if (preset.stock === 'available' || typeof preset.stock_gt === 'number') filters.stock = ['in_stock'];
+  return filters;
 }
 
 function CategoriesLandingContent({
-  initialData,
-  initialPeriod,
+  initialMetrics,
 }: {
-  initialData: CategoriesLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
+  initialMetrics: CategoriesLandingMetricsV4 | null;
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
@@ -66,85 +73,59 @@ function CategoriesLandingContent({
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
-  const period: SellerLandingPeriod = 'last90';
-  const horizonLabel = 'Trailing 90 days';
-  const metricSuffix = '90D';
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
+  const period: SellerLandingPeriod = 'quarter';
+  const horizonLabel = 'This quarter';
+  const metricSuffix = 'QTD';
+  const metricsQuery = useCategoriesLandingMetrics(initialMetrics);
+  const metricsData = useRetainedValue(metricsQuery.data ?? initialMetrics);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
-    scopeKey: 'fixed-90d',
+    scopeKey: 'fixed-quarter',
     pathnameOverride: '/categories',
-    version: 4,
+    version: 5,
     initialState: {
       search: '',
+      filterPreset: null as Record<string, unknown> | null,
       filters: {
         status: [] as string[],
         products: [] as string[],
+        stock: [] as string[],
       },
-      sortBy: 'GMV (high → low)' as SortOption,
+      sortBy: 'Sales (high → low)' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const { search, sortBy } = routeState;
-  const filters = routeState.filters ?? { status: [], products: [] };
-  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
+  const filterPreset = routeState.filterPreset ?? null;
+  const filters: CategoryLandingFilters = routeState.filters ?? { status: [], products: [], stock: [] };
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCategoryLanding(
+    period,
+    { search, status: filters.status, products: filters.products, stock: filters.stock, sort: SORT_TO_API[sortBy], filter_preset: filterPreset },
+    null,
+  );
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
-    scopeKey: 'fixed-90d',
+    scopeKey: 'fixed-quarter',
     pathnameOverride: '/categories',
     ready: !isLoading,
   });
-  const groups: FilterBarGroup[] = [
-    {
-      key: 'status',
-      label: 'Status',
-      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
-      values: filters.status ?? [],
-      onChange: (values) => setRouteState((current) => ({
-        ...current,
-        filters: { ...(current.filters ?? filters), status: values },
-      })),
-    },
-    {
-      key: 'products',
-      label: 'Products',
-      options: PRODUCT_OPTIONS.map((value) => ({ value, label: value })),
-      values: filters.products ?? [],
-      onChange: (values) => setRouteState((current) => ({
-        ...current,
-        filters: { ...(current.filters ?? filters), products: values },
-      })),
-    },
-  ];
+  const groups: FilterBarGroup[] = (landingData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+      filterPreset: null,
+    })),
+  }));
   const rows = landingData?.rows ?? [];
-
-  const filtered = useMemo<CategoryTableRow[]>(() => {
-    const q = search.trim().toLowerCase();
-    return rows
-      .filter((r) => {
-        const statusFilter = filters.status ?? [];
-        const productFilter = filters.products ?? [];
-        const statusOk =
-          statusFilter.length === 0 ||
-          statusFilter.includes('All') ||
-          (statusFilter.includes('Active') ? r.is_active : !r.is_active);
-        const productOk =
-          productFilter.length === 0 ||
-          productFilter.includes('All') ||
-          (productFilter.includes('Has Products') ? r.active_sku_count > 0 : r.active_sku_count === 0);
-        return statusOk && productOk;
-      })
-      .filter((r) => !q || r.name.toLowerCase().includes(q))
-      .sort((a, b) => {
-        if (sortBy === 'Name (A → Z)') return a.name.localeCompare(b.name);
-        if (sortBy === 'OOS SKUs (high → low)') return b.oos_sku_count - a.oos_sku_count;
-        return b.gmv_mtd - a.gmv_mtd;
-      });
-  }, [filters.products, filters.status, rows, search, sortBy]);
-  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
-  const visibleRows = filtered;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && rows.length === 0;
+  const visibleRows = rows;
   const sentinelIndex = useMemo(
     () => getSentinelInsertIndex(visibleRows.length, SELLER_INFINITE_SCROLL_RATIO),
     [visibleRows.length],
@@ -168,45 +149,29 @@ function CategoriesLandingContent({
   }
 
   const showRefreshingState = isLoading && !data;
-  const kpis = landingData?.kpis;
-  const safeKpis = kpis ?? {
-    active_count: 0,
-    uncategorized_count: 0,
-    uncategorised_active_product_count: 0,
-    categorised_active_product_count: 0,
-  };
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading categories" showLeading />
+    ) : (
+      <CategoriesLandingSkeleton />
+    );
+  }
 
-  const kpiOptions = [
-    {
-      id: 'invoiced-sales',
-      // rows.reduce sums only the currently-loaded page(s) of categories, not
-      // the tenant total — get_seller_category_landing_summary_v2 computes a
-      // true total_gmv internally but does not return it in its kpis object.
-      // This is an approximation until that field is exposed.
-      label: `Invoiced sales · ${metricSuffix}`,
-      value: formatNumberValue(rows.reduce((s, r) => s + r.gmv_mtd, 0), 'CURRENCY_THRESHOLD'),
-      sub: `${Math.max(0, safeKpis.active_count - safeKpis.uncategorized_count)} categories`,
-    },
-    {
-      id: 'categories-with-sales',
-      label: 'Categories with invoiced sales',
-      value: `${Math.max(0, safeKpis.active_count - safeKpis.uncategorized_count)}`,
-      sub: `of ${safeKpis.active_count} active categories`,
-    },
-    {
-      id: 'categories-no-sale',
-      label: 'Categories with no sale in 90D',
-      value: `${safeKpis.uncategorized_count}`,
-      sub: `${safeKpis.uncategorized_count > 1 ? `${safeKpis.uncategorized_count} categories` : 'category'}`,
-    },
-    {
-      id: 'uncategorised-products',
-      label: 'Uncategorised active products',
-      value: `${safeKpis.uncategorised_active_product_count}`,
-      sub: 'products don\'t have a category',
-    },
-  ];
-  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  const totalRows = landingData?.total ?? visibleRows.length;
+  const kpiOptions = (metricsData?.cards ?? []).map((card: CategoriesLandingKpiCardV4) => ({
+    id: card.id,
+    label: card.label,
+    value: formatNumberValue(card.value ?? card.entity_count ?? 0, 'COUNT'),
+    sub: card.supporting_text ?? card.time_basis ?? '',
+    filterPreset: card.filter_preset ?? null,
+  }));
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0] ?? {
+    id: 'categories',
+    label: 'Categories',
+    value: `${totalRows}`,
+    sub: horizonLabel,
+    filterPreset: null,
+  };
 
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
@@ -221,7 +186,7 @@ function CategoriesLandingContent({
           title={isPaneOpen ? selectedOption.label : 'Categories'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${safeKpis.active_count} categories · ${safeKpis.categorised_active_product_count} categorised products · ${safeKpis.uncategorised_active_product_count} need setup.`}
+            : `${totalRows} categories in ${horizonLabel.toLowerCase()}.`}
           horizon={horizonLabel}
           primary="Add category"
           onPrimaryClick={() => setAddSheetOpen(true)}
@@ -234,14 +199,21 @@ function CategoriesLandingContent({
               label: option.label,
               value: option.value,
               sub: option.sub,
-              onClick: () => setSelectedKpiKey(option.id),
+              onClick: () => {
+                setSelectedKpiKey(option.id);
+                setRouteState((current) => ({
+                  ...current,
+                  filterPreset: option.filterPreset,
+                  filters: filtersFromCategoryPreset(option.filterPreset),
+                }));
+              },
               selected: option.id === selectedKpiKey,
             }))}
           />
         )}
 
         <FilterBar
-          count={`${filtered.length} categories`}
+          count={`${visibleRows.length} of ${totalRows} categories${(isFetching || isFetchingNextPage) ? ' · Updating' : ''}`}
           searchPlaceholder="Search category…"
           chips={[]}
           activeChip=""
@@ -250,7 +222,7 @@ function CategoriesLandingContent({
           compact={isPaneOpen}
           groups={groups}
           searchValue={search}
-          onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
+          onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value, filterPreset: null }))}
           sortOptions={SORT_OPTIONS}
           onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
         />
@@ -258,13 +230,7 @@ function CategoriesLandingContent({
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showRefreshingState ? (
-        isPaneOpen ? (
-          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
-        ) : (
-          <CategoriesDataSkeleton />
-        )
-      ) : isError ? (
+      {isError ? (
         <ErrorState
           heading="Couldn't load categories"
           description="There was a problem fetching category performance data."
@@ -275,7 +241,7 @@ function CategoriesLandingContent({
             isPaneOpen ? (
               <SplitPaneListRowsSkeleton isPaneOpen showLeading />
             ) : (
-              <LandingTableRowsSkeleton columns={6} tableMinWidth={1220} />
+              <LandingTableRowsSkeleton columns={8} tableMinWidth={1380} />
             )
           ) : (
           <LandingTable
@@ -283,12 +249,14 @@ function CategoriesLandingContent({
               { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
               { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-              { label: 'Products', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
-              { label: 'Out of stock SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: `Invoices · ${metricSuffix}`, align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
+              { label: 'Purchasing customers', align: 'right', minWidth: 160, maxWidth: 190, className: 'px-5' },
+              { label: 'Selling / Total SKUs', align: 'right', minWidth: 160, maxWidth: 190, className: 'px-5' },
+              { label: 'Stock', align: 'right', minWidth: 160, maxWidth: 190, className: 'px-5' },
               { width: 40, className: 'px-4' },
             ]}
-            tableMinWidth={1080}
-            showEmptyState={filtered.length === 0 && !isLoading}
+            tableMinWidth={1380}
+            showEmptyState={visibleRows.length === 0 && !isLoading}
             emptyState={
               <EmptyState
                 icon={<Tag size={28} strokeWidth={1.5} />}
@@ -316,7 +284,7 @@ function CategoriesLandingContent({
               ),
               eyebrow: `${row.brand_count} brands`,
               primary: row.name,
-              supporting: `${formatNumberValue(row.active_sku_count, 'COUNT')} products`,
+              supporting: `${formatNumberValue(row.invoice_product_count ?? 0, 'COUNT')} selling of ${formatNumberValue(row.total_sku_count ?? row.active_sku_count, 'COUNT')} SKUs`,
               trailing: row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—',
               selected: row.id === openId,
             }))}
@@ -325,7 +293,7 @@ function CategoriesLandingContent({
               <Fragment key={row.id}>
               {index === sentinelIndex ? (
                 <tr aria-hidden="true" style={{ height: 0 }}>
-                  <td colSpan={6} className="p-0"><div ref={sentinelRef} /></td>
+                  <td colSpan={8} className="p-0"><div ref={sentinelRef} /></td>
                 </tr>
               ) : null}
               <tr
@@ -348,13 +316,24 @@ function CategoriesLandingContent({
                   {row.brand_count}
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                  {row.gmv_mtd > 0 ? formatNumberValue(row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
+                  {(row.invoice_value ?? row.gmv_mtd) > 0 ? formatNumberValue(row.invoice_value ?? row.gmv_mtd, 'CURRENCY_THRESHOLD') : '—'}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                  {formatNumberValue(row.invoice_count ?? 0, 'COUNT')}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                  {formatNumberValue(row.invoice_buyer_count ?? row.buyers_count ?? 0, 'COUNT')}
                 </td>
                 <td className="px-3 py-3 text-right text-medium text-cream-700">
-                  {formatNumberValue(row.active_sku_count, 'COUNT')}
+                  {formatNumberValue(row.invoice_product_count ?? 0, 'COUNT')} / {formatNumberValue(row.total_sku_count ?? row.active_sku_count, 'COUNT')}
                 </td>
                 <td className="px-3 py-3 text-right text-medium text-cream-700">
-                  {row.oos_sku_count > 0 ? formatNumberValue(row.oos_sku_count, 'COUNT') : '—'}
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.stock_on_hand ?? 0, 'COUNT')}</span>
+                    <span className="text-xs text-cream-600">
+                      {formatNumberValue(row.low_stock_sku_count, 'COUNT')} low · {formatNumberValue(row.oos_sku_count, 'COUNT')} OOS
+                    </span>
+                  </div>
                 </td>
                 <td className="px-3 py-3 text-right text-cream-400">
                   <ChevronRight size={16} />
@@ -379,15 +358,13 @@ function CategoriesLandingContent({
 }
 
 export function CategoriesLandingClient({
-  initialData,
-  initialPeriod,
+  initialMetrics,
 }: {
-  initialData: CategoriesLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
+  initialMetrics: CategoriesLandingMetricsV4 | null;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <CategoriesLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <CategoriesLandingContent initialMetrics={initialMetrics} />
     </FeatureGate>
   );
 }

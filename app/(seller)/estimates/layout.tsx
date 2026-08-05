@@ -5,7 +5,7 @@ import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoad
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { TenantEstimatesResponse } from '@/types/tenant-estimates';
+import type { EstimatesLandingMetricsV4 } from '@/types/tenant-estimates';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
@@ -22,8 +22,8 @@ export default async function EstimatesLayout({ children }: { children: ReactNod
     <EntitySplitShell
       basePath="/estimates"
       listSlot={
-        <SellerBootstrapBoundary<TenantEstimatesResponse>
-          path={`/api/tenant/estimates?limit=500&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
+        <SellerBootstrapBoundary<EstimatesLandingMetricsV4>
+          path={`/api/tenant/estimates/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/estimates"
@@ -35,7 +35,7 @@ export default async function EstimatesLayout({ children }: { children: ReactNod
           }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
-            return <EstimatesLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
+            return <EstimatesLandingClient initialMetrics={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
           }}
         />
       }

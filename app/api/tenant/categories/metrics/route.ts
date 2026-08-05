@@ -1,0 +1,68 @@
+import { NextRequest } from 'next/server';
+
+import type { CategoriesLandingMetricsV4 } from '@/hooks/useCategories';
+import { getVerifiedClaims } from '@/lib/auth';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming } from '@/lib/server/bounded-get';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
+import { createTimer } from '@/lib/server-timing';
+import { supabaseAdmin } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
+
+function emptyCategoriesLandingMetricsV4(): CategoriesLandingMetricsV4 {
+  return {
+    page_key: 'categories',
+    period: {
+      period_key: 'this_quarter',
+      grain: 'quarter',
+      period_start: '',
+      period_end_exclusive: '',
+      label: 'This Quarter',
+    },
+    computed_at: null,
+    source_watermark: null,
+    cards: [],
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: CategoriesLandingMetricsV4 | { error: string }, init?: ResponseInit) =>
+    jsonWithServerTiming(body, timer, 'categories_metrics_api', init, APP_GET_CACHE_CONTROL);
+
+  const claims = await getVerifiedClaims(request);
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return timedJson({ error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: adminCheck.status });
+  }
+  if (!supabaseAdmin) return timedJson({ error: 'Server configuration error' }, { status: 500 });
+
+  try {
+    const { data, error } = await supabaseAdmin.schema('app').rpc('get_landing_metrics_v4', {
+      p_tenant_id: claims.tenant_id,
+      p_page_key: 'categories',
+      p_period_key: 'this_quarter',
+      p_scope_kind: 'tenant',
+      p_scope_id: null,
+      p_as_of: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error('[GET /api/tenant/categories/metrics] get_landing_metrics_v4 failed', error);
+      return timedJson({ error: 'Failed to fetch categories metrics' }, { status: 500 });
+    }
+
+    if (!data || typeof data !== 'object') {
+      return timedJson(emptyCategoriesLandingMetricsV4());
+    }
+
+    const payload = data as CategoriesLandingMetricsV4;
+    return timedJson({
+      ...payload,
+      cards: Array.isArray(payload.cards) ? payload.cards : [],
+    });
+  } catch (error) {
+    console.error('[GET /api/tenant/categories/metrics] unexpected error', error);
+    return timedJson({ error: 'Unexpected server error' }, { status: 500 });
+  }
+}

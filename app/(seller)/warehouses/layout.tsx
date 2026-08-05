@@ -5,7 +5,7 @@ import { WarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoa
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { WarehousesLandingResponse } from '@/types/tenant-warehouses';
+import type { WarehousesLandingMetricsV4 } from '@/types/tenant-warehouses';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
 
 // Note: `?search=` seeding now happens client-side inside WarehousesLandingClient
@@ -21,8 +21,8 @@ export default async function WarehousesLayout({ children }: { children: ReactNo
     <EntitySplitShell
       basePath="/warehouses"
       listSlot={
-        <SellerBootstrapBoundary<WarehousesLandingResponse>
-          path="/api/tenant/warehouses/landing?period=today&limit=50"
+        <SellerBootstrapBoundary<WarehousesLandingMetricsV4>
+          path="/api/tenant/warehouses/metrics"
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/warehouses"
@@ -32,7 +32,7 @@ export default async function WarehousesLayout({ children }: { children: ReactNo
           }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
-            return <WarehousesLandingClient initialData={initialData} initialPeriod="today" />;
+            return <WarehousesLandingClient initialMetrics={initialData} />;
           }}
         />
       }

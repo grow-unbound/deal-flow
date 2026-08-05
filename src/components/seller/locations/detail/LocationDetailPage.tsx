@@ -16,6 +16,7 @@ import { formatNumberValue } from '@/lib/utils';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
+import { LocationDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 const LocationPerformanceTab = dynamic(
   () => import('./LocationPerformanceTab').then((m) => m.LocationPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
@@ -108,6 +109,8 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       />
     );
   }
+
+  if (isLoading && !data) return <LocationDetailSkeleton />;
 
   const demandKindLabel = meta
     ? meta.open_primary_demand_kind === 'orders'

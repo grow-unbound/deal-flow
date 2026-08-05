@@ -1,7 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { appendArrayParam } from '@/lib/landing-filter-params';
+import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
@@ -60,6 +60,32 @@ export interface LocationsLandingKpis {
   purchasing_buyers_90d: number;
 }
 
+export interface LocationsLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface LocationsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: LocationsLandingKpiCardV4[];
+}
+
 export interface LocationsLandingRow {
   id: string;
   name: string;
@@ -82,6 +108,14 @@ export interface LocationsLandingRow {
   order_count_90d: number;
   order_value_90d: number;
   conversion_90d: number;
+  open_estimate_count: number;
+  open_order_count: number;
+  open_demand_count: number;
+  overdue_amount: number;
+  primary_demand_kind: PrimaryDemandKind;
+  primary_demand_count: number;
+  primary_demand_value: number;
+  primary_demand_buyer_count: number;
 }
 
 export interface LocationsCalloutRow {
@@ -103,29 +137,34 @@ export interface LocationsCalloutRow {
 }
 
 export interface LocationsLandingResponse {
-  kpis: LocationsLandingKpis;
-  callouts: {
+  locations: LocationsLandingRow[];
+  total: number | null;
+  limit?: number;
+  nextCursor?: string | null;
+  sort?: LocationsLandingSort;
+  period_key?: string;
+  grain?: 'month';
+  period_start?: string;
+  refreshed_at: string;
+  as_of?: string;
+  kpis?: LocationsLandingKpis;
+  callouts?: {
     conversions: LocationsCalloutRow[];
     top_locations: LocationsCalloutRow[];
     collections_overdue: LocationsCalloutRow[];
   };
-  locations: LocationsLandingRow[];
-  total: number;
-  limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
-  period: string;
-  refreshed_at: string;
-  as_of?: string;
-  commercial_horizon_days?: number | null;
+  filters?: LandingFilterMeta;
 }
 
 export interface LocationsLandingFilters {
   search?: string;
   status?: string[];
-  stock?: string[];
-  dues?: string[];
+  attention?: string[];
+  filter_preset?: Record<string, unknown> | null;
+  sort?: LocationsLandingSort;
 }
+
+export type LocationsLandingSort = 'invoice_value' | 'open_demand_value' | 'overdue_amount';
 
 // ─── Detail page types ────────────────────────────────────────────────────────
 
@@ -258,27 +297,37 @@ export function useLocationsLanding(
   initialData: LocationsLandingResponse | null,
 ) {
   const { currentTenantId } = useAuth();
-  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.stock?.length || filters.dues?.length);
-  const baseSummary = initialData?.period === period ? initialData : null;
+  const baseSummary = initialData?.period_key === 'this_month' ? initialData : null;
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
 
   const query = useInfiniteQuery<LocationsLandingResponse>({
-    queryKey: ['locations-landing', currentTenantId, period, filters],
+    queryKey: ['locations-landing', currentTenantId, period, {
+      search: filters.search ?? '',
+      sort: filters.sort ?? 'invoice_value',
+      status: filters.status ?? [],
+      attention: filters.attention ?? [],
+      filter_preset: presetKey,
+    }],
     enabled: Boolean(currentTenantId),
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
-    initialPageParam: 0,
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) => {
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ limit: '50' });
+      if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
-      appendArrayParam(params, 'stock', filters.stock);
-      appendArrayParam(params, 'dues', filters.dues);
+      appendArrayParam(params, 'attention', filters.attention);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await fetch(`/api/tenant/locations/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error(`locations-landing ${res.status}`);
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
-    initialData: baseSummary ? { pages: [baseSummary], pageParams: [0] } : undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialData: baseSummary ? { pages: [baseSummary], pageParams: [undefined] } : undefined,
     initialDataUpdatedAt: baseSummary ? 0 : undefined,
     placeholderData: keepPreviousData,
   });
@@ -286,6 +335,20 @@ export function useLocationsLanding(
   const data = merged && baseSummary ? { ...baseSummary, ...merged } : merged;
   const retained = useRetainedValue(data);
   return { ...query, data: data ?? retained };
+}
+
+export function useLocationsLandingMetrics(initialData?: LocationsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['locations-landing-metrics'],
+    queryFn: async (): Promise<LocationsLandingMetricsV4> => {
+      const res = await fetch('/api/tenant/locations/metrics');
+      if (!res.ok) throw new Error('Failed to fetch locations metrics');
+      return res.json();
+    },
+    initialData: initialData ?? undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useLocationDetail(id: string, options?: { includePerformance?: boolean }) {

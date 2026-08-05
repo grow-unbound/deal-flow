@@ -58,8 +58,7 @@ export interface CohortsLandingRow {
 export interface CohortsLandingResponse {
   total?: number;
   limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
+  nextCursor?: string | null;
   kpis: CohortsLandingKpis;
   todays_read: {
     low_conversion: CohortsLandingCalloutRow[];
@@ -73,9 +72,37 @@ export interface CohortsLandingResponse {
   period: SellerLandingPeriodMeta;
 }
 
+export interface CohortsLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface CohortsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: CohortsLandingKpiCardV4[];
+}
+
 export interface CohortsLandingFilters {
   search?: string;
   brands?: string[];
+  status?: string[];
+  filter_preset?: Record<string, unknown> | null;
 }
 
 export interface TenantCohortOption {
@@ -271,24 +298,30 @@ export function useCohortsLanding(
   filters: CohortsLandingFilters = {},
   initialData?: CohortsLandingResponse | null,
 ) {
-  const hasFilters = Boolean(filters.search?.trim() || filters.brands?.length);
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
+  const hasFilters = Boolean(filters.search?.trim() || filters.brands?.length || filters.status?.length || presetKey);
   const baseSummary = getSellerLandingInitialData(period, initialData);
   const initial = !hasFilters
     ? baseSummary
     : undefined;
   const query = useInfiniteQuery({
     queryKey: ['cohorts-landing', period, filters],
-    initialPageParam: 0,
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }): Promise<CohortsLandingResponse> => {
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ period, limit: '50', include_summary: String(!pageParam && !hasFilters) });
+      if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'brands', filters.brands);
+      appendArrayParam(params, 'status', filters.status);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch cohorts landing');
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
-    initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialData: initial ? { pages: [initial], pageParams: [undefined] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
     staleTime: REFERENCE_QUERY_STALE_TIME,
@@ -296,6 +329,21 @@ export function useCohortsLanding(
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'cohorts');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
+}
+
+export function useCohortsLandingMetrics(initialData?: CohortsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['cohorts-landing-metrics'],
+    queryFn: async (): Promise<CohortsLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/cohorts/metrics');
+      if (!res.ok) throw new Error('Failed to fetch customer group metrics');
+      return res.json();
+    },
+    initialData: initialData ?? undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useTenantCohortOptions(enabled = true) {

@@ -4,7 +4,6 @@ import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClie
 import { toast } from 'sonner';
 import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
-import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import {
   NAVIGATION_QUERY_GC_TIME,
@@ -12,8 +11,9 @@ import {
   REFERENCE_QUERY_STALE_TIME,
   REFERENCE_QUERY_GC_TIME,
 } from '@/lib/query-navigation';
-import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
+import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export interface MasterBrand {
   id: string;
@@ -51,6 +51,9 @@ export interface TenantBrand {
   sku_count?: number;
   active_buyers_mtd?: number;
   total_buyers?: number;
+  invoice_count?: number;
+  invoice_product_count?: number;
+  invoice_buyer_count?: number;
   catalog_days_ago?: number | null;
   catalog_name?: string | null;
   categories?: string[];
@@ -76,8 +79,7 @@ export interface TenantBrandsResponse {
   brands: TenantBrand[];
   total?: number;
   limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
+  nextCursor?: string | null;
   categories?: string[];
   cohorts?: Array<{
     id: string;
@@ -94,12 +96,48 @@ export interface TenantBrandsResponse {
   period?: SellerLandingPeriodMeta;
   /** portfolio_gmv_mtd is order/estimate demand value, not invoiced sales — used to label the tile correctly. */
   primary_demand_kind?: 'orders' | 'estimates' | 'none';
+  period_key?: string;
+  grain?: 'month';
+  portfolio_sales_value?: number;
+  sort?: TenantBrandsLandingSort;
+  filters?: LandingFilterMeta;
 }
 
 export interface TenantBrandsLandingFilters {
   search?: string;
   categories?: string[];
   cohorts?: string[];
+  status?: string[];
+  sort?: TenantBrandsLandingSort;
+  filter_preset?: Record<string, unknown> | null;
+}
+
+export type TenantBrandsLandingSort = 'invoice_value_desc' | 'invoice_value_asc' | 'invoice_count_desc' | 'invoice_product_count_desc' | 'invoice_buyer_count_desc';
+
+export interface BrandsLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface BrandsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: BrandsLandingKpiCardV4[];
 }
 
 export interface SearchBrandsResponse {
@@ -312,23 +350,32 @@ export function useTenantBrands(
   filters: TenantBrandsLandingFilters = {},
   initialData?: TenantBrandsResponse,
 ) {
-  const hasFilters = Boolean(filters.search?.trim() || filters.categories?.length || filters.cohorts?.length);
-  const baseSummary = getSellerLandingInitialData(period, initialData);
+  const baseSummary = initialData?.period_key === 'this_month' ? initialData : null;
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
   const query = useInfiniteQuery({
-    queryKey: ['tenant-brands', period, filters],
-    initialPageParam: 0,
+    queryKey: ['tenant-brands', period, {
+      search: filters.search ?? '',
+      sort: filters.sort ?? 'invoice_value_desc',
+      status: filters.status ?? [],
+      filter_preset: presetKey,
+    }],
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }): Promise<TenantBrandsResponse> => {
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ period, limit: '50' });
+      if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
-      appendArrayParam(params, 'categories', filters.categories);
-      appendArrayParam(params, 'cohorts', filters.cohorts);
+      appendArrayParam(params, 'status', filters.status);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/brands?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch brands');
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     initialData: baseSummary
-      ? { pages: [baseSummary], pageParams: [0] }
+      ? { pages: [baseSummary], pageParams: [undefined] }
       : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
@@ -338,6 +385,21 @@ export function useTenantBrands(
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'brands');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
+}
+
+export function useTenantBrandsMetrics(initialData?: BrandsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-brands-metrics'],
+    queryFn: async (): Promise<BrandsLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/brands/metrics');
+      if (!res.ok) throw new Error('Failed to fetch brands metrics');
+      return res.json();
+    },
+    initialData: initialData ?? undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useTenantBrandDetail(id: string, options?: { includePerformance?: boolean }) {

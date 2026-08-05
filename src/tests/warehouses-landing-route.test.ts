@@ -7,14 +7,6 @@ vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
 }));
 
-vi.mock('@/lib/server/seller-location-access', () => ({
-  getSellerLocationScope: ({ role, location_ids }: { role?: string | null; location_ids?: string[] | null }) => {
-    if (role === 'seller_admin') return { mode: 'all', locationIds: null };
-    if (location_ids?.length) return { mode: 'subset', locationIds: location_ids };
-    return { mode: 'none', locationIds: [] };
-  },
-}));
-
 type QueryResult = { data?: unknown; error?: unknown };
 const dbResponses: Record<string, QueryResult> = {};
 const rpcCalls: Array<[string, Record<string, unknown>]> = [];
@@ -89,12 +81,8 @@ describe('GET /api/tenant/warehouses/landing', () => {
           is_default: true,
           external_ref: null,
           associated_users: [],
-          lat: null,
-          lng: null,
-          deleted_at: null,
           created_at: '2026-07-01T00:00:00.000Z',
           updated_at: '2026-07-05T00:00:00.000Z',
-          locations: { id: 'loc-1', name: 'North Hub', is_default: true },
         },
         {
           id: 'wh-2',
@@ -107,125 +95,98 @@ describe('GET /api/tenant/warehouses/landing', () => {
           is_default: false,
           external_ref: null,
           associated_users: [],
-          lat: null,
-          lng: null,
-          deleted_at: null,
           created_at: '2026-07-02T00:00:00.000Z',
           updated_at: '2026-07-04T00:00:00.000Z',
-          locations: { id: 'loc-2', name: 'South Hub', is_default: false },
         },
       ],
     };
-
-    dbResponses['app.rpc.get_seller_warehouse_landing_row_metrics_v2'] = {
+    dbResponses['app.locations'] = {
+      data: [
+        { id: 'loc-1', name: 'North Hub' },
+        { id: 'loc-2', name: 'South Hub' },
+      ],
+    };
+    dbResponses['app.metrics_warehouse_period_summary'] = {
       data: [
         {
           warehouse_id: 'wh-1',
-          tracked_skus: 10,
-          sellable_units: 100,
-          low_stock_skus: 1,
-          stockout_skus: 0,
-          idle_stock_skus: 2,
-          last_inventory_update: '2026-07-05T10:00:00.000Z',
-        },
-        {
-          warehouse_id: 'wh-2',
-          tracked_skus: 8,
-          sellable_units: 60,
-          low_stock_skus: 0,
-          stockout_skus: 1,
-          idle_stock_skus: 0,
-          last_inventory_update: '2026-07-04T10:00:00.000Z',
+          sold_sku_count: 3,
+          sold_units: 12,
+          invoice_value: 25000,
         },
       ],
     };
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
+    dbResponses['app.tenant_inventory'] = {
       data: [
-        { id: 'wh-1', total_count: 2 },
-        { id: 'wh-2', total_count: 2 },
+        { warehouse_id: 'wh-1', tenant_product_id: 'tp-1', qty_available: 4, reorder_point: 5 },
+        { warehouse_id: 'wh-1', tenant_product_id: 'tp-2', qty_available: 0, reorder_point: 2 },
+        { warehouse_id: 'wh-2', tenant_product_id: 'tp-3', qty_available: 10, reorder_point: 2 },
       ],
-    };
-    dbResponses['app.rpc.get_seller_warehouses_landing_summary_v2'] = {
-      data: {
-        kpis: {
-          active_warehouses: 2,
-          tracked_skus: 18,
-          low_stock_warehouses: 2,
-          idle_stock_skus: 2,
-        },
-        callouts: {
-          stock_attention: [
-            { id: 'wh-1', name: 'North Warehouse', city: 'Bengaluru', value: 1 },
-            { id: 'wh-2', name: 'South Warehouse', city: 'Chennai', value: 1 },
-          ],
-          idle_stock: [
-            { id: 'wh-1', name: 'North Warehouse', city: 'Bengaluru', value: 2 },
-          ],
-          recently_replenished: [
-            {
-              id: 'wh-1',
-              name: 'North Warehouse',
-              city: 'Bengaluru',
-              value: 10,
-              last_updated: '2026-07-05T10:00:00.000Z',
-            },
-          ],
-        },
-      },
     };
   });
 
-  it('keeps KPI totals tenant-wide when the row limit truncates visible warehouses', async () => {
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
-      data: [{ id: 'wh-1', total_count: 2 }],
-    };
-    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
+  it('returns all warehouses by default and zero-fills missing V4 rows', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=25'));
     expect(response.status).toBe(200);
 
     const body = await response.json();
-    expect(body.kpis.active_warehouses).toBe(2);
-    expect(body.kpis.tracked_skus).toBe(18);
-    expect(body.kpis.low_stock_warehouses).toBe(2);
+    expect(body.warehouses).toHaveLength(2);
+    expect(body.warehouses[0]).toEqual(expect.objectContaining({
+      id: 'wh-1',
+      linked_location_name: 'North Hub',
+      invoice_value: 25000,
+      sold_sku_count: 3,
+      sold_units: 12,
+      sellable_units: 4,
+      stock_status: 'out_of_stock',
+    }));
+    expect(body.warehouses[1]).toEqual(expect.objectContaining({
+      id: 'wh-2',
+      invoice_value: 0,
+      sold_sku_count: 0,
+      sold_units: 0,
+      sellable_units: 10,
+      stock_status: 'clear',
+    }));
+    expect(body.period_key).toBe('this_quarter');
+    expect(body.grain).toBe('quarter');
+    expect(body.filters.groups.map((group: { key: string }) => group.key)).toEqual(['status', 'stock']);
+    expect(rpcCalls).toEqual([]);
+    expect(queriesByKey['app.metrics_warehouse_period_summary'][0].eq).toHaveBeenCalledWith('grain', 'quarter');
+    expect(queriesByKey['app.metrics_warehouse_period_summary'][0].in).toHaveBeenCalledWith('warehouse_id', ['wh-1', 'wh-2']);
+  });
+
+  it('filters search and stock posture without V2 RPCs', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?search=north&stock=low_stock&limit=25'));
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
     expect(body.warehouses).toHaveLength(1);
-    expect(body.callouts.stock_attention).toHaveLength(2);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary_v2', {
-      p_tenant_id: 'tenant-1',
-      p_location_ids: null,
-    }]);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouse_landing_row_metrics_v2', {
-      p_tenant_id: 'tenant-1',
-      p_warehouse_ids: ['wh-1'],
-    }]);
+    expect(body.warehouses[0].id).toBe('wh-1');
+    expect(rpcCalls).toEqual([]);
   });
 
-  it('pushes search and stock filtering into bounded SQL queries', async () => {
-    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?search=north&stock=Low+Stock&limit=25'));
-
+  it('applies no-sales KPI preset as visible-equivalent filters', async () => {
+    const preset = encodeURIComponent(JSON.stringify({ not_sold_period: 'this_quarter', stock_gt: 0 }));
+    const response = await GET(new NextRequest(`http://localhost/api/tenant/warehouses/landing?filter_preset=${preset}&limit=25`));
     expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids_v2', expect.objectContaining({
-      p_query: 'north',
-      p_stock_modes: ['Low Stock'],
-      p_limit: 25,
-    })]);
+
+    const body = await response.json();
+    expect(body.warehouses).toHaveLength(1);
+    expect(body.warehouses[0].id).toBe('wh-2');
+    expect(rpcCalls).toEqual([]);
   });
 
-  it('skips summaries and hydrates only returned IDs on later pages', async () => {
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
-      data: [{ id: 'wh-2', total_count: 75 }],
-    };
-
-    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?offset=50&limit=50&include_summary=false'));
+  it('uses keyset cursors for pagination', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
     expect(response.status).toBe(200);
-    expect(queriesByKey['app.warehouses']).toHaveLength(1);
-    expect(queriesByKey['app.warehouses']?.[0]?.in).toHaveBeenCalledWith('id', ['wh-2']);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouse_landing_row_metrics_v2', {
-      p_tenant_id: 'tenant-1',
-      p_warehouse_ids: ['wh-2'],
-    }]);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_warehouses_landing_summary_v2')).toBe(false);
+    const body = await response.json();
+
+    expect(body.warehouses).toHaveLength(1);
+    expect(body.nextCursor).toEqual(expect.any(String));
   });
 
-  it('passes assistant location scope to both search and summary RPCs', async () => {
+  it('blocks seller assistants because warehouses is an admin-only setup module', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_assistant',
@@ -233,13 +194,7 @@ describe('GET /api/tenant/warehouses/landing', () => {
     });
 
     const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
-    expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids_v2', expect.objectContaining({
-      p_location_ids: ['loc-1'],
-    })]);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary_v2', {
-      p_tenant_id: 'tenant-1',
-      p_location_ids: ['loc-1'],
-    }]);
+    expect(response.status).toBe(403);
+    expect(rpcCalls).toEqual([]);
   });
 });

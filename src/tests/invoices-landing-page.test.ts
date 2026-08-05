@@ -462,18 +462,11 @@ describe('invoices landing API route', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    expect(body.kpis.overdue_count).toBe(1);
-    expect(body.kpis.overdue_sum).toBe(4000);
-    expect(body.kpis.outstanding_count).toBe(1);
+    expect(body.kpis).toBeUndefined();
+    expect(body.todays_read).toBeUndefined();
     const row = body.invoices.find((r: { id: string }) => r.id === 'i1');
     expect(row.status.value).toBe('overdue');
     expect(row.status.filter_chip).toBe('Overdue');
-    expect(body.kpis.outstanding_sum).toBe(4000);
-    expect(body.kpis.invoices_this_period).toBe(2);
-    expect(body.kpis.invoices_prev_period).toBe(1);
-    expect(body.kpis.invoices_growth_pct).toBe(100);
-    expect(body.kpis.gmv_this_period).toBe(13000);
-    expect(body.kpis.aov).toBe(6500);
     expect(row.buyer_city).toBe('Mumbai');
     expect(row.buyer_state).toBe('MH');
     expect(row.items_count).toBe(2);
@@ -484,10 +477,7 @@ describe('invoices landing API route', () => {
     expect(estimateRow.source_label).toBe('EST-2026-0001');
     expect(estimateRow.source_detail).toBe('');
 
-    expect(body.todays_read.largest_overdue).toHaveLength(3);
-    expect(body.todays_read.largest_overdue.map((item: { invoice_number: string }) => item.invoice_number)).toContain('INV-2026-0003');
-    expect(body.todays_read.due_soon[0].invoice_number).toBe('INV-2026-0004');
-    expect(body.todays_read.newly_overdue[0].invoice_number).toBe('INV-2026-0005');
+    expect(body.filters.groups.find((group: { key: string }) => group.key === 'due').options.map((option: { value: string }) => option.value)).toContain('Due in 7 days');
   });
 
   it('returns 403 for non-seller roles', async () => {
@@ -506,7 +496,6 @@ describe('invoices landing API route', () => {
     const body = await res.json();
     expect(body.invoices).toHaveLength(1);
     expect(body.invoices[0].id).toBe('i1');
-    expect(body.kpis.invoices_this_period).toBe(1);
-    expect(body.kpis.gmv_this_period).toBe(4000);
+    expect(body.kpis).toBeUndefined();
   });
 });

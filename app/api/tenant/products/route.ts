@@ -4,7 +4,6 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
 import { z } from 'zod';
-import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -30,6 +29,326 @@ const AddProductSchema = z.object({
   image_urls: z.array(z.string().url()).optional().default([]),
 });
 
+type DbClient = {
+  schema: (schemaName: string) => {
+    from: (tableName: string) => any;
+  };
+};
+
+type ProductSort =
+  | 'invoice_value_desc'
+  | 'invoice_value_asc'
+  | 'invoice_units_desc'
+  | 'order_value_desc'
+  | 'estimate_value_desc'
+  | 'stock_on_hand_asc';
+
+type ProductFilterPreset = {
+  sold_period?: string;
+  not_sold_period?: string;
+  stock?: 'out' | 'low' | 'available' | string;
+  stock_lte?: number;
+  stock_gt?: number;
+  sort?: string;
+};
+
+type ProductCursor = {
+  v: number;
+  i: string;
+};
+
+type ProductIdentityRow = {
+  id: string;
+  tenant_id: string;
+  tenant_brand_id: string | null;
+  tenant_category_id: string | null;
+  master_product_id: string | null;
+  internal_sku: string;
+  name_override: string | null;
+  mrp: number | string | null;
+  base_selling_price: number | string | null;
+  cost_price: number | string | null;
+  default_uom: string | null;
+  pack_size: number | string | null;
+  hsn_code?: string | null;
+  gst_rate?: number | string | null;
+  description?: string | null;
+  attributes_override?: Record<string, string> | null;
+  image_urls: string[] | null;
+  is_active: boolean;
+  external_ref: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ProductMetricRow = {
+  tenant_product_id: string;
+  invoice_units: number | string | null;
+  invoice_value: number | string | null;
+  invoice_count: number | string | null;
+  invoice_buyer_count: number | string | null;
+  estimate_units: number | string | null;
+  estimate_value: number | string | null;
+  estimate_count: number | string | null;
+  order_units: number | string | null;
+  order_value: number | string | null;
+  order_count: number | string | null;
+};
+
+type BrandRow = { id: string; display_name_override: string | null; master_brand_id: string | null; logo_url?: string | null };
+type CategoryRow = { id: string; name: string | null };
+type MasterProductRow = {
+  id: string;
+  name: string | null;
+  master_sku: string | null;
+  brand_id: string | null;
+  brand_name?: string | null;
+  brand_logo_url?: string | null;
+  gst_rate?: number | string | null;
+  hsn_code?: string | null;
+  default_uom?: string | null;
+  pack_size?: number | string | null;
+  description?: string | null;
+  image_urls?: string[] | null;
+  category_name?: string | null;
+};
+type MasterBrandRow = { id: string; name: string | null; logo_url?: string | null };
+
+const PRODUCT_SCAN_LIMIT = 2000;
+const PRODUCT_FILTER_OPTIONS = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Dormant', label: 'Dormant' },
+  { value: 'Inactive', label: 'Inactive' },
+];
+const STOCK_FILTER_OPTIONS = [
+  { value: 'In stock', label: 'In stock' },
+  { value: 'Low stock', label: 'Low stock' },
+  { value: 'Out of stock', label: 'Out of stock' },
+];
+
+function toNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseProductSort(value: string | null | undefined): ProductSort {
+  if (
+    value === 'invoice_value_asc' ||
+    value === 'invoice_units_desc' ||
+    value === 'order_value_desc' ||
+    value === 'estimate_value_desc' ||
+    value === 'stock_on_hand_asc'
+  ) {
+    return value;
+  }
+  return 'invoice_value_desc';
+}
+
+function parseProductPreset(raw: string | null): ProductFilterPreset | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as ProductFilterPreset;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeProductCursor(raw: string | null): ProductCursor | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString()) as Partial<ProductCursor>;
+    if (typeof parsed.v !== 'number' || typeof parsed.i !== 'string') return null;
+    return { v: parsed.v, i: parsed.i };
+  } catch {
+    return null;
+  }
+}
+
+function encodeProductCursor(cursor: ProductCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString('base64url');
+}
+
+function getQuarterPeriod(asOf = new Date()) {
+  const month = asOf.getUTCMonth();
+  const quarterStartMonth = Math.floor(month / 3) * 3;
+  const start = new Date(Date.UTC(asOf.getUTCFullYear(), quarterStartMonth, 1));
+  const end = new Date(Date.UTC(asOf.getUTCFullYear(), quarterStartMonth + 3, 1));
+  return {
+    period_key: 'this_quarter',
+    grain: 'quarter' as const,
+    period_start: start.toISOString().slice(0, 10),
+    period_end_exclusive: end.toISOString().slice(0, 10),
+    label: 'This Quarter',
+  };
+}
+
+function elapsedDaysInPeriod(periodStart: string, periodEndExclusive: string, asOf = new Date()): number {
+  const start = new Date(`${periodStart}T00:00:00.000Z`);
+  const end = new Date(`${periodEndExclusive}T00:00:00.000Z`);
+  const cappedEnd = asOf < end ? asOf : end;
+  return Math.max(1, Math.ceil((cappedEnd.getTime() - start.getTime()) / 86_400_000));
+}
+
+function normalizeSearch(value: string | null): string | null {
+  const normalized = value?.replace(/[*(),]/g, ' ').replace(/\s+/g, ' ').trim();
+  return normalized || null;
+}
+
+function matchesNeedle(values: Array<string | null | undefined>, needle: string | null): boolean {
+  if (!needle) return true;
+  const lower = needle.toLowerCase();
+  return values.some((value) => value?.toLowerCase().includes(lower));
+}
+
+function uniqueSortedOptions(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => ({ value, label: value }));
+}
+
+async function fetchProductFilterLookups(db: DbClient, tenantId: string) {
+  const [brandRes, categoryRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override, master_brand_id, logo_url')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .limit(1000),
+    db
+      .schema('app')
+      .from('tenant_categories')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .limit(1000),
+  ]);
+  if (brandRes.error) throw brandRes.error;
+  if (categoryRes.error) throw categoryRes.error;
+
+  const brands = (brandRes.data ?? []) as BrandRow[];
+  const masterIds = [...new Set(brands.map((row) => row.master_brand_id).filter((id): id is string => Boolean(id)))];
+  const masterBrandById = new Map<string, MasterBrandRow>();
+  if (masterIds.length > 0) {
+    const masterRes = await db
+      .schema('catalog')
+      .from('brands')
+      .select('id, name, logo_url')
+      .in('id', masterIds)
+      .is('deleted_at', null)
+      .limit(masterIds.length);
+    if (masterRes.error) throw masterRes.error;
+    for (const row of (masterRes.data ?? []) as MasterBrandRow[]) masterBrandById.set(row.id, row);
+  }
+
+  const brandById = new Map<string, BrandRow & { name: string; logo_url: string | null }>();
+  for (const row of brands) {
+    const master = row.master_brand_id ? masterBrandById.get(row.master_brand_id) : null;
+    brandById.set(row.id, {
+      ...row,
+      name: row.display_name_override?.trim() || master?.name?.trim() || 'Unknown brand',
+      logo_url: row.logo_url ?? master?.logo_url ?? null,
+    });
+  }
+
+  const categoryById = new Map<string, CategoryRow>();
+  for (const row of (categoryRes.data ?? []) as CategoryRow[]) categoryById.set(row.id, row);
+  return { brandById, categoryById };
+}
+
+async function fetchProductIdentities(db: DbClient, tenantId: string): Promise<ProductIdentityRow[]> {
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id, tenant_id, tenant_brand_id, tenant_category_id, master_product_id, internal_sku, name_override, mrp, base_selling_price, cost_price, default_uom, pack_size, hsn_code, gst_rate, description, attributes_override, image_urls, is_active, external_ref, created_at, updated_at')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('id', { ascending: true })
+    .limit(PRODUCT_SCAN_LIMIT);
+  if (error) throw error;
+  return (data ?? []) as ProductIdentityRow[];
+}
+
+async function fetchMasterProducts(db: DbClient, masterIds: string[]) {
+  const map = new Map<string, MasterProductRow>();
+  if (masterIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('catalog')
+    .from('products')
+    .select('id, name, master_sku, brand_id, brand_name, brand_logo_url, gst_rate, hsn_code, default_uom, pack_size, description, image_urls, category_name')
+    .in('id', masterIds)
+    .is('deleted_at', null)
+    .limit(masterIds.length);
+  if (error) throw error;
+  for (const row of (data ?? []) as MasterProductRow[]) map.set(row.id, row);
+  return map;
+}
+
+async function fetchProductMetrics(db: DbClient, tenantId: string, productIds: string[], period: ReturnType<typeof getQuarterPeriod>) {
+  const map = new Map<string, ProductMetricRow>();
+  if (productIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('app')
+    .from('metrics_product_period_summary')
+    .select('tenant_product_id, invoice_units, invoice_value, invoice_count, invoice_buyer_count, estimate_units, estimate_value, estimate_count, order_units, order_value, order_count')
+    .eq('tenant_id', tenantId)
+    .eq('grain', period.grain)
+    .eq('period_start', period.period_start)
+    .is('deleted_at', null)
+    .in('tenant_product_id', productIds)
+    .limit(productIds.length);
+  if (error) throw error;
+  for (const row of (data ?? []) as ProductMetricRow[]) map.set(row.tenant_product_id, row);
+  return map;
+}
+
+async function fetchInventoryByProduct(db: DbClient, productIds: string[]) {
+  const map = new Map<string, number>();
+  if (productIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('tenant_product_id, qty_available')
+    .in('tenant_product_id', productIds)
+    .is('deleted_at', null)
+    .limit(Math.max(productIds.length * 4, productIds.length));
+  if (error) throw error;
+  for (const row of (data ?? []) as Array<{ tenant_product_id: string; qty_available: number | string | null }>) {
+    map.set(row.tenant_product_id, (map.get(row.tenant_product_id) ?? 0) + toNumber(row.qty_available));
+  }
+  return map;
+}
+
+function sortValue(row: Record<string, unknown>, sort: ProductSort): number {
+  if (sort === 'invoice_value_asc' || sort === 'invoice_value_desc') return toNumber(row.invoice_value as number);
+  if (sort === 'invoice_units_desc') return toNumber(row.invoice_units as number);
+  if (sort === 'order_value_desc') return toNumber(row.order_value as number);
+  if (sort === 'estimate_value_desc') return toNumber(row.estimate_value as number);
+  return toNumber(row.on_hand as number);
+}
+
+function compareProducts(a: Record<string, unknown>, b: Record<string, unknown>, sort: ProductSort): number {
+  const av = sortValue(a, sort);
+  const bv = sortValue(b, sort);
+  if (sort === 'invoice_value_asc' || sort === 'stock_on_hand_asc') {
+    if (av !== bv) return av - bv;
+  } else if (av !== bv) {
+    return bv - av;
+  }
+  return String(a.id).localeCompare(String(b.id));
+}
+
+function passesKeyset(row: Record<string, unknown>, sort: ProductSort, cursor: ProductCursor | null): boolean {
+  if (!cursor) return true;
+  const value = sortValue(row, sort);
+  if (sort === 'invoice_value_asc' || sort === 'stock_on_hand_asc') {
+    return value > cursor.v || (value === cursor.v && String(row.id) > cursor.i);
+  }
+  return value < cursor.v || (value === cursor.v && String(row.id) > cursor.i);
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -52,54 +371,150 @@ export async function GET(req: NextRequest) {
 
     const tenantId = claims.tenant_id;
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
-    const isAssistant = claims.role === 'seller_assistant';
-    const assistantLocationIds = isAssistant ? (claims.location_ids ?? []).filter(Boolean) : [];
-    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const period = getQuarterPeriod();
 
     const reqLimit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
-    const search = req.nextUrl.searchParams.get('search')?.trim() || null;
+    const search = normalizeSearch(req.nextUrl.searchParams.get('search'));
     const brandParams = readArrayParam(req.nextUrl.searchParams, 'brand');
     const categoryParams = readArrayParam(req.nextUrl.searchParams, 'category');
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const stockParams = readArrayParam(req.nextUrl.searchParams, 'stock');
+    const preset = parseProductPreset(req.nextUrl.searchParams.get('filter_preset'));
+    const sort = parseProductSort(preset?.sort ?? req.nextUrl.searchParams.get('sort'));
+    const decodedCursor = decodeProductCursor(cursorParam);
+    const periodDays = elapsedDaysInPeriod(period.period_start, period.period_end_exclusive);
 
-    const decodedCursor = (() => {
-      if (!cursorParam) return null;
-      try {
-        const parsed = JSON.parse(Buffer.from(cursorParam, 'base64url').toString()) as { t?: string; i?: string };
-        return parsed.t && parsed.i ? parsed : null;
-      } catch {
-        return null;
-      }
-    })();
+    const { brandById, categoryById } = await fetchProductFilterLookups(db, tenantId);
+    const identities = await fetchProductIdentities(db, tenantId);
+    const masterIds = [...new Set(identities.map((row) => row.master_product_id).filter((id): id is string => Boolean(id)))];
+    const masterById = await fetchMasterProducts(db, masterIds);
+    const productIds = identities.map((row) => row.id);
+    const [metricsByProduct, inventoryByProduct] = await Promise.all([
+      fetchProductMetrics(db, tenantId, productIds, period),
+      fetchInventoryByProduct(db, productIds),
+    ]);
 
-    const v2ProductsRes = await db.schema('app').rpc('metrics_v2_products_landing', {
-      p_tenant_id: tenantId,
-      p_location_ids: isAssistant ? assistantLocationIds : null,
-      p_query: search,
-      p_brand_names: brandParams.length > 0 ? brandParams : null,
-      p_category_names: categoryParams.length > 0 ? categoryParams : null,
-      p_statuses: statusParams.length > 0 ? statusParams : null,
-      p_stock: stockParams.length > 0 ? stockParams : null,
-      p_limit: reqLimit,
-      p_cursor_created_at: decodedCursor?.t ?? null,
-      p_cursor_id: decodedCursor?.i ?? null,
+    const selectedStatus = new Set(statusParams);
+    if (preset?.sold_period && !selectedStatus.has('Active')) selectedStatus.add('Active');
+    if (preset?.not_sold_period && !selectedStatus.has('Dormant')) selectedStatus.add('Dormant');
+    const selectedStock = new Set(stockParams);
+    if (preset?.stock === 'out') selectedStock.add('Out of stock');
+    if (preset?.stock === 'low' || typeof preset?.stock_lte === 'number') selectedStock.add('Low stock');
+    if (typeof preset?.stock_gt === 'number') selectedStock.add('In stock');
+
+    const hydrated = identities.map((row) => {
+      const metric = metricsByProduct.get(row.id);
+      const masterProduct = row.master_product_id ? masterById.get(row.master_product_id) ?? null : null;
+      const brand = row.tenant_brand_id ? brandById.get(row.tenant_brand_id) ?? null : null;
+      const category = row.tenant_category_id ? categoryById.get(row.tenant_category_id) ?? null : null;
+      const invoiceUnits = toNumber(metric?.invoice_units);
+      const invoiceValue = toNumber(metric?.invoice_value);
+      const onHand = inventoryByProduct.get(row.id) ?? 0;
+      const daysCover = invoiceUnits > 0 ? onHand / (invoiceUnits / periodDays) : null;
+      const displayName = row.name_override?.trim() || masterProduct?.name?.trim() || row.internal_sku;
+
+      return {
+        ...row,
+        mrp: row.mrp == null ? null : toNumber(row.mrp),
+        base_selling_price: row.base_selling_price == null ? null : toNumber(row.base_selling_price),
+        cost_price: row.cost_price == null ? null : toNumber(row.cost_price),
+        pack_size: row.pack_size == null ? null : toNumber(row.pack_size),
+        gst_rate: row.gst_rate == null ? null : toNumber(row.gst_rate),
+        master_product: masterProduct ? {
+          id: masterProduct.id,
+          name: masterProduct.name ?? displayName,
+          master_sku: masterProduct.master_sku ?? row.internal_sku,
+          brand_id: masterProduct.brand_id ?? '',
+          brand_name: brand?.name ?? masterProduct.brand_name ?? null,
+          brand_logo_url: brand?.logo_url ?? masterProduct.brand_logo_url ?? null,
+          gst_rate: masterProduct.gst_rate == null ? null : toNumber(masterProduct.gst_rate),
+          hsn_code: masterProduct.hsn_code ?? null,
+          default_uom: masterProduct.default_uom ?? null,
+          pack_size: masterProduct.pack_size == null ? null : toNumber(masterProduct.pack_size),
+          description: masterProduct.description ?? null,
+          image_urls: masterProduct.image_urls ?? null,
+          category_name: category?.name ?? masterProduct.category_name ?? null,
+        } : null,
+        display_name: displayName,
+        brand_name: brand?.name ?? masterProduct?.brand_name ?? null,
+        category_name: category?.name ?? masterProduct?.category_name ?? null,
+        image_urls: row.image_urls?.length ? row.image_urls : masterProduct?.image_urls ?? null,
+        on_hand: onHand,
+        days_cover: daysCover,
+        invoice_units: invoiceUnits,
+        invoice_value: invoiceValue,
+        invoice_count: toNumber(metric?.invoice_count),
+        invoice_buyer_count: toNumber(metric?.invoice_buyer_count),
+        estimate_units: toNumber(metric?.estimate_units),
+        estimate_value: toNumber(metric?.estimate_value),
+        estimate_count: toNumber(metric?.estimate_count),
+        order_units: toNumber(metric?.order_units),
+        order_value: toNumber(metric?.order_value),
+        order_count: toNumber(metric?.order_count),
+        units_mtd: invoiceUnits,
+        gmv_mtd: invoiceValue,
+      };
     });
 
-    if (v2ProductsRes.error) {
-      console.error('[GET /api/tenant/products] metrics v2 landing error:', v2ProductsRes.error.code, v2ProductsRes.error.message);
-      return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
-    }
+    const filtered = hydrated.filter((product) => {
+      const sold = Number(product.invoice_count) > 0 || Number(product.invoice_units) > 0;
+      const statusMatch =
+        selectedStatus.size === 0 ||
+        [...selectedStatus].some((status) => {
+          if (status === 'Active') return product.is_active && sold;
+          if (status === 'Dormant') return product.is_active && !sold;
+          if (status === 'Inactive') return !product.is_active;
+          return false;
+        });
+      if (!statusMatch) return false;
 
-    const v2Payload = (v2ProductsRes.data ?? {}) as Record<string, unknown>;
-    const rawNextCursor = v2Payload.nextCursor as { t?: string; i?: string } | null | undefined;
+      const stockMatch =
+        selectedStock.size === 0 ||
+        [...selectedStock].some((stock) => {
+          const onHand = Number(product.on_hand ?? 0);
+          const daysCover = product.days_cover ?? null;
+          if (stock === 'Out of stock') return onHand === 0;
+          if (stock === 'Low stock') return onHand > 0 && daysCover != null && daysCover <= 14;
+          if (stock === 'In stock') return onHand > 0 && (daysCover == null || daysCover > 14);
+          return false;
+        });
+      if (!stockMatch) return false;
+
+      if (brandParams.length > 0 && (!product.brand_name || !brandParams.includes(product.brand_name))) return false;
+      if (categoryParams.length > 0 && (!product.category_name || !categoryParams.includes(product.category_name))) return false;
+      return matchesNeedle([
+        product.display_name,
+        product.internal_sku,
+        product.external_ref,
+        product.brand_name,
+        product.category_name,
+        product.master_product?.master_sku,
+      ], search);
+    }).sort((a, b) => compareProducts(a, b, sort));
+
+    const afterCursor = filtered.filter((row) => passesKeyset(row, sort, decodedCursor));
+    const pageRows = afterCursor.slice(0, reqLimit);
+    const hasNext = afterCursor.length > reqLimit;
+    const last = pageRows.at(-1);
+
     return timedJson({
       period,
-      ...v2Payload,
-      nextCursor: rawNextCursor?.t && rawNextCursor?.i
-        ? Buffer.from(JSON.stringify(rawNextCursor)).toString('base64url')
-        : null,
+      period_key: period.period_key,
+      grain: period.grain,
+      products: pageRows,
+      total: filtered.length,
+      limit: reqLimit,
+      nextCursor: hasNext && last ? encodeProductCursor({ v: sortValue(last, sort), i: last.id }) : null,
+      sort,
+      filters: {
+        groups: [
+          { key: 'brand', label: 'Brand', options: uniqueSortedOptions(hydrated.map((row) => row.brand_name)) },
+          { key: 'category', label: 'Category', options: uniqueSortedOptions(hydrated.map((row) => row.category_name)) },
+          { key: 'status', label: 'Status', options: PRODUCT_FILTER_OPTIONS },
+          { key: 'stock', label: 'Stock', options: STOCK_FILTER_OPTIONS },
+        ],
+      },
     });
 
   } catch (err) {

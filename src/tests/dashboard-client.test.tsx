@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useSellerLandingPeriodMock = vi.fn();
 const useSellerDashboardMock = vi.fn();
+const useSellerDashboardMetricsMock = vi.fn();
 const useRetainedValueMock = vi.fn();
 const useRouterMock = vi.fn();
 
@@ -12,6 +13,7 @@ vi.mock('@/hooks/useSellerLandingPeriod', () => ({
 
 vi.mock('@/hooks/useSellerDashboard', () => ({
   useSellerDashboard: (...args: unknown[]) => useSellerDashboardMock(...args),
+  useSellerDashboardMetrics: (...args: unknown[]) => useSellerDashboardMetricsMock(...args),
 }));
 
 vi.mock('@/hooks/useRetainedValue', () => ({
@@ -215,6 +217,21 @@ describe('SellerDashboardClient', () => {
   beforeEach(() => {
     periodHookValue.setPeriod.mockReset();
     useSellerLandingPeriodMock.mockReturnValue(periodHookValue);
+    useSellerDashboardMetricsMock.mockReset();
+    useSellerDashboardMetricsMock.mockReturnValue({
+      data: {
+        page_key: 'dashboard',
+        period: { period_key: 'this_week', grain: 'week', period_start: '', period_end_exclusive: '' },
+        computed_at: null,
+        source_watermark: null,
+        cards: [
+          { id: 'invoiced_sales', label: 'Invoiced sales', value: 420000, supporting_text: 'This week' },
+          { id: 'open_orders', label: 'Orders to confirm', value: 4, supporting_text: 'Needs action' },
+          { id: 'open_estimates', label: 'Open estimates', value: 2, supporting_text: 'Needs action' },
+          { id: 'overdue_invoices', label: 'Overdue invoices', value: 1, supporting_text: 'Needs action' },
+        ],
+      },
+    });
     useRetainedValueMock.mockImplementation((value: unknown) => value);
   });
 
@@ -228,8 +245,8 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByText('Customer activity')).toBeInTheDocument();
     expect(screen.getByText('Location comparison')).toBeInTheDocument();
     expect(screen.getByText('Recent activity')).toBeInTheDocument();
-    expect(screen.getAllByText('₹4.20L')).toHaveLength(2);
-    expect(screen.getAllByText('₹10.00K').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹4,20,000').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₹10,000').length).toBeGreaterThan(0);
 
     const businessFlowSection = screen.getByText('Business flow').closest('section');
     expect(businessFlowSection).not.toBeNull();
@@ -249,7 +266,7 @@ describe('SellerDashboardClient', () => {
     render(<SellerDashboardClient initialData={assistantData} initialPeriod="week" />);
 
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
-    expect(screen.getByText('Needs action')).toBeInTheDocument();
+    expect(screen.getAllByText('Needs action').length).toBeGreaterThan(0);
     expect(screen.getByText('Estimates')).toBeInTheDocument();
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
     expect(screen.getByText('Invoices')).toBeInTheDocument();
@@ -269,7 +286,7 @@ describe('SellerDashboardClient', () => {
     const businessFlowSection = screen.getByText('Business flow').closest('section');
     expect(businessFlowSection?.parentElement?.className).toContain('xl:grid-cols-2');
 
-    const purchasingTile = screen.getByText('Purchasing').closest('article');
+    const purchasingTile = screen.getByText('Purchasing Customers').closest('article');
     expect(purchasingTile?.parentElement?.className).toContain('sm:grid-cols-2');
   });
 

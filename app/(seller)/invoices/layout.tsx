@@ -5,7 +5,7 @@ import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadi
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { TenantInvoicesResponse } from '@/hooks/useInvoices';
+import type { InvoicesLandingMetricsV4 } from '@/hooks/useInvoices';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
@@ -22,8 +22,8 @@ export default async function InvoicesLayout({ children }: { children: ReactNode
     <EntitySplitShell
       basePath="/invoices"
       listSlot={
-        <SellerBootstrapBoundary<TenantInvoicesResponse>
-          path={`/api/tenant/invoices?limit=200&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
+        <SellerBootstrapBoundary<InvoicesLandingMetricsV4>
+          path={`/api/tenant/invoices/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/invoices"
@@ -35,7 +35,7 @@ export default async function InvoicesLayout({ children }: { children: ReactNode
           }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
-            return <InvoicesLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
+            return <InvoicesLandingClient initialMetrics={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
           }}
         />
       }

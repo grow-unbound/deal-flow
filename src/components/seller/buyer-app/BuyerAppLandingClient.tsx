@@ -16,6 +16,8 @@ import { cn, formatNumberValue } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   useBuyerAppLanding,
+  useBuyerAppMetrics,
+  type BuyerAppLandingMetricsV4,
   type BuyerAppLandingResponse,
 } from '@/hooks/useBuyerApp';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -60,9 +62,11 @@ function ScrollCardBody({ children }: { children: ReactNode }) {
 
 function BuyerAppLandingContent({
   initialData,
+  initialMetrics,
   initialPeriod,
 }: {
   initialData: BuyerAppLandingResponse | null;
+  initialMetrics: BuyerAppLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
@@ -70,6 +74,7 @@ function BuyerAppLandingContent({
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
   const { data, isLoading, isError } = useBuyerAppLanding(period, initialData);
+  const { data: metricsData } = useBuyerAppMetrics(initialMetrics);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
 
@@ -97,11 +102,6 @@ function BuyerAppLandingContent({
     top_locations: [], contribution_over_time: [], refreshed_at: '',
   };
 
-  const enabledPct =
-    kpis.total_buyers > 0 ? Math.round((kpis.enabled_buyers / kpis.total_buyers) * 100) : 0;
-  // % of ENABLED buyers who submitted primary demand (doc: "count + % of enabled buyers").
-  const submittingShareOfEnabledPct =
-    snap && snap.enabled_buyers > 0 ? Math.round((snap.ordered_mtd / snap.enabled_buyers) * 100) : 0;
   // % of ENABLED buyers who are repeat (2+ primary-demand documents).
   const repeatShareOfEnabledPct =
     snap && snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0;
@@ -109,6 +109,17 @@ function BuyerAppLandingContent({
   const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
   const primaryDemandNounSingular = primaryDemandKind === 'estimates' ? 'enquiry' : 'order';
   const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
+  const metricCards = metricsData?.cards ?? [];
+  const formatMetricValue = (card: NonNullable<typeof metricCards>[number]) => {
+    const idLabel = `${card.id} ${card.label}`.toLowerCase();
+    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel.includes('gmv')) {
+      return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+    }
+    if (idLabel.includes('rate') || idLabel.includes('share') || idLabel.includes('pct')) {
+      return `${card.value ?? 0}%`;
+    }
+    return `${card.value ?? 0}`;
+  };
 
   return (
     <PageWrap>
@@ -122,29 +133,12 @@ function BuyerAppLandingContent({
       />
 
       <InsightStrip4
-        tiles={[
-          {
-            label: 'Customers with Buyer App access',
-            value: `${kpis.enabled_buyers}`,
-            sub: `${enabledPct}% of your customer base`,
-          },
-          {
-            label: `Customers submitting app demand · ${metricSuffix}`,
-            value: `${snap?.ordered_mtd ?? kpis.active_buyers}`,
-            sub: `${submittingShareOfEnabledPct}% of enabled buyers`,
-            tone: 'accent',
-          },
-          {
-            label: `App-sourced invoiced sales · ${metricSuffix}`,
-            value: formatNumberValue(snap?.invoiced_app_value_mtd ?? kpis.invoiced_value, 'CURRENCY_THRESHOLD'),
-            sub: `${snap?.invoiced_share_of_total_pct ?? 0}% of total invoiced sales`,
-          },
-          {
-            label: 'Repeat app customers',
-            value: `${snap?.repeat_mtd ?? 0}`,
-            sub: `${repeatShareOfEnabledPct}% of enabled customers · ${primaryDemandVerb} 2+ ${primaryDemandNoun}`,
-          },
-        ]}
+        tiles={metricCards.slice(0, 4).map((card, index) => ({
+          label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+          value: formatMetricValue(card),
+          sub: card.supporting_text ?? '',
+          tone: index === 1 ? 'accent' : undefined,
+        }))}
       />
 
       <div className="buyer-app-cards mt-6 grid grid-cols-2 gap-6">
@@ -262,14 +256,16 @@ function BuyerAppLandingContent({
 
 export function BuyerAppLandingClient({
   initialData,
+  initialMetrics,
   initialPeriod,
 }: {
   initialData: BuyerAppLandingResponse | null;
+  initialMetrics: BuyerAppLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   return (
     <FeatureGate flag="BUYER_APP">
-      <BuyerAppLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <BuyerAppLandingContent initialData={initialData} initialMetrics={initialMetrics} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

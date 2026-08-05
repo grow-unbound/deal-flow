@@ -45,40 +45,6 @@ function buildBuyerPreviewLaunchHref(shareToken?: string | null) {
   return query ? `/api/buyer/preview/launch?${query}` : '/api/buyer/preview/launch';
 }
 
-function CatalogDetailSkeleton() {
-  return (
-    <PageWrap className="pt-7">
-      <div className="space-y-6">
-        <Skeleton className="h-6 w-56" />
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-12 w-12 rounded-[14px]" />
-            <div className="space-y-2">
-              <Skeleton className="h-7 w-64" />
-              <Skeleton className="h-4 w-96" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-32" />
-            <Skeleton className="h-9 w-36" />
-          </div>
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-[14px]" />
-          ))}
-        </div>
-        <div className="flex gap-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-28" />
-          ))}
-        </div>
-        <Skeleton className="h-[28rem] rounded-[14px]" />
-      </div>
-    </PageWrap>
-  );
-}
-
 function normalizeBuyerNotifyStatus(status: CatalogDetailResponse['buyers'][number]['opened_status']) {
   if (status === 'Converted' || status === 'CONVERTED') return 'CONVERTED';
   if (status === 'Opened' || status === 'OPENED') return 'OPENED';

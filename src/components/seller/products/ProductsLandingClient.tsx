@@ -21,28 +21,52 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
-import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
+import {
+  useTenantProductsInfinite,
+  useTenantProductsLandingMetrics,
+  type ProductLandingSort,
+  type ProductsLandingKpiCardV4,
+  type ProductsLandingMetricsV4,
+  type TenantProduct,
+} from '@/hooks/useProducts';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const AddProductSheet = dynamic(
   () => import('@/components/seller/products/AddProductSheet').then((m) => m.AddProductSheet),
   { ssr: false },
 );
 
-type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Stock on hand (low → high)';
+type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Sold units (high → low)' | 'Demand orders (high → low)' | 'Demand estimates (high → low)' | 'Stock on hand (low → high)';
+type ProductLandingFilters = { brand: string[]; category: string[]; status: string[]; stock: string[] };
 
-const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high)', 'Stock on hand (low → high)'];
+const SORT_OPTIONS: SortOption[] = [
+  'Sales (high → low)',
+  'Sales (low → high)',
+  'Sold units (high → low)',
+  'Demand orders (high → low)',
+  'Demand estimates (high → low)',
+  'Stock on hand (low → high)',
+];
+
+const SORT_TO_API: Record<SortOption, ProductLandingSort> = {
+  'Sales (high → low)': 'invoice_value_desc',
+  'Sales (low → high)': 'invoice_value_asc',
+  'Sold units (high → low)': 'invoice_units_desc',
+  'Demand orders (high → low)': 'order_value_desc',
+  'Demand estimates (high → low)': 'estimate_value_desc',
+  'Stock on hand (low → high)': 'stock_on_hand_asc',
+};
 
 function getBrandHue(index: number): 'teal' | 'ember' | 'cream' {
   return (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream';
@@ -77,57 +101,41 @@ function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
   });
 }
 
-function matchesProductSearch(product: TenantProduct, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [
-    product.display_name,
-    product.internal_sku,
-    product.brand_name,
-    product.category_name,
-    product.master_product?.master_sku ?? null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .some((value) => value.toLowerCase().includes(needle));
-}
-
-function ProductLandingDataSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <Skeleton className="h-14 rounded-[14px]" />
-      <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
-    </div>
-  );
+function filtersFromProductPreset(preset: Record<string, unknown> | null | undefined): ProductLandingFilters {
+  const filters: ProductLandingFilters = { brand: [], category: [], status: [], stock: [] };
+  if (!preset) return filters;
+  if (typeof preset.sold_period === 'string') filters.status = ['active'];
+  if (typeof preset.not_sold_period === 'string') filters.status = ['dormant'];
+  if (preset.stock === 'out' || preset.stock_lte === 0) filters.stock = ['out_of_stock'];
+  else if (preset.stock === 'low') filters.stock = ['low_stock'];
+  else if (preset.stock === 'available' || typeof preset.stock_gt === 'number') filters.stock = ['in_stock'];
+  return filters;
 }
 
 function ProductsLandingContent({
-  initialData,
+  initialMetrics,
 }: {
-  initialData: TenantProductsResponse | null;
+  initialMetrics: ProductsLandingMetricsV4 | null;
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/products');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const { isSellerAssistant } = useRole();
-  const period = 'last90';
-  const horizonLabel = 'Trailing 90 days';
-  const metricSuffix = '90D';
-  const summaryQuery = useTenantProducts(period, initialData);
-  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
+  const period = 'quarter';
+  const horizonLabel = 'This quarter';
+  const metricSuffix = 'QTD';
+  const metricsQuery = useTenantProductsLandingMetrics(initialMetrics);
+  const metricsData = useRetainedValue(metricsQuery.data ?? initialMetrics);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
     pathnameOverride: '/products',
-    version: 3,
+    version: 4,
     initialState: {
       search: '',
       sortBy: 'Sales (high → low)' as SortOption,
+      filterPreset: null as Record<string, unknown> | null,
       filters: {
         brand: [] as string[],
         category: [] as string[],
@@ -139,9 +147,10 @@ function ProductsLandingContent({
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
+  const filterPreset = routeState.filterPreset ?? null;
+  const filters: ProductLandingFilters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
   const [addProductOpen, setAddProductOpen] = useState(false);
-  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
   const deferredFilters = useDeferredValue(filters);
@@ -150,7 +159,7 @@ function ProductsLandingContent({
     JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
-    { search: debouncedSearch, ...deferredFilters },
+    { search: debouncedSearch, ...deferredFilters, sort: SORT_TO_API[sortBy], filter_preset: filterPreset },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -165,60 +174,13 @@ function ProductsLandingContent({
     ready: !isLoading,
   });
 
-  // Flatten all pages into a single products list
   const allProducts = useMemo(() => dedupeProductsById(data?.pages?.flatMap((p) => p.products) ?? []), [data?.pages]);
-  // Total count from snapshot (O(1)); falls back to loaded count
   const firstPage = data?.pages?.[0];
-  const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_skus ?? allProducts.length;
-  const summaryProducts = summaryData?.products ?? [];
-  const summaryTotal = summaryData?.kpis?.total_skus ?? summaryProducts.length;
-  const summaryBrands = summaryData?.brands?.length ?? 0;
-
-  const filtered = useMemo(() => {
-    const locallyFiltered = allProducts.filter((product) => {
-      if (!matchesProductSearch(product, search)) {
-        return false;
-      }
-
-      if (filters.brand.length > 0 && (!product.brand_name || !filters.brand.includes(product.brand_name))) {
-        return false;
-      }
-
-      if (filters.category.length > 0 && (!product.category_name || !filters.category.includes(product.category_name))) {
-        return false;
-      }
-
-      if (
-        filters.status.length > 0 &&
-        !filters.status.some((value) => (value === 'Active' ? product.is_active : !product.is_active))
-      ) {
-        return false;
-      }
-
-      if (
-        filters.stock.length > 0 &&
-        !filters.stock.some((value) => {
-          const onHand = Number(product.on_hand ?? 0);
-          const daysCover = product.days_cover ?? null;
-          if (value === 'Out of stock') return onHand === 0;
-          if (value === 'Low stock') return onHand > 0 && daysCover != null && daysCover < 14;
-          if (value === 'In stock') return onHand > 0 && (daysCover == null || daysCover >= 14);
-          return false;
-        })
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-
-    return [...locallyFiltered].sort((a, b) => {
-        if (!isSellerAssistant && sortBy === 'Sales (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
-        if (!isSellerAssistant && sortBy === 'Sales (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
-        return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
-      });
-  }, [allProducts, filters.brand, filters.category, filters.status, filters.stock, isSellerAssistant, search, sortBy]);
-  const displayRows = filtered;
+  const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? allProducts.length;
+  const filterMeta = firstPage?.filters;
+  const summaryBrands = filterMeta?.groups?.find((group) => group.key === 'brand')?.options.length ?? 0;
+  const categoryCount = filterMeta?.groups?.find((group) => group.key === 'category')?.options.length ?? 0;
+  const displayRows = allProducts;
   const sentinelIndex = useMemo(
     () => getSentinelInsertIndex(displayRows.length, SELLER_INFINITE_SCROLL_RATIO),
     [displayRows.length],
@@ -237,12 +199,15 @@ function ProductsLandingContent({
   }
   const showRefreshingState = isLoading && !data;
 
-  const kpis = summaryData?.kpis;
-  const recentlySoldOutOfStock = kpis?.recently_sold_out_of_stock ?? 0;
-  const lowStock = kpis?.low_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
-  const productsSold = kpis?.products_sold ?? summaryProducts.filter((product) => Number(product.units_mtd ?? 0) > 0).length;
-  const categoryCount = kpis?.category_count ?? 0;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading products" showLeading />
+    ) : (
+      <ProductsLandingSkeleton />
+    );
+  }
+
+  const groups: FilterBarGroup[] = (filterMeta?.groups ?? []).map((group) => ({
     key: group.key,
     label: group.label,
     options: group.options,
@@ -250,36 +215,24 @@ function ProductsLandingContent({
     onChange: (values) => setRouteState((current) => ({
       ...current,
       filters: { ...(current.filters ?? filters), [group.key]: values },
+      filterPreset: null,
     })),
   }));
 
-  const kpiOptions = [
-    {
-      id: 'invoiced-sales',
-      label: `Invoiced sales · ${metricSuffix}`,
-      value: formatNumberValue(kpis?.revenue_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
-    },
-    {
-      id: 'products-sold',
-      label: 'Products that sold · 90D',
-      value: `${productsSold}`,
-      sub: `${Math.round((productsSold/summaryTotal)*100)}% of all products`,
-    },
-    {
-      id: 'recently-out-of-stock',
-      label: 'Recently sold products out of stock',
-      value: `${recentlySoldOutOfStock}`,
-      sub: `${Math.round((recentlySoldOutOfStock/productsSold)*100)}% of products that sold`,
-    },
-    {
-      id: 'products-running-low',
-      label: 'Products running low',
-      value: `${lowStock}`,
-      sub: `${Math.round((lowStock/summaryTotal)*100)}% of all products`,
-    },
-  ];
-  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  const kpiOptions = (metricsData?.cards ?? []).map((card: ProductsLandingKpiCardV4) => ({
+    id: card.id,
+    label: card.label,
+    value: formatNumberValue(card.value ?? card.entity_count ?? 0, 'COUNT'),
+    sub: card.supporting_text ?? card.time_basis ?? '',
+    filterPreset: card.filter_preset ?? null,
+  }));
+  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0] ?? {
+    id: 'products',
+    label: 'Products',
+    value: `${filteredTotal}`,
+    sub: horizonLabel,
+    filterPreset: null,
+  };
 
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
@@ -294,7 +247,7 @@ function ProductsLandingContent({
           title={isPaneOpen ? selectedOption.label : 'Products'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${summaryTotal} active products across ${summaryBrands} brands and ${categoryCount} categories.`}
+            : `${filteredTotal} products across ${summaryBrands} brands and ${categoryCount} categories.`}
           horizon={horizonLabel}
           showHorizonControl={false}
         secondary={{
@@ -315,14 +268,21 @@ function ProductsLandingContent({
             label: option.label,
             value: option.value,
             sub: option.sub,
-            onClick: () => setSelectedKpiKey(option.id),
+            onClick: () => {
+              setSelectedKpiKey(option.id);
+              setRouteState((current) => ({
+                ...current,
+                filterPreset: option.filterPreset,
+                filters: filtersFromProductPreset(option.filterPreset),
+              }));
+            },
             selected: option.id === selectedKpiKey,
           }))}
         />
       )}
 
       <FilterBar
-        count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+        count={`${displayRows.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
         chips={[]}
         activeChip=""
@@ -331,7 +291,7 @@ function ProductsLandingContent({
         compact={isPaneOpen}
         groups={groups}
         searchValue={search}
-        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filterPreset: null }))}
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -339,13 +299,7 @@ function ProductsLandingContent({
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showRefreshingState ? (
-        isPaneOpen ? (
-          <SplitPaneListRowsSkeleton isPaneOpen showLeading />
-        ) : (
-          <ProductLandingDataSkeleton />
-        )
-      ) : isError ? (
+      {isError ? (
         <ErrorState
           heading="Couldn't load products"
           description="There was a problem fetching your products. Please try again."
@@ -356,7 +310,7 @@ function ProductsLandingContent({
         isPaneOpen ? (
           <SplitPaneListRowsSkeleton isPaneOpen showLeading />
         ) : (
-          <LandingTableRowsSkeleton columns={10} tableMinWidth={1720} />
+          <LandingTableRowsSkeleton columns={11} tableMinWidth={1540} />
         )
       ) : (
         <LandingTable
@@ -386,12 +340,14 @@ function ProductsLandingContent({
           { label: 'Status', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Available stock', align: 'right', width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
           { label: 'Stock days left', align: 'right', width: 160, minWidth: 130, maxWidth: 200, className: 'px-5' },
-          { label: `Units sold · ${metricSuffix}`, align: 'right', width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
           { label: `Sales · ${metricSuffix}`, align: 'right' as const, width: 180, minWidth: 140, maxWidth: 200, className: 'px-5' },
-          { label: 'Stock status', align: 'right', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: `Invoices · ${metricSuffix}`, align: 'right', width: 150, minWidth: 120, maxWidth: 180, className: 'px-5' },
+          { label: `Sold units · ${metricSuffix}`, align: 'right', width: 170, minWidth: 130, maxWidth: 190, className: 'px-5' },
+          { label: 'Purchasing customers', align: 'right', width: 190, minWidth: 150, maxWidth: 210, className: 'px-5' },
+          { label: 'Demand', align: 'right', width: 220, minWidth: 180, maxWidth: 260, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
-        tableMinWidth={1000}
+        tableMinWidth={1540}
         forceCompact={isPaneOpen}
         sentinelIndex={sentinelIndex}
         sentinelRef={sentinelRef}
@@ -425,19 +381,22 @@ function ProductsLandingContent({
           const brandName = product.brand_name ?? 'Unknown brand';
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = product.days_cover ?? null;
-          const unitsMtd = Number(product.units_mtd ?? 0);
-          const gmvMtd = Number(product.gmv_mtd ?? 0);
+          const soldUnits = Number(product.invoice_units ?? product.units_mtd ?? 0);
+          const invoiceValue = Number(product.invoice_value ?? product.gmv_mtd ?? 0);
+          const invoiceCount = Number(product.invoice_count ?? 0);
+          const buyerCount = Number(product.invoice_buyer_count ?? 0);
+          const orderValue = Number(product.order_value ?? 0);
+          const orderCount = Number(product.order_count ?? 0);
+          const estimateValue = Number(product.estimate_value ?? 0);
+          const estimateCount = Number(product.estimate_count ?? 0);
           const sku = product.master_product?.master_sku ?? product.internal_sku;
           const category = product.category_name ?? '-';
-          const uom = product.default_uom ?? 'units';
-          const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success');
-          const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace');
 
           return (
             <Fragment key={product.id}>
             {index === sentinelIndex ? (
               <tr aria-hidden="true" style={{ height: 0 }}>
-                <td colSpan={10} className="p-0"><div ref={sentinelRef} /></td>
+                <td colSpan={11} className="p-0"><div ref={sentinelRef} /></td>
               </tr>
             ) : null}
             <tr
@@ -491,12 +450,21 @@ function ProductsLandingContent({
                   )}
                 </div>
               </td>
-              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
               <td className="px-3 py-3 text-right text-base text-cream-900">
-                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(gmvMtd, 'CURRENCY_THRESHOLD')}</span>
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatNumberValue(invoiceValue, 'CURRENCY_THRESHOLD')}</span>
               </td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{invoiceCount}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{soldUnits}</td>
+              <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{buyerCount}</td>
               <td className="px-3 py-3 text-right text-base text-cream-900">
-                <StatusTag tone={tone} label={label} />
+                <div className="flex flex-col items-end gap-0.5">
+                  <span className="font-display text-md font-medium tabular-nums text-cream-900">
+                    {formatNumberValue(orderValue || estimateValue, 'CURRENCY_THRESHOLD')}
+                  </span>
+                  <span className="text-xs text-cream-600">
+                    {orderCount} orders · {estimateCount} estimates
+                  </span>
+                </div>
               </td>
               <td className="px-3 py-3 text-right text-md text-cream-500">›</td>
             </tr>
@@ -515,13 +483,13 @@ function ProductsLandingContent({
 }
 
 export function ProductsLandingClient({
-  initialData,
+  initialMetrics,
 }: {
-  initialData: TenantProductsResponse | null;
+  initialMetrics: ProductsLandingMetricsV4 | null;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} />
+      <ProductsLandingContent initialMetrics={initialMetrics} />
     </FeatureGate>
   );
 }

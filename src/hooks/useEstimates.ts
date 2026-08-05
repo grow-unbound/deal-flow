@@ -28,7 +28,7 @@ import type {
   EstimateSendChannel,
 } from '@/types/estimate-composer';
 import type { TenantEstimateDetailResponse } from '@/types/tenant-estimate-detail';
-import type { TenantEstimatesResponse } from '@/types/tenant-estimates';
+import type { EstimatesLandingMetricsV4, TenantEstimatesResponse } from '@/types/tenant-estimates';
 import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
 
 function applyEstimateSentOptimistic(
@@ -66,6 +66,8 @@ export type {
   EstimateStatusTone,
   EstimatesKpis,
   EstimatesTodaysRead,
+  EstimatesLandingKpiCardV4,
+  EstimatesLandingMetricsV4,
   TenantEstimatesResponse,
 } from '@/types/tenant-estimates';
 
@@ -83,11 +85,39 @@ export function useTenantEstimates(period: SellerLandingPeriod = 'month', initia
   });
 }
 
+function getInitialEstimatesMetrics(period: SellerLandingPeriod, initialData?: EstimatesLandingMetricsV4 | null) {
+  const expectedPeriodKey = period === 'today'
+    ? 'today'
+    : period === 'week'
+      ? 'this_week'
+      : period === 'quarter'
+        ? 'this_quarter'
+        : 'this_month';
+  return initialData?.period?.period_key === expectedPeriodKey ? initialData : undefined;
+}
+
+export function useTenantEstimatesMetrics(period: SellerLandingPeriod = 'month', initialData?: EstimatesLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-estimates-metrics-v4', period],
+    queryFn: async (): Promise<EstimatesLandingMetricsV4> => {
+      const res = await apiFetch(`/api/tenant/estimates/metrics?period=${period}`);
+      if (!res.ok) throw new Error('Failed to fetch estimates metrics');
+      return res.json();
+    },
+    initialData: getInitialEstimatesMetrics(period, initialData),
+    placeholderData: keepPreviousData,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
 export interface EstimatesInfiniteFilters {
   search?: string;
   source?: string[];
   status?: string[];
   location_id?: string[];
+  attention?: string[];
+  filter_preset?: Record<string, unknown> | null;
 }
 
 export interface TenantEstimatesPage extends TenantEstimatesResponse {
@@ -99,8 +129,9 @@ export function useTenantEstimatesInfinite(
   period: SellerLandingPeriod = 'month',
   filters: EstimatesInfiniteFilters = {},
 ) {
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
   return useInfiniteQuery({
-    queryKey: ['tenant-estimates-infinite', period, filters],
+    queryKey: ['tenant-estimates-infinite', period, { ...filters, filter_preset: presetKey }],
     queryFn: async ({ pageParam }): Promise<TenantEstimatesPage> => {
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
@@ -108,6 +139,10 @@ export function useTenantEstimatesInfinite(
       appendArrayParam(params, 'source', filters.source);
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'location_id', filters.location_id);
+      appendArrayParam(params, 'attention', filters.attention);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/estimates?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch estimates');
       return res.json() as Promise<TenantEstimatesPage>;

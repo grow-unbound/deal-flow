@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 const pushMock = vi.fn();
 const useTenantBrandsMock = vi.fn();
+const useTenantBrandsMetricsMock = vi.fn();
 const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -13,12 +15,24 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/hooks/useBrands', () => ({
-  useTenantBrands: () => useTenantBrandsMock(),
+  useTenantBrands: (...args: unknown[]) => useTenantBrandsMock(...args),
+  useTenantBrandsMetrics: (...args: unknown[]) => useTenantBrandsMetricsMock(...args),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+vi.mock('@/components/FeatureGate', () => ({
+  FeatureGate: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock('@/components/seller/mobile', () => ({
+  SellerMobileList: () => null,
+  SplitPaneBootstrapFallback: () => <div data-testid="split-pane-bootstrap-fallback" />,
+  SplitPaneListRowsSkeleton: () => <div data-testid="split-pane-list-skeleton" />,
+  SplitPaneStickyHeaderSlot: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/components/seller/brands/AddBrandCommand', () => ({
@@ -51,11 +65,22 @@ describe('brands landing page', () => {
     }
     pushMock.mockReset();
     useTenantBrandsMock.mockReset();
+    useTenantBrandsMetricsMock.mockReset();
     useFlagMock.mockReset();
     useFlagMock.mockReturnValue(true);
+    useTenantBrandsMetricsMock.mockReturnValue({
+      data: {
+        cards: [
+          { id: 'active_brands', label: 'Active brands', value: 2, supporting_text: 'of all brands', filter_preset: { sold_period: 'this_month' } },
+          { id: 'top80_brands', label: 'Top 80% brands', value: 1, supporting_text: 'of 2 brands', filter_preset: { sort: 'invoice_value_desc', cutoff: 'top80' } },
+          { id: 'did_not_sell', label: 'Brands that did not sell', value: 0, supporting_text: 'no selected-period sale', filter_preset: { not_sold_period: 'this_month' } },
+          { id: 'dormant_brands', label: 'Dormant brands', value: 0, supporting_text: 'sold prior period not selected period', filter_preset: { sold_previous_period: true, sold_current_period: false } },
+        ],
+      },
+    });
   });
 
-  it('shows Portfolio GMV as sum of brand GMV values', () => {
+  it('shows V4 brand KPI cards from the metrics snapshot', () => {
     useTenantBrandsMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -78,33 +103,28 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
+    render(<BrandsLandingClient initialMetrics={null} />);
 
-    expect(screen.getByText('Portfolio GMV')).toBeInTheDocument();
-    expect(screen.getByText('₹3.50L')).toBeInTheDocument();
+    expect(screen.getByText('Active brands')).toBeInTheDocument();
+    expect(screen.getByText('Top 80% brands')).toBeInTheDocument();
   });
 
-  it('At risk filter hides brands without alerts', () => {
+  it('clicking a KPI card passes its V4 filter preset to the table hook', () => {
     useTenantBrandsMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: {
-        categories: ['Audio', 'Wearables'],
-        brands: [
-          { id: 'b1', display_name_override: 'Risky Brand', master_brand: { name: 'Risky Brand' }, alerts: ['low_stock_risk'], categories: ['Audio'] },
-          { id: 'b2', display_name_override: 'Healthy Brand', master_brand: { name: 'Healthy Brand' }, alerts: [], categories: ['Wearables'] },
-        ],
+        brands: [],
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
-    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
+    render(<BrandsLandingClient initialMetrics={null} />);
+    fireEvent.click(screen.getByText('Top 80% brands'));
 
-    const tbody = container.querySelector('table tbody');
-    expect(tbody).toBeTruthy();
-    expect(within(tbody as HTMLElement).getAllByText('Risky Brand').length).toBeGreaterThan(0);
-    expect(within(tbody as HTMLElement).queryAllByText('Healthy Brand').length).toBe(0);
+    expect(useTenantBrandsMock).toHaveBeenLastCalledWith(
+      'month',
+      expect.objectContaining({ filter_preset: { sort: 'invoice_value_desc', cutoff: 'top80' } }),
+    );
   });
 
   it('clicking a row navigates to /brands/{id}', () => {
@@ -117,7 +137,7 @@ describe('brands landing page', () => {
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
+    const { container } = render(<BrandsLandingClient initialMetrics={null} />);
     const tbody = container.querySelector('table tbody');
     expect(tbody).toBeTruthy();
     fireEvent.click(within(tbody as HTMLElement).getByText('Alpha').closest('tr')!);
@@ -125,29 +145,25 @@ describe('brands landing page', () => {
     expect(pushMock).toHaveBeenCalledWith('/brands/brand-123');
   });
 
-  it('category filter shows only brands in selected category', () => {
+  it('passes search to the server-side landing hook', () => {
     useTenantBrandsMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: {
-        categories: ['Audio', 'Wearables'],
-        brands: [
-          { id: 'b1', display_name_override: 'AudioMax', master_brand: { name: 'AudioMax' }, categories: ['Audio'] },
-          { id: 'b2', display_name_override: 'WearX', master_brand: { name: 'WearX' }, categories: ['Wearables'] },
-        ],
+        brands: [],
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
-    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
-    const tbody = container.querySelector('table tbody');
-    expect(tbody).toBeTruthy();
-    expect(within(tbody as HTMLElement).getAllByText('AudioMax').length).toBeGreaterThan(0);
-    expect(within(tbody as HTMLElement).queryAllByText('WearX').length).toBe(0);
+    render(<BrandsLandingClient initialMetrics={null} />);
+    fireEvent.change(screen.getByPlaceholderText('Search brand…'), { target: { value: 'audio' } });
+
+    expect(useTenantBrandsMock).toHaveBeenLastCalledWith(
+      'month',
+      expect.objectContaining({ search: 'audio' }),
+    );
   });
 
-  it('shows active buyers ratio and catalog age from DB-backed fields', () => {
+  it('shows product, invoice, sold-product, and purchasing-customer fields', () => {
     useTenantBrandsMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -161,17 +177,23 @@ describe('brands landing page', () => {
             categories: ['Audio'],
             gmv_mtd: 100000,
             gmv_prev_mtd: 90000,
-            active_buyers_mtd: 7,
-            total_buyers: 11,
             sku_count: 5,
-            catalog_days_ago: 4,
+            invoice_count: 9,
+            invoice_product_count: 4,
+            invoice_buyer_count: 7,
           },
         ],
+        portfolio_sales_value: 100000,
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
+    render(<BrandsLandingClient initialMetrics={null} />);
+    expect(screen.getByText('Product count')).toBeInTheDocument();
+    expect(screen.getByText('Invoice count')).toBeInTheDocument();
+    expect(screen.getByText('Sold products')).toBeInTheDocument();
+    expect(screen.getByText('Purchasing customers')).toBeInTheDocument();
+    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
-    expect(screen.getByText('/ 11')).toBeInTheDocument();
   });
 });

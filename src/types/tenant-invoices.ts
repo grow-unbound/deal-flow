@@ -96,13 +96,39 @@ export interface InvoicesTodaysRead {
 
 export interface TenantInvoicesResponse {
   period: SellerLandingPeriodMeta;
-  kpis: InvoicesKpis;
-  pulse_aggregates: InvoicesPulseAggregates;
-  todays_read: InvoicesTodaysRead;
+  kpis?: InvoicesKpis;
+  pulse_aggregates?: InvoicesPulseAggregates;
+  todays_read?: InvoicesTodaysRead;
   invoices: InvoiceLandingRow[];
   filters?: LandingFilterMeta;
   /** When the underlying KPI snapshot rows were last refreshed (ISO timestamp), null if unavailable. */
   computed_at?: string | null;
+}
+
+export interface InvoicesLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface InvoicesLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: InvoicesLandingKpiCardV4[];
 }
 
 /** --- Detail (EP-16-002) --- */

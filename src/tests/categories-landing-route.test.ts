@@ -88,38 +88,26 @@ describe('GET /api/tenant/categories/landing', () => {
         { id: 'cat-1', name: 'Cables', slug: 'cables', is_active: true, deleted_at: null, created_at: '2026-07-01T00:00:00.000Z' },
       ],
     };
-    dbResponses['app.rpc.search_seller_category_landing_ids'] = {
-      data: [{ id: 'cat-1', total_count: 1 }],
-    };
-    dbResponses['app.rpc.get_seller_category_landing_page_metrics_v2'] = {
+    dbResponses['app.metrics_category_period_summary'] = {
       data: [{
         tenant_category_id: 'cat-1',
-        active_sku_count: 1,
-        oos_sku_count: 0,
-        low_stock_sku_count: 0,
-        brand_count: 1,
-        gmv_current: 1200,
-        gmv_previous: 1000,
-        units_current: 4,
-        buyers_current: 2,
-        avg_days_cover: null,
+        invoice_count: 2,
+        invoice_value: 1200,
+        invoice_product_count: 1,
+        invoice_buyer_count: 2,
       }],
     };
-    dbResponses['app.rpc.get_seller_category_landing_summary_v2'] = {
-      data: {
-        kpis: {
-          active_count: 1,
-          low_stock_count: 0,
-          top_category_name: 'Cables',
-          top_category_share_pct: 100,
-          uncategorized_count: 0,
-        },
-        callouts: {
-          stockout_risk: [],
-          top_performers: [{ id: 'cat-1', name: 'Cables', gmv_mtd: 1200, growth_pct: 20, buyers_count: 2 }],
-          fast_movers: [{ id: 'cat-1', name: 'Cables', units_mtd: 4, growth_pct: 20 }],
-        },
-      },
+    dbResponses['app.tenant_products'] = {
+      data: [
+        { id: 'product-1', tenant_category_id: 'cat-1', tenant_brand_id: 'brand-1', is_active: true },
+        { id: 'product-2', tenant_category_id: 'cat-1', tenant_brand_id: 'brand-2', is_active: true },
+      ],
+    };
+    dbResponses['app.tenant_inventory'] = {
+      data: [
+        { tenant_product_id: 'product-1', qty_available: 8, reorder_point: 4 },
+        { tenant_product_id: 'product-2', qty_available: 0, reorder_point: 4 },
+      ],
     };
   });
 
@@ -134,67 +122,70 @@ describe('GET /api/tenant/categories/landing', () => {
     expect(response.status).toBe(403);
   });
 
-  it('returns null avg_days_cover when no recent invoice velocity exists', async () => {
+  it('returns V4 category metrics with inventory posture', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
     expect(response.status).toBe(200);
 
     const body = await response.json();
     expect(body.rows).toHaveLength(1);
-    expect(body.rows[0].avg_days_cover).toBeNull();
+    expect(body.rows[0]).toEqual(expect.objectContaining({
+      invoice_value: 1200,
+      invoice_count: 2,
+      invoice_product_count: 1,
+      invoice_buyer_count: 2,
+      stock_on_hand: 8,
+      oos_sku_count: 1,
+      brand_count: 2,
+    }));
   });
 
-  it('hydrates only selected category rows and uses compact SQL metrics', async () => {
+  it('uses V4 category summaries with bounded identity, product, and inventory enrichment', async () => {
     await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
 
-    expect(inCalls).toContainEqual(['app.tenant_categories', 'id', ['cat-1']]);
-    expect(rpcCalls).toContainEqual(['get_seller_category_landing_page_metrics_v2', expect.objectContaining({
-      p_tenant_id: 'tenant-1',
-      p_category_ids: ['cat-1'],
-    })]);
-    expect(fromCalls).not.toContain('app.tenant_inventory');
-    expect(fromCalls).not.toContain('app.kpi_product_daily');
-    expect(fromCalls).not.toContain('app.kpi_category_daily');
-    expect(fromCalls).not.toContain('app.categories_snapshot');
+    expect(rpcCalls).toHaveLength(0);
+    expect(fromCalls).toContain('app.tenant_categories');
+    expect(fromCalls).toContain('app.metrics_category_period_summary');
+    expect(fromCalls).toContain('app.tenant_products');
+    expect(fromCalls).toContain('app.tenant_inventory');
+    expect(inCalls).toContainEqual(['app.metrics_category_period_summary', 'tenant_category_id', ['cat-1']]);
+    expect(inCalls).toContainEqual(['app.tenant_inventory', 'tenant_product_id', ['product-1', 'product-2']]);
   });
 
-  it('uses the category search vector and limits rows before hydration', async () => {
+  it('filters searched category rows without raw commercial aggregation', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/categories/landing?search=cables&limit=20'));
 
     expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_category_landing_ids', expect.objectContaining({
-      p_query: 'cables',
-      p_limit: 20,
-    })]);
+    const body = await response.json();
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0].name).toBe('Cables');
+    expect(rpcCalls).toHaveLength(0);
   });
 
-  it('skips tenant-wide summary work on later pages', async () => {
+  it('does not return V2 summary/callout payload fields', async () => {
     const response = await GET(new NextRequest(
-      'http://localhost/api/tenant/categories/landing?period=month&offset=50&include_summary=false',
+      'http://localhost/api/tenant/categories/landing?period=month',
     ));
 
     expect(response.status).toBe(200);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_summary_v2')).toBe(false);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_page_metrics_v2')).toBe(true);
+    const body = await response.json();
+    expect(body.kpis).toBeUndefined();
+    expect(body.callouts).toBeUndefined();
   });
 
-  it('preserves compact summary and callout response fields', async () => {
+  it('returns V4-aligned filters and table fields', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
     const body = await response.json();
 
-    expect(body.kpis).toEqual(expect.objectContaining({
-      active_count: 1,
-      top_category_name: 'Cables',
-      top_category_share_pct: 100,
-    }));
-    expect(body.callouts.top_performers[0]).toEqual(expect.objectContaining({
-      id: 'cat-1',
-      initials: 'C',
-      gmv_mtd: 1200,
-    }));
+    expect(body.filters.groups.find((group: { key: string }) => group.key === 'status').options).toEqual([
+      { value: 'Active', label: 'Active' },
+      { value: 'Dormant', label: 'Dormant' },
+      { value: 'Inactive', label: 'Inactive' },
+    ]);
     expect(body.rows[0]).toEqual(expect.objectContaining({
-      active_sku_count: 1,
+      active_sku_count: 2,
       gmv_mtd: 1200,
-      growth_pct: 20,
+      invoice_count: 2,
+      invoice_buyer_count: 2,
     }));
   });
 });

@@ -19,48 +19,38 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useTenantCatalogs, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
+import {
+  useTenantCatalogs,
+  useTenantCatalogsMetrics,
+  type CatalogsLandingKpiCardV4,
+  type CatalogsLandingMetricsV4,
+  type CatalogsLandingResponse,
+} from '@/hooks/useCatalogs';
 import { formatNumberValue } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { CampaignFormSheet } from './CampaignFormSheet';
 
 type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open to demand (high → low)';
 
 const SORT_OPTIONS: SortOption[] = ['Recently published', 'Demand value (high → low)', 'Open to demand (high → low)'];
 const STATUS_OPTIONS = ['Draft', 'Scheduled', 'Live', 'Live · Unpublished Changes', 'Expiring soon', 'Expired', 'Archived'] as const;
-
-function CatalogsDataSkeleton() {
-  return (
-    <>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="mt-2 grid grid-cols-2 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[260px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-    </>
-  );
-}
+const CONVERSION_OPTIONS = [
+  { value: 'has_viewed', label: 'Campaign viewed' },
+  { value: 'has_demand', label: 'Demand generated' },
+  { value: 'has_revenue', label: 'Revenue generated' },
+] as const;
 
 function CatalogsLandingContent({
   initialData,
+  initialMetrics,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
+  initialMetrics: CatalogsLandingMetricsV4 | null;
   initialSearch?: string;
 }) {
   const router = useRouter();
@@ -76,18 +66,23 @@ function CatalogsLandingContent({
       search: '',
       filters: {
         status: [] as string[],
+        conversion: [] as string[],
       },
+      filter_preset: null as Record<string, unknown> | null,
       sortBy: 'Recently published' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { status: [] };
+  const filters = routeState.filters ?? { status: [], conversion: [] };
   const statusFilter = filters.status ?? [];
+  const conversionFilter = filters.conversion ?? [];
+  const filterPreset = routeState.filter_preset ?? null;
+  const { data: metricsData } = useTenantCatalogsMetrics(initialMetrics);
   const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantCatalogs(
     period,
-    { search, status: statusFilter },
+    { search, status: statusFilter, conversion: conversionFilter, filter_preset: filterPreset },
     initialData,
   );
   const retainedData = useRetainedValue(data);
@@ -106,19 +101,30 @@ function CatalogsLandingContent({
       onChange: (values) =>
         setRouteState((current) => ({
           ...current,
+          filter_preset: null,
           filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+    {
+      key: 'conversion',
+      label: 'Conversion',
+      options: CONVERSION_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+      values: conversionFilter,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filter_preset: null,
+          filters: { ...(current.filters ?? filters), conversion: values },
         })),
     },
   ];
 
   const catalogs = landingData?.catalogs ?? [];
-  const primaryDemandKind = landingData?.primary_demand_kind ?? 'orders';
-
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const interimRows = catalogs.filter((catalog) => {
         if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
-        return statusFilter.some((value) => {
+        const statusMatches = statusFilter.some((value) => {
           if (value === 'Draft') return catalog.status.label === 'Draft';
           if (value === 'Scheduled') return catalog.status.label === 'Scheduled';
           if (value === 'Live') return catalog.status.label === 'Live';
@@ -128,6 +134,14 @@ function CatalogsLandingContent({
           if (value === 'Archived') return catalog.status.label === 'Archived';
           return false;
         });
+        if (!statusMatches) return false;
+        if (conversionFilter.length === 0) return true;
+        return conversionFilter.some((value) => {
+          if (value === 'has_viewed') return catalog.views > 0;
+          if (value === 'has_demand') return (catalog.demand_customers ?? 0) > 0 || catalog.order_count > 0 || catalog.estimate_count > 0;
+          if (value === 'has_revenue') return (catalog.invoice_value ?? 0) > 0 || (catalog.invoice_count ?? 0) > 0;
+          return false;
+        });
       }).filter((catalog) => !query || catalog.name.toLowerCase().includes(query));
     return interimRows
       .sort((a, b) => {
@@ -135,7 +149,7 @@ function CatalogsLandingContent({
         if (sortBy === 'Demand value (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [catalogs, search, sortBy, statusFilter]);
+  }, [catalogs, conversionFilter, search, sortBy, statusFilter]);
 
   if (isError && !landingData) {
     return (
@@ -146,7 +160,29 @@ function CatalogsLandingContent({
     );
   }
   const showRefreshingState = isLoading && !landingData;
+  if (showRefreshingState) return <CatalogsLandingSkeleton />;
+
   const estimatesEnabled = landingData?.channels?.estimates_enabled ?? true;
+  const metricCards = metricsData?.cards ?? [];
+  const formatMetricCard = (card: CatalogsLandingKpiCardV4) => {
+    const idLabel = `${card.id} ${card.label}`.toLowerCase();
+    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue')) {
+      return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+    }
+    if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
+      return `${card.value ?? 0}%`;
+    }
+    return `${card.value ?? 0}`;
+  };
+  const filtersFromCampaignPreset = (preset?: Record<string, unknown>) => {
+    if (!preset) return { status: [] as string[], conversion: [] as string[] };
+    const status = typeof preset.status === 'string' ? [preset.status] : Array.isArray(preset.status) ? preset.status.map(String) : [];
+    const conversion: string[] = [];
+    if (preset.has_viewed === true || preset.conversion === 'has_viewed') conversion.push('has_viewed');
+    if (preset.has_demand === true || preset.conversion === 'has_demand') conversion.push('has_demand');
+    if (preset.has_revenue === true || preset.conversion === 'has_revenue') conversion.push('has_revenue');
+    return { status, conversion };
+  };
 
   const tableColumns = [
     { label: 'Campaign', width: 280, minWidth: 260, className: 'px-5' },
@@ -156,6 +192,7 @@ function CatalogsLandingContent({
       ? [{ label: `Enquiries · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
       : []),
     { label: `Demand value · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
+    { label: `Converted Sales · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 130, className: 'px-5' },
     { label: 'Customers opened', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
     { label: 'Customers with demand', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
     { label: 'Status', minWidth: 180, className: 'px-5' },
@@ -174,9 +211,7 @@ function CatalogsLandingContent({
       />
       <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
 
-      {showRefreshingState ? (
-        <CatalogsDataSkeleton />
-      ) : isError ? (
+      {isError ? (
         <ErrorState
           heading="Couldn't load campaigns"
           description="There was a problem fetching campaign funnel metrics. Please try again."
@@ -184,29 +219,21 @@ function CatalogsLandingContent({
       ) : (
         <>
       <InsightStrip4
-        tiles={[
-          {
-            label: `Campaigns opens · ${metricSuffix}`,
-            value: `${landingData?.kpis.opened_customers_mtd ?? 0}`,
-            sub: `customers opened live campaigns`,
+        tiles={metricCards.slice(0, 4).map((card, index) => ({
+          label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+          value: formatMetricCard(card),
+          sub: card.supporting_text ?? '',
+          tone: index === 2 ? 'accent' : undefined,
+          selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
+          onClick: () => {
+            const preset = card.filter_preset ?? null;
+            setRouteState((current) => ({
+              ...current,
+              filter_preset: preset,
+              filters: filtersFromCampaignPreset(preset ?? undefined),
+            }));
           },
-          {
-            label: `Campaign demand · ${metricSuffix}`,
-            value: `${landingData?.kpis.conversions_mtd ?? 0}`,
-            sub: `customers raised ${primaryDemandKind}`,
-          },
-          {
-            label: `Campaign-linked demand value · ${metricSuffix}`,
-            value: formatNumberValue(landingData?.kpis.gmv_mtd ?? 0, 'CURRENCY_THRESHOLD'),
-            sub: `${landingData?.kpis.conversions_mtd ?? landingData?.kpis.orders_attributed_mtd ?? 0} linked ${primaryDemandKind}`,
-            tone: 'accent',
-          },
-          {
-            label: primaryDemandKind === 'estimates' ? 'Open-to-enquiry rate' : 'Open-to-order rate',
-            value: `${landingData?.kpis.avg_conversion_pct ?? 0}%`,
-            sub: `${landingData?.kpis.conversions_mtd ?? 0} of ${landingData?.kpis.opened_customers_mtd ?? 0} customers`,
-          },
-        ]}
+        }))}
       />
 
       <FilterBar
@@ -218,7 +245,7 @@ function CatalogsLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
-        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -284,6 +311,16 @@ function CatalogsLandingContent({
               <td className="px-3 py-3 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
+                    {(catalog.invoice_value ?? 0) > 0 ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD') : '—'}
+                  </p>
+                  <p className="text-xs text-cream-600">
+                    {(catalog.invoice_count ?? 0) > 0 ? `${catalog.invoice_count} invoices · ${catalog.revenue_buyer_count ?? 0} customers` : '—'}
+                  </p>
+                </div>
+              </td>
+              <td className="px-3 py-3 text-right">
+                <div className="space-y-1">
+                  <p className="font-mono text-sm text-cream-900">
                     {catalog.views > 0 ? catalog.views : '—'}
                   </p>
                   <p className="text-xs text-cream-600">
@@ -331,16 +368,18 @@ function CatalogsLandingContent({
 
 export function CatalogsLandingClient({
   initialData,
+  initialMetrics = null,
   initialPeriod: _initialPeriod,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
+  initialMetrics?: CatalogsLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="CATALOG_PUBLISHING">
-      <CatalogsLandingContent initialData={initialData} initialSearch={initialSearch} />
+      <CatalogsLandingContent initialData={initialData} initialMetrics={initialMetrics} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

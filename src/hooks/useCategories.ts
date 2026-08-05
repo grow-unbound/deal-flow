@@ -1,35 +1,12 @@
-import { useRef } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 // ─── Landing types ────────────────────────────────────────────────────────────
-
-export interface CategoryLandingKpis {
-  /** Total active categories (metrics_tenant_setup_snapshot.active_category_count). */
-  active_count: number;
-  low_stock_count: number;
-  top_category_name: string | null;
-  top_category_share_pct: number;
-  /**
-   * get_seller_category_landing_summary_v2's `uncategorized_count` field counts
-   * active categories with zero invoiced sales in the period — NOT products
-   * lacking a category (that meaning was retired in the phase-9 rework). Use it
-   * only as "categories with no sale in 90 days".
-   */
-  uncategorized_count: number;
-  /** Active products with no tenant_category_id — sourced separately, see categories-landing.ts. */
-  uncategorised_active_product_count: number;
-  /** Active products with a tenant_category_id assigned. */
-  categorised_active_product_count: number;
-  /** Total active products (categorised + uncategorised). */
-  active_product_count: number;
-}
 
 export interface CategoryTableRow {
   id: string;
@@ -39,46 +16,90 @@ export interface CategoryTableRow {
   image_url: string | null;
   is_active: boolean;
   active_sku_count: number;
+  total_sku_count?: number;
   oos_sku_count: number;
   low_stock_sku_count: number;
+  stock_on_hand?: number;
   brand_count: number;
   gmv_mtd: number;
-  units_mtd: number;
-  buyers_count: number;
-  avg_days_cover: number | null;
-}
-
-export interface CategoryCalloutRow {
-  id: string;
-  name: string;
-  initials: string;
-  oos_sku_count?: number;
-  low_stock_sku_count?: number;
-  gmv_mtd?: number;
-  growth_pct?: number;
-  buyers_count?: number;
   units_mtd?: number;
+  invoice_value?: number;
+  invoice_count?: number;
+  invoice_product_count?: number;
+  invoice_buyer_count?: number;
+  buyers_count: number;
+  avg_days_cover?: number | null;
 }
 
 export interface CategoriesLandingResponse {
-  kpis: CategoryLandingKpis;
-  callouts: {
-    stockout_risk: CategoryCalloutRow[];
-    top_performers: CategoryCalloutRow[];
-    fast_movers: CategoryCalloutRow[];
-  };
   rows: CategoryTableRow[];
   total: number;
   limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
-  period: string;
+  nextCursor?: string | null;
+  period?: SellerLandingPeriodMeta | string;
+  period_key?: string;
+  grain?: 'quarter';
+  filters?: {
+    groups: Array<{
+      key: string;
+      label: string;
+      options: Array<{ value: string; label: string }>;
+    }>;
+  };
+  sort?: CategoryLandingSort;
 }
 
 export interface CategoriesLandingFilters {
   search?: string;
   status?: string[];
   products?: string[];
+  stock?: string[];
+  sort?: CategoryLandingSort;
+  filter_preset?: Record<string, unknown> | null;
+}
+
+export type CategoryLandingSort = 'invoice_value_desc' | 'name_asc' | 'oos_sku_count_desc' | 'invoice_count_desc' | 'invoice_buyer_count_desc';
+
+export interface CategoriesLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface CategoriesLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: CategoriesLandingKpiCardV4[];
+}
+
+export function useCategoriesLandingMetrics(initialData?: CategoriesLandingMetricsV4 | null) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ['categories-landing-metrics-v4'],
+    queryFn: async (): Promise<CategoriesLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/categories/metrics');
+      if (!res.ok) throw new Error('Failed to fetch categories metrics');
+      return res.json() as Promise<CategoriesLandingMetricsV4>;
+    },
+    enabled: !!session,
+    initialData: initialData ?? undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useCategoryLanding(
@@ -87,49 +108,32 @@ export function useCategoryLanding(
   initialData?: CategoriesLandingResponse | null,
 ) {
   const { session } = useAuth();
-  const summaryRef = useRef<{
-    period: SellerLandingPeriod;
-    value: Pick<CategoriesLandingResponse, 'kpis' | 'callouts'> | null;
-  }>({
-    period,
-    value: initialData ? { kpis: initialData.kpis, callouts: initialData.callouts } : null,
-  });
-  if (summaryRef.current.period !== period) {
-    summaryRef.current = {
-      period,
-      value: initialData ? { kpis: initialData.kpis, callouts: initialData.callouts } : null,
-    };
-  }
   const query = useInfiniteQuery<CategoriesLandingResponse>({
     queryKey: ['categories-landing', period, filters],
-    initialPageParam: 0,
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) => {
-      const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.products?.length);
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ period, limit: '50' });
+      if (pageParam) params.set('cursor', String(pageParam));
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'products', filters.products);
+      appendArrayParam(params, 'stock', filters.stock);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset) params.set('filter_preset', JSON.stringify(filters.filter_preset));
       const res = await apiFetch(`/api/tenant/categories/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch categories landing');
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!session,
-    initialData: initialData ? { pages: [initialData], pageParams: [0] } : undefined,
+    initialData: initialData ? { pages: [initialData], pageParams: [undefined] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
     placeholderData: keepPreviousData,
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'rows');
-  if (merged?.kpis && merged.callouts) {
-    summaryRef.current = { period, value: { kpis: merged.kpis, callouts: merged.callouts } };
-  }
-  const data = merged && summaryRef.current.value
-    ? { ...summaryRef.current.value, ...merged } as CategoriesLandingResponse
-    : merged;
-  const retained = useRetainedValue(data);
-  return { ...query, data: data ?? retained };
+  return { ...query, data: merged };
 }
 
 // ─── Detail types ─────────────────────────────────────────────────────────────

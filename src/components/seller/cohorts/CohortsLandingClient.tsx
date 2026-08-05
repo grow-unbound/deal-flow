@@ -20,48 +20,42 @@ import {
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
+import {
+  useCohortsLanding,
+  useCohortsLandingMetrics,
+  type CohortsLandingKpiCardV4,
+  type CohortsLandingMetricsV4,
+  type CohortsLandingResponse,
+} from '@/hooks/useCohorts';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { CohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { CustomerGroupFormSheet } from './CustomerGroupFormSheet';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)';
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)'];
-
-function CohortsDataSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <Skeleton className="h-14 rounded-[14px]" />
-      <LandingTableRowsSkeleton columns={7} tableMinWidth={1260} />
-    </div>
-  );
-}
+const STATUS_OPTIONS = ['Active', 'Dormant', 'Inactive'] as const;
 
 function CohortsLandingContent({
   initialData,
+  initialMetrics,
 }: {
   initialData: CohortsLandingResponse | null;
+  initialMetrics: CohortsLandingMetricsV4 | null;
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/customer-groups');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const [formOpen, setFormOpen] = useState(false);
-  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('customers-assigned');
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
@@ -74,15 +68,23 @@ function CohortsLandingContent({
       search: '',
       filters: {
         brands: [] as string[],
+        status: [] as string[],
       },
+      filter_preset: null as Record<string, unknown> | null,
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { brands: [] };
-  const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
+  const filters = routeState.filters ?? { brands: [], status: [] };
+  const filterPreset = routeState.filter_preset ?? null;
+  const { data: metricsData } = useCohortsLandingMetrics(initialMetrics);
+  const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useCohortsLanding(
+    period,
+    { search, brands: filters.brands, status: filters.status, filter_preset: filterPreset },
+    initialData,
+  );
   useRouteScrollRestoration({
     storageKey: 'seller-cohorts-landing',
     scopeKey: 'fixed-90d',
@@ -101,6 +103,18 @@ function CohortsLandingContent({
   );
   const groups: FilterBarGroup[] = [
     {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status ?? [],
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filter_preset: null,
+          filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+    {
       key: 'brands',
       label: 'Brands',
       options: brandOptions,
@@ -108,6 +122,7 @@ function CohortsLandingContent({
       onChange: (values) =>
         setRouteState((current) => ({
           ...current,
+          filter_preset: null,
           filters: { ...(current.filters ?? filters), brands: values },
         })),
     },
@@ -117,11 +132,16 @@ function CohortsLandingContent({
     const rows = landingData?.cohorts ?? [];
     const query = search.trim().toLowerCase();
     const brandFilter = filters.brands ?? [];
+    const statusFilter = filters.status ?? [];
 
     const interimRows = isFetching !== false ? rows.filter((row) =>
         brandFilter.length === 0 ||
         row.allowed_tenant_brand_ids?.some((brandId) => brandFilter.includes(brandId))
       )
+      .filter((row) => {
+        if (statusFilter.length === 0) return true;
+        return statusFilter.includes(row.status_label);
+      })
       .filter((row) => {
         if (!query) return true;
         return (
@@ -134,7 +154,7 @@ function CohortsLandingContent({
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
         return b.gmv_mtd - a.gmv_mtd;
       });
-  }, [filters.brands, isFetching, landingData?.cohorts, search, sortBy]);
+  }, [filters.brands, filters.status, isFetching, landingData?.cohorts, search, sortBy]);
 
   const sentinelIndex = useMemo(
     () => getSentinelInsertIndex(filtered.length, SELLER_INFINITE_SCROLL_RATIO),
@@ -169,29 +189,34 @@ function CohortsLandingContent({
   const showRefreshingState = isLoading && !data;
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
-  const kpis = landingData?.kpis;
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading customer groups" />
+    ) : (
+      <CohortsLandingSkeleton />
+    );
+  }
 
-  const kpiOptions = [
-    {
-      id: 'customers-assigned',
-      label: 'Customers assigned to a Group',
-      value: `${kpis?.covered_members ?? 0}`,
-      sub: `${kpis?.total_buyers ? Math.round(((kpis.covered_members ?? 0) / kpis.total_buyers) * 100) : 0}% of ${kpis?.total_buyers ?? 0} customers`,
-    },
-    {
-      id: 'valuable-uncategorised',
-      label: 'Valuable customers in no Group',
-      value: `${kpis?.uncategorised_buyers ?? 0}`,
-      sub: `90D invoiced sales — NEEDS BACKEND`,
-    },
-    {
-      id: 'grouped-purchase-rate',
-      label: 'Grouped customers who purchased',
-      value: `${formatNumberValue((kpis?.avg_conversion_pct ?? 0), 'PERCENTAGE')}`,
-      sub: 'Average purchase rate across groups',
-    },
-  ];
-  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  const kpis = landingData?.kpis;
+  const metricCards = metricsData?.cards ?? [];
+  const formatMetricCard = (card: CohortsLandingKpiCardV4) => {
+    const idLabel = `${card.id} ${card.label}`.toLowerCase();
+    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue')) {
+      return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+    }
+    if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
+      return `${card.value ?? 0}%`;
+    }
+    return `${card.value ?? 0}`;
+  };
+  const filtersFromCohortPreset = (preset?: Record<string, unknown>) => {
+    const status = typeof preset?.status === 'string'
+      ? [preset.status]
+      : Array.isArray(preset?.status)
+        ? preset.status.map(String)
+        : [];
+    return { brands: [] as string[], status };
+  };
 
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
@@ -203,9 +228,9 @@ function CohortsLandingContent({
         >
         <PageHeader
           eyebrow={isPaneOpen ? 'Customer Groups' : 'Segmentation'}
-          title={isPaneOpen ? selectedOption.label : 'Customer Groups'}
+          title="Customer Groups"
           subtitle={isPaneOpen
-            ? `${selectedOption.value} · ${selectedOption.sub}`
+            ? `${filtered.length} customer groups`
             : `${kpis?.total_cohorts ?? 0} customer groups · ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} active customers assigned.`}
           horizon={horizonLabel}
           primary="Add a customer group"
@@ -215,12 +240,19 @@ function CohortsLandingContent({
 
         {isPaneOpen ? null : (
           <InsightStrip4
-            tiles={kpiOptions.map((option): InsightTile => ({
-              label: option.label,
-              value: option.value,
-              sub: option.sub,
-              onClick: () => setSelectedKpiKey(option.id),
-              selected: option.id === selectedKpiKey,
+            tiles={metricCards.slice(0, 4).map((card): InsightTile => ({
+              label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+              value: formatMetricCard(card),
+              sub: card.supporting_text ?? '',
+              onClick: () => {
+                const preset = card.filter_preset ?? null;
+                setRouteState((current) => ({
+                  ...current,
+                  filter_preset: preset,
+                  filters: filtersFromCohortPreset(preset ?? undefined),
+                }));
+              },
+              selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
             }))}
           />
         )}
@@ -235,7 +267,7 @@ function CohortsLandingContent({
           compact={isPaneOpen}
           groups={groups}
           searchValue={search}
-          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
           sortOptions={[...SORT_OPTIONS]}
           onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
@@ -243,13 +275,7 @@ function CohortsLandingContent({
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showRefreshingState ? (
-        isPaneOpen ? (
-          <SplitPaneListRowsSkeleton isPaneOpen />
-        ) : (
-          <CohortsDataSkeleton />
-        )
-      ) : isError ? (
+      {isError ? (
         <ErrorState
           heading="Couldn't load customer groups"
           description="There was a problem fetching your customer groups. Please try again."
@@ -355,12 +381,14 @@ function CohortsLandingContent({
 
 export function CohortsLandingClient({
   initialData,
+  initialMetrics = null,
 }: {
   initialData: CohortsLandingResponse | null;
+  initialMetrics?: CohortsLandingMetricsV4 | null;
 }) {
   return (
     <FeatureGate flag="COHORTS">
-      <CohortsLandingContent initialData={initialData} />
+      <CohortsLandingContent initialData={initialData} initialMetrics={initialMetrics} />
     </FeatureGate>
   );
 }

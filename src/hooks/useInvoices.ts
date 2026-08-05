@@ -8,9 +8,9 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import type { InvoiceComposerDocument, InvoiceComposerSavePayload } from '@/types/invoice-composer';
-import type { TenantInvoicesResponse } from '@/types/tenant-invoices';
+import type { InvoicesLandingMetricsV4, TenantInvoicesResponse } from '@/types/tenant-invoices';
 
-export type { TenantInvoicesResponse } from '@/types/tenant-invoices';
+export type { InvoicesLandingKpiCardV4, InvoicesLandingMetricsV4, TenantInvoicesResponse } from '@/types/tenant-invoices';
 
 async function fetchTenantInvoiceComposer(invoiceId: string): Promise<InvoiceComposerDocument> {
   const res = await apiFetch(`/api/tenant/invoices/${invoiceId}?view=composer`);
@@ -152,12 +152,39 @@ export function useTenantInvoices(period: SellerLandingPeriod = 'month', initial
   });
 }
 
+function getInitialInvoicesMetrics(period: SellerLandingPeriod, initialData?: InvoicesLandingMetricsV4 | null) {
+  const expectedPeriodKey = period === 'today'
+    ? 'today'
+    : period === 'week'
+      ? 'this_week'
+      : period === 'quarter'
+        ? 'this_quarter'
+        : 'this_month';
+  return initialData?.period?.period_key === expectedPeriodKey ? initialData : undefined;
+}
+
+export function useTenantInvoicesMetrics(period: SellerLandingPeriod = 'month', initialData?: InvoicesLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-invoices-metrics-v4', period],
+    queryFn: async (): Promise<InvoicesLandingMetricsV4> => {
+      const res = await apiFetch(`/api/tenant/invoices/metrics?period=${period}`);
+      if (!res.ok) throw new Error('Failed to fetch invoice metrics');
+      return res.json();
+    },
+    initialData: getInitialInvoicesMetrics(period, initialData),
+    placeholderData: keepPreviousData,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
 export interface InvoicesInfiniteFilters {
   search?: string;
   source?: string[];
   status?: string[];
   due?: string[];
   location_id?: string[];
+  filter_preset?: Record<string, unknown> | null;
 }
 
 export interface TenantInvoicesPage extends TenantInvoicesResponse {
@@ -169,8 +196,9 @@ export function useTenantInvoicesInfinite(
   period: SellerLandingPeriod = 'month',
   filters: InvoicesInfiniteFilters = {},
 ) {
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
   return useInfiniteQuery({
-    queryKey: ['tenant-invoices-infinite', period, filters],
+    queryKey: ['tenant-invoices-infinite', period, { ...filters, filter_preset: presetKey }],
     queryFn: async ({ pageParam }): Promise<TenantInvoicesPage> => {
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
@@ -179,6 +207,9 @@ export function useTenantInvoicesInfinite(
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'due', filters.due);
       appendArrayParam(params, 'location_id', filters.location_id);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/invoices?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch invoices');
       return res.json() as Promise<TenantInvoicesPage>;

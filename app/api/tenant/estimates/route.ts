@@ -25,14 +25,10 @@ type DbClient = any;
 
 import type {
   EstimateAvatarHue,
-  EstimateCalloutRow,
   EstimateDbStatus,
   EstimateFilterChip,
   EstimateLandingRow,
   EstimateStatusTone,
-  EstimatesKpis,
-  EstimatesTodaysRead,
-  TenantEstimatesResponse,
 } from '@/types/tenant-estimates';
 
 interface BuyerRow {
@@ -141,10 +137,6 @@ function estimateStatusesForFilters(values: string[]) {
   return Array.from(statuses);
 }
 
-function sumMetric(rows: Array<Record<string, unknown>>, key: string): number {
-  return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
-}
-
 function getEstimateDocumentTimestamp(row: Pick<EstimateDbRow, 'estimate_date' | 'created_at'>): string {
   return row.estimate_date ?? row.created_at;
 }
@@ -180,6 +172,45 @@ function applyEstimateDocumentPeriod<T extends { or: (filter: string) => T }>(qu
   );
 }
 
+function parseEstimateFilterPreset(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function attentionFromEstimatePreset(preset: Record<string, unknown> | null): string[] {
+  if (!preset) return [];
+  if (preset.status === 'sent' && Number(preset.age_gte_days ?? 0) >= 3) return ['awaiting_action_3d'];
+  if (Number(preset.expiry_lte_days ?? 0) > 0) return ['expiring_7d'];
+  return [];
+}
+
+function statusesFromEstimatePreset(preset: Record<string, unknown> | null): string[] {
+  if (!preset) return [];
+  if (preset.status === 'open') return ['Draft', 'Sent', 'Accepted'];
+  if (preset.status === 'sent') return ['Sent'];
+  return [];
+}
+
+function applyEstimateAttentionFilter(query: any, attention: string[]) {
+  let next = query;
+  const now = new Date();
+  if (attention.includes('awaiting_action_3d')) {
+    next = next.eq('status', 'sent').lt('sent_at', new Date(now.getTime() - 3 * DAY_MS).toISOString());
+  }
+  if (attention.includes('expiring_7d')) {
+    next = next
+      .in('status', ['draft', 'sent', 'accepted'])
+      .not('expires_at', 'is', null)
+      .lte('expires_at', new Date(now.getTime() + 7 * DAY_MS).toISOString());
+  }
+  return next;
+}
+
 function applyEstimateCursor<T extends { or: (filter: string) => T }>(query: T, cursor: string): T {
   const { created_at, id } = decodeCursor(cursor);
   return query.or(
@@ -212,13 +243,15 @@ export async function GET(req: NextRequest) {
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const db = supabaseAdmin;
     const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
-    const scopedLocationIds = availableLocations.map((location) => location.id);
-    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
     const searchParam = req.nextUrl.searchParams.get('search')?.trim();
+    const filterPreset = parseEstimateFilterPreset(req.nextUrl.searchParams.get('filter_preset'));
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
-    const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const explicitStatusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const explicitAttentionParams = readArrayParam(req.nextUrl.searchParams, 'attention');
+    const statusParams = explicitStatusParams.length > 0 ? explicitStatusParams : statusesFromEstimatePreset(filterPreset);
+    const attentionParams = explicitAttentionParams.length > 0 ? explicitAttentionParams : attentionFromEstimatePreset(filterPreset);
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
     const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
 
@@ -250,122 +283,20 @@ export async function GET(req: NextRequest) {
     if (statusParams.length > 0) {
       scopedEstimatesQuery = scopedEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
     }
+    if (attentionParams.length > 0) {
+      scopedEstimatesQuery = applyEstimateAttentionFilter(scopedEstimatesQuery, attentionParams);
+    }
     if (locationParams.length > 0) {
       scopedEstimatesQuery = scopedEstimatesQuery.in('location_id', locationParams);
     }
     scopedEstimatesQuery = scopedEstimatesQuery.limit(limit + 1);
 
-    let estimateTotalQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('estimates')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null) as any,
-      claims,
-    );
-    estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
-    estimateTotalQuery = applyTransactionTableSearch(estimateTotalQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
-    estimateTotalQuery = applyEstimateSourceFilter(estimateTotalQuery, sourceParams);
-    if (statusParams.length > 0) {
-      estimateTotalQuery = estimateTotalQuery.in('status', estimateStatusesForFilters(statusParams));
-    }
-    if (locationParams.length > 0) {
-      estimateTotalQuery = estimateTotalQuery.in('location_id', locationParams);
-    }
+    const estimatesRes = await scopedEstimatesQuery;
 
-    const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
-
-    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'drafts_not_sent' | 'expiring_soon') => {
-      let query = buildBaseEstimateQuery() as any;
-
-      if (mode === 'needs_follow_up') {
-        return query
-          .eq('status', 'sent')
-          .order('sent_at', { ascending: true, nullsFirst: false })
-          .order('id', { ascending: false })
-          .limit(SEE_ALL_LIMIT);
-      }
-
-      if (mode === 'drafts_not_sent') {
-        return query
-          .eq('status', 'draft')
-          .order('estimate_date', { ascending: true, nullsFirst: false })
-          .order('created_at', { ascending: true })
-          .order('total_amount', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(SEE_ALL_LIMIT);
-      }
-
-      return query
-        .in('status', ['draft', 'sent', 'accepted'])
-        .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString())
-        .order('expires_at', { ascending: true, nullsFirst: false })
-        .order('id', { ascending: false })
-        .limit(SEE_ALL_LIMIT);
-    };
-
-    // Pulse-card aggregates (true count+value, not the ≤SEE_ALL_LIMIT callout
-    // sample above) for "Sent estimates awaiting action for 3+ days" and
-    // "Expiring in 7 days" -- both NOW-relative-to-clock conditions that
-    // aren't precomputed in a daily snapshot, same reasoning as the callout
-    // queries themselves.
-    const sentAwaitingAggPromise = applySellerLocationScope(
-      db.schema('app').from('estimates')
-        .select('total_amount', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .eq('status', 'sent')
-        .lt('sent_at', new Date(Date.now() - 3 * DAY_MS).toISOString()) as any,
-      claims,
-    );
-    const expiringAggPromise = applySellerLocationScope(
-      db.schema('app').from('estimates')
-        .select('total_amount', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .in('status', ['draft', 'sent', 'accepted'])
-        .not('expires_at', 'is', null)
-        .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString()) as any,
-      claims,
-    );
-
-    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
-      p_tenant_id: tenantId,
-      p_kind: 'estimates',
-      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
-    });
-
-    const [
-      estimatesRes,
-      estimateTotalRes,
-      landingMetricsRes,
-      needsFollowUpRes,
-      draftsNotSentRes,
-      expiringSoonRes,
-      sentAwaitingAggRes,
-      expiringAggRes,
-    ] = await Promise.all([
-      scopedEstimatesQuery,
-      estimateTotalQuery,
-      landingMetricsPromise,
-      buildEstimateCalloutQuery('needs_follow_up'),
-      buildEstimateCalloutQuery('drafts_not_sent'),
-      buildEstimateCalloutQuery('expiring_soon'),
-      sentAwaitingAggPromise,
-      expiringAggPromise,
-    ]);
-
-    if (
-      estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
-      || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
-      || sentAwaitingAggRes.error || expiringAggRes.error
-    ) {
+    if (estimatesRes.error) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
-          || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
-          || sentAwaitingAggRes.error || expiringAggRes.error,
+        estimatesRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -377,13 +308,7 @@ export async function GET(req: NextRequest) {
     const nextCursor = hasNextPage && lastEstimate
       ? encodeCursor({ created_at: getEstimateDocumentTimestamp(lastEstimate), id: lastEstimate.id })
       : null;
-    const calloutRows = [
-      ...((needsFollowUpRes.data ?? []) as EstimateDbRow[]),
-      ...((draftsNotSentRes.data ?? []) as EstimateDbRow[]),
-      ...((expiringSoonRes.data ?? []) as EstimateDbRow[]),
-    ];
-    const lookupRows = Array.from(new Map([...rawEstimates, ...calloutRows].map((row) => [row.id, row])).values());
-    const totalCount = estimateTotalRes.count ?? null;
+    const lookupRows = rawEstimates;
 
     // Scope the buyers lookup to only the buyer IDs referenced by the fetched estimates.
     // Previously this loaded all buyers for the tenant on every request.
@@ -458,8 +383,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const now = Date.now();
-    const expiringCutoff = now + 7 * DAY_MS;
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
     const normalizeLanding = (row: EstimateDbRow, index: number) => {
@@ -512,71 +435,6 @@ export async function GET(req: NextRequest) {
 
     const normalized = rawEstimates.map((row, index) => normalizeLanding(row, index));
 
-    const kpis = ((landingMetricsRes.data as { kpis?: EstimatesKpis } | null)?.kpis ?? {
-      total_estimates_this_period: 0,
-      total_estimates_prev_period: 0,
-      total_estimates_growth_pct: 0,
-      total_gmv_this_period: 0,
-      total_gmv_prev_period: 0,
-      aov: 0,
-      open_estimates_this_period: 0,
-      open_estimate_value: 0,
-      converted_this_period: 0,
-      open_total: 0,
-      open_drafts: 0,
-      open_sent: 0,
-      open_accepted: 0,
-      ready_to_convert: 0,
-      expiring_soon: 0,
-      open_created_this_period: 0,
-      buyer_app_created_this_period: 0,
-    }) as EstimatesKpis;
-
-    const sentAwaitingRows = (sentAwaitingAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
-    const expiringAggRows = (expiringAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
-    const pulse_aggregates = {
-      sent_awaiting_count: sentAwaitingAggRes.count ?? sentAwaitingRows.length,
-      sent_awaiting_value: sumMetric(sentAwaitingRows as Array<Record<string, unknown>>, 'total_amount'),
-      expiring_soon_count: expiringAggRes.count ?? expiringAggRows.length,
-      expiring_soon_value: sumMetric(expiringAggRows as Array<Record<string, unknown>>, 'total_amount'),
-    };
-
-    const toCalloutRow = (landing: EstimateLandingRow): EstimateCalloutRow => ({
-      id: landing.id,
-      estimate_number: landing.estimate_number,
-      buyer_name: landing.buyer_name,
-      buyer_initials: landing.buyer_initials,
-      buyer_hue: landing.buyer_hue,
-      items_count: landing.items_count,
-      total_amount: landing.total_amount,
-      estimate_date: landing.created_at,
-      sent_at: landing.sent_at,
-      expires_at: landing.expires_at,
-      status: { label: landing.status.label, tone: landing.status.tone },
-    });
-
-    const threeDaysAgo = now - 3 * DAY_MS;
-    const needsFollowUp = ((needsFollowUpRes.data ?? []) as EstimateDbRow[])
-      .map((row, index) => normalizeLanding(row, index))
-      .filter((entry) => entry.row.sent_at && new Date(entry.row.sent_at).getTime() < threeDaysAgo)
-      .map((entry) => toCalloutRow(entry.landing));
-
-    const draftsCallout = ((draftsNotSentRes.data ?? []) as EstimateDbRow[])
-      .map((row, index) => normalizeLanding(row, index))
-      .map((entry) => toCalloutRow(entry.landing));
-
-    const expiringCallout = ((expiringSoonRes.data ?? []) as EstimateDbRow[])
-      .map((row, index) => normalizeLanding(row, index))
-      .filter((entry) => isOpenStatus(entry.norm) && entry.row.expires_at)
-      .filter((entry) => new Date(entry.row.expires_at as string).getTime() <= expiringCutoff)
-      .map((entry) => toCalloutRow(entry.landing));
-
-    const todays_read: EstimatesTodaysRead = {
-      needs_follow_up: needsFollowUp,
-      drafts_not_sent: draftsCallout,
-      expiring_soon: expiringCallout,
-    };
-
     const estimates = normalized.map((n) => n.landing);
     const filters: LandingFilterMeta = {
       groups: [
@@ -594,6 +452,14 @@ export async function GET(req: NextRequest) {
           options: ['Draft', 'Sent', 'Accepted', 'Converted', 'Declined', 'Expired'].map((value) => ({ value, label: value })),
         },
         {
+          key: 'attention',
+          label: 'Attention',
+          options: [
+            { value: 'awaiting_action_3d', label: 'Awaiting action 3+ days' },
+            { value: 'expiring_7d', label: 'Expiring in 7 days' },
+          ],
+        },
+        {
           key: 'location_id',
           label: 'Location',
           options: availableLocations.map((location) => ({ value: location.id, label: location.name })),
@@ -603,13 +469,10 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       period,
-      kpis,
-      pulse_aggregates,
-      todays_read,
       estimates,
       filters,
       nextCursor,
-      total: totalCount,
+      total: null,
     };
 
     return timedJson(payload);

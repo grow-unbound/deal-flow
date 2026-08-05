@@ -5,7 +5,7 @@ import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadi
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { TenantProductsResponse } from '@/hooks/useProducts';
+import type { ProductsLandingMetricsV4 } from '@/hooks/useProducts';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 // Note: `?search=` seeding now happens client-side inside ProductsLandingClient via
@@ -18,8 +18,8 @@ export default async function ProductsLayout({ children }: { children: ReactNode
     <EntitySplitShell
       basePath="/products"
       listSlot={
-        <SellerBootstrapBoundary<TenantProductsResponse>
-          path="/api/tenant/products?period=last90"
+        <SellerBootstrapBoundary<ProductsLandingMetricsV4>
+          path="/api/tenant/products/metrics"
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/products"
@@ -30,7 +30,7 @@ export default async function ProductsLayout({ children }: { children: ReactNode
           }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
-            return <ProductsLandingClient initialData={initialData} />;
+            return <ProductsLandingClient initialMetrics={initialData} />;
           }}
         />
       }
