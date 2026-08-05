@@ -9,6 +9,11 @@ import { z } from 'zod';
 import { usePostHog } from 'posthog-js/react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import {
+  AUTH_LOGIN_COPY,
+  buildInformSellerMessage,
+  openWhatsAppShare,
+} from '@/constants/auth-login-copy';
 
 const SignupFormSchema = z
   .object({
@@ -164,6 +169,11 @@ export function SignupFormCard() {
     }
   }
 
+  function handleInformDistributor() {
+    const signupLink = new URL('/signup', window.location.origin).toString();
+    openWhatsAppShare(buildInformSellerMessage({ signupLink }));
+  }
+
   return (
     <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8">
       <div className="mb-7 flex justify-center">
@@ -171,7 +181,19 @@ export function SignupFormCard() {
       </div>
 
       <h1 className="font-display text-h2 text-cream-900 mb-1">Create your seller account</h1>
-      <p className="text-body-sm text-cream-600 mb-6">Set up your seller workspace in under a minute.</p>
+      <p className="text-body-sm text-cream-600 mb-2">
+        For manufacturers, distributors, and wholesalers selling in bulk to other businesses
+      </p>
+      <p className="text-body-sm text-cream-600 mb-6">
+        {AUTH_LOGIN_COPY.login.buyerInsteadPrefix}{' '}
+        <button
+          type="button"
+          onClick={handleInformDistributor}
+          className="font-medium text-ember-400 transition-colors hover:text-ember-500"
+        >
+          {AUTH_LOGIN_COPY.login.buyerInsteadCta}
+        </button>
+      </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1" noValidate>
 

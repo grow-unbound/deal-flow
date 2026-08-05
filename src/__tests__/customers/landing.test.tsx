@@ -44,7 +44,8 @@ const useTenantSettingsMock = vi.fn(() => ({
 }));
 
 vi.mock('@/hooks/useTenantSettings', () => ({
-  useTenantSettings: (...args: unknown[]) => useTenantSettingsMock(...args),
+  // Mock is typed from its zero-arg factory — don't spread unknown[] into it.
+  useTenantSettings: () => useTenantSettingsMock(),
 }));
 
 vi.mock('@/hooks/useBusinessPolicy', () => ({
