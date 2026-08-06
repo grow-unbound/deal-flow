@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Yukti Identity Territories" subtitle="3 logo territories · color+type per territory · status grammar · pushback" -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yukti — Logo &amp; Identity Territories</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+Devanagari:wght@400;600;700&amp;family=IBM+Plex+Sans+Arabic:wght@400;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Anek+Latin:wght@500;700;800&amp;family=Anek+Devanagari:wght@500;700&amp;family=Cairo:wght@500;700&amp;family=Archivo:wght@500;700;800&amp;family=Noto+Sans:wght@400;500;600&amp;family=Noto+Sans+Devanagari:wght@400;700&amp;family=Noto+Sans+Arabic:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { font-family: "IBM Plex Sans", sans-serif; }
+  #root { height: 100%; }
+  button { font: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#10231B">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#10231B"></rect>
+    <g transform="translate(440, 240)">
+      <path d="M0 40 L120 160 L0 280" stroke="#F7F6F1" stroke-width="52" fill="none"></path>
+      <path d="M104 160 H320" stroke="#1DB868" stroke-width="72" fill="none"></path>
+    </g>
+  </svg>
+</template>
+<div id="root"></div>
+<script type="text/babel" src="explorations/design-canvas.jsx"></script>
+<script type="text/babel" src="explorations/shared.jsx"></script>
+<script type="text/babel" src="explorations/territory-a.jsx"></script>
+<script type="text/babel" src="explorations/territory-b.jsx"></script>
+<script type="text/babel" src="explorations/territory-c.jsx"></script>
+<script type="text/babel" src="explorations/status.jsx"></script>
+<script type="text/babel" src="explorations/pushback.jsx"></script>
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="intro" title="Read me first" subtitle="What the brief demands of the identity — and how each territory answers">
+        <DCArtboard id="intro-board" label="Brief → identity" width={640} height={560}>
+          <IntroBoard />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="territory-a" title="Territory A — The Fork, Resolved" subtitle="The Y rotated into motion: two paths in, one decisive line out">
+        <DCArtboard id="a-mark" label="A · Mark & lockups" width={940} height={660}>
+          <ABoardMark />
+        </DCArtboard>
+        <DCArtboard id="a-color" label="A · Color + type (3 scripts)" width={940} height={660}>
+          <ABoardColorType />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="territory-b" title="Territory B — The Step Up" subtitle="Growth as a level gained and held: one step up, then forward">
+        <DCArtboard id="b-mark" label="B · Mark & lockups" width={940} height={660}>
+          <BBoardMark />
+        </DCArtboard>
+        <DCArtboard id="b-color" label="B · Color + type (3 scripts)" width={940} height={660}>
+          <BBoardColorType />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="territory-c" title="Territory C — The Cleared Path" subtitle="The operational weight, with one clean way cut through">
+        <DCArtboard id="c-mark" label="C · Mark & lockups" width={940} height={660}>
+          <CBoardMark />
+        </DCArtboard>
+        <DCArtboard id="c-color" label="C · Color + type (3 scripts)" width={940} height={660}>
+          <CBoardColorType />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="status" title="§11 — Clarity-of-status grammar (fixed core)" subtitle="Identical across all three territories — only the chrome and the single next-action take the hero color">
+        <DCArtboard id="st-grammar" label="The grammar" width={760} height={640}>
+          <StBoardGrammar />
+        </DCArtboard>
+        <DCArtboard id="st-tile" label="Distributor dashboard tile" width={510} height={490}>
+          <StBoardTile />
+        </DCArtboard>
+        <DCArtboard id="st-pwa" label="Buyer PWA · Orders" width={390} height={640}>
+          <StBoardPwa />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="pushback" title="§15.5 — Push-back" subtitle="Where the brief fights good design, and how these boards resolve it">
+        <DCArtboard id="pb" label="Six flags" width={960} height={700}>
+          <PushbackBoard />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

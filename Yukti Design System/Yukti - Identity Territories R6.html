@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Yukti Identity R6" subtitle="10 object-mark territories × 2 variants, six operational palettes" -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yukti — Identity Territories, Round 6</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1b1e24; --sub:#62666e; --line:#e4e6ea; --bg:#eef0f3; --card:#ffffff; }
+  html,body { margin:0; padding:0; }
+  body { background:var(--bg); font-family:"Space Grotesk",sans-serif; color:var(--ink); }
+  .wrap { max-width:1180px; margin:0 auto; padding:44px 28px 72px; display:flex; flex-direction:column; gap:22px; }
+  .top { display:flex; flex-direction:column; gap:8px; }
+  .kicker { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#9aa0a8; }
+  h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-0.02em; }
+  .flag { font-size:13px; line-height:1.55; color:var(--sub); max-width:900px; }
+  .flag strong { color:var(--ink); }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; }
+  .lg { display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 11px; }
+  .lg .dots { display:flex; gap:4px; }
+  .lg i { width:13px; height:13px; border-radius:3px; display:inline-block; border:1px solid rgba(0,0,0,.08); }
+  .lg b { font-size:11.5px; font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+  .card h2 { margin:0; font-size:15.5px; font-weight:700; display:flex; align-items:baseline; gap:10px; letter-spacing:-0.01em; }
+  .card h2 .tno { font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:400; color:#aeb3bb; }
+  .card h2 .tag { font-size:10.5px; font-weight:500; color:var(--sub); background:var(--bg); border-radius:4px; padding:2px 8px; margin-left:auto; font-family:"IBM Plex Mono",monospace; letter-spacing:.02em; }
+  .chips { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .chip { border-radius:9px; height:112px; display:flex; align-items:center; justify-content:center; gap:14px; border:1px solid var(--line); }
+  .word { font-size:27px; line-height:1; font-weight:600; letter-spacing:-0.03em; }
+  .red { display:flex; align-items:center; gap:13px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 14px; }
+  .red .rlab { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:#a4a9b1; letter-spacing:.06em; text-transform:uppercase; }
+  .red .rgroup { display:flex; align-items:center; gap:8px; }
+  .meta { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .sw { display:flex; align-items:center; gap:8px; }
+  .sw i { width:24px; height:24px; border-radius:5px; display:inline-block; border:1px solid rgba(0,0,0,.1); }
+  .sw span { display:flex; flex-direction:column; }
+  .sw b { font-size:11.5px; font-weight:600; white-space:nowrap; }
+  .sw small { font-family:"IBM Plex Mono",monospace; font-size:10px; color:#9aa0a8; white-space:nowrap; }
+  .why { font-size:12.5px; line-height:1.55; color:var(--sub); margin:0; border-top:1px solid var(--line); padding-top:11px; }
+  .why b { color:var(--ink); font-weight:600; }
+  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#eef0f3">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#eef0f3"></rect>
+    <path fill-rule="evenodd" fill="#2D5BD6" d="M600 250a150 150 0 1 0 .01 0Z M600 320a80 80 0 1 0 .01 0Z"></path>
+    <rect x="585" y="318" width="30" height="170" rx="15" fill="#2D5BD6"></rect>
+  </svg>
+</template>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="kicker">Yukti · Identity, Round 6 · 10 territories · 2 variants each</span>
+    <h1>Object marks — mass, silhouette, permanence</h1>
+    <p class="flag"><strong>The shift from R2.</strong> No more paths, forks, Ys, steps or gestures. Every mark here is a contained object built from solid mass and carved negative space — engineered to read at favicon size, hold up in one color, and outlast any single metaphor. The territory labels are scaffolding, not the message: the strongest marks below have already left their metaphor behind and become pure form. Palettes move off warm paper into six operational systems.</p>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+/* ---- palette systems ---- */
+const P = {
+  charcopper:{lab:"Charcoal + Copper", bgL:"#F6F3EF", bgD:"#231F1A", aL:"#C0723A", aD:"#DB8B4E", mono:"#8A4E1E", eName:"Copper", eHex:"#C0723A", iName:"Deep Copper", iHex:"#8A4E1E"},
+  graphcobalt:{lab:"Graphite + Cobalt", bgL:"#F1F3F7", bgD:"#1B1E24", aL:"#2D5BD6", aD:"#5E83E8", mono:"#1E40AF", eName:"Cobalt", eHex:"#2D5BD6", iName:"Deep Cobalt", iHex:"#1E40AF"},
+  indigoperi:{lab:"Indigo + Periwinkle", bgL:"#F3F3FB", bgD:"#1B1842", aL:"#4F46E5", aD:"#A5B0FF", mono:"#3730A3", eName:"Indigo", eHex:"#4F46E5", iName:"Periwinkle", iHex:"#A5B0FF"},
+  navyorange:{lab:"Deep Navy + Signal Orange", bgL:"#F4F5F7", bgD:"#0E2344", aL:"#E85D14", aD:"#FF7A33", mono:"#C2521A", eName:"Signal Orange", eHex:"#E85D14", iName:"Deep Navy", iHex:"#0E2344"},
+  forestlime:{lab:"Deep Forest + Electric Lime", bgL:"#F1F5F1", bgD:"#0F2A20", aL:"#3F7A2E", aD:"#A6E635", mono:"#2E5E1E", eName:"Lime", eHex:"#A6E635", iName:"Deep Forest", iHex:"#0F2A20"},
+  mono:{lab:"Monochrome", bgL:"#F4F4F5", bgD:"#16181C", aL:"#26282E", aD:"#E9E9EB", mono:"#26282E", eName:"Ink", eHex:"#26282E", iName:"Graphite", iHex:"#54585F"}
+};
+
+/* ---- marks: each returns inner SVG for one fill color ---- */
+const M = {
+  // 01-02 FLYWHEEL
+  fwAxle:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M16 8.7a7.3 7.3 0 1 0 .01 0Z"/><rect x="14.4" y="6.5" width="3.2" height="19" rx="1.6" fill="${c}"/><circle cx="16" cy="16" r="3.1" fill="${c}"/>`,
+  fwCrescent:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M21 7.5a9.5 9.5 0 1 0 .01 0Z"/>`,
+  // 03-04 WEAVE
+  weaveCross:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M5 14H27V18H5Z M14 5H18V13H14Z M14 19H18V27H14Z"/>`,
+  weaveStrata:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M6 9H14V10.6H6Z M18 9H26V10.6H18Z M6 15.2H14V16.8H6Z M18 15.2H26V16.8H18Z M6 21.4H14V23H6Z M18 21.4H26V23H18Z"/>`,
+  // 05-06 LENS
+  lensSolid:c=>`<path fill="${c}" d="M7 16A12 12 0 0 1 25 16A12 12 0 0 1 7 16Z"/>`,
+  lensVoid:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M8 16A11 11 0 0 1 24 16A11 11 0 0 1 8 16Z"/><circle cx="16" cy="16" r="2.3" fill="${c}"/>`,
+  // 07-08 KEYSTONE
+  keyArch:c=>`<path fill="${c}" d="M13 5H19L21.2 14H10.8Z"/><path fill="${c}" d="M4.2 13.5L10.5 14.6L12.4 22.5L6.4 22.5Z"/><path fill="${c}" d="M27.8 13.5L21.5 14.6L19.6 22.5L25.6 22.5Z"/>`,
+  keyVoid:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 4.5H23A4 4 0 0 1 27 8.5V23.5A4 4 0 0 1 23 27.5H9A4 4 0 0 1 5 23.5V8.5A4 4 0 0 1 9 4.5Z M12.5 9H19.5L17.5 23H14.5Z"/>`,
+  // 09-10 PULLEY / LEVERAGE
+  sheave:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M16 5.2a10.8 10.8 0 1 0 .01 0Z M16 7.4a8.6 8.6 0 1 0 .01 0Z M16 13.4a2.6 2.6 0 1 0 .01 0Z"/>`,
+  ratio:c=>`<path fill-rule="evenodd" fill="${c}" d="M11.5 6.5a10.5 10.5 0 1 0 .01 0Z M11.5 14.4a2.6 2.6 0 1 0 .01 0Z M24.5 4.5a5.8 5.8 0 1 0 .01 0Z M24.5 8.7a1.6 1.6 0 1 0 .01 0Z"/><rect x="10" y="15.5" width="3" height="2.4" fill="${c}"/>`,
+  // 11-12 COMPASS
+  bearing:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M16 4.5L11 14H21Z M16 16a2.4 2.4 0 1 0 .01 0Z"/>`,
+  cardinal:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M16 7.5L22 16L16 24.5L10 16Z"/><circle cx="16" cy="16" r="2.3" fill="${c}"/>`,
+  // 13-14 CONFLUENCE
+  strataMerge:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M7 8H17V9.5H7Z M15 12H25V13.5H15Z M9 16H22V17.5H9Z"/>`,
+  nest:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M9.5 9.5H22.5V22.5H9.5Z M13.5 13.5H18.5V18.5H13.5Z"/>`,
+  // 15-16 CATALYST
+  frameNode:c=>`<path fill-rule="evenodd" fill="${c}" d="M2.5 2.5H29.5V29.5H2.5Z M9 9H23V23H9Z"/><rect x="20" y="2.5" width="9.5" height="9.5" rx="2.2" fill="${c}"/>`,
+  seedArc:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M16 8a8 8 0 1 0 .01 0Z M21 1H31V11H21Z"/><circle cx="26" cy="6" r="3.1" fill="${c}"/>`,
+  // 17-18 SIGNAL
+  signalKeep:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M7 7H10.5V10.5H7Z M14.25 7H17.75V10.5H14.25Z M21.5 7H25V10.5H21.5Z M7 14.25H10.5V17.75H7Z M21.5 14.25H25V17.75H21.5Z M7 21.5H10.5V25H7Z M14.25 21.5H17.75V25H14.25Z M21.5 21.5H25V25H21.5Z"/>`,
+  signalLock:c=>`<path fill-rule="evenodd" fill="${c}" d="M10.5 2.5H21.5A8 8 0 0 1 29.5 10.5V21.5A8 8 0 0 1 21.5 29.5H10.5A8 8 0 0 1 2.5 21.5V10.5A8 8 0 0 1 10.5 2.5Z M14.4 7H17.6V25H14.4Z"/><path fill-rule="evenodd" fill="${c}" d="M7 8.6l2.6-1 .7 1.9-2.6 1Z M22.4 21.3l2.6-1 .7 1.9-2.6 1Z M7.2 21.6l2.5 1.1-.8 1.8-2.5-1.1Z M22.6 9.7l2.5 1.1-.8 1.8-2.5-1.1Z"/>`,
+  // 19-20 ORBIT
+  orbitCore:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 2.5a13.5 13.5 0 1 0 .01 0Z M16 6a10 10 0 1 0 .01 0Z M16 9a7 7 0 1 0 .01 0Z"/><circle cx="16" cy="2.5" r="2.6" fill="${c}"/>`,
+  orbitArc:c=>`<circle cx="16" cy="16" r="5" fill="${c}"/><path fill-rule="evenodd" fill="${c}" d="M16 3.5a12.5 12.5 0 1 0 .01 0Z M16 6.5a9.5 9.5 0 1 0 .01 0Z M22 2H31V12H22Z"/><circle cx="27" cy="7" r="2.5" fill="${c}"/>`
+};
+
+/* ---- territories: 2 variants each ---- */
+const T = [
+  {pal:"charcopper", terr:"Flywheel",   name:"The Wheel & Axle",  mark:"fwAxle",      why:"A heavy rimmed wheel locked to its axle — stored momentum given a shaft to drive. Not a spinner: a mass built to <b>transmit</b> force, every revolution feeding the next."},
+  {pal:"charcopper", terr:"Flywheel",   name:"The Loaded Mass",   mark:"fwCrescent",  why:"The same disc carved to a crescent — energy banked on one side, weight you can feel. Compounding advantage drawn as a solid that has been <b>wound up</b>, not a circle of arrows."},
+  {pal:"indigoperi", terr:"Weave",      name:"The Interlace",     mark:"weaveCross",  why:"Two bands cross over and under inside one tile — separate threads resolving into a single fabric. The over-under is carved, so the join is structural, not decorative."},
+  {pal:"indigoperi", terr:"Weave",      name:"The Bound Strata",  mark:"weaveStrata", why:"Stacked threads bound at the spine — many operational lines held as one cloth. Reads as a <b>woven block</b> with mass, never a textile illustration."},
+  {pal:"navyorange", terr:"Lens",       name:"The Element",       mark:"lensSolid",   why:"A single ground lens — the optical element itself as a solid, weighted form. No eye, no frame: just the piece of glass that bends everything toward focus."},
+  {pal:"navyorange", terr:"Lens",       name:"The Cut",           mark:"lensVoid",    why:"A solid object with a lens carved clean through it and a focal point at center — clarity as the void that orders the mass around it."},
+  {pal:"charcopper", terr:"Keystone",   name:"The Voussoir",      mark:"keyArch",     why:"Three blocks of a flat arch with the keystone seated at the apex — the one wedge that lets the others hold. Built as masonry, not a building icon."},
+  {pal:"charcopper", terr:"Keystone",   name:"The Missing Wedge", mark:"keyVoid",     why:"The keystone as negative space — the critical piece cut from the block, the structure defined by the part only Yukti supplies. Reduces to a single confident void."},
+  {pal:"graphcobalt",terr:"Pulley",     name:"The Sheave",        mark:"sheave",      why:"A grooved sheave with a true axle bore — the wheel that turns a small pull into a large lift. Industrial mass, machined, not a mechanical sketch."},
+  {pal:"graphcobalt",terr:"Pulley",     name:"The Ratio",         mark:"ratio",       why:"Two bored wheels, large and small, set in mesh — leverage as a <b>ratio</b> you can read in the silhouette. Small effort, outsized outcome, drawn as proportion."},
+  {pal:"forestlime", terr:"Compass",    name:"The Bearing",       mark:"bearing",     why:"A solid disc with one bearing notched to its center — orientation fixed as a single confident cut. No needle, no pin: the decision is the geometry."},
+  {pal:"forestlime", terr:"Compass",    name:"The Rose",          mark:"cardinal",    why:"A bearing rose reduced to one diamond void and a held center — confident orientation under uncertainty, carved into a tile that survives at favicon size."},
+  {pal:"indigoperi", terr:"Confluence", name:"The Operating Layer",mark:"strataMerge",why:"Three lines bending into one heavier record — orders, stock and cash resolving into a single operating layer. Coordination as accumulation, not a river."},
+  {pal:"indigoperi", terr:"Confluence", name:"The Nest",          mark:"nest",        why:"Concentric frames collapsing inward to one solid core — many systems folded into a single source of truth. Reads as one object made of many."},
+  {pal:"navyorange", terr:"Catalyst",   name:"The Active Node",   mark:"frameNode",   why:"An open frame charged at one corner — the catalyst that activates the structure from the edge, leaving the center clear. Enables change without becoming the subject."},
+  {pal:"navyorange", terr:"Catalyst",   name:"The Initiator",     mark:"seedArc",     why:"A heavy ring opened at one point, with a small node seated in the gap — the element that starts the reaction and steps back. Acceleration, never an explosion."},
+  {pal:"graphcobalt",terr:"Signal",     name:"The Held Signal",   mark:"signalKeep",  why:"A field punched with noise, one cell kept solid at center — the signal preserved while everything around it is cut away. Order found, drawn as the part that stays."},
+  {pal:"graphcobalt",terr:"Signal",     name:"The Alignment",     mark:"signalLock",  why:"Scattered marks resolve around one clean vertical bar — the moment the signal locks into line. Clarity within operational noise, no waveforms or antennas."},
+  {pal:"forestlime", terr:"Orbit",      name:"The Core & Ring",   mark:"orbitCore",   why:"A stable core inside a true orbit, with one node riding the ring — many activities coordinated around a center that holds. Mass at the middle, not a planet."},
+  {pal:"forestlime", terr:"Orbit",      name:"The Single Path",   mark:"orbitArc",    why:"One core, one arc, one node — coordination stripped to its irreducible object. The orbit drawn as a carved ring, complete and recognizable at any size."}
+];
+
+const svg=(s,inner)=>`<svg width="${s}" height="${s}" viewBox="0 0 32 32" fill="none">${inner}</svg>`;
+
+/* legend */
+document.getElementById("legend").innerHTML = Object.values(P).map(p=>
+  `<div class="lg"><span class="dots"><i style="background:${p.eHex}"></i><i style="background:${p.iHex}"></i></span><b>${p.lab}</b></div>`
+).join("");
+
+/* cards */
+document.getElementById("grid").innerHTML = T.map((t,i)=>{
+  const p=P[t.pal], mk=M[t.mark];
+  const lightTxt="#1b1e24", darkTxt=p.bgD==="#16181C"||p.bgD==="#0E2344"||p.bgD==="#0F2A20"||p.bgD==="#1B1842"||p.bgD==="#1B1E24"||p.bgD==="#231F1A"?"#F2F3F5":"#F2F3F5";
+  return `<div class="card" data-screen-label="${String(i+1).padStart(2,'0')} ${t.name}">
+    <h2><span class="tno">${String(i+1).padStart(2,'0')}</span>${t.name}<span class="tag">${t.terr}</span></h2>
+    <div class="chips">
+      <div class="chip" style="background:${p.bgL};">${svg(46,mk(p.aL))}<span class="word" style="color:${lightTxt};">yukti</span></div>
+      <div class="chip" style="background:${p.bgD}; border-color:${p.bgD};">${svg(46,mk(p.aD))}<span class="word" style="color:${darkTxt};">yukti</span></div>
+    </div>
+    <div class="red">
+      <span class="rlab">1-color</span><span class="rgroup">${svg(28,mk(p.mono))}</span>
+      <span class="rlab">favicon</span><span class="rgroup">${svg(16,mk(p.mono))}</span>
+      <span class="rlab" style="margin-left:auto;">${p.lab}</span>
+    </div>
+    <div class="meta">
+      <span class="sw"><i style="background:${p.eHex};"></i><span><b>${p.eName}</b><small>Energy · ${p.eHex}</small></span></span>
+      <span class="sw"><i style="background:${p.iHex};"></i><span><b>${p.iName}</b><small>${t.pal==='charcopper'||t.pal==='graphcobalt'||t.pal==='mono'?'Ink':'Pair'} · ${p.iHex}</small></span></span>
+    </div>
+    <p class="why">${t.why}</p>
+  </div>`;
+}).join("");
+</script>
+</body>
+</html>
