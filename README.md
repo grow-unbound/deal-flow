@@ -125,20 +125,6 @@ npm run type-check # TypeScript check
 - **[src/constants/index.ts](./src/constants/index.ts)** — Roles, feature flags, enums
 - **[src/lib/zod.ts](./src/lib/zod.ts)** — Shared Zod validation schemas
 
-## First Customer: WineYard
-
-WineYard (CCTV products distributor) is our pilot customer. They're on Zoho, so the Zoho integration is the conversion wedge. Pilot the `df_zoho_integration` flag on WineYard's tenant → convert to ₹50-75K/mo Scale-tier.
-
-## Next Steps (Week 1)
-
-- [ ] Set up Supabase project
-- [ ] Create database schemas from migrations/001_init_schemas.sql
-- [ ] Configure auth with tenant JWT claims
-- [ ] Implement tenant subdomain routing
-- [ ] Set up PostHog feature flags
-- [ ] Create Zod schema generators
-- [ ] First PR: auth + tenant routing
-
 ---
 
 For full architecture & workflow rules, see [CLAUDE.md](./CLAUDE.md).

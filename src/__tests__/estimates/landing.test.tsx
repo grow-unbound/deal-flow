@@ -12,6 +12,7 @@ function render(ui: ReactElement) {
 const pushMock = vi.fn();
 const useTenantEstimatesMock = vi.fn();
 const useTenantEstimatesInfiniteMock = vi.fn();
+const useTenantEstimatesMetricsMock = vi.fn();
 const useFlagMock = vi.fn();
 const useCreateFlagsMock = vi.fn();
 
@@ -25,6 +26,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useEstimates', () => ({
   useTenantEstimates: () => useTenantEstimatesMock(),
   useTenantEstimatesInfinite: (...args: unknown[]) => useTenantEstimatesInfiniteMock(...args),
+  useTenantEstimatesMetrics: (...args: unknown[]) => useTenantEstimatesMetricsMock(...args),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -168,6 +170,27 @@ function mockEstimatesData() {
   };
 }
 
+function mockEstimatesMetrics() {
+  return {
+    page_key: 'estimates',
+    period: {
+      period_key: 'this_month',
+      grain: 'month',
+      period_start: '2026-06-01',
+      period_end_exclusive: '2026-07-01',
+      label: 'This Month',
+    },
+    computed_at: '2026-06-10T10:00:00.000Z',
+    source_watermark: null,
+    cards: [
+      { id: 'estimate_value_created', label: 'Estimate value created', value: 3500, document_count: 3, supporting_text: '3 estimates', filter_preset: { date_period: 'this_month' } },
+      { id: 'open_estimates', label: 'Open estimates', value: 1000, document_count: 1, supporting_text: '1 open estimate', filter_preset: { status: 'open' } },
+      { id: 'awaiting_action_3d', label: 'Awaiting action 3+ days', value: 0, document_count: 0, supporting_text: '0 sent estimates', filter_preset: { status: 'sent', age_gte_days: 3 } },
+      { id: 'expiring_7d', label: 'Expiring in 7 days', value: 0, document_count: 0, supporting_text: '0 unresolved estimates', filter_preset: { expiry_lte_days: 7 } },
+    ],
+  };
+}
+
 describe('estimates landing page', () => {
   beforeEach(() => {
     try {
@@ -181,6 +204,7 @@ describe('estimates landing page', () => {
     pushMock.mockReset();
     useTenantEstimatesMock.mockReset();
     useTenantEstimatesInfiniteMock.mockReset();
+    useTenantEstimatesMetricsMock.mockReset();
     useFlagMock.mockReset();
     useCreateFlagsMock.mockReset();
     useFlagMock.mockReturnValue(true);
@@ -193,6 +217,11 @@ describe('estimates landing page', () => {
       isLoading: false,
       isError: false,
       data: mockEstimatesData(),
+    });
+    useTenantEstimatesMetricsMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: mockEstimatesMetrics(),
     });
     useTenantEstimatesInfiniteMock.mockReturnValue({
       data: { pages: [mockEstimatesData()] },
@@ -219,8 +248,8 @@ describe('estimates landing page', () => {
     expect(screen.queryByText('Showing')).not.toBeInTheDocument();
     // KPI tiles are clickable (selecting one drives the split-pane header title),
     // so each renders with role="button" rather than the plain article role.
-    const gmvTile = screen.getByRole('button', { name: /Estimate value · 90D/ });
-    expect(gmvTile).toHaveTextContent('3 estimates in trailing 90 days');
+    const gmvTile = screen.getByRole('button', { name: /Estimate value created/ });
+    expect(gmvTile).toHaveTextContent('3 estimates');
     expect(screen.getByRole('button', { name: /Open estimates/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Awaiting action 3\+ days/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Expiring in 7 days/ })).toBeInTheDocument();
@@ -248,7 +277,7 @@ describe('estimates landing page', () => {
 
   it('navigates to estimate detail on row click', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    const mono = screen.getAllByText('EST-1').find((el) => el.classList.contains('font-mono'));
+    const mono = screen.getAllByText('EST-1').find((el) => el.classList.contains('font-medium') && Boolean(el.closest('tr')));
     expect(mono).toBeTruthy();
     fireEvent.click(mono!.closest('tr')!);
     expect(pushMock).toHaveBeenCalledWith('/estimates/e1');

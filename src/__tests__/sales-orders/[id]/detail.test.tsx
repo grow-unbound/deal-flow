@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
@@ -59,6 +59,7 @@ vi.mock('@/hooks/useBusinessPolicy', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
+    currentTenantId: 'tenant-1',
     user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
   }),
 }));
@@ -70,6 +71,10 @@ import { SalesOrderDetailClient } from '@/components/seller/sales-orders/detail/
 function renderWithQueryClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+function openMoreActions() {
+  fireEvent.click(screen.getByRole('button', { name: /More actions/i }));
 }
 
 const TP = '11111111-1111-4111-8111-111111111111';
@@ -214,7 +219,8 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     });
     const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(container.querySelector('.doc-status-chip')).toHaveTextContent(/Confirmed/i);
-    expect(screen.getByRole('button', { name: /Dispatch/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/Dispatch/i)).toBeInTheDocument();
   });
 
   it('dispatched: title shows Dispatched chip and Mark delivered', () => {
@@ -242,6 +248,41 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     expect(bad?.length ?? 0).toBe(0);
   });
 
+  it('renders refreshed readonly customer strip, subtitle, and stock warning', () => {
+    useSalesOrderDetailMock.mockReturnValue({
+      data: baseDetail({
+        buyer_context: {
+          ...baseBuyerContext(),
+          active_pricelist: { id: 'pl-1', name: 'Retail Platinum' },
+        },
+        lines: [baseLine({ qty: 3, on_hand: 0 })],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
+    const frame = container.querySelector('.doc-readonly');
+    expect(frame).toBeTruthy();
+    const readonly = within(frame as HTMLElement);
+
+    expect(readonly.getByText(/Branch: Mumbai HQ/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Bill to/i)).not.toBeInTheDocument();
+    expect(readonly.getByText(/Place of supply/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Karnataka/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Notes/i)).not.toBeInTheDocument();
+    expect(readonly.queryByText(/Freight charges/i)).not.toBeInTheDocument();
+    expect(readonly.getByText('29AAAAA0000A1Z5')).toBeInTheDocument();
+    expect(readonly.getByText(/15 days/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Retail Platinum/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Credit headroom/i)).toBeInTheDocument();
+    expect(readonly.getByText(/₹0 utilized of ₹5,00,000 limit/i)).toBeInTheDocument();
+    expect(readonly.getByText(/1 item\. 3 units/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Edit to make changes/i)).not.toBeInTheDocument();
+    expect(readonly.getByText(/Out of stock/i)).toBeInTheDocument();
+    expect(frame?.querySelector('.doc-line-stock-danger')).toBeTruthy();
+  });
+
   it('confirmed shows Dispatch; assistant does not see Cancel', () => {
     useSalesOrderDetailMock.mockReturnValue({
       data: baseDetail({
@@ -254,8 +295,9 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    expect(screen.getByRole('button', { name: /Dispatch/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Cancel order/i })).not.toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/Dispatch/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Cancel order/i)).not.toBeInTheDocument();
   });
 
   it('admin confirmed shows Cancel order', () => {
@@ -270,7 +312,8 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    expect(screen.getByRole('button', { name: /Cancel order/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/Cancel order/i)).toBeInTheDocument();
   });
 
   it('dispatched shows Mark delivered and hides Cancel', () => {
@@ -282,7 +325,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     });
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(screen.getByRole('button', { name: /Mark delivered/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Cancel order/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cancel order/i)).not.toBeInTheDocument();
   });
 
   it('has_backorder callout on confirmed', () => {
@@ -308,7 +351,8 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /Dispatch/i }));
+    openMoreActions();
+    fireEvent.click(screen.getByText(/Dispatch/i));
     expect(screen.getByText(/Confirm dispatch/i)).toBeInTheDocument();
   });
 
@@ -328,7 +372,8 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
 
   it('Edit prefetches composer then navigates', () => {
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /edit order/i }));
+    openMoreActions();
+    fireEvent.click(screen.getByText(/edit order/i));
     expect(prefetchSalesOrderComposerMock).toHaveBeenCalledWith(expect.anything(), 'ord-1');
     expect(pushMock).toHaveBeenCalledWith('/sales-orders/ord-1/edit');
   });

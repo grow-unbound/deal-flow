@@ -6,7 +6,7 @@ import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
-import type { CategoriesLandingResponse } from '@/hooks/useCategories';
+import type { CategoriesLandingMetricsV4 } from '@/hooks/useCategories';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,19 +23,22 @@ export default async function CategoriesLayout({ children }: { children: ReactNo
     <EntitySplitShell
       basePath="/categories"
       listSlot={
-        <SellerBootstrapBoundary<CategoriesLandingResponse>
-          path="/api/tenant/categories/landing?period=last90&limit=50"
+        <SellerBootstrapBoundary<CategoriesLandingMetricsV4>
+          path="/api/tenant/categories/metrics"
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/categories"
               ariaLabel="Loading categories"
               showLeading
+              eyebrowWidth="w-20"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<CategoriesLandingSkeleton />}
             />
           }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
-            return <CategoriesLandingClient initialData={initialData} initialPeriod="last90" />;
+            return <CategoriesLandingClient initialMetrics={initialData} />;
           }}
         />
       }

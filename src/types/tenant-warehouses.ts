@@ -87,6 +87,32 @@ export interface WarehousesLandingKpis {
   location_count: number;
 }
 
+export interface WarehousesLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface WarehousesLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: WarehousesLandingKpiCardV4[];
+}
+
 export interface WarehousesLandingRow {
   id: string;
   name: string;
@@ -104,6 +130,9 @@ export interface WarehousesLandingRow {
   stock_status: WarehouseStockStatus;
   last_updated: string;
   associated_users_count: number;
+  sold_sku_count: number;
+  sold_units: number;
+  invoice_value: number;
 }
 
 export interface WarehousesLandingCalloutRow {
@@ -116,8 +145,8 @@ export interface WarehousesLandingCalloutRow {
 }
 
 export interface WarehousesLandingResponse {
-  kpis: WarehousesLandingKpis;
-  callouts: {
+  kpis?: WarehousesLandingKpis;
+  callouts?: {
     stock_attention: WarehousesLandingCalloutRow[];
     idle_stock: WarehousesLandingCalloutRow[];
     recently_replenished: WarehousesLandingCalloutRow[];
@@ -125,12 +154,15 @@ export interface WarehousesLandingResponse {
   warehouses: WarehousesLandingRow[];
   total: number;
   limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
-  period: string;
+  nextCursor?: string | null;
+  period?: string;
+  period_key?: string;
+  grain?: 'quarter';
+  sort?: string;
   refreshed_at: string;
   as_of?: string;
   commercial_horizon_days?: number | null;
+  filters?: import('@/lib/landing-filter-params').LandingFilterMeta;
 }
 
 export interface WarehouseDetailInventoryItem {

@@ -1,18 +1,18 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
+import { hasLoggedInOnDevice, markLoggedInOnDevice } from '@/lib/auth-device-login';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import {
   AUTH_LOGIN_COPY,
   buildInformSellerMessage,
   buildRequestAccessMessage,
   buildWhatsAppChatUrl,
-  buildWhatsAppShareUrl,
+  openWhatsAppShare,
 } from '@/constants/auth-login-copy';
 
 type LoginView = 'otp' | 'email';
@@ -75,6 +75,12 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
+  // null until client read — avoids hydration mismatch; returning users never flash subtitle
+  const [showWelcomeSubtitle, setShowWelcomeSubtitle] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setShowWelcomeSubtitle(!hasLoggedInOnDevice());
+  }, []);
 
   async function handlePhoneSubmit(phoneNumber: string) {
     setPhoneError('');
@@ -214,6 +220,7 @@ function LoginForm() {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
       });
+      markLoggedInOnDevice();
 
       posthog?.identify(data.user?.id ?? identifier, { email: data.user?.email ?? identifier });
 
@@ -257,19 +264,8 @@ function LoginForm() {
 
   async function handleInformSeller() {
     const signupLink = new URL('/signup', window.location.origin).toString();
-    const message = buildInformSellerMessage({
-      sellerName:
-        resolution && resolution.kind === 'blocked'
-          ? resolution.sellerName
-          : 'your seller',
-      signupLink,
-      buyerName:
-        resolution && resolution.kind === 'blocked'
-          ? resolution.buyerName
-          : null,
-    });
-
-    window.open(buildWhatsAppShareUrl(message), '_blank', 'noopener,noreferrer');
+    const message = buildInformSellerMessage({ signupLink });
+    openWhatsAppShare(message);
   }
 
   const inputCls =
@@ -292,9 +288,20 @@ function LoginForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
-      </div>
+      <h1
+        className={
+          showWelcomeSubtitle
+            ? 'font-display text-h2 text-cream-900 mb-1'
+            : 'font-display text-h2 text-cream-900 mb-6'
+        }
+      >
+        {AUTH_LOGIN_COPY.login.welcomeTitle}
+      </h1>
+      {showWelcomeSubtitle ? (
+        <p className="text-body-sm text-cream-600 mb-6">
+          {AUTH_LOGIN_COPY.login.welcomeSubtitle}
+        </p>
+      ) : null}
 
       {accountVerified && (
         <div className="mb-4 rounded-md bg-teal-50 border border-teal-200 px-4 py-3">
@@ -478,12 +485,12 @@ function LoginForm() {
       )}
 
       <div className="mt-4 text-right">
-        <p className="text-caption text-cream-600">
-          New here?{' '}
-          <Link href="/signup" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
-            {AUTH_LOGIN_COPY.login.createSellerAccount}
-          </Link>
-        </p>
+        <Link
+          href="/signup"
+          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+        >
+          {AUTH_LOGIN_COPY.login.createSellerAccount}
+        </Link>
       </div>
     </div>
   );
@@ -492,13 +499,13 @@ function LoginForm() {
 function LoginFallback() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="mb-7 flex justify-center">
-        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
+      <div className="mb-6 space-y-2">
+        <div className="h-8 w-48 rounded bg-cream-200 animate-pulse" />
+        <div className="h-4 w-full max-w-sm rounded bg-cream-200 animate-pulse" />
+        <div className="h-4 w-3/4 rounded bg-cream-200 animate-pulse" />
       </div>
-      <div className="space-y-3">
-        <div className="h-4 w-56 rounded bg-cream-200 animate-pulse" />
-      </div>
-      <div className="mt-6 space-y-4">
+      <div className="mb-4 h-4 w-64 rounded bg-cream-200 animate-pulse" />
+      <div className="space-y-4">
         <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
         <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
       </div>

@@ -21,7 +21,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
@@ -38,6 +38,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import type { CustomersLandingKpiCardV4 } from '@/lib/customers-landing-v4-types';
 import {
   buildCustomersFilterPreset,
@@ -178,21 +179,6 @@ function CustomerNameCell({
     <div className="ent flex items-center gap-3">
       <CustomerBuyerAppAvatar name={name} enabled={buyerAppEnabled} size={38} />
       {nameBlock}
-    </div>
-  );
-}
-
-function CustomersDataSkeleton({ columns = 12 }: { columns?: number }) {
-  const tableMinWidth = 900 + Math.max(0, columns - 4) * 110;
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
-      <Skeleton className="h-14 rounded-[14px]" />
-      <LandingTableRowsSkeleton columns={columns} tableMinWidth={tableMinWidth} />
     </div>
   );
 }
@@ -342,6 +328,14 @@ function CustomersLandingContent({
 
   const showRefreshingState = metricsQuery.isLoading && !metricsData && isLoading && !data;
   const headerCard = selectedCard ?? cards[0] ?? null;
+
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading customers" />
+    ) : (
+      <CustomersLandingSkeleton />
+    );
+  }
 
   function applyChips(
     nextChips: CustomersLandingFilterChips,
@@ -519,13 +513,7 @@ function CustomersLandingContent({
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showRefreshingState ? (
-          isPaneOpen ? (
-            <SplitPaneListRowsSkeleton isPaneOpen />
-          ) : (
-            <CustomersDataSkeleton columns={tableColumnCount} />
-          )
-        ) : isError || metricsQuery.isError ? (
+        {isError || metricsQuery.isError ? (
           <ErrorState
             heading="Couldn't load customers"
             description="There was a problem fetching your customers. Please try again."

@@ -5,7 +5,7 @@ import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoading
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { TenantBrandsResponse } from '@/hooks/useBrands';
+import type { BrandsLandingMetricsV4 } from '@/hooks/useBrands';
 import { FLAGS, getFlag } from '@/lib/flags';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
@@ -23,19 +23,22 @@ export default async function BrandsLayout({ children }: { children: ReactNode }
     <EntitySplitShell
       basePath="/brands"
       listSlot={
-        <SellerBootstrapBoundary<TenantBrandsResponse>
-          path="/api/tenant/brands?period=last90&limit=50"
+        <SellerBootstrapBoundary<BrandsLandingMetricsV4>
+          path="/api/tenant/brands/metrics"
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/brands"
               ariaLabel="Loading brands"
               showLeading
+              eyebrowWidth="w-16"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<BrandsLandingSkeleton />}
             />
           }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
-            return <BrandsLandingClient initialData={initialData} initialPeriod="last90" />;
+            return <BrandsLandingClient initialMetrics={initialData} />;
           }}
         />
       }

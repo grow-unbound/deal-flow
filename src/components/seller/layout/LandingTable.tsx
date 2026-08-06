@@ -90,7 +90,7 @@ export function LandingTable({
           vertically, instead of the page's real scrolling ancestor. */}
       <div
         className={cn(
-          'h-full min-h-0 w-full rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          'h-full max-h-[calc(100dvh-var(--topbar-h)-18rem)] min-h-0 w-full rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
           horizontalScrollOnly ? 'overflow-x-auto overflow-y-visible' : 'overflow-auto',
           mobileRows && 'hidden md:block',
           className,

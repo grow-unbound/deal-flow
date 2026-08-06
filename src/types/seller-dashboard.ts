@@ -87,6 +87,32 @@ export interface SellerDashboardMetric {
   href?: string;
 }
 
+export interface SellerDashboardKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface SellerDashboardMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: SellerDashboardKpiCardV4[];
+}
+
 export interface SellerDashboardCalloutRow {
   id: string;
   initials: string;

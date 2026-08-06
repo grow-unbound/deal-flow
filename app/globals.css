@@ -881,6 +881,16 @@
     text-decoration: line-through;
   }
 
+  .doc-line-stock-warning {
+    background: var(--amber-50);
+    box-shadow: inset 3px 0 0 var(--amber-500);
+  }
+
+  .doc-line-stock-danger {
+    background: var(--danger-50);
+    box-shadow: inset 3px 0 0 var(--danger-500);
+  }
+
   .doc-trail {
     display: flex;
     flex-wrap: wrap;

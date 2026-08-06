@@ -54,6 +54,9 @@ export interface CatalogLandingRow {
   estimate_count: number;
   conversions: number;
   demand_customers?: number;
+  invoice_value?: number;
+  invoice_count?: number;
+  revenue_buyer_count?: number;
   views: number;
   view_pct: number;
   conversion_pct: number;
@@ -68,8 +71,7 @@ export interface CatalogLandingRow {
 export interface CatalogsLandingResponse {
   total?: number;
   limit?: number;
-  offset?: number;
-  nextOffset?: number | null;
+  nextCursor?: string | null;
   period?: SellerLandingPeriodMeta;
   channels?: {
     orders_enabled: boolean;
@@ -96,6 +98,32 @@ export interface CatalogsLandingResponse {
     top_risers: CatalogLandingRow[];
   };
   catalogs: CatalogLandingRow[];
+}
+
+export interface CatalogsLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface CatalogsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: CatalogsLandingKpiCardV4[];
 }
 
 export interface CatalogDetailResponse {
@@ -435,6 +463,8 @@ export interface CatalogShareLinkResponse {
 export interface CatalogsLandingFilters {
   search?: string;
   status?: string[];
+  conversion?: string[];
+  filter_preset?: Record<string, unknown> | null;
 }
 
 export function useTenantCatalogs(
@@ -442,24 +472,30 @@ export function useTenantCatalogs(
   filters: CatalogsLandingFilters = {},
   initialData?: CatalogsLandingResponse | null,
 ) {
-  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length);
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
+  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.conversion?.length || presetKey);
   const baseSummary = getSellerLandingInitialData(period, initialData);
   const initial = !hasFilters
     ? baseSummary
     : undefined;
   const query = useInfiniteQuery({
     queryKey: ['tenant-catalogs', period, filters],
-    initialPageParam: 0,
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }): Promise<CatalogsLandingResponse> => {
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ period, limit: '50', include_summary: String(!pageParam && !hasFilters) });
+      if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'conversion', filters.conversion);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/catalogs?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
-    initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialData: initial ? { pages: [initial], pageParams: [undefined] } : undefined,
     initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: keepPreviousData,
     staleTime: REFERENCE_QUERY_STALE_TIME,
@@ -467,6 +503,21 @@ export function useTenantCatalogs(
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'catalogs');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
+}
+
+export function useTenantCatalogsMetrics(initialData?: CatalogsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-catalogs-metrics'],
+    queryFn: async (): Promise<CatalogsLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/catalogs/metrics');
+      if (!res.ok) throw new Error('Failed to fetch campaign metrics');
+      return res.json();
+    },
+    initialData: initialData ?? undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useTenantCatalogDetail(id: string, options?: { includePerformance?: boolean }) {

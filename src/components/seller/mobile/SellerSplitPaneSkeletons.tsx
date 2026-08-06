@@ -2,6 +2,7 @@
 
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { StickyListHeader } from '@/components/seller/layout/StickyListHeader';
+import { SellerPageHeaderSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import type { SellerSplitListVariant } from '@/lib/seller-split-list-ui';
 import { cn } from '@/lib/utils';
 
@@ -11,16 +12,23 @@ function PulseLine({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-full bg-cream-200', className)} />;
 }
 
-export function SellerSplitPaneHeaderSkeleton() {
+export function SellerSplitPaneHeaderSkeleton({
+  eyebrowWidth,
+  titleWidth,
+  subtitleWidth,
+}: {
+  eyebrowWidth?: string;
+  titleWidth?: string;
+  subtitleWidth?: string;
+}) {
   return (
-    <header className="mb-3 flex items-end justify-between gap-4 md:mb-4 md:gap-6">
-      <div className="min-w-0 flex-1 space-y-2">
-        <PulseLine className="h-3 w-16" />
-        <PulseLine className="h-6 w-32 md:h-7 md:w-36" />
-        <PulseLine className="h-4 w-40 md:w-48" />
-      </div>
-      <PulseLine className="hidden h-9 w-9 shrink-0 rounded-lg md:block" />
-    </header>
+    <SellerPageHeaderSkeleton
+      eyebrowWidth={eyebrowWidth ?? 'w-20'}
+      titleWidth={titleWidth ?? 'w-36'}
+      subtitleWidth={subtitleWidth ?? 'w-48'}
+      actionWidths={['w-9']}
+      compact
+    />
   );
 }
 
@@ -56,17 +64,23 @@ export function SellerSplitPaneLandingSkeleton({
   showTransactionTabs = false,
   variant = 'entity',
   showLeading = false,
+  eyebrowWidth,
+  titleWidth,
+  subtitleWidth,
 }: {
   ariaLabel: string;
   showTransactionTabs?: boolean;
   variant?: SellerSplitListVariant;
   showLeading?: boolean;
+  eyebrowWidth?: string;
+  titleWidth?: string;
+  subtitleWidth?: string;
 }) {
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <div role="status" aria-label={ariaLabel}>
       <StickyListHeader>
-        <SellerSplitPaneHeaderSkeleton />
+        <SellerSplitPaneHeaderSkeleton eyebrowWidth={eyebrowWidth} titleWidth={titleWidth} subtitleWidth={subtitleWidth} />
         {showTransactionTabs ? <SellerSplitPaneTransactionTabsSkeleton /> : null}
         <SellerSplitPaneFilterSkeleton />
       </StickyListHeader>

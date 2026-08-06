@@ -55,10 +55,13 @@ supabase/.temp/*
 
 # Agents OpenAI
 .agents/
+.claire/
 
 #Codegraph
 .codegraph/
 skills-lock.json
 
-#Media files
+#Sensitive files
 media/
+specs/
+CLAUDE_OUTPUTS/

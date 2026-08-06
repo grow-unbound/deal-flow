@@ -20,6 +20,7 @@ type QueryResult = {
 const dbResponses: Record<string, QueryResult[]> = {};
 const rpcCalls: Array<[string, Record<string, unknown>]> = [];
 const tableCalls: string[] = [];
+const queriesByKey: Record<string, Array<ReturnType<typeof createQuery>>> = {};
 
 function nextResult(key: string): QueryResult {
   const queue = dbResponses[key] ?? [];
@@ -32,13 +33,11 @@ function createQuery(key: string) {
     eq: vi.fn(),
     is: vi.fn(),
     in: vi.fn(),
+    ilike: vi.fn(),
     or: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
-    neq: vi.fn(),
-    not: vi.fn(),
-    gte: vi.fn(),
-    lt: vi.fn(),
+    gt: vi.fn(),
     maybeSingle: vi.fn(),
     then: (onFulfilled: (value: { data: unknown; error: unknown }) => unknown) => {
       const result = nextResult(key);
@@ -49,14 +48,14 @@ function createQuery(key: string) {
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
+  query.ilike.mockReturnValue(query);
   query.or.mockReturnValue(query);
   query.order.mockReturnValue(query);
   query.limit.mockReturnValue(query);
-  query.neq.mockReturnValue(query);
-  query.not.mockReturnValue(query);
-  query.gte.mockReturnValue(query);
-  query.lt.mockReturnValue(query);
+  query.gt.mockReturnValue(query);
   query.maybeSingle.mockReturnValue(query);
+  queriesByKey[key] ??= [];
+  queriesByKey[key].push(query);
   return query;
 }
 
@@ -86,6 +85,7 @@ describe('brands landing api', () => {
     rpcCalls.length = 0;
     tableCalls.length = 0;
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
+    for (const key of Object.keys(queriesByKey)) delete queriesByKey[key];
 
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
@@ -95,92 +95,83 @@ describe('brands landing api', () => {
     });
     getFlagMock.mockResolvedValue(true);
 
-    dbResponses['app.rpc.search_seller_brand_landing_page'] = [{ data: [{ id: 'brand-1', total_count: 1 }] }];
-    dbResponses['app.rpc.get_seller_brand_landing_rows'] = [{
+    dbResponses['app.metrics_brand_period_summary'] = [
+      {
+        data: [
+          {
+            tenant_brand_id: 'brand-1',
+            invoice_count: 9,
+            invoice_value: 100000,
+            invoice_product_count: 4,
+            invoice_buyer_count: 7,
+          },
+        ],
+      },
+      { data: [{ invoice_value: 100000 }] },
+    ];
+    dbResponses['app.tenant_brands'] = [{
       data: [{
         id: 'brand-1',
-        row_data: {
-          id: 'brand-1',
-          tenant_id: 'tenant-1',
-          master_brand_id: null,
-          display_name_override: 'Alpha',
-          slug: null,
-          description: null,
-          logo_url: null,
-          margin_pct: null,
-          exclusivity: false,
-          is_active: true,
-          external_ref: null,
-          principal_name: null,
-          principal_email: null,
-          principal_phone: null,
-          principal_location: null,
-          contact_name: null,
-          contact_email: null,
-          contact_phone: null,
-          default_cohort_id: 'cohort-1',
-          created_at: '2026-06-01T00:00:00Z',
-          updated_at: '2026-06-01T00:00:00Z',
-          master_brand: null,
-          gmv_mtd: 100,
-          gmv_prev_mtd: 80,
-          growth_pct: 25,
-          portfolio_share_pct: 100,
-          sku_count: 2,
-          active_buyers_mtd: 1,
-          total_buyers: 1,
-          catalog_days_ago: null,
-          categories: ['Audio'],
-          catalog_name: null,
-          alerts: ['not_in_catalog_mtd'],
-        },
+        tenant_id: 'tenant-1',
+        master_brand_id: 'master-1',
+        display_name_override: 'Alpha',
+        slug: null,
+        description: null,
+        logo_url: null,
+        margin_pct: null,
+        exclusivity: false,
+        is_active: true,
+        external_ref: null,
+        principal_name: null,
+        principal_email: null,
+        principal_phone: null,
+        principal_location: null,
+        contact_name: null,
+        contact_email: null,
+        contact_phone: null,
+        default_cohort_id: null,
+        created_at: '2026-06-01T00:00:00Z',
+        updated_at: '2026-06-01T00:00:00Z',
       }],
     }];
-    dbResponses['app.rpc.get_seller_brand_landing_summary'] = [{
-      data: {
-        kpis: {
-          portfolio_gmv_mtd: 100,
-          portfolio_gmv_prev_mtd: 80,
-          brands_carried: 1,
-          buyers_with_orders_mtd: 1,
-          total_buyers: 2,
-          need_attention_count: 1,
-          catalog_freshness_count: 0,
-          total_campaigns: 0,
-          catalog_freshness_earliest_days: null,
-        },
-        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
-        categories: ['Audio', 'Uncategorized'],
-        cohorts: [{ id: 'cohort-1', name: 'Tier A' }],
-      },
-    }];
+    dbResponses['catalog.brands'] = [{ data: [{ id: 'master-1', name: 'Alpha Master', slug: 'alpha', logo_url: null, description: null }] }];
+    dbResponses['app.tenant_products'] = [{ data: [{ tenant_brand_id: 'brand-1' }, { tenant_brand_id: 'brand-1' }] }];
   });
 
-  it('returns active cohort options without requiring an is_active column', async () => {
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?period=month'));
+  it('reads V4 brand period summaries for rows', async () => {
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?limit=25'));
 
     expect(response.status).toBe(200);
     const body = await response.json();
 
-    expect(body.cohorts).toEqual([{ id: 'cohort-1', name: 'Tier A' }]);
-    expect(body.categories).toEqual(['Audio', 'Uncategorized']);
     expect(body.brands).toHaveLength(1);
-    expect(body.kpis.total_buyers).toBe(2);
-    expect(body.brands[0].total_buyers).toBe(1);
-    expect(tableCalls).toEqual([]);
+    expect(body.brands[0]).toEqual(expect.objectContaining({
+      id: 'brand-1',
+      gmv_mtd: 100000,
+      sku_count: 2,
+      invoice_count: 9,
+      invoice_product_count: 4,
+      invoice_buyer_count: 7,
+    }));
+    expect(body.period_key).toBe('this_month');
+    expect(body.nextCursor).toBeNull();
+    expect(body.filters.groups[0]).toEqual(expect.objectContaining({ key: 'status', label: 'Status' }));
+    expect(rpcCalls).toEqual([]);
+    expect(tableCalls).toEqual([
+      'app.tenant_brands',
+      'app.tenant_brands',
+      'app.metrics_brand_period_summary',
+      'catalog.brands',
+      'app.tenant_brands',
+      'app.tenant_products',
+      'app.metrics_brand_period_summary',
+      'catalog.brands',
+    ]);
+    expect(queriesByKey['app.metrics_brand_period_summary'][0].eq).toHaveBeenCalledWith('grain', 'month');
+    expect(queriesByKey['app.metrics_brand_period_summary'][0].in).toHaveBeenCalledWith('tenant_brand_id', ['brand-1']);
   });
 
-  it('uses the indexed brand search vector and a bounded SQL resultset', async () => {
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?search=alpha&limit=25'));
-
-    expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_brand_landing_page', expect.objectContaining({
-      p_query: 'alpha',
-      p_limit: 25,
-    })]);
-  });
-
-  it('hydrates assistant first-page brands through the location-scoped page RPC', async () => {
+  it('blocks seller assistants from brands landing', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_assistant',
@@ -188,23 +179,57 @@ describe('brands landing api', () => {
       location_ids: ['location-1'],
     });
 
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?period=month'));
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands'));
 
-    expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['get_seller_brand_landing_rows', expect.objectContaining({
-      p_brand_ids: ['brand-1'],
-      p_location_ids: ['location-1'],
-    })]);
-    expect(rpcCalls).toContainEqual(['get_seller_brand_landing_summary', expect.objectContaining({
-      p_location_ids: ['location-1'],
-    })]);
+    expect(response.status).toBe(403);
     expect(tableCalls).toEqual([]);
   });
 
-  it('skips the summary RPC on subsequent pages', async () => {
-    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?offset=50&include_summary=false'));
+  it('uses raw brand identity search as a bounded prefilter before V4 rows', async () => {
+    dbResponses['app.tenant_brands'] = [
+      { data: [{ id: 'brand-1' }] },
+      { data: [{
+        id: 'brand-1',
+        tenant_id: 'tenant-1',
+        master_brand_id: null,
+        display_name_override: 'Alpha',
+        slug: null,
+        description: null,
+        logo_url: null,
+        margin_pct: null,
+        exclusivity: false,
+        is_active: true,
+        external_ref: null,
+        principal_name: null,
+        principal_email: null,
+        principal_phone: null,
+        principal_location: null,
+        contact_name: null,
+        contact_email: null,
+        contact_phone: null,
+        default_cohort_id: null,
+        created_at: '2026-06-01T00:00:00Z',
+        updated_at: '2026-06-01T00:00:00Z',
+      }],
+    }];
+    dbResponses['catalog.brands'] = [{ data: [] }];
+
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?search=alpha'));
 
     expect(response.status).toBe(200);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_brand_landing_summary')).toBe(false);
+    expect(queriesByKey['app.metrics_brand_period_summary'][0].in).toHaveBeenCalledWith('tenant_brand_id', ['brand-1']);
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it('applies top80 preset with the V4 top80 cache', async () => {
+    dbResponses['app.metrics_tenant_top80_cache'] = [{ data: [{ top80_count: 1 }] }];
+    const preset = encodeURIComponent(JSON.stringify({ sort: 'invoice_value_desc', cutoff: 'top80' }));
+
+    const response = await GET(new NextRequest(`http://localhost:3000/api/tenant/brands?filter_preset=${preset}&limit=25`));
+
+    expect(response.status).toBe(200);
+    expect(queriesByKey['app.metrics_tenant_top80_cache'][0].eq).toHaveBeenCalledWith('entity_kind', 'brands');
+    expect(queriesByKey['app.metrics_brand_period_summary'][0].gt).toHaveBeenCalledWith('invoice_value', 0);
+    expect(queriesByKey['app.metrics_brand_period_summary'][0].limit).toHaveBeenCalledWith(2);
   });
 });

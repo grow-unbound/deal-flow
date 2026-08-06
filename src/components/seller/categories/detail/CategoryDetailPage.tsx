@@ -17,6 +17,7 @@ import { formatNumberValue } from '@/lib/utils';
 import type { TenantCategory } from '@/types/tenant-categories';
 import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
+import { CategoryDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const CategoryPerformanceTab = dynamic(
   () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
@@ -115,6 +116,8 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
     );
   }
+
+  if (isLoading && !data) return <CategoryDetailSkeleton />;
 
   return (
     <div className="px-4 py-4 md:px-6 md:py-4">

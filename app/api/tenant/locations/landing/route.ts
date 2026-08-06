@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 import type {
-  LocationsLandingKpis,
   LocationsLandingResponse,
   LocationsLandingRow,
   LocationStockStatus,
@@ -9,8 +8,7 @@ import type {
 import { getVerifiedClaims } from '@/lib/auth';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
-import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTimer } from '@/lib/server-timing';
@@ -18,71 +16,157 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-interface LocationSeedRow {
+type DbClient = {
+  schema: (name: string) => {
+    from: (table: string) => any;
+  };
+};
+
+type SortKey = 'invoice_value' | 'open_demand_value' | 'overdue_amount';
+
+type CursorPayload = {
+  v: number;
+  i: string;
+  n?: number;
+  e?: number;
+};
+
+type PeriodRow = {
+  location_id: string;
+  invoice_count: number | string | null;
+  invoice_value: number | string | null;
+  invoice_buyer_count: number | string | null;
+  estimate_count: number | string | null;
+  estimate_value: number | string | null;
+  order_count: number | string | null;
+  order_value: number | string | null;
+  primary_demand_kind: 'orders' | 'estimates' | 'none' | string | null;
+  primary_demand_count: number | string | null;
+  primary_demand_value: number | string | null;
+  primary_demand_buyer_count: number | string | null;
+};
+
+type NowRow = {
+  location_id: string;
+  open_estimate_count: number | string | null;
+  open_order_count: number | string | null;
+  overdue_amount: number | string | null;
+};
+
+type LocationIdentity = {
   id: string;
   name: string;
   address: unknown;
   phone_number?: string | null;
   status?: 'active' | 'inactive' | null;
-}
-
-interface LocationRowMetric {
-  location_id: string;
-  sku_count: number | string | null;
-  oos_sku_count: number | string | null;
-  low_stock_sku_count: number | string | null;
-  outstanding_dues: number | string | null;
-  oldest_unpaid_days: number | string | null;
-  gmv_current: number | string | null;
-  active_buyers: number | string | null;
-}
-
-interface LocationSnapshotRow {
-  location_id: string;
-  invoice_count_90d: number | string | null;
-  estimate_count_90d: number | string | null;
-  estimate_value_90d: number | string | null;
-  order_count_90d: number | string | null;
-  order_value_90d: number | string | null;
-  conversion_90d: number | string | null;
-}
-
-interface LocationSearchIdRow {
-  id: string;
-  total_count: number | string | null;
-}
-
-type LocationsSummary = Pick<LocationsLandingResponse, 'kpis' | 'callouts'>;
-
-const EMPTY_KPIS: LocationsLandingKpis = {
-  active_locations: 0,
-  total_locations: 0,
-  unpaid_invoice_count: 0,
-  total_invoice_count: 0,
-  outstanding_dues_total: 0,
-  dues_location_count: 0,
-  overdue_dues_total: 0,
-  overdue_location_count: 0,
-  open_estimate_count: 0,
-  total_estimate_count: 0,
-  conversion_pct: 0,
-  top_location_name: null,
-  top_location_gmv_share_pct: 0,
-  linked_warehouse_count: 0,
-  open_primary_demand_kind: 'none',
-  open_primary_demand_value: 0,
-  invoiced_sales_90d: 0,
-  purchasing_buyers_90d: 0,
 };
 
-const EMPTY_SUMMARY: LocationsSummary = {
-  kpis: EMPTY_KPIS,
-  callouts: {
-    conversions: [],
-    top_locations: [],
-    collections_overdue: [],
-  },
+type LocationStatusFilter = 'active' | 'dormant' | 'inactive';
+type LocationAttentionFilter = 'overdue' | 'open_demand' | 'top80';
+
+const LOCATION_SCAN_LIMIT = 1000;
+const LOCATION_FILTERS = {
+  groups: [
+    {
+      key: 'status',
+      label: 'Status',
+      options: [
+        { value: 'active', label: 'Active' },
+        { value: 'dormant', label: 'Dormant' },
+        { value: 'inactive', label: 'Inactive' },
+      ],
+    },
+    {
+      key: 'attention',
+      label: 'Attention',
+      options: [
+        { value: 'open_demand', label: 'Open demand' },
+        { value: 'overdue', label: 'Overdue' },
+        { value: 'top80', label: 'Top 80%' },
+      ],
+    },
+  ],
 };
+
+const EMPTY_RESPONSE: LocationsLandingResponse = {
+  locations: [],
+  total: null,
+  limit: PAGE_SIZE.SELLER,
+  nextCursor: null,
+  sort: 'invoice_value',
+  period_key: 'this_month',
+  grain: 'month',
+  period_start: '',
+  refreshed_at: '',
+  as_of: '',
+};
+
+function toNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function encodeCursor(payload: CursorPayload): string {
+  return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
+
+function decodeCursor(cursor: string | null): CursorPayload | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as Partial<CursorPayload>;
+    if (typeof parsed.v !== 'number' || typeof parsed.i !== 'string') return null;
+    return {
+      v: parsed.v,
+      i: parsed.i,
+      n: typeof parsed.n === 'number' ? parsed.n : undefined,
+      e: typeof parsed.e === 'number' ? parsed.e : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseSort(value: string | null): SortKey {
+  if (value === 'open_demand_value' || value === 'overdue_amount') return value;
+  return 'invoice_value';
+}
+
+function parseFilterPreset(raw: string | null): Record<string, unknown> | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLocationStatuses(values: string[]): LocationStatusFilter[] {
+  const allowed = new Set<LocationStatusFilter>(['active', 'dormant', 'inactive']);
+  return values.filter((value): value is LocationStatusFilter => allowed.has(value as LocationStatusFilter));
+}
+
+function normalizeLocationAttention(values: string[]): LocationAttentionFilter[] {
+  const allowed = new Set<LocationAttentionFilter>(['overdue', 'open_demand', 'top80']);
+  return values.filter((value): value is LocationAttentionFilter => allowed.has(value as LocationAttentionFilter));
+}
+
+function statusesFromPreset(preset: Record<string, unknown> | null): LocationStatusFilter[] {
+  if (!preset) return [];
+  if (typeof preset.sold_period === 'string') return ['active'];
+  if (typeof preset.not_sold_period === 'string') return ['dormant'];
+  if (preset.sold_previous_period === true && preset.sold_current_period === false) return ['dormant'];
+  return [];
+}
+
+function attentionFromPreset(preset: Record<string, unknown> | null): LocationAttentionFilter[] {
+  if (!preset) return [];
+  if (preset.overdue === true) return ['overdue'];
+  if (preset.open_demand === true) return ['open_demand'];
+  if (preset.cutoff === 'top80') return ['top80'];
+  return [];
+}
 
 function getInitials(name: string): string {
   return name
@@ -108,29 +192,257 @@ function getAddressText(address: unknown): string {
     .join(', ');
 }
 
-function normalizeSummary(value: unknown): LocationsSummary {
-  if (!value || typeof value !== 'object') return EMPTY_SUMMARY;
-  const summary = value as Partial<LocationsSummary>;
+function sortValue(row: PeriodRow, now: NowRow | undefined, sort: SortKey): number {
+  if (sort === 'open_demand_value') {
+    return toNumber(now?.open_order_count);
+  }
+  if (sort === 'overdue_amount') return toNumber(now?.overdue_amount);
+  return toNumber(row.invoice_value);
+}
+
+function compareLocations(left: LocationsLandingRow, right: LocationsLandingRow, sort: SortKey): number {
+  const leftValue = sort === 'overdue_amount'
+    ? left.overdue_amount
+    : sort === 'open_demand_value'
+      ? left.primary_demand_value
+      : left.gmv_mtd;
+  const rightValue = sort === 'overdue_amount'
+    ? right.overdue_amount
+    : sort === 'open_demand_value'
+      ? right.primary_demand_value
+      : right.gmv_mtd;
+  if (leftValue !== rightValue) return rightValue - leftValue;
+  return left.id.localeCompare(right.id);
+}
+
+function applyLocationCursor(rows: LocationsLandingRow[], sort: SortKey, cursor: CursorPayload | null) {
+  if (!cursor) return rows;
+  return rows.filter((row) => {
+    const value = sort === 'overdue_amount'
+      ? row.overdue_amount
+      : sort === 'open_demand_value'
+        ? row.primary_demand_value
+        : row.gmv_mtd;
+    return value < cursor.v || (value === cursor.v && row.id > cursor.i);
+  });
+}
+
+function locationMatchesStatus(row: LocationsLandingRow, statuses: LocationStatusFilter[]): boolean {
+  if (statuses.length === 0) return true;
+  const sold = row.gmv_mtd > 0 || row.invoice_count_90d > 0;
+  return statuses.some((status) => {
+    if (status === 'active') return row.is_active && sold;
+    if (status === 'dormant') return row.is_active && !sold;
+    return !row.is_active;
+  });
+}
+
+function locationMatchesAttention(row: LocationsLandingRow, attention: LocationAttentionFilter[]): boolean {
+  if (attention.length === 0) return true;
+  return attention.some((value) => {
+    if (value === 'overdue') return row.overdue_amount > 0;
+    if (value === 'open_demand') return row.open_demand_count > 0;
+    return row.gmv_mtd > 0;
+  });
+}
+
+function applyKeyset(query: any, sort: SortKey, cursor: CursorPayload | null) {
+  if (!cursor) return query;
+  if (sort === 'invoice_value') {
+    return query.or(`invoice_value.lt.${cursor.v},and(invoice_value.eq.${cursor.v},location_id.gt.${cursor.i})`);
+  }
+  if (sort === 'open_demand_value') {
+    return query.or(
+      `primary_demand_value.lt.${cursor.v},and(primary_demand_value.eq.${cursor.v},location_id.gt.${cursor.i})`,
+    );
+  }
+  return query;
+}
+
+function applyNowKeyset(query: any, sort: SortKey, cursor: CursorPayload | null) {
+  if (!cursor) return query;
+  if (sort === 'overdue_amount') {
+    return query.or(`overdue_amount.lt.${cursor.v},and(overdue_amount.eq.${cursor.v},location_id.gt.${cursor.i})`);
+  }
+  if (sort === 'open_demand_value') {
+    const estimateCount = cursor.e ?? 0;
+    return query.or(
+      `open_order_count.lt.${cursor.v},and(open_order_count.eq.${cursor.v},open_estimate_count.lt.${estimateCount}),and(open_order_count.eq.${cursor.v},open_estimate_count.eq.${estimateCount},location_id.gt.${cursor.i})`,
+    );
+  }
+  return query.or(`location_id.gt.${cursor.i}`);
+}
+
+async function resolveLocationIdsBySearch(db: DbClient, tenantId: string, search: string | null): Promise<string[] | null> {
+  if (!search) return null;
+  const normalized = search.replace(/[*(),]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  const likeValue = `%${normalized}%`;
+  const { data, error } = await db
+    .schema('app')
+    .from('locations')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .or(`name.ilike.${likeValue},phone_number.ilike.${likeValue}`)
+    .limit(500);
+  if (error) throw new Error(error.message ?? 'Failed to search locations');
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
+
+async function fetchLocationUniverseIds(db: DbClient, tenantId: string, searchIds: string[] | null): Promise<string[]> {
+  let query = db
+    .schema('app')
+    .from('locations')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('id', { ascending: true })
+    .limit(LOCATION_SCAN_LIMIT);
+  if (searchIds) query = query.in('id', searchIds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message ?? 'Failed to load locations');
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
+
+async function fetchLocationIdentities(
+  db: DbClient,
+  tenantId: string,
+  locationIds: string[],
+): Promise<Map<string, LocationIdentity>> {
+  const map = new Map<string, LocationIdentity>();
+  if (locationIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('app')
+    .from('locations')
+    .select('id, name, address, phone_number, status')
+    .eq('tenant_id', tenantId)
+    .in('id', locationIds)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message ?? 'Failed to load locations');
+  for (const row of (data ?? []) as LocationIdentity[]) {
+    map.set(row.id, row);
+  }
+  return map;
+}
+
+async function fetchNowRows(
+  db: DbClient,
+  tenantId: string,
+  locationIds: string[],
+): Promise<Map<string, NowRow>> {
+  const map = new Map<string, NowRow>();
+  if (locationIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('app')
+    .from('metrics_location_now_summary')
+    .select('location_id, open_estimate_count, open_order_count, overdue_amount')
+    .eq('tenant_id', tenantId)
+    .in('location_id', locationIds)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message ?? 'Failed to load location now summaries');
+  for (const row of (data ?? []) as NowRow[]) map.set(row.location_id, row);
+  return map;
+}
+
+async function fetchPeriodRowsByIds(
+  db: DbClient,
+  tenantId: string,
+  periodStart: string,
+  locationIds: string[],
+): Promise<Map<string, PeriodRow>> {
+  const map = new Map<string, PeriodRow>();
+  if (locationIds.length === 0) return map;
+  const { data, error } = await db
+    .schema('app')
+    .from('metrics_location_period_summary')
+    .select(
+      'location_id, invoice_count, invoice_value, invoice_buyer_count, estimate_count, estimate_value, order_count, order_value, primary_demand_kind, primary_demand_count, primary_demand_value, primary_demand_buyer_count',
+    )
+    .eq('tenant_id', tenantId)
+    .eq('grain', 'month')
+    .eq('period_start', periodStart)
+    .in('location_id', locationIds)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message ?? 'Failed to load location period summaries');
+  for (const row of (data ?? []) as PeriodRow[]) map.set(row.location_id, row);
+  return map;
+}
+
+async function fetchTop80Count(db: DbClient, tenantId: string, periodStart: string): Promise<number> {
+  const { data, error } = await db
+    .schema('app')
+    .from('metrics_tenant_top80_cache')
+    .select('top80_count')
+    .eq('tenant_id', tenantId)
+    .eq('entity_kind', 'locations')
+    .eq('grain', 'month')
+    .eq('period_start', periodStart)
+    .limit(1);
+  if (error) throw new Error(error.message ?? 'Failed to load locations top80 count');
+  return toNumber(((data ?? []) as Array<{ top80_count: number | string | null }>)[0]?.top80_count);
+}
+
+function emptyPeriodRow(locationId: string): PeriodRow {
   return {
-    kpis: { ...EMPTY_KPIS, ...(summary.kpis ?? {}) },
-    callouts: {
-      conversions: summary.callouts?.conversions ?? [],
-      top_locations: summary.callouts?.top_locations ?? [],
-      collections_overdue: summary.callouts?.collections_overdue ?? [],
-    },
+    location_id: locationId,
+    invoice_count: 0,
+    invoice_value: 0,
+    invoice_buyer_count: 0,
+    estimate_count: 0,
+    estimate_value: 0,
+    order_count: 0,
+    order_value: 0,
+    primary_demand_kind: 'none',
+    primary_demand_count: 0,
+    primary_demand_value: 0,
+    primary_demand_buyer_count: 0,
+  };
+}
+
+function mergeLocationRow(identity: LocationIdentity, period: PeriodRow, now: NowRow | undefined): LocationsLandingRow {
+  const openEstimateCount = toNumber(now?.open_estimate_count);
+  const openOrderCount = toNumber(now?.open_order_count);
+  const stockStatus: LocationStockStatus = 'clear';
+  return {
+    id: identity.id,
+    name: identity.name,
+    city: getCity(identity.address),
+    address_text: getAddressText(identity.address),
+    phone_number: identity.phone_number ?? null,
+    initials: getInitials(identity.name),
+    gmv_mtd: toNumber(period.invoice_value),
+    active_buyers: toNumber(period.invoice_buyer_count),
+    outstanding_dues: toNumber(now?.overdue_amount),
+    sku_count: 0,
+    oos_sku_count: 0,
+    low_stock_sku_count: 0,
+    stock_status: stockStatus,
+    oldest_unpaid_days: null,
+    is_active: identity.status !== 'inactive',
+    invoice_count_90d: toNumber(period.invoice_count),
+    estimate_count_90d: toNumber(period.estimate_count),
+    estimate_value_90d: toNumber(period.estimate_value),
+    order_count_90d: toNumber(period.order_count),
+    order_value_90d: toNumber(period.order_value),
+    conversion_90d: toNumber(period.estimate_count) > 0
+      ? Math.round((toNumber(period.invoice_count) / toNumber(period.estimate_count)) * 100)
+      : 0,
+    open_estimate_count: openEstimateCount,
+    open_order_count: openOrderCount,
+    open_demand_count: openEstimateCount + openOrderCount,
+    overdue_amount: toNumber(now?.overdue_amount),
+    primary_demand_kind: period.primary_demand_kind === 'estimates' ? 'estimates' : period.primary_demand_kind === 'orders' ? 'orders' : 'none',
+    primary_demand_count: toNumber(period.primary_demand_count),
+    primary_demand_value: toNumber(period.primary_demand_value),
+    primary_demand_buyer_count: toNumber(period.primary_demand_buyer_count),
   };
 }
 
 export async function GET(request: NextRequest) {
   const timer = createTimer();
-  const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('locations_landing'));
-    if (!init?.status || (init.status >= 200 && init.status < 300)) {
-      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
-    }
-    return response;
-  };
+  const timedJson = (body: unknown, init?: ResponseInit) =>
+    jsonWithServerTiming(body, timer, 'locations_landing', init, APP_GET_CACHE_CONTROL);
 
   const claims = await getVerifiedClaims(request);
   const adminCheck = assertSellerAdmin(claims);
@@ -140,199 +452,187 @@ export async function GET(request: NextRequest) {
   if (!supabaseAdmin) return timedJson({ error: 'Server configuration error' }, { status: 500 });
 
   try {
+    const db = supabaseAdmin as unknown as DbClient;
     const tenantId = claims.tenant_id;
-    const db = supabaseAdmin as any;
-    const period = getSellerLandingPeriodMeta('last90');
-    const currentStart = period.current_start.split('T')[0];
-    const currentEndExclusive = period.current_end_exclusive.split('T')[0];
+    if (!tenantId) return timedJson({ error: 'Unauthorized' }, { status: 401 });
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-    const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
-    const includeSummary = request.nextUrl.searchParams.get('include_summary') !== 'false';
-    const today = new Date();
-    const todayDate = today.toISOString().split('T')[0];
-    const expiryEnd = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const search = request.nextUrl.searchParams.get('search')?.trim() || '';
-    const statusFilters = readArrayParam(request.nextUrl.searchParams, 'status') || [];
-    const stockFilters = readArrayParam(request.nextUrl.searchParams, 'stock') || [];
-    const duesFilters = readArrayParam(request.nextUrl.searchParams, 'dues') || [];
+    const sort = parseSort(request.nextUrl.searchParams.get('sort'));
+    const cursor = decodeCursor(request.nextUrl.searchParams.get('cursor'));
+    const search = request.nextUrl.searchParams.get('search')?.trim() || null;
+    const filterPreset = parseFilterPreset(request.nextUrl.searchParams.get('filter_preset'));
+    const explicitStatuses = normalizeLocationStatuses(readArrayParam(request.nextUrl.searchParams, 'status'));
+    const explicitAttention = normalizeLocationAttention(readArrayParam(request.nextUrl.searchParams, 'attention'));
+    const statusFilters = explicitStatuses.length > 0 ? explicitStatuses : statusesFromPreset(filterPreset);
+    const attentionFilters = explicitAttention.length > 0 ? explicitAttention : attentionFromPreset(filterPreset);
+    const tableSort: SortKey = filterPreset?.open_demand === true && sort === 'invoice_value' ? 'open_demand_value' : sort;
+    const period = getSellerLandingPeriodMeta('month');
+    const periodStart = period.current_start.slice(0, 10);
+    const searchIds = await resolveLocationIdsBySearch(db, tenantId, search);
+    const top80 = filterPreset?.cutoff === 'top80';
+    const top80AlreadyEmitted = top80 ? Math.max(0, cursor?.n ?? 0) : 0;
+    const top80Count = top80 ? await fetchTop80Count(db, tenantId, periodStart) : null;
+    const effectiveLimit = top80 && top80Count != null
+      ? Math.max(0, Math.min(limit, top80Count - top80AlreadyEmitted))
+      : limit;
 
-    // Bounded, indexed ID + count search/pagination — replaces the old
-    // full-table JS filter+slice. Rows and per-row metrics below are only
-    // ever fetched for this page's IDs, never the whole tenant.
-    const searchRes = await db.schema('app').rpc('search_seller_location_landing_ids', {
-      p_tenant_id: tenantId,
-      p_query: search || null,
-      p_statuses: statusFilters.length > 0 ? statusFilters.map((s) => s.toLowerCase()) : null,
-      p_stock_modes: stockFilters.length > 0 ? stockFilters : null,
-      p_dues_modes: duesFilters.length > 0 ? duesFilters : null,
-      p_limit: limit,
-      p_offset: offset,
-    });
-    if (searchRes.error) throw searchRes.error;
-    const idRows = (searchRes.data ?? []) as LocationSearchIdRow[];
-    const pageIds = idRows.map((row) => row.id).filter(Boolean);
-    const total = idRows.length > 0 ? Number(idRows[0].total_count ?? 0) : 0;
-
-    const summaryQuery = includeSummary
-      ? db.schema('app').rpc('get_seller_locations_landing_summary', {
-          p_tenant_id: tenantId,
-          p_location_ids: null,
-          p_current_start: currentStart,
-          p_current_end_exclusive: currentEndExclusive,
-          p_today: todayDate,
-          p_expiry_end: expiryEnd,
-        })
-      : Promise.resolve({ data: null, error: null });
-    const seedsQuery = pageIds.length > 0
-      ? db.schema('app').from('locations')
-          .select('id, name, address, phone_number, status')
-          .eq('tenant_id', tenantId)
-          .in('id', pageIds)
-      : Promise.resolve({ data: [], error: null });
-    const rowMetricsQuery = pageIds.length > 0
-      ? db.schema('app').rpc('get_seller_location_landing_row_metrics', {
-          p_tenant_id: tenantId,
-          p_location_ids: pageIds,
-          p_current_start: currentStart,
-          p_current_end_exclusive: currentEndExclusive,
-        })
-      : Promise.resolve({ data: [], error: null });
-    // Pre-computed snapshot fields — all demand metrics live in metrics_location_snapshot since
-    // migration 20260719093500_add_demand_metrics_to_location_snapshot.
-    const locationSnapshotQuery = pageIds.length > 0
-      ? db.schema('app').from('metrics_location_snapshot')
-          .select('location_id, invoice_count_90d, estimate_count_90d, estimate_value_90d, order_count_90d, order_value_90d, conversion_90d')
-          .eq('tenant_id', tenantId)
-          .in('location_id', pageIds)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null });
-
-    // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
-    // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
-    const demandKindQuery = includeSummary
-      ? db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId })
-      : Promise.resolve({ data: null, error: null });
-    const linkedWarehouseCountQuery = includeSummary
-      ? db.schema('app').from('warehouses')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .not('location_id', 'is', null)
-          .is('deleted_at', null)
-      : Promise.resolve({ count: 0, error: null });
-    // Open primary demand value + tenant-wide purchasing-buyer count: both read from the
-    // pre-materialized app.metrics_tenant_commercial_snapshot row (one row per tenant) rather
-    // than a live app.estimates/app.orders fetch. The live fetch used to hit Supabase's
-    // db-max-rows cap (silently truncates any .select() past 1000 rows, regardless of a
-    // requested .limit(10000)) — for this tenant's 3,884 open estimates that undercounted
-    // ₹30,68,96,260 down to ₹75,09,154 (first 1000 rows only). The snapshot value is exact.
-    const commercialSnapshotQuery = includeSummary
-      ? db.schema('app').from('metrics_tenant_commercial_snapshot')
-          .select('open_estimate_value, open_order_value, purchasing_buyers_90d')
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null });
-
-    const [summaryRes, seedsRes, rowMetricsRes, locationSnapshotRes, demandKindRes, linkedWarehouseCountRes, commercialSnapshotRes] = await Promise.all([
-      summaryQuery,
-      seedsQuery,
-      rowMetricsQuery,
-      locationSnapshotQuery,
-      demandKindQuery,
-      linkedWarehouseCountQuery,
-      commercialSnapshotQuery,
-    ]);
-    if (summaryRes.error) throw summaryRes.error;
-    if (seedsRes.error) throw seedsRes.error;
-    if (rowMetricsRes.error) throw rowMetricsRes.error;
-    if (locationSnapshotRes.error) throw locationSnapshotRes.error;
-    if (demandKindRes.error) throw demandKindRes.error;
-    if (linkedWarehouseCountRes.error) throw linkedWarehouseCountRes.error;
-    if (commercialSnapshotRes.error) throw commercialSnapshotRes.error;
-
-    const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
-      | 'orders'
-      | 'estimates'
-      | 'none';
-    const linkedWarehouseCount = Number(linkedWarehouseCountRes.count ?? 0);
-    const commercialSnapshot = commercialSnapshotRes.data as
-      | { open_estimate_value: number | string | null; open_order_value: number | string | null; purchasing_buyers_90d: number | string | null }
-      | null;
-    const openPrimaryDemandValue = primaryDemandKind === 'estimates'
-      ? Number(commercialSnapshot?.open_estimate_value ?? 0)
-      : primaryDemandKind === 'orders'
-        ? Number(commercialSnapshot?.open_order_value ?? 0)
-        : 0;
-    // Tenant-wide distinct purchasing-buyer count (rule: never SUM per-location buyer counts —
-    // a buyer who bought at 2 locations would be double-counted; this is already deduplicated
-    // tenant-wide in the snapshot).
-    const purchasingBuyers90d = Number(commercialSnapshot?.purchasing_buyers_90d ?? 0);
-
-    const seedsById = new Map(((seedsRes.data ?? []) as LocationSeedRow[]).map((row) => [row.id, row]));
-    const rowMetricsById = new Map(
-      ((rowMetricsRes.data ?? []) as LocationRowMetric[]).map((row) => [String(row.location_id), row]),
-    );
-
-    // All demand + invoice metrics come from metrics_location_snapshot (one row per location)
-    const snapshotByLocation = new Map<string, LocationSnapshotRow>(
-      ((locationSnapshotRes.data ?? []) as LocationSnapshotRow[]).map((r) => [String(r.location_id), r]),
-    );
-
-    const locations: LocationsLandingRow[] = pageIds
-      .map((id) => seedsById.get(id))
-      .filter((seed): seed is LocationSeedRow => Boolean(seed))
-      .map((seed) => {
-        const metrics = rowMetricsById.get(seed.id);
-        const outOfStock = Number(metrics?.oos_sku_count ?? 0);
-        const lowStock = Number(metrics?.low_stock_sku_count ?? 0);
-        const stockStatus: LocationStockStatus = outOfStock > 0 ? 'out_of_stock' : lowStock > 0 ? 'low_stock' : 'clear';
-        const gmvCurrent = Number(metrics?.gmv_current ?? 0);
-        const snap = snapshotByLocation.get(seed.id);
-        return {
-          id: seed.id,
-          name: seed.name,
-          city: getCity(seed.address),
-          address_text: getAddressText(seed.address),
-          phone_number: seed.phone_number ?? null,
-          initials: getInitials(seed.name),
-          gmv_mtd: gmvCurrent,
-          active_buyers: Number(metrics?.active_buyers ?? 0),
-          outstanding_dues: Number(metrics?.outstanding_dues ?? 0),
-          sku_count: Number(metrics?.sku_count ?? 0),
-          oos_sku_count: outOfStock,
-          low_stock_sku_count: lowStock,
-          stock_status: stockStatus,
-          oldest_unpaid_days: metrics?.oldest_unpaid_days != null ? Number(metrics.oldest_unpaid_days) : null,
-          is_active: seed.status !== 'inactive',
-          invoice_count_90d: Number(snap?.invoice_count_90d ?? 0),
-          estimate_count_90d: Number(snap?.estimate_count_90d ?? 0),
-          estimate_value_90d: Number(snap?.estimate_value_90d ?? 0),
-          order_count_90d: Number(snap?.order_count_90d ?? 0),
-          order_value_90d: Number(snap?.order_value_90d ?? 0),
-          conversion_90d: Number(snap?.conversion_90d ?? 0),
-        };
-      });
-
-    const summary: LocationsSummary = includeSummary ? normalizeSummary(summaryRes.data) : EMPTY_SUMMARY;
-    if (includeSummary) {
-      summary.kpis.linked_warehouse_count = linkedWarehouseCount;
-      summary.kpis.open_primary_demand_kind = primaryDemandKind;
-      summary.kpis.open_primary_demand_value = openPrimaryDemandValue;
-      summary.kpis.purchasing_buyers_90d = purchasingBuyers90d;
+    if ((searchIds && searchIds.length === 0) || effectiveLimit === 0) {
+      return timedJson({ ...EMPTY_RESPONSE, limit, sort: tableSort, refreshed_at: new Date().toISOString(), as_of: new Date().toISOString(), filters: LOCATION_FILTERS });
     }
-    const response: LocationsLandingResponse = {
-      ...summary,
+
+    if (!top80) {
+      const locationIds = await fetchLocationUniverseIds(db, tenantId, searchIds);
+      const [identities, periodById, nowById] = await Promise.all([
+        fetchLocationIdentities(db, tenantId, locationIds),
+        fetchPeriodRowsByIds(db, tenantId, periodStart, locationIds),
+        fetchNowRows(db, tenantId, locationIds),
+      ]);
+      const matchingRows = locationIds
+        .map((id) => {
+          const identity = identities.get(id);
+          return identity ? mergeLocationRow(identity, periodById.get(id) ?? emptyPeriodRow(id), nowById.get(id)) : null;
+        })
+        .filter((row): row is LocationsLandingRow => Boolean(row))
+        .filter((row) => locationMatchesStatus(row, statusFilters) && locationMatchesAttention(row, attentionFilters))
+        .sort((left, right) => compareLocations(left, right, tableSort));
+      const cursorFiltered = applyLocationCursor(matchingRows, tableSort, cursor);
+      const pageRowsWithExtra = cursorFiltered.slice(0, limit + 1);
+      const locations = pageRowsWithExtra.slice(0, limit);
+      const extraRow = pageRowsWithExtra[limit] ?? null;
+      const last = locations[locations.length - 1] ?? null;
+
+      return timedJson({
+        locations,
+        total: null,
+        limit,
+        nextCursor: extraRow && last
+          ? encodeCursor({
+              v: tableSort === 'overdue_amount' ? last.overdue_amount : tableSort === 'open_demand_value' ? last.primary_demand_value : last.gmv_mtd,
+              i: last.id,
+            })
+          : null,
+        sort: tableSort,
+        period_key: 'this_month',
+        grain: 'month',
+        period_start: periodStart,
+        refreshed_at: new Date().toISOString(),
+        as_of: new Date().toISOString(),
+        filters: LOCATION_FILTERS,
+      } satisfies LocationsLandingResponse);
+    }
+
+    if (filterPreset?.overdue === true || filterPreset?.open_demand === true || tableSort === 'overdue_amount' || tableSort === 'open_demand_value') {
+      let nowQuery = db
+        .schema('app')
+        .from('metrics_location_now_summary')
+        .select('location_id, open_estimate_count, open_order_count, overdue_amount')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+
+      if (searchIds) nowQuery = nowQuery.in('location_id', searchIds);
+      if (filterPreset?.overdue === true) nowQuery = nowQuery.gt('overdue_amount', 0);
+      if (filterPreset?.open_demand === true) nowQuery = nowQuery.or('open_estimate_count.gt.0,open_order_count.gt.0');
+      nowQuery = applyNowKeyset(nowQuery, tableSort, cursor)
+      if (tableSort === 'open_demand_value') {
+        nowQuery = nowQuery.order('open_order_count', { ascending: false }).order('open_estimate_count', { ascending: false });
+      } else {
+        nowQuery = nowQuery.order('overdue_amount', { ascending: false });
+      }
+      nowQuery = nowQuery.order('location_id', { ascending: true }).limit(effectiveLimit + 1);
+
+      const { data: nowData, error: nowError } = await nowQuery;
+      if (nowError) throw nowError;
+
+      const nowRows = (nowData ?? []) as NowRow[];
+      const pageNowRows = nowRows.slice(0, effectiveLimit);
+      const extraNowRow = nowRows[effectiveLimit] ?? null;
+      const locationIds = pageNowRows.map((row) => row.location_id);
+      const periodById = await fetchPeriodRowsByIds(db, tenantId, periodStart, locationIds);
+      const identities = await fetchLocationIdentities(db, tenantId, locationIds);
+      const nowById = new Map(pageNowRows.map((row) => [row.location_id, row]));
+      const locations = pageNowRows
+        .map((now) => {
+          const identity = identities.get(now.location_id);
+          return identity ? mergeLocationRow(identity, periodById.get(now.location_id) ?? emptyPeriodRow(now.location_id), now) : null;
+        })
+        .filter((row): row is LocationsLandingRow => Boolean(row));
+      const last = pageNowRows[pageNowRows.length - 1] ?? null;
+
+      return timedJson({
+        locations,
+        total: null,
+        limit,
+        nextCursor: extraNowRow && last
+          ? encodeCursor({
+              v: sortValue(periodById.get(last.location_id) ?? emptyPeriodRow(last.location_id), nowById.get(last.location_id), tableSort),
+              i: last.location_id,
+              n: top80 ? top80AlreadyEmitted + pageNowRows.length : undefined,
+              e: tableSort === 'open_demand_value' ? toNumber(last.open_estimate_count) : undefined,
+            })
+          : null,
+        sort: tableSort,
+        period_key: 'this_month',
+        grain: 'month',
+        period_start: periodStart,
+        refreshed_at: new Date().toISOString(),
+        as_of: new Date().toISOString(),
+        filters: LOCATION_FILTERS,
+      } satisfies LocationsLandingResponse);
+    }
+
+    let query = db
+      .schema('app')
+      .from('metrics_location_period_summary')
+      .select(
+        'location_id, invoice_count, invoice_value, invoice_buyer_count, estimate_count, estimate_value, order_count, order_value, primary_demand_kind, primary_demand_count, primary_demand_value, primary_demand_buyer_count',
+      )
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'month')
+      .eq('period_start', periodStart)
+      .is('deleted_at', null);
+
+    if (searchIds) query = query.in('location_id', searchIds);
+    if (top80) query = query.gt('invoice_value', 0);
+    if (tableSort === 'invoice_value' || top80) query = query.order('invoice_value', { ascending: false });
+    query = applyKeyset(query, top80 ? 'invoice_value' : tableSort, cursor).order('location_id', { ascending: true }).limit(effectiveLimit + 1);
+
+    const { data: periodData, error: periodError } = await query;
+    if (periodError) throw periodError;
+
+    let periodRows = ((periodData ?? []) as PeriodRow[]).slice(0, effectiveLimit);
+    const extraRow = ((periodData ?? []) as PeriodRow[])[effectiveLimit] ?? null;
+    const periodLocationIds = periodRows.map((row) => row.location_id);
+    const nowById = await fetchNowRows(db, tenantId, periodLocationIds);
+
+    const identities = await fetchLocationIdentities(db, tenantId, periodRows.map((row) => row.location_id));
+    const locations = periodRows
+      .map((row) => {
+        const identity = identities.get(row.location_id);
+        return identity ? mergeLocationRow(identity, row, nowById.get(row.location_id)) : null;
+      })
+      .filter((row): row is LocationsLandingRow => Boolean(row));
+
+    const last = periodRows[periodRows.length - 1] ?? null;
+    const nextCursor = extraRow && last
+      ? encodeCursor({
+          v: sortValue(last, nowById.get(last.location_id), top80 ? 'invoice_value' : tableSort),
+          i: last.location_id,
+          n: top80 ? top80AlreadyEmitted + periodRows.length : undefined,
+        })
+      : null;
+
+    return timedJson({
       locations,
-      total,
+      total: null,
       limit,
-      offset,
-      nextOffset: locations.length > 0 && offset + locations.length < total ? offset + locations.length : null,
-      period: SELLER_LANDING_PERIOD_OPTIONS.find((option) => option.value === period.selected)?.label ?? period.selected,
+      nextCursor,
+      sort: tableSort,
+      period_key: 'this_month',
+      grain: 'month',
+      period_start: periodStart,
       refreshed_at: new Date().toISOString(),
       as_of: new Date().toISOString(),
-      commercial_horizon_days: 90,
-    };
-    return timedJson(response);
+      filters: LOCATION_FILTERS,
+    } satisfies LocationsLandingResponse);
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string };
     console.error('[GET /api/tenant/locations/landing]', err?.code, err?.message);

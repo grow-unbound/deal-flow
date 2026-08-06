@@ -106,9 +106,35 @@ export interface EstimatesPulseAggregates {
 
 export interface TenantEstimatesResponse {
   period: SellerLandingPeriodMeta;
-  kpis: EstimatesKpis;
-  pulse_aggregates: EstimatesPulseAggregates;
-  todays_read: EstimatesTodaysRead;
+  kpis?: EstimatesKpis;
+  pulse_aggregates?: EstimatesPulseAggregates;
+  todays_read?: EstimatesTodaysRead;
   estimates: EstimateLandingRow[];
   filters?: LandingFilterMeta;
+}
+
+export interface EstimatesLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface EstimatesLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: EstimatesLandingKpiCardV4[];
 }

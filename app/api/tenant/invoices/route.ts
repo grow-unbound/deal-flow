@@ -29,15 +29,11 @@ import type {
   InvoiceLinkedDoc,
   InvoiceStatusTone,
   InvoiceStatusValue,
-  InvoicesKpis,
-  InvoicesTodaysRead,
 } from '@/types/tenant-invoices';
 
 export const dynamic = 'force-dynamic';
 
-const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
 const OVERDUE_STATUSES = ['overdue', 'sent', 'unpaid', 'viewed', 'partially_paid'];
-const NOT_YET_DUE_STATUSES = ['sent', 'unpaid', 'viewed', 'partially_paid'];
 
 interface InvoiceDbRow {
   id: string;
@@ -144,15 +140,6 @@ function buildLinked(
   return { type: 'direct', label: '—' };
 }
 
-function growthPct(current: number, previous: number): number {
-  if (previous <= 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - previous) / previous) * 100);
-}
-
-function sumMetric(rows: Array<Record<string, unknown>>, key: string): number {
-  return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
-}
-
 function getInvoiceDocumentTimestamp(row: Pick<InvoiceDbRow, 'invoice_date' | 'created_at'>): string {
   return row.invoice_date ?? row.created_at;
 }
@@ -210,13 +197,37 @@ function applyInvoiceDueFilter<T extends { gt: (column: string, value: number) =
 ): T {
   if (dueParams.length !== 1) return query;
   const [due] = dueParams;
+  if (due === 'Outstanding') {
+    return query.gt('outstanding_balance', 0);
+  }
   if (due === 'Overdue') {
     return query.gt('outstanding_balance', 0).lt('due_date', todayKey);
   }
   if (due === 'Due') {
     return query.gt('outstanding_balance', 0).gte('due_date', todayKey);
   }
+  if (due === 'Due in 7 days') {
+    return query.gt('outstanding_balance', 0).gte('due_date', todayKey).lt('due_date', offsetIsoDateInTimeZone(new Date(), 8));
+  }
   return query;
+}
+
+function parseInvoiceFilterPreset(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function dueFiltersFromInvoicePreset(preset: Record<string, unknown> | null): string[] {
+  if (!preset) return [];
+  if (preset.overdue === true) return ['Overdue'];
+  if (Number(preset.due_lte_days ?? 0) > 0) return ['Due in 7 days'];
+  if (Number(preset.balance_gt ?? 0) >= 0 && 'balance_gt' in preset) return ['Outstanding'];
+  return [];
 }
 
 export async function GET(request: NextRequest) {
@@ -252,15 +263,15 @@ export async function GET(request: NextRequest) {
 
     const db = supabaseAdmin;
     const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
-    const scopedLocationIds = availableLocations.map((location) => location.id);
-    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
 
     const reqLimit = parseRowsLimit(searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = searchParams.get('cursor');
     const searchParam = searchParams.get('search')?.trim();
+    const filterPreset = parseInvoiceFilterPreset(searchParams.get('filter_preset'));
     const sourceParams = readArrayParam(searchParams, 'source');
     const statusParams = readArrayParam(searchParams, 'status');
-    const dueParams = readArrayParam(searchParams, 'due');
+    const explicitDueParams = readArrayParam(searchParams, 'due');
+    const dueParams = explicitDueParams.length > 0 ? explicitDueParams : dueFiltersFromInvoicePreset(filterPreset);
     const locationParams = readArrayParam(searchParams, 'location_id');
     const todayKey = isoDateInTimeZone(new Date());
     const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
@@ -297,159 +308,18 @@ export async function GET(request: NextRequest) {
       .order('id', { ascending: false })
       .limit(reqLimit + 1);
 
-    let invoiceTotalQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('invoices')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null) as any,
-      claims,
-    );
-    invoiceTotalQuery = applyInvoiceDocumentPeriod(invoiceTotalQuery, period.current_start, period.current_end_exclusive);
-    invoiceTotalQuery = applyTransactionTableSearch(invoiceTotalQuery, 'invoice_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
-    if (locationParams.length > 0) {
-      invoiceTotalQuery = invoiceTotalQuery.in('location_id', locationParams);
-    }
-    invoiceTotalQuery = applyInvoiceSourceFilter(invoiceTotalQuery, sourceParams);
-    invoiceTotalQuery = applyInvoiceStatusFilter(invoiceTotalQuery, statusParams, todayKey);
-    invoiceTotalQuery = applyInvoiceDueFilter(invoiceTotalQuery, dueParams, todayKey);
+    const invoiceListRes = await invoiceListQuery;
 
-    // Actions, per specs/metrics-product-strategy-proposal-2026-07.md:
-    // 'largest_overdue' = overdue invoices ranked by amount x age (biggest
-    // exposure, longest overdue, first). 'newly_overdue' = due date crossed
-    // in the last 7 days. 'due_soon' = not yet overdue, due within 7 days.
-    const buildInvoiceCalloutQuery = (mode: 'largest_overdue' | 'newly_overdue' | 'due_soon') => {
-      let query = buildBaseInvoiceQuery().gt('outstanding_balance', 0);
-      const weekAgoKey = offsetIsoDateInTimeZone(new Date(), -7);
-      const weekAheadKey = offsetIsoDateInTimeZone(new Date(), 7);
-
-      if (mode === 'due_soon') {
-        return query
-          .in('status', NOT_YET_DUE_STATUSES)
-          .gte('due_date', todayKey)
-          .lte('due_date', weekAheadKey)
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .order('total_amount', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(SEE_ALL_LIMIT);
-      }
-
-      if (mode === 'newly_overdue') {
-        return query
-          .in('status', OVERDUE_STATUSES)
-          .lt('due_date', todayKey)
-          .gte('due_date', weekAgoKey)
-          .order('due_date', { ascending: false, nullsFirst: false })
-          .order('total_amount', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(SEE_ALL_LIMIT);
-      }
-
-      // largest_overdue: bounded candidate pool ranked by amount x age in JS
-      // below, since amount*days-overdue can't be expressed as a plain
-      // column sort through the query builder.
-      return query
-        .in('status', OVERDUE_STATUSES)
-        .lt('due_date', todayKey)
-        .order('total_amount', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(SEE_ALL_LIMIT * 2);
-    };
-
-    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
-      p_tenant_id: tenantId,
-      p_kind: 'invoices',
-      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
-    });
-
-    const outstandingCustomersPromise = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('invoices')
-        .select('buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('outstanding_balance', 0) as any,
-      claims,
-    ).limit(5000);
-
-    const overdueCustomersPromise = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('invoices')
-        .select('buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('outstanding_balance', 0)
-        .in('status', OVERDUE_STATUSES)
-        .lt('due_date', todayKey) as any,
-      claims,
-    ).limit(5000);
-
-    const dueSoonAggPromise = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('invoices')
-        .select('buyer_id, total_amount', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('outstanding_balance', 0)
-        .in('status', NOT_YET_DUE_STATUSES)
-        .gte('due_date', todayKey)
-        .lte('due_date', offsetIsoDateInTimeZone(new Date(), 7)) as any,
-      claims,
-    );
-
-    const [
-      invoiceListRes,
-      invoiceTotalRes,
-      landingMetricsRes,
-      largestOverdueRes,
-      newlyOverdueRes,
-      dueSoonRes,
-      outstandingCustomersRes,
-      overdueCustomersRes,
-      dueSoonAggRes,
-    ] = await Promise.all([
-      invoiceListQuery,
-      invoiceTotalQuery,
-      landingMetricsPromise,
-      buildInvoiceCalloutQuery('largest_overdue'),
-      buildInvoiceCalloutQuery('newly_overdue'),
-      buildInvoiceCalloutQuery('due_soon'),
-      outstandingCustomersPromise,
-      overdueCustomersPromise,
-      dueSoonAggPromise,
-    ]);
-
-    if (
-      invoiceListRes.error ||
-      invoiceTotalRes.error ||
-      landingMetricsRes.error ||
-      largestOverdueRes.error ||
-      newlyOverdueRes.error ||
-      dueSoonRes.error ||
-      outstandingCustomersRes.error ||
-      overdueCustomersRes.error ||
-      dueSoonAggRes.error
-    ) {
+    if (invoiceListRes.error) {
       console.error(
         '[GET /api/tenant/invoices]',
-        invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || largestOverdueRes.error || newlyOverdueRes.error || dueSoonRes.error || outstandingCustomersRes.error || overdueCustomersRes.error || dueSoonAggRes.error,
+        invoiceListRes.error,
       );
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
 
     const allInvoiceRows = (invoiceListRes.data ?? []) as InvoiceDbRow[];
-    const calloutLookupRows = Array.from(
-      new Map([
-        ...allInvoiceRows,
-        ...((largestOverdueRes.data ?? []) as InvoiceDbRow[]),
-        ...((newlyOverdueRes.data ?? []) as InvoiceDbRow[]),
-        ...((dueSoonRes.data ?? []) as InvoiceDbRow[]),
-      ].map((row) => [row.id, row])).values(),
-    );
+    const calloutLookupRows = allInvoiceRows;
 
     const linkedOrderIds = Array.from(
       new Set(
@@ -585,80 +455,7 @@ export async function GET(request: NextRequest) {
     };
     const landingRows: InvoiceLandingRow[] = pageRows.map((row, index) => toLandingRow(row, index));
     const landingById = new Map(landingRows.map((row) => [row.id, row]));
-    const ensureLandingRow = (row: InvoiceDbRow, index: number) => landingById.get(row.id) ?? toLandingRow(row, index);
-    // metrics_v2_transaction_landing's own `computed_at` reflects when the
-    // underlying snapshot rows were actually last refreshed -- previously
-    // fetched here and silently discarded (only `.kpis` was read); surfaced
-    // now as the KPI strip's "as of" freshness stamp (kpi-callout-audit
-    // 2026-07-23 §7 P2 item 13). Falls back to null, not wall-clock "now",
-    // so the frontend can omit the stamp rather than show a fabricated time.
-    const kpiComputedAt = (landingMetricsRes.data as { computed_at?: string | null } | null)?.computed_at ?? null;
-    const kpis = ((landingMetricsRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
-      invoices_this_period: 0,
-      invoices_prev_period: 0,
-      invoices_growth_pct: 0,
-      gmv_this_period: 0,
-      gmv_prev_period: 0,
-      aov: 0,
-      overdue_count: 0,
-      overdue_sum: 0,
-      overdue_customer_count: 0,
-      outstanding_count: 0,
-      outstanding_sum: 0,
-      outstanding_customer_count: 0,
-    }) as InvoicesKpis;
-
-    const toCalloutRow = (row: InvoiceLandingRow) => ({
-      id: row.id,
-      invoice_number: row.invoice_number,
-      buyer_id: row.buyer_id,
-      buyer_name: row.buyer_name,
-      buyer_initials: row.buyer_initials,
-      buyer_hue: row.buyer_hue,
-      buyer_city: row.buyer_city,
-      buyer_state: row.buyer_state,
-      items_count: row.items_count,
-      total_amount: row.total_amount,
-      outstanding_amount: row.outstanding_amount,
-      due_date: row.due_date,
-      paid_at: row.paid_at,
-      invoice_date: row.invoice_date,
-      effective: row.status.value,
-    });
-
-    const daysOverdue = (dueDate: string | null): number => {
-      if (!dueDate) return 0;
-      return Math.max(0, Math.round((new Date(todayKey).getTime() - new Date(dueDate).getTime()) / (24 * 60 * 60 * 1000)));
-    };
-
-    const largestOverdue = ((largestOverdueRes.data ?? []) as InvoiceDbRow[])
-      .map((row, index) => ensureLandingRow(row, index))
-      .sort((a, b) => b.outstanding_amount * daysOverdue(b.due_date) - a.outstanding_amount * daysOverdue(a.due_date))
-      .slice(0, SEE_ALL_LIMIT)
-      .map(toCalloutRow);
-
-    const newlyOverdue = ((newlyOverdueRes.data ?? []) as InvoiceDbRow[])
-      .map((row, index) => ensureLandingRow(row, index))
-      .map(toCalloutRow);
-
-    const dueSoon = ((dueSoonRes.data ?? []) as InvoiceDbRow[])
-      .map((row, index) => ensureLandingRow(row, index))
-      .map(toCalloutRow);
-
-    const todays_read: InvoicesTodaysRead = {
-      largest_overdue: largestOverdue,
-      newly_overdue: newlyOverdue,
-      due_soon: dueSoon,
-    };
-
-    const distinctBuyerCount = (rows: Array<{ buyer_id: string }>) => new Set(rows.map((row) => row.buyer_id)).size;
-    const pulse_aggregates = {
-      due_soon_count: dueSoonAggRes.count ?? 0,
-      due_soon_sum: sumMetric((dueSoonAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
-      due_soon_customer_count: distinctBuyerCount((dueSoonAggRes.data ?? []) as Array<{ buyer_id: string }>),
-    };
-    kpis.overdue_customer_count = distinctBuyerCount((overdueCustomersRes.data ?? []) as Array<{ buyer_id: string }>);
-    kpis.outstanding_customer_count = distinctBuyerCount((outstandingCustomersRes.data ?? []) as Array<{ buyer_id: string }>);
+    void landingById;
 
     const filters: LandingFilterMeta = {
       groups: [
@@ -674,8 +471,8 @@ export async function GET(request: NextRequest) {
         },
         {
           key: 'due',
-          label: 'Due',
-          options: ['Due', 'Overdue'].map((value) => ({ value, label: value })),
+          label: 'Receivables',
+          options: ['Outstanding', 'Overdue', 'Due', 'Due in 7 days'].map((value) => ({ value, label: value })),
         },
         {
           key: 'location_id',
@@ -686,15 +483,11 @@ export async function GET(request: NextRequest) {
     };
     const payload = {
       period,
-      kpis,
-      pulse_aggregates,
-      todays_read,
       invoices: landingRows,
       filters,
       nextCursor,
-      total: invoiceTotalRes.count ?? landingRows.length,
+      total: null,
       as_of: new Date().toISOString(),
-      computed_at: kpiComputedAt,
       // Invoices' fixed headline ("This month") is calendar-based, not a
       // rolling trailing-day window, so there is no single horizon day count.
       commercial_horizon_days: null,

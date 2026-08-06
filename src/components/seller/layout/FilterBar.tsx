@@ -282,10 +282,6 @@ export function FilterBar({
         {searchField}
         {filterChips}
 
-        <div className="hidden shrink-0 justify-center xl:flex">
-          <p className="whitespace-nowrap text-sm text-cream-700">{count}</p>
-        </div>
-
         {sortOptions ? (
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex h-9 shrink-0 items-center gap-1 rounded-[10px] border border-cream-400 bg-white px-3 text-sm text-cream-800 hover:bg-cream-100">

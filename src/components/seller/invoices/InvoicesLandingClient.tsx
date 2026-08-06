@@ -16,12 +16,18 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileTransactionTabs, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
-import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
+import {
+  useTenantInvoicesInfinite,
+  useTenantInvoicesMetrics,
+  type InvoicesLandingKpiCardV4,
+  type InvoicesLandingMetricsV4,
+  type TenantInvoicesResponse,
+} from '@/hooks/useInvoices';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -32,7 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatAsOfLabel, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
-import { TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
@@ -63,25 +69,38 @@ function invoiceSourceFilterLabel(row: TenantInvoicesResponse['invoices'][number
   return 'Direct';
 }
 
-function InvoicesDataSkeleton() {
-  return (
-    <>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-    </>
-  );
+function filtersFromInvoicePreset(preset: Record<string, unknown> | null | undefined) {
+  let due: string[] = [];
+  if (preset?.overdue === true) due = ['Overdue'];
+  else if (Number(preset?.due_lte_days ?? 0) > 0) due = ['Due in 7 days'];
+  else if (preset && 'balance_gt' in preset) due = ['Outstanding'];
+  return {
+    source: [] as string[],
+    status: [] as string[],
+    due,
+    location_id: [] as string[],
+  };
+}
+
+function periodFromInvoicePreset(preset: Record<string, unknown> | null | undefined): SellerLandingPeriod | null {
+  if (!preset || typeof preset.date_period !== 'string') return null;
+  if (preset.date_period === 'today') return 'today';
+  if (preset.date_period === 'this_week') return 'week';
+  if (preset.date_period === 'this_quarter') return 'quarter';
+  if (preset.date_period === 'this_month') return 'month';
+  return null;
+}
+
+function asInvoicesMetrics(data: InvoicesLandingMetricsV4 | TenantInvoicesResponse | null | undefined): InvoicesLandingMetricsV4 | null {
+  if (data && 'cards' in data && Array.isArray(data.cards)) return data;
+  return null;
 }
 
 function InvoicesLandingContent({
-  initialData,
+  initialMetrics,
   initialPeriod,
 }: {
-  initialData: TenantInvoicesResponse | null;
+  initialMetrics: InvoicesLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
@@ -91,8 +110,8 @@ function InvoicesLandingContent({
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(clientInitialPeriod);
-  const summaryQuery = useTenantInvoices(period, initialData);
-  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
+  const metricsQuery = useTenantInvoicesMetrics(period, initialMetrics);
+  const metricsData = useRetainedValue(metricsQuery.data ?? initialMetrics);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
   const { createInvoices } = useCreateFlags();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -108,12 +127,14 @@ function InvoicesLandingContent({
         due: [] as string[],
         location_id: [] as string[],
       },
+      filterPreset: null as Record<string, unknown> | null,
       sortBy: 'Recent first' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const filters = routeState.filters ?? { source: [], status: [], due: [], location_id: [] };
+  const filterPreset = routeState.filterPreset ?? null;
   const sortBy = routeState.sortBy;
 
   const debouncedSearch = useDebounce(search, 300);
@@ -123,7 +144,7 @@ function InvoicesLandingContent({
     JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
     period,
-    { search: debouncedSearch, ...deferredFilters },
+    { search: debouncedSearch, ...deferredFilters, filter_preset: filterPreset },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -131,7 +152,7 @@ function InvoicesLandingContent({
     rootMargin: '400px',
     onLoadMore: fetchNextPage,
   });
-  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('invoiced-sales');
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
   useRouteScrollRestoration({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
@@ -141,7 +162,7 @@ function InvoicesLandingContent({
 
   const firstPage = data?.pages?.[0];
   const allInvoices = useMemo(() => data?.pages?.flatMap((p) => p.invoices) ?? [], [data?.pages]);
-  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.invoices_this_period ?? allInvoices.length;
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? allInvoices.length;
 
   // Client-side sort only (server returns DESC by invoice_date)
   const filteredRows = useMemo(() => {
@@ -188,14 +209,9 @@ function InvoicesLandingContent({
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   const subtitle = useMemo(() => {
-    const kpis = summaryData?.kpis;
-    if (!kpis) {
-      return `Track receivables and collections ${lowerLabel}.`;
-    }
-    return `${kpis.invoices_this_period} invoices in the trailing 90 days.`;
-  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
-  const pulseAggregates = summaryData?.pulse_aggregates;
-  const asOfLabel = formatAsOfLabel(summaryData?.computed_at);
+    return `Track receivables and collections ${lowerLabel}.`;
+  }, [lowerLabel]);
+  const asOfLabel = formatAsOfLabel(metricsData?.computed_at);
 
   if (isError && !data) {
     return (
@@ -206,49 +222,42 @@ function InvoicesLandingContent({
     );
   }
   const showRefreshingState = isLoading && !data;
-  const kpis = summaryData?.kpis;
-  const kpiOptions = [
-    {
-      id: 'invoiced-sales',
-      label: 'Invoiced sales · 90D',
-      value: formatNumberValue(kpis?.gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.invoices_this_period ?? 0} invoices in trailing 90 days`,
-    },
-    {
-      id: 'outstanding-amount',
-      label: 'Outstanding amount',
-      value: formatNumberValue(kpis?.outstanding_sum ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
-    },
-    {
-      id: 'overdue-amount',
-      label: 'Overdue amount',
-      value: formatNumberValue(kpis?.overdue_sum ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
-    },
-    {
-      id: 'due-in-7-days',
-      label: 'Due in 7 days',
-      value: formatNumberValue(pulseAggregates?.due_soon_sum ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
-    },
-  ];
-  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading invoices" showTransactionTabs variant="transaction" />
+    ) : (
+      <InvoicesLandingSkeleton />
+    );
+  }
+
+  const kpiOptions = (metricsData?.cards ?? []).map((card: InvoicesLandingKpiCardV4) => ({
+    id: card.id,
+    label: card.label,
+    value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
+    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} invoices`,
+    filterPreset: card.filter_preset ?? null,
+  }));
+  const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
       label: 'Period',
       options,
       values: [period],
-      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+      onChange: (values: string[]) => {
+        setSelectedKpiKey(null);
+        setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month');
+        setRouteState((current) => ({ ...current, filterPreset: null }));
+      },
     },
-    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+    ...(firstPage?.filters?.groups ?? []).map((group) => ({
       key: group.key,
       label: group.label,
       options: group.options,
       values: filters[group.key as keyof typeof filters] ?? [],
       onChange: (values: string[]) => setRouteState((current) => ({
         ...current,
+        filterPreset: null,
         filters: { ...(current.filters ?? filters), [group.key]: values },
       })),
     })),
@@ -265,8 +274,8 @@ function InvoicesLandingContent({
         >
         <PageHeader
           eyebrow={isPaneOpen ? 'Invoices' : 'Billing'}
-          title={isPaneOpen ? selectedOption.label : 'Invoices'}
-          subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+          title={isPaneOpen ? selectedOption?.label ?? 'Invoices' : 'Invoices'}
+          subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
           horizon={horizonLabel}
           showHorizonControl={false}
           primary={createInvoices ? 'Add an invoice' : undefined}
@@ -282,7 +291,16 @@ function InvoicesLandingContent({
                 label: option.label,
                 value: option.value,
                 sub: option.sub,
-                onClick: () => setSelectedKpiKey(option.id),
+                onClick: () => {
+                  setSelectedKpiKey(option.id);
+                  const presetPeriod = periodFromInvoicePreset(option.filterPreset);
+                  if (presetPeriod && presetPeriod !== period) setPeriod(presetPeriod);
+                  setRouteState((current) => ({
+                    ...current,
+                    filterPreset: option.filterPreset,
+                    filters: filtersFromInvoicePreset(option.filterPreset),
+                  }));
+                },
                 selected: option.id === selectedKpiKey,
               }))}
             />
@@ -302,7 +320,7 @@ function InvoicesLandingContent({
           compact={isPaneOpen}
           groups={groups}
           searchValue={search}
-          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filterPreset: null }))}
           sortOptions={SORT_OPTIONS}
           onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
@@ -310,75 +328,67 @@ function InvoicesLandingContent({
       </StickyListHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showRefreshingState ? (
-        isPaneOpen ? (
-          <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-        ) : (
-          <InvoicesDataSkeleton />
-        )
-      ) : (
+      {(
         <>
-          <div className="overflow-x-auto">
-            {showTableSkeleton ? (
-              isPaneOpen ? (
-                <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-              ) : (
-                <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-              )
-            ) : displayRows.length === 0 ? (
-              <EmptyState
-                icon={<Receipt size={28} strokeWidth={1.5} />}
-                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
-                description={
-                  search.trim() || groups.some((group) => group.values.length > 0)
-                    ? 'Try a different search or filter combination.'
-                    : 'Create an invoice to bill a buyer.'
-                }
-                action={
-                  createInvoices ? (
-                    <Button variant="accent" asChild>
-                      <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
-                        <Plus size={13} />
-                        Add an invoice
-                      </Link>
-                    </Button>
-                  ) : undefined
-                }
-              />
+          {showTableSkeleton ? (
+            isPaneOpen ? (
+              <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
             ) : (
-              <TransactionTable
-                kind="invoice"
-                forceCompact={isPaneOpen}
-                selectedId={openId}
-                showCampaignColumn={showCampaignColumn}
-                tableMinWidth={showCampaignColumn ? 1480 : 1260}
-                sentinelIndex={sentinelIndex}
-                sentinelRef={sentinelRef}
-                rows={displayRows.map((row) => ({
-                  id: row.id,
-                  href: `/invoices/${row.id}`,
-                  document_number: row.invoice_number,
-                  source_kind: row.source_kind,
-                  source_label: row.source_label,
-                  buyer_name: row.buyer_name,
-                  buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
-                  buyer_initials: row.buyer_initials,
-                  buyer_hue: row.buyer_hue,
-                  location_name: row.location_name,
-                  campaign_name: row.campaign_name,
-                  items_count: row.items_count,
-                  total_amount: row.total_amount,
-                  outstanding_amount: row.outstanding_amount,
-                  amount_subtext: null,
-                  status_label: row.status.label,
-                  status_tone: row.status.tone,
-                  created_at: row.created_at,
-                  due_at: row.due_date,
-                }))}
-                onRowClick={(row) => router.push(row.href)}
-              />
-            )}
-          </div>
+              <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+            )
+          ) : displayRows.length === 0 ? (
+            <EmptyState
+              icon={<Receipt size={28} strokeWidth={1.5} />}
+              heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
+              description={
+                search.trim() || groups.some((group) => group.values.length > 0)
+                  ? 'Try a different search or filter combination.'
+                  : 'Create an invoice to bill a buyer.'
+              }
+              action={
+                createInvoices ? (
+                  <Button variant="accent" asChild>
+                    <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
+                      <Plus size={13} />
+                      Add an invoice
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <TransactionTable
+              kind="invoice"
+              forceCompact={isPaneOpen}
+              selectedId={openId}
+              showCampaignColumn={showCampaignColumn}
+              tableMinWidth={showCampaignColumn ? 1480 : 1260}
+              sentinelIndex={sentinelIndex}
+              sentinelRef={sentinelRef}
+              rows={displayRows.map((row) => ({
+                id: row.id,
+                href: `/invoices/${row.id}`,
+                document_number: row.invoice_number,
+                source_kind: row.source_kind,
+                source_label: row.source_label,
+                buyer_name: row.buyer_name,
+                buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                buyer_initials: row.buyer_initials,
+                buyer_hue: row.buyer_hue,
+                location_name: row.location_name,
+                campaign_name: row.campaign_name,
+                items_count: row.items_count,
+                total_amount: row.total_amount,
+                outstanding_amount: row.outstanding_amount,
+                amount_subtext: null,
+                status_label: row.status.label,
+                status_tone: row.status.tone,
+                created_at: row.created_at,
+                due_at: row.due_date,
+              }))}
+              onRowClick={(row) => router.push(row.href)}
+            />
+          )}
 
           {isFetchingNextPage && (
             <div className="flex justify-center py-4">
@@ -393,10 +403,12 @@ function InvoicesLandingContent({
 }
 
 export function InvoicesLandingClient({
+  initialMetrics,
   initialData,
   initialPeriod,
 }: {
-  initialData: TenantInvoicesResponse | null;
+  initialMetrics?: InvoicesLandingMetricsV4 | null;
+  initialData?: InvoicesLandingMetricsV4 | TenantInvoicesResponse | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
@@ -406,5 +418,5 @@ export function InvoicesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <InvoicesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
+  return <InvoicesLandingContent initialMetrics={initialMetrics ?? asInvoicesMetrics(initialData)} initialPeriod={initialPeriod} />;
 }

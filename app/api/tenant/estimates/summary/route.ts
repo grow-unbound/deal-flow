@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { GET as getEstimatesLanding } from '../route';
+import { GET as getEstimatesMetrics } from '../metrics/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,25 +27,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const landingRes = await getEstimatesLanding(request);
-    if (!landingRes.ok) {
-      const body = await landingRes.json().catch(() => ({ error: 'Failed to fetch summary' }));
-      return NextResponse.json(body, { status: landingRes.status });
+    const metricsRes = await getEstimatesMetrics(request);
+    if (!metricsRes.ok) {
+      const body = await metricsRes.json().catch(() => ({ error: 'Failed to fetch summary' }));
+      return NextResponse.json(body, { status: metricsRes.status });
     }
 
-    const landing = await landingRes.json();
-    const kpis = landing.kpis ?? {};
+    const metrics = await metricsRes.json();
+    const cards = Array.isArray(metrics.cards) ? metrics.cards : [];
+    const valueCard = cards.find((card: { id?: string; label?: string }) => card.id === 'estimate_value_created' || card.label?.toLowerCase().includes('estimate value'));
+    const expiringCard = cards.find((card: { id?: string; label?: string }) => card.id === 'expiring_7d' || card.label?.toLowerCase().includes('expiring'));
 
     return NextResponse.json(
       {
-        total_count: kpis.total_estimates_this_period ?? 0,
-        draft_count: kpis.open_drafts ?? 0,
-        sent_count: kpis.open_sent ?? 0,
-        accepted_count: kpis.open_accepted ?? 0,
-        total_value: kpis.total_gmv_this_period ?? 0,
+        total_count: valueCard?.document_count ?? valueCard?.entity_count ?? 0,
+        draft_count: null,
+        sent_count: null,
+        accepted_count: null,
+        total_value: valueCard?.value ?? 0,
         accepted_value: null,
-        expiring_soon: kpis.expiring_soon ?? 0,
-        refreshed_at: null,
+        expiring_soon: expiringCard?.document_count ?? expiringCard?.entity_count ?? 0,
+        refreshed_at: metrics.computed_at ?? null,
       },
       { headers: SELLER_CACHE_PERSONAL },
     );

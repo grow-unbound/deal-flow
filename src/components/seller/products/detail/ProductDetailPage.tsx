@@ -17,6 +17,7 @@ import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
 import { ProductDetailsTab } from './ProductDetailsTab';
 import { ProductPricingTab } from './ProductPricingTab';
 import { AddProductSheet } from '../AddProductSheet';
+import { ProductDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const ProductPerformanceTab = dynamic(
   () => import('./ProductPerformanceTab').then((m) => m.ProductPerformanceTab),
@@ -102,6 +103,8 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
   if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load product" description="There was a problem fetching this product detail page." />;
   }
+
+  if (isLoading && !data) return <ProductDetailSkeleton />;
 
   return (
     <div className="px-4 py-4 md:px-6 md:py-4">

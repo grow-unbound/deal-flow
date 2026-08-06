@@ -37,6 +37,10 @@ vi.mock('@/hooks/useCreateFlags', () => ({
   useCreateFlags: (...args: unknown[]) => useCreateFlagsMock(...args),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ currentTenantId: 'tenant-1' }),
+}));
+
 vi.mock('@/hooks/useTenantSettings', () => ({
   useTenantSettings: () => ({
     data: { modules: { business_policy: { credit_enabled: true, gst_inclusive: false, gst_rate: 18 } } },
@@ -60,6 +64,10 @@ import { EstimateDetailPage } from '@/components/seller/estimates/detail/Estimat
 function renderWithQueryClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+function openMoreActions() {
+  fireEvent.click(screen.getByRole('button', { name: /More actions/i }));
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -223,6 +231,48 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     expect(bad?.length ?? 0).toBe(0);
   });
 
+  it('renders refreshed readonly customer strip, subtitle, and line stock state', () => {
+    useEstimateDetailMock.mockReturnValue({
+      data: basePayload({
+        buyer_context: {
+          ...basePayload().buyer_context!,
+          gstin: '29AAAAA0000A1Z5',
+          active_pricelist: { id: 'pl-1', name: 'North Delhi A-class' },
+        },
+        items: [
+          {
+            ...basePayload().items[0],
+            qty: 12,
+            on_hand: 5,
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    const { container } = renderWithQueryClient(<EstimateDetailPage id="est-1" />);
+    const frame = container.querySelector('.doc-readonly');
+    expect(frame).toBeTruthy();
+    const readonly = within(frame as HTMLElement);
+
+    expect(readonly.getByText(/Branch: Main warehouse/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Bill to/i)).not.toBeInTheDocument();
+    expect(readonly.getByText(/Place of supply/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Karnataka/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Notes/i)).not.toBeInTheDocument();
+    expect(readonly.queryByText(/Freight charges/i)).not.toBeInTheDocument();
+    expect(readonly.getByText('29AAAAA0000A1Z5')).toBeInTheDocument();
+    expect(readonly.getByText(/15 days/i)).toBeInTheDocument();
+    expect(readonly.getByText(/North Delhi A-class/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Credit headroom/i)).toBeInTheDocument();
+    expect(readonly.getByText(/₹20,000 utilized of ₹1,00,000 limit/i)).toBeInTheDocument();
+    expect(readonly.getByText(/1 item\. 12 units/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Edit to make changes/i)).not.toBeInTheDocument();
+    expect(readonly.getByText(/Short by 7/i)).toBeInTheDocument();
+    expect(frame?.querySelector('.doc-line-stock-warning')).toBeTruthy();
+  });
+
   it('shows Edit for sent and hides Edit for converted', () => {
     useEstimateDetailMock.mockReturnValue({
       data: basePayload({
@@ -234,7 +284,8 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: null,
     });
     const { unmount } = renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    expect(screen.getByRole('button', { name: /edit estimate/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/edit estimate/i)).toBeInTheDocument();
     unmount();
 
     useEstimateDetailMock.mockReturnValue({
@@ -249,7 +300,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    expect(screen.queryByRole('button', { name: /edit estimate/i })).toBeNull();
+    expect(screen.queryByText(/edit estimate/i)).toBeNull();
   });
 
   it('Edit navigates to edit route and seeds composer cache', () => {
@@ -260,7 +311,8 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /edit estimate/i }));
+    openMoreActions();
+    fireEvent.click(screen.getByText(/edit estimate/i));
     expect(seedEstimateComposerCacheMock).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith('/estimates/est-1/edit');
   });
@@ -268,7 +320,8 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
   it('draft title action shows Send estimate outline button', () => {
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.getByRole('button', { name: /send estimate/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /edit estimate/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/edit estimate/i)).toBeInTheDocument();
   });
 
   it('Convert appears only for sent and opens modal', async () => {

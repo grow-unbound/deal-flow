@@ -55,7 +55,7 @@ export function InvoicePaymentsCard({
         {hasDue ? (
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-medium text-cream-700">Amount due</span>
-            <span className="font-mono text-base font-semibold text-amber-800">{formatNumberValue(due, 'CURRENCY_EXACT')}</span>
+            <span className="font-mono text-md font-semibold text-amber-800">{formatNumberValue(due, 'CURRENCY_EXACT')}</span>
           </div>
         ) : (
           <p className="text-sm font-medium text-teal-700">No dues</p>

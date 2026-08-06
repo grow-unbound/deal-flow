@@ -139,7 +139,7 @@ export default function PreviewSelectBuyerPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-cream-900">{label}</p>
-                    {subtitle ? <p className="truncate text-xs text-cream-600">{subtitle}</p> : null}
+                    {/* {subtitle ? <p className="truncate text-xs text-cream-600">{subtitle}</p> : null} */}
                     {!buyer.buyer_app_enabled ? (
                       <p className="mt-1 text-[11px] text-cream-500">Buyer app access off (preview only)</p>
                     ) : null}

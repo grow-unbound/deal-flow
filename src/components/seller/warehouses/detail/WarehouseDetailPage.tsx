@@ -14,6 +14,7 @@ import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useWarehouseDetail, useWarehouseReference } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
+import { WarehouseDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type TabId = 'details' | 'stock';
 
@@ -37,6 +38,8 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       />
     );
   }
+
+  if (isLoading && !data) return <WarehouseDetailSkeleton />;
 
   const warehouseForEdit: TenantWarehouse | null =
     editingWarehouse ??

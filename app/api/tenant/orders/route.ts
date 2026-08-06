@@ -198,6 +198,37 @@ function applyOrderStatusFilters<T extends { in: (column: string, values: string
   return statuses.size > 0 ? query.in('status', Array.from(statuses)) : query;
 }
 
+function parseOrderFilterPreset(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function statusesFromOrderPreset(preset: Record<string, unknown> | null): string[] {
+  if (!preset) return [];
+  if (preset.status === 'open') return ['Received', 'Confirmed', 'In transit'];
+  if (preset.status === 'received') return ['Received'];
+  if (preset.status === 'confirmed') return ['Confirmed'];
+  return [];
+}
+
+function attentionFromOrderPreset(preset: Record<string, unknown> | null): string[] {
+  if (preset?.status === 'confirmed' && Number(preset.age_gte_days ?? 0) >= 3) return ['awaiting_dispatch_3d'];
+  return [];
+}
+
+function applyOrderAttentionFilters(query: any, attentionParams: string[]) {
+  let next = query;
+  if (attentionParams.includes('awaiting_dispatch_3d')) {
+    next = next.eq('status', 'confirmed').lt('confirmed_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+  }
+  return next;
+}
+
 function applyOrderSourceFilters<T extends { eq: (column: string, value: unknown) => T; is: (column: string, value: unknown) => T; or: (filter: string) => T }>(
   query: T,
   sourceParams: string[],
@@ -262,15 +293,17 @@ export async function GET(req: NextRequest) {
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
+    const filterPreset = parseOrderFilterPreset(req.nextUrl.searchParams.get('filter_preset'));
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
-    const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const explicitStatusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const explicitAttentionParams = readArrayParam(req.nextUrl.searchParams, 'attention');
+    const statusParams = explicitStatusParams.length > 0 ? explicitStatusParams : statusesFromOrderPreset(filterPreset);
+    const attentionParams = explicitAttentionParams.length > 0 ? explicitAttentionParams : attentionFromOrderPreset(filterPreset);
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
     const cursorParam = req.nextUrl.searchParams.get('cursor');
 
     const db = supabaseAdmin;
     const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
-    const scopedLocationIds = availableLocations.map((location) => location.id);
-    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
     const searchScope = search ? await loadTransactionSearchScopeIds(db, tenantId, search) : { buyerIds: [], locationIds: [] };
 
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
@@ -287,6 +320,7 @@ export async function GET(req: NextRequest) {
 
       query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
       query = applyOrderListFilters(query, { sourceParams, statusParams, locationParams });
+      if (attentionParams.length > 0) query = applyOrderAttentionFilters(query, attentionParams);
       query = applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
       if (cursorParam) {
         query = applyOrderCursor(query, cursorParam);
@@ -299,186 +333,12 @@ export async function GET(req: NextRequest) {
         .limit(limit + 1);
     };
 
-    const buildOrdersTotalQuery = () => {
-      let query = applySellerLocationScope(
-        db
-          .schema('app')
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null) as any,
-        claims,
-      );
+    const ordersPageRes = await buildOrdersPageQuery();
 
-      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-      query = applyOrderListFilters(query, { sourceParams, statusParams, locationParams });
-      return applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
-    };
-
-    // 'needs_attention' = Orders to confirm (received, ranked by value+age).
-    // 'to_dispatch' = Orders to dispatch (confirmed, oldest-confirmed-first).
-    const buildOrderCalloutQuery = (mode: 'needs_attention' | 'to_dispatch') => {
-      let query = applySellerLocationScope(
-        db
-          .schema('app')
-          .from('orders')
-          .select(ORDER_COLUMNS)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null) as any,
-        claims,
-      );
-
-      if (mode === 'needs_attention') {
-        return query
-          .in('status', ['received'])
-          .order('total_amount', { ascending: false })
-          .order('order_date', { ascending: true, nullsFirst: true })
-          .order('id', { ascending: false })
-          .limit(SEE_ALL_LIMIT);
-      }
-
-      return query
-        .eq('status', 'confirmed')
-        .order('confirmed_at', { ascending: true, nullsFirst: true })
-        .order('id', { ascending: false })
-        .limit(SEE_ALL_LIMIT);
-    };
-
-    // Stock shortage: candidate pool of open orders (received/confirmed), flagged
-    // when any line's ordered qty exceeds current sellable availability at the
-    // order's location.
-    const loadStockShortageOrders = async (): Promise<OrderRow[]> => {
-      const candidatesQuery = applySellerLocationScope(
-        db
-          .schema('app')
-          .from('orders')
-          .select(ORDER_COLUMNS)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .in('status', ['received', 'confirmed']) as any,
-        claims,
-      );
-      const candidatesRes = await candidatesQuery
-        .order('total_amount', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(STOCK_SHORTAGE_CANDIDATE_POOL);
-
-      if (candidatesRes.error) {
-        console.error('[GET /api/tenant/orders] stock shortage candidates error:', candidatesRes.error);
-        return [];
-      }
-
-      const candidates = (candidatesRes.data ?? []) as OrderRow[];
-      if (candidates.length === 0) return [];
-
-      const candidateIds = candidates.map((order) => order.id);
-      const itemsRes = await db
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id, qty')
-        .in('order_id', candidateIds)
-        .is('deleted_at', null);
-
-      if (itemsRes.error) {
-        console.error('[GET /api/tenant/orders] stock shortage items error:', itemsRes.error);
-        return [];
-      }
-
-      const shortageItems = (itemsRes.data ?? []) as OrderShortageItemRow[];
-      const itemsByOrder = new Map<string, OrderShortageItemRow[]>();
-      for (const item of shortageItems) {
-        const list = itemsByOrder.get(item.order_id) ?? [];
-        list.push(item);
-        itemsByOrder.set(item.order_id, list);
-      }
-
-      const locationIds = Array.from(new Set(candidates.map((order) => order.location_id).filter((value): value is string => Boolean(value))));
-      const availabilityByLocation = new Map<string, Map<string, number>>();
-      await Promise.all(
-        locationIds.map(async (locationId) => {
-          const productIds = Array.from(
-            new Set(
-              candidates
-                .filter((order) => order.location_id === locationId)
-                .flatMap((order) => (itemsByOrder.get(order.id) ?? []).map((item) => item.tenant_product_id)),
-            ),
-          );
-          availabilityByLocation.set(locationId, await loadInventoryAvailabilityMap(db, productIds, locationId));
-        }),
-      );
-
-      const flagged = candidates.filter((order) => {
-        if (!order.location_id) return false;
-        const availability = availabilityByLocation.get(order.location_id);
-        if (!availability) return false;
-        return (itemsByOrder.get(order.id) ?? []).some((item) => Number(item.qty) > (availability.get(item.tenant_product_id) ?? 0));
-      });
-
-      return flagged
-        .sort((a, b) => Number(b.total_amount) - Number(a.total_amount))
-        .slice(0, SEE_ALL_LIMIT);
-    };
-
-    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
-      p_tenant_id: tenantId,
-      p_kind: 'orders',
-      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
-    });
-
-    const waitingConfirmationAggPromise = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('orders')
-        .select('total_amount', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .in('status', ['received', 'draft', 'open']) as any,
-      claims,
-    );
-
-    const waitingDispatchAggPromise = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('orders')
-        .select('total_amount', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .eq('status', 'confirmed') as any,
-      claims,
-    );
-
-    const [
-      ordersPageRes,
-      ordersTotalRes,
-      landingMetricsRes,
-      needsAttentionRes,
-      toDispatchRes,
-      stockShortageOrders,
-      waitingConfirmationAggRes,
-      waitingDispatchAggRes,
-    ] = await Promise.all([
-      buildOrdersPageQuery(),
-      buildOrdersTotalQuery(),
-      landingMetricsPromise,
-      buildOrderCalloutQuery('needs_attention'),
-      buildOrderCalloutQuery('to_dispatch'),
-      loadStockShortageOrders(),
-      waitingConfirmationAggPromise,
-      waitingDispatchAggPromise,
-    ]);
-
-    if (
-      ordersPageRes.error ||
-      ordersTotalRes.error ||
-      landingMetricsRes.error ||
-      needsAttentionRes.error ||
-      toDispatchRes.error ||
-      waitingConfirmationAggRes.error ||
-      waitingDispatchAggRes.error
-    ) {
+    if (ordersPageRes.error) {
       console.error(
         '[GET /api/tenant/orders] query error:',
-        ordersPageRes.error || ordersTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || toDispatchRes.error || waitingConfirmationAggRes.error || waitingDispatchAggRes.error,
+        ordersPageRes.error,
       );
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
@@ -490,12 +350,7 @@ export async function GET(req: NextRequest) {
     const nextCursor = hasNextPage && lastOrder
       ? encodeCursor({ created_at: getOrderDocumentTimestamp(lastOrder), id: lastOrder.id })
       : null;
-    const calloutOrders = [
-      ...((needsAttentionRes.data ?? []) as OrderRow[]),
-      ...((toDispatchRes.data ?? []) as OrderRow[]),
-      ...stockShortageOrders,
-    ];
-    const uniqueOrders = Array.from(new Map([...pageOrders, ...calloutOrders].map((order) => [order.id, order])).values());
+    const uniqueOrders = pageOrders;
 
     const buyerIds = Array.from(new Set(uniqueOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
     const catalogIds = Array.from(new Set(uniqueOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
@@ -564,8 +419,6 @@ export async function GET(req: NextRequest) {
 
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const landingKpis = ((landingMetricsRes.data as { kpis?: Record<string, number> } | null)?.kpis ?? {}) as Record<string, number>;
-
     const toLandingRow = (order: OrderRow, index: number) => {
       const buyer = buyerById.get(order.buyer_id);
       const buyerName = buyer?.business_name ?? 'Unknown buyer';
@@ -623,9 +476,6 @@ export async function GET(req: NextRequest) {
       };
     };
     const rows = pageOrders.map((order, index) => toLandingRow(order, index));
-    const needsAttention = ((needsAttentionRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
-    const toDispatch = ((toDispatchRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
-    const stockShortage = stockShortageOrders.map((order, index) => toLandingRow(order, index));
     const filters: LandingFilterMeta = {
       groups: [
         {
@@ -639,6 +489,11 @@ export async function GET(req: NextRequest) {
           options: ['Received', 'Confirmed', 'In transit', 'Invoiced', 'Delivered', 'Cancelled'].map((value) => ({ value, label: value })),
         },
         {
+          key: 'attention',
+          label: 'Attention',
+          options: [{ value: 'awaiting_dispatch_3d', label: 'Awaiting dispatch 3+ days' }],
+        },
+        {
           key: 'location_id',
           label: 'Location',
           options: availableLocations.map((location) => ({ value: location.id, label: location.name })),
@@ -648,35 +503,10 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       period,
-      kpis: {
-        orders_mtd: landingKpis.orders_mtd ?? 0,
-        orders_prev_mtd: landingKpis.orders_prev_mtd ?? 0,
-        orders_growth_pct: landingKpis.orders_growth_pct ?? 0,
-        gmv_mtd: landingKpis.gmv_mtd ?? 0,
-        gmv_prev_mtd: landingKpis.gmv_prev_mtd ?? 0,
-        aov: landingKpis.aov ?? 0,
-        pending_dispatch_count: landingKpis.pending_dispatch_count ?? 0,
-        received_count: landingKpis.received_count ?? 0,
-        delivered_count: landingKpis.delivered_count ?? 0,
-        buyers_mtd: landingKpis.buyers_mtd ?? 0,
-        open_value: landingKpis.open_value ?? 0,
-        open_total: landingKpis.open_total ?? 0,
-      },
-      pulse_aggregates: {
-        waiting_confirmation_count: waitingConfirmationAggRes.count ?? 0,
-        waiting_confirmation_value: sumMetric((waitingConfirmationAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
-        waiting_dispatch_count: waitingDispatchAggRes.count ?? 0,
-        waiting_dispatch_value: sumMetric((waitingDispatchAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
-      },
-      todays_read: {
-        needs_attention: needsAttention,
-        to_dispatch: toDispatch,
-        stock_shortage: stockShortage,
-      },
       orders: rows,
       filters,
       nextCursor,
-      total: ordersTotalRes.count ?? rows.length,
+      total: null,
     };
 
     return timedJson(payload);

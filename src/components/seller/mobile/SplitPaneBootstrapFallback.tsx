@@ -15,6 +15,9 @@ export function SplitPaneBootstrapFallback({
   showTransactionTabs = false,
   variant = 'entity',
   showLeading = false,
+  eyebrowWidth,
+  titleWidth,
+  subtitleWidth,
 }: {
   basePath: string;
   expandedFallback: ReactNode;
@@ -23,6 +26,9 @@ export function SplitPaneBootstrapFallback({
   variant?: SellerSplitListVariant;
   /** Avatar column in list rows (products, brands, categories). */
   showLeading?: boolean;
+  eyebrowWidth?: string;
+  titleWidth?: string;
+  subtitleWidth?: string;
 }) {
   const pathname = usePathname();
   const { id } = useParams<{ id?: string }>();
@@ -34,6 +40,9 @@ export function SplitPaneBootstrapFallback({
         showTransactionTabs={showTransactionTabs}
         variant={variant}
         showLeading={showLeading}
+        eyebrowWidth={eyebrowWidth}
+        titleWidth={titleWidth}
+        subtitleWidth={subtitleWidth}
       />
     );
   }

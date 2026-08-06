@@ -264,10 +264,12 @@ export function CreditBar({
   used,
   limit,
   preview,
+  compact = false,
 }: {
   used: number;
   limit: number | null;
   preview: number;
+  compact?: boolean;
 }) {
   const usedPct = resolveEstimateComposerCreditUsedPct(used, limit);
   const tone = resolveEstimateComposerCreditTone(used, limit, preview);
@@ -277,30 +279,34 @@ export function CreditBar({
   if (!hasLimit) {
     return (
       <div>
-        <div className="flex items-center justify-between text-sm text-cream-700">
-          <span>Credit headroom</span>
-          <span className="font-mono">
-            {formatNumberValue(used, 'CURRENCY_EXACT')} / —
-          </span>
-        </div>
-        <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-cream-200">
+        {!compact ? (
+          <div className="flex items-center justify-between text-sm text-cream-700">
+            <span>Credit headroom</span>
+            <span className="font-mono">
+              {formatNumberValue(used, 'CURRENCY_EXACT')} / —
+            </span>
+          </div>
+        ) : null}
+        <div className={cn('flex w-full overflow-hidden rounded-full bg-cream-200', compact ? 'mt-1 h-1.5' : 'mt-2 h-2')}>
           <div className={cn('h-full w-full shrink-0 rounded-full', CREDIT_BAR_FILL_CLASS[tone])} />
         </div>
-        <p className="mt-1 text-xs text-cream-600">No credit limit set</p>
+        {!compact ? <p className="mt-1 text-xs text-cream-600">No credit limit set</p> : null}
       </div>
     );
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between text-sm text-cream-700">
-        <span>Credit headroom</span>
-        <span className="font-mono">
-          {formatNumberValue(used, 'CURRENCY_EXACT')} / {formatNumberValue(limit, 'CURRENCY_EXACT')}
-        </span>
-      </div>
+      {!compact ? (
+        <div className="flex items-center justify-between text-sm text-cream-700">
+          <span>Credit headroom</span>
+          <span className="font-mono">
+            {formatNumberValue(used, 'CURRENCY_EXACT')} / {formatNumberValue(limit, 'CURRENCY_EXACT')}
+          </span>
+        </div>
+      ) : null}
       <div
-        className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-cream-200"
+        className={cn('flex w-full overflow-hidden rounded-full bg-cream-200', compact ? 'mt-1 h-1.5' : 'mt-2 h-2')}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -317,7 +323,7 @@ export function CreditBar({
           />
         ) : null}
       </div>
-      <p className="mt-1 text-xs text-cream-600">Available {formatNumberValue(Math.max(limit - used, 0), 'CURRENCY_EXACT')}</p>
+      {!compact ? <p className="mt-1 text-xs text-cream-600">Available {formatNumberValue(Math.max(limit - used, 0), 'CURRENCY_EXACT')}</p> : null}
     </div>
   );
 }

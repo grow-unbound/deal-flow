@@ -1,5 +1,6 @@
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import { computeSellableUnits, computeWarehouseInitials, computeWarehouseStockStatus, isIdleStockSku } from '@/lib/server/warehouse-metrics';
 import type { TenantWarehouse, WarehouseDetailInventoryItem, WarehouseDetailResponse, WarehouseInventoryTrendWeek } from '@/types/tenant-warehouses';
 
@@ -24,6 +25,7 @@ export interface WarehouseInventoryRow {
   updated_at: string;
   product_name?: string;
   brand_name?: string;
+  image_url?: string | null;
 }
 
 export function hydrateWarehouse(row: Record<string, unknown>): TenantWarehouse {
@@ -134,7 +136,7 @@ export async function loadWarehouseInventoryRows(
     const { data, error } = await db
       .schema('app')
       .from('tenant_products')
-      .select('id, name_override, internal_sku, tenant_brand_id')
+      .select('id, name_override, internal_sku, tenant_brand_id, image_urls')
       .in('id', productChunk)
       .is('deleted_at', null);
 
@@ -218,13 +220,19 @@ export async function loadWarehouseInventoryRows(
     );
   }
 
-  const productMeta = new Map<string, { product_name?: string; sku?: string; brand_name?: string }>();
+  const productMeta = new Map<string, {
+    product_name?: string;
+    sku?: string;
+    brand_name?: string;
+    image_url?: string | null;
+  }>();
   for (const row of products) {
     const brandId = typeof row.tenant_brand_id === 'string' ? row.tenant_brand_id : null;
     productMeta.set(String(row.id), {
       product_name: typeof row.name_override === 'string' ? row.name_override : undefined,
       sku: typeof row.internal_sku === 'string' ? row.internal_sku : undefined,
       brand_name: brandId ? brandNameById.get(brandId) : undefined,
+      image_url: firstStoredImageUrl(row.image_urls),
     });
   }
 
@@ -240,6 +248,7 @@ export async function loadWarehouseInventoryRows(
       updated_at: row.updated_at,
       product_name: meta?.product_name,
       brand_name: meta?.brand_name,
+      image_url: meta?.image_url ?? null,
     } satisfies WarehouseInventoryRow;
   });
 }
@@ -407,6 +416,7 @@ async function hydrateInventoryItems(
         sellable_units: sellableUnits,
         reorder_point: row.reorder_point,
         stock_status: computeWarehouseStockStatus(row.qty_available, row.qty_reserved, row.reorder_point),
+        image_url: row.image_url ?? null,
         last_updated: row.updated_at,
         last_demand_at: lastDemandAt,
         is_idle: isIdleStockSku(sellableUnits, lastDemandAt),

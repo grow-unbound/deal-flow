@@ -31,6 +31,7 @@ import { useRole } from '@/hooks/useRole';
 import { formatNumberValue } from '@/lib/utils';
 import { PriceListFormSheet } from '@/components/seller/price-lists/PriceListFormSheet';
 import type { ProductMembershipRules } from '@/lib/zod';
+import { PriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const PriceListPerformanceTab = dynamic(
   () => import('@/components/seller/price-lists/detail/PriceListPerformanceTab').then((m) => m.PriceListPerformanceTab),
@@ -103,6 +104,8 @@ export default function PriceListDetailPage() {
       </FeatureGate>
     );
   }
+
+  if (isLoading && !priceList) return <PriceListDetailSkeleton />;
 
   return (
     <FeatureGate flag="PRICING_ENGINE">

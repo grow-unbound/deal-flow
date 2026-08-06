@@ -21,12 +21,22 @@ export type EstimateComposerLineRow = EstimateComposerLineInput & {
 
 type DocLineKind = 'estimate' | 'so' | 'invoice';
 
-function lineRowClass(line: EstimateComposerLineRow, readOnly: boolean) {
+function lineRowClass(line: EstimateComposerLineRow, readOnly: boolean, highlightStock = true) {
+  const stock = readOnly && highlightStock ? stockStatusForLine(line) : null;
+  if (stock?.tone === 'danger') return 'doc-line-stock-danger';
+  if (stock?.tone === 'warning') return 'doc-line-stock-warning';
   if (readOnly) return '';
   if (line.diff === 'changed') return 'is-changed';
   if (line.diff === 'added') return 'is-added';
   if (line.diff === 'removed') return 'is-removed';
   return '';
+}
+
+function stockStatusForLine(line: EstimateComposerLineRow): { label: string; tone: 'warning' | 'danger' } | null {
+  if (!Number.isFinite(line.on_hand)) return null;
+  if (line.on_hand <= 0) return { label: 'Out of stock', tone: 'danger' };
+  if (line.qty > line.on_hand) return { label: `Short by ${formatNumberInput(line.qty - line.on_hand, 'COUNT')}`, tone: 'warning' };
+  return null;
 }
 
 function matchesLineFilter(line: EstimateComposerLineRow, query: string): boolean {
@@ -123,6 +133,7 @@ export function LinesTable({
   onToggleInternal: () => void;
 }) {
   const activeLines = lines.filter((line) => line.diff !== 'removed');
+  const activeUnits = activeLines.reduce((sum, line) => sum + line.qty, 0);
   const colCount = readOnly ? 5 : 6;
   const bodyLines = readOnly ? activeLines : lines;
   const showDualNotes = !singleNoteMode;
@@ -189,13 +200,15 @@ export function LinesTable({
         <div>
           <p className="title text-base font-semibold text-cream-950">
             {readOnly
-              ? `${activeLines.length} line${activeLines.length === 1 ? '' : 's'}`
+              ? `${activeLines.length} item${activeLines.length === 1 ? '' : 's'}. ${formatNumberInput(activeUnits, 'COUNT')} unit${activeUnits === 1 ? '' : 's'}`
               : title ??
                 (activeLines.length === 0 ? 'Add your first product' : `${activeLines.length} line${activeLines.length === 1 ? '' : 's'}`)}
           </p>
-          <p className="sub mt-1 text-sm text-cream-600">
-            {readOnly ? 'Edit to make changes.' : description ?? 'Pricelist auto-applies. Adjust qty, price, or discount as needed.'}
-          </p>
+          {!readOnly ? (
+            <p className="sub mt-1 text-sm text-cream-600">
+              {description ?? 'Pricelist auto-applies. Adjust qty, price, or discount as needed.'}
+            </p>
+          ) : null}
         </div>
         {!readOnly ? (
           <div className="ml-auto flex min-w-[200px] max-w-md flex-1 flex-wrap items-center justify-end gap-2">
@@ -326,6 +339,7 @@ export function LinesTable({
             ) : null}
 
             {visibleLines.map((line, index) => {
+              const stockStatus = readOnly && kind !== 'invoice' ? stockStatusForLine(line) : null;
               if (!readOnly && line.diff === 'removed') {
                 return (
                   <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
@@ -338,11 +352,11 @@ export function LinesTable({
               }
 
               return (
-                <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
+                <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly, kind !== 'invoice'))}>
                   <td className="pl-6 pr-5 py-3 tabular-nums text-cream-600">{index + 1}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
-                      <EntityAvatar initials={productInitials(line.product_name)} hue={line.brand_hue} imageUrl={line.image_url} size={32} />
+                      <EntityAvatar initials={line.brand_initials || productInitials(line.product_name)} hue={line.brand_hue} imageUrl={line.image_url} size={32} />
                       <div className="min-w-0 w-full">
                         <p className="truncate font-medium text-cream-900" title={line.product_name}>{line.product_name}</p>
                         <p className="truncate text-xs text-cream-600">
@@ -351,6 +365,11 @@ export function LinesTable({
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}
                           {line.base_selling_price != null ? ` · Base Price ${formatNumberValue(line.base_selling_price, 'CURRENCY_EXACT')}` : ''}
                         </p>
+                        {stockStatus ? (
+                          <p className={cn('mt-1 text-xs font-semibold', stockStatus.tone === 'danger' ? 'text-danger-700' : 'text-amber-800')}>
+                            {stockStatus.label} · Required {formatNumberInput(line.qty, 'COUNT')}, on hand {formatNumberInput(Math.max(line.on_hand, 0), 'COUNT')}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </td>

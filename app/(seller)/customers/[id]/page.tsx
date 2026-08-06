@@ -26,6 +26,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatNumberValue } from '@/lib/utils';
+import { CustomerDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists';
 
@@ -120,6 +121,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load customer" description={error?.message ?? 'There was a problem fetching this customer detail page.'} />;
   }
+
+  if (isLoading && !data) return <CustomerDetailSkeleton />;
 
   const hasOutstandingDues = (data?.meta_strip_4.credit_used ?? 0) > 0;
 

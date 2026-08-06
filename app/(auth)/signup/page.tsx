@@ -2,20 +2,13 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { SignupFormCardSkeleton } from '@/components/auth/SignupFormCardSkeleton';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 
 const SignupFormCard = dynamic(
   () => import('@/components/auth/SignupFormCard').then((mod) => mod.SignupFormCard),
   {
-    loading: () => (
-      <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8 animate-pulse">
-        <div className="h-8 bg-cream-200 rounded w-2/3 mb-4" />
-        <div className="h-4 bg-cream-200 rounded w-1/2 mb-8" />
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-10 bg-cream-200 rounded mb-4" />
-        ))}
-      </div>
-    ),
+    loading: () => <SignupFormCardSkeleton />,
   },
 );
 
@@ -55,15 +48,7 @@ export default function SignupPage() {
   const onboardingFlag = useFlagState('TENANT_ONBOARDING');
 
   if (onboardingFlag === undefined) {
-    return (
-      <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8 animate-pulse">
-        <div className="h-8 bg-cream-200 rounded w-2/3 mb-4" />
-        <div className="h-4 bg-cream-200 rounded w-1/2 mb-8" />
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-10 bg-cream-200 rounded mb-4" />
-        ))}
-      </div>
-    );
+    return <SignupFormCardSkeleton />;
   }
 
   if (!onboardingFlag) {

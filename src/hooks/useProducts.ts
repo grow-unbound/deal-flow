@@ -56,6 +56,16 @@ export interface TenantProduct {
   days_cover?: number | null;
   units_mtd?: number;
   gmv_mtd?: number;
+  invoice_units?: number;
+  invoice_value?: number;
+  invoice_count?: number;
+  invoice_buyer_count?: number;
+  estimate_units?: number;
+  estimate_value?: number;
+  estimate_count?: number;
+  order_units?: number;
+  order_value?: number;
+  order_count?: number;
   status_label?: string;
   status_tone?: 'success' | 'warning' | 'danger' | 'neutral';
 }
@@ -195,6 +205,8 @@ export interface ProductDetailResponse {
 
 export interface TenantProductsResponse {
   period?: SellerLandingPeriodMeta;
+  period_key?: string;
+  grain?: 'quarter';
   products: TenantProduct[];
   brands?: string[];
   filters?: LandingFilterMeta;
@@ -204,6 +216,32 @@ export interface TenantProductsResponse {
     running_low: ProductsTodaysReadItem[];
     no_sale_90d: ProductsTodaysReadItem[];
   };
+}
+
+export interface ProductsLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface ProductsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: ProductsLandingKpiCardV4[];
 }
 
 export interface SearchProductsResponse {
@@ -250,11 +288,38 @@ export interface ProductsInfiniteFilters {
   category?: string[];
   status?: string[];
   stock?: string[];
+  sort?: ProductLandingSort;
+  filter_preset?: Record<string, unknown> | null;
 }
 
 export interface TenantProductsPage extends TenantProductsResponse {
   nextCursor: string | null;
   total: number | null;
+  sort?: ProductLandingSort;
+}
+
+export type ProductLandingSort =
+  | 'invoice_value_desc'
+  | 'invoice_value_asc'
+  | 'invoice_units_desc'
+  | 'order_value_desc'
+  | 'estimate_value_desc'
+  | 'stock_on_hand_asc';
+
+export function useTenantProductsLandingMetrics(initialData?: ProductsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-products-landing-metrics-v4'],
+    queryFn: async (): Promise<ProductsLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/products/metrics');
+      if (!res.ok) {
+        throw new Error('Failed to fetch products metrics');
+      }
+      return res.json() as Promise<ProductsLandingMetricsV4>;
+    },
+    initialData: initialData ?? undefined,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
 }
 
 export function useTenantProductsInfinite(
@@ -271,6 +336,8 @@ export function useTenantProductsInfinite(
       appendArrayParam(params, 'category', filters.category);
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'stock', filters.stock);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset) params.set('filter_preset', JSON.stringify(filters.filter_preset));
       const res = await apiFetch(`/api/tenant/products?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch products');
       return res.json() as Promise<TenantProductsPage>;

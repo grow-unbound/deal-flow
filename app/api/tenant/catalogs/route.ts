@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { resolveCampaignWorkflowStatus, type CampaignWorkflowStatus, type CampaignWorkflowStatusLabel, type CampaignWorkflowStatusTone, type RawCampaignStatus } from '@/lib/campaign-workflow-status';
 import { CampaignFormPayloadSchema, CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
@@ -12,17 +12,7 @@ import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
-import {
-  aggregateCampaignViewsByCampaign,
-  buildCatalogAttributedMetrics,
-  type CampaignEstimateRow,
-  type CampaignOrderRow,
-  type CampaignViewRow,
-} from '@/lib/server/campaign-performance';
-import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast';
 import { readArrayParam } from '@/lib/landing-filter-params';
-import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 import { getPostHogClient } from '@/lib/posthog-server';
 
 type CatalogStatus = RawCampaignStatus;
@@ -55,59 +45,6 @@ interface TenantProductRow {
   mrp: number | null;
   base_selling_price: number | null;
   created_at: string;
-}
-
-interface TenantBrandRow {
-  id: string;
-  display_name_override: string | null;
-  master_brand_id: string;
-}
-
-interface MasterBrandRow {
-  id: string;
-  name: string;
-}
-
-interface CohortRow {
-  id: string;
-  name: string;
-  cached_member_count?: number | null;
-}
-
-interface CohortMemberRow {
-  cohort_id: string;
-  buyer_id: string;
-}
-
-interface OrderRow {
-  id: string;
-  campaign_id: string | null;
-  total_amount: number | null;
-  order_date?: string | null;
-  placed_at: string | null;
-  created_at: string | null;
-  status: string;
-  buyer_id: string;
-}
-
-interface EstimateRow {
-  id: string;
-  campaign_id: string | null;
-  total_amount: number | null;
-  status: string;
-  converted_to_order_id: string | null;
-  estimate_date?: string | null;
-  created_at: string | null;
-  buyer_id?: string;
-}
-
-function buildPeriodFallbackFilter(
-  primaryColumn: string,
-  fallbackColumn: string,
-  startIso: string,
-  endExclusiveIso: string,
-) {
-  return `and(${primaryColumn}.gte.${startIso},${primaryColumn}.lt.${endExclusiveIso}),and(${primaryColumn}.is.null,${fallbackColumn}.gte.${startIso},${fallbackColumn}.lt.${endExclusiveIso})`;
 }
 
 function getHue(index: number): AvatarHue {
@@ -169,85 +106,82 @@ function generateShareToken() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
 }
 
-type CatalogMetric = {
-  gmv: number;
-  previous_gmv: number;
-  order_count: number;
-  estimate_count: number;
-  conversions: number;
-  views: number;
-  view_pct: number;
-  conversion_pct: number;
-  growth_pct: number;
-  products_count: number;
-  brands_count: number;
-  audience_label: string;
-  audience_count: number | null;
+type CampaignCursor = {
+  t: string;
+  i: string;
 };
 
-type CampaignAttributedPeriodTotals = {
-  gmv: number;
-  conversionCount: number;
-  demandCustomers: number;
-  openedCustomers: number;
-  conversionPct: number;
+type CampaignMetricRow = {
+  campaign_id: string;
+  viewed_buyer_count: number | string | null;
+  view_count: number | string | null;
+  estimate_count: number | string | null;
+  estimate_value: number | string | null;
+  order_count: number | string | null;
+  order_value: number | string | null;
+  invoice_count: number | string | null;
+  invoice_value: number | string | null;
+  demand_buyer_count: number | string | null;
+  revenue_buyer_count: number | string | null;
 };
 
-type CatalogCallout = {
-  id: string;
-  name: string;
-  status: { value: CampaignWorkflowStatus; raw_value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
-  cohort_name: string;
-  gmv: number;
-  conversions: number;
-  conversion_pct: number;
-  valid_to: string | null;
-  days_left: number | null;
-  growth_pct: number;
-};
+function toNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-type CatalogMetricsRpc = {
-  row_metrics?: Record<string, CatalogMetric>;
-  summary?: {
-    kpis: Record<string, number>;
-    todays_read: {
-      needs_attention: CatalogCallout[];
-      top_performers: CatalogCallout[];
-      top_risers: CatalogCallout[];
-    };
-  } | null;
-};
+function encodeCampaignCursor(payload: CampaignCursor): string {
+  return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
 
-function calloutToLandingRow(callout: CatalogCallout, index: number) {
-  return {
-    ...callout,
-    status: {
-      ...callout.status,
-      raw_value: callout.status.raw_value ?? (callout.status.value === 'draft' ? 'draft' : callout.status.value === 'archived' ? 'archived' : 'published'),
-    },
-    initials: getInitials(callout.name),
-    hue: getHue(index),
-    audience_count: null,
-    products_count: 0,
-    brands_count: 0,
-    orders: 0,
-    order_count: 0,
-    estimate_count: 0,
-    views: 0,
-    view_pct: 0,
-    valid_from: '',
-    valid_until_label: callout.valid_to
-      ? new Date(callout.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-      : 'No end date',
-    created_at: '',
-  };
+function decodeCampaignCursor(cursor: string | null): CampaignCursor | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as Partial<CampaignCursor>;
+    if (typeof parsed.t !== 'string' || typeof parsed.i !== 'string') return null;
+    return { t: parsed.t, i: parsed.i };
+  } catch {
+    return null;
+  }
+}
+
+function parseCampaignFilterPreset(raw: string | null): Record<string, unknown> | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function campaignMatchesConversion(metric: CampaignMetricRow, conversions: string[]): boolean {
+  if (conversions.length === 0) return true;
+  return conversions.some((value) => {
+    if (value === 'has_viewed') return toNumber(metric.viewed_buyer_count) > 0 || toNumber(metric.view_count) > 0;
+    if (value === 'has_demand') return toNumber(metric.demand_buyer_count) > 0 || toNumber(metric.estimate_count) > 0 || toNumber(metric.order_count) > 0;
+    if (value === 'has_revenue') return toNumber(metric.revenue_buyer_count) > 0 || toNumber(metric.invoice_count) > 0 || toNumber(metric.invoice_value) > 0;
+    return false;
+  });
+}
+
+function conversionFiltersFromPreset(preset: Record<string, unknown> | null): string[] {
+  if (!preset) return [];
+  const values = new Set<string>();
+  if (preset.has_viewed === true || preset.conversion === 'has_viewed') values.add('has_viewed');
+  if (preset.has_demand === true || preset.conversion === 'has_demand') values.add('has_demand');
+  if (preset.has_revenue === true || preset.conversion === 'has_revenue') values.add('has_revenue');
+  return Array.from(values);
+}
+
+function normalizeStatusLabels(values: string[]): string[] {
+  return values
+    .map((value) => value.trim())
+    .filter((value) => value && value !== 'All');
 }
 
 async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: unknown, init?: ResponseInit) => NextResponse) {
-  const fullCalloutId = req.nextUrl.searchParams.get('callout')?.trim() || undefined;
-  const previewRows = <T,>(calloutId: string, rows: T[]) => (
-    fullCalloutId === calloutId ? rows : rows.slice(0, 3)
-  );
   const claims = await getVerifiedClaims(req);
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
   if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
@@ -257,306 +191,215 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   const db = supabaseAdmin;
   const now = new Date();
   const nowTs = now.getTime();
-  const period = getSellerLandingPeriodMeta('last90', now);
+  const period = getSellerLandingPeriodMeta('quarter', now);
   const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-  const offset = parseRowsOffset(req.nextUrl.searchParams.get('offset'));
-  const includeSummary = req.nextUrl.searchParams.get('include_summary') !== 'false';
+  const cursor = decodeCampaignCursor(req.nextUrl.searchParams.get('cursor'));
   const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
-  const statuses = readArrayParam(req.nextUrl.searchParams, 'status')
-    .map((value) => value.toLowerCase().replace(/ /g, '_'))
-    .filter((value) => value !== 'all');
+  const statusLabels = normalizeStatusLabels(readArrayParam(req.nextUrl.searchParams, 'status'));
+  const preset = parseCampaignFilterPreset(req.nextUrl.searchParams.get('filter_preset'));
+  const conversions = Array.from(new Set([
+    ...readArrayParam(req.nextUrl.searchParams, 'conversion'),
+    ...conversionFiltersFromPreset(preset),
+  ]));
+  const periodStart = period.current_start.slice(0, 10);
+  const scanLimit = Math.max(limit * 6, 300);
 
-  const [landingSearch, createFlags, primaryDemandKindRes] = await Promise.all([
-    searchSellerLandingEntityIds({ tenantId, entity: 'campaigns', query: search, statuses, limit, offset }),
-    getInAppCreateFlags(tenantId),
-    db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId }),
-  ]);
-  const primaryDemandKind: 'orders' | 'estimates' | 'none' =
-    primaryDemandKindRes.data === 'estimates' || primaryDemandKindRes.data === 'none' ? primaryDemandKindRes.data : 'orders';
-  const pageIds = landingSearch.ids;
-  const summaryIds = includeSummary && landingSearch.total > pageIds.length
-    ? (
-      await searchSellerLandingEntityIds({
-        tenantId,
-        entity: 'campaigns',
-        query: search,
-        statuses,
-        limit: landingSearch.total,
-        offset: 0,
-      })
-    ).ids
-    : pageIds;
-  const metricCatalogIds = Array.from(new Set([...pageIds, ...summaryIds]));
-  const metricsRes = await db.schema('app').rpc('get_catalog_landing_metrics', {
-    p_tenant_id: tenantId,
-    p_campaign_ids: pageIds,
-    p_current_start: period.current_start.slice(0, 10),
-    p_current_end_exclusive: period.current_end_exclusive.slice(0, 10),
-    p_previous_start: period.previous_start.slice(0, 10),
-    p_previous_end_exclusive: period.previous_end_exclusive.slice(0, 10),
-    p_include_orders: createFlags.create_sales_orders,
-    p_include_estimates: createFlags.create_enquiries,
-    p_include_summary: includeSummary,
-  });
+  const metricsRes = await db
+    .schema('app')
+    .from('metrics_campaign_period_summary')
+    .select('campaign_id, viewed_buyer_count, view_count, estimate_count, estimate_value, order_count, order_value, invoice_count, invoice_value, demand_buyer_count, revenue_buyer_count')
+    .eq('tenant_id', tenantId)
+    .eq('grain', 'quarter')
+    .eq('period_start', periodStart)
+    .is('deleted_at', null)
+    .limit(scanLimit);
   if (metricsRes.error) {
-    console.error('[GET /api/tenant/catalogs] metrics RPC error:', metricsRes.error);
+    console.error('[GET /api/tenant/catalogs] V4 metrics query error:', metricsRes.error);
     return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
   }
 
-  let catalogs: CatalogRow[] = [];
-  if (metricCatalogIds.length > 0) {
-    const catalogsRes = await db
-      .schema('app')
-      .from('campaigns')
-      .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
-      .eq('tenant_id', tenantId)
-      .in('id', metricCatalogIds)
-      .is('deleted_at', null)
-      .limit(Math.max(metricCatalogIds.length, limit));
-    if (catalogsRes.error) return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-    catalogs = (catalogsRes.data ?? []) as CatalogRow[];
+  const metricById = new Map<string, CampaignMetricRow>(
+    ((metricsRes.data ?? []) as CampaignMetricRow[]).map((metric) => [metric.campaign_id, metric]),
+  );
+
+  let campaignQuery = db
+    .schema('app')
+    .from('campaigns')
+    .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(scanLimit);
+  if (cursor) {
+    campaignQuery = campaignQuery.or(`created_at.lt.${cursor.t},and(created_at.eq.${cursor.t},id.lt.${cursor.i})`);
+  }
+  if (search) {
+    const safe = search.replace(/[%_]/g, '\\$&');
+    campaignQuery = campaignQuery.ilike('name', `%${safe}%`);
   }
 
-  const rpc = (metricsRes.data ?? {}) as CatalogMetricsRpc;
-  const metricsById = rpc.row_metrics ?? {};
-  const catalogById = new Map(catalogs.map((catalog) => [catalog.id, catalog]));
-  const pageCatalogs = pageIds
-    .map((id) => catalogById.get(id))
-    .filter((catalog): catalog is CatalogRow => Boolean(catalog));
+  const campaignsRes = await campaignQuery;
+  if (campaignsRes.error) {
+    console.error('[GET /api/tenant/catalogs] campaigns query error:', campaignsRes.error);
+    return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+  }
 
-  let attributedByCampaign = new Map<string, CampaignAttributedPeriodTotals>();
-  let summaryOpenedCustomers = 0;
-  let summaryDemandCustomers = 0;
-  let summaryDemandValue = 0;
-  let summaryDemandDocs = 0;
-
-  if (metricCatalogIds.length > 0) {
-    const periodFilter = buildPeriodFallbackFilter(
-      'order_date',
-      'created_at',
-      period.current_start,
-      period.current_end_exclusive,
-    );
-    const estimatePeriodFilter = buildPeriodFallbackFilter(
-      'estimate_date',
-      'created_at',
-      period.current_start,
-      period.current_end_exclusive,
-    );
-    const [itemsRes, ordersRes, estimatesRes, viewsRes, createFlags] = await Promise.all([
-      db
-        .schema('app')
-        .from('campaign_items')
-        .select('campaign_id, tenant_product_id')
-        .in('campaign_id', metricCatalogIds)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
-        .eq('tenant_id', tenantId)
-        .in('campaign_id', metricCatalogIds)
-        .is('deleted_at', null)
-        .or(periodFilter),
-      db
-        .schema('app')
-        .from('estimates')
-        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
-        .eq('tenant_id', tenantId)
-        .in('campaign_id', metricCatalogIds)
-        .is('deleted_at', null)
-        .or(estimatePeriodFilter),
-      db
-        .schema('app')
-        .from('campaign_views')
-        .select('campaign_id, buyer_id, viewed_at')
-        .eq('tenant_id', tenantId)
-        .in('campaign_id', metricCatalogIds)
-        .gte('viewed_at', period.current_start)
-        .lt('viewed_at', period.current_end_exclusive),
-      getInAppCreateFlags(tenantId),
-    ]);
-
-    if (itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
-      console.error(
-        '[GET /api/tenant/catalogs] optimized enrichment error:',
-        itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error,
-      );
-      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-    }
-
-    const items = (itemsRes.data ?? []) as CatalogItemRow[];
-    const orders = ((ordersRes.data ?? []) as OrderRow[]).map((order) => ({
-      ...order,
-      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
-    }));
-    const estimates = ((estimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
-      ...estimate,
-      created_at: estimate.estimate_date ?? estimate.created_at,
-    }));
-    const viewsByCampaign = aggregateCampaignViewsByCampaign((viewsRes.data ?? []) as CampaignViewRow[]);
-    const productsByCampaign = new Map<string, Set<string>>();
-    const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
-
-    for (const item of items) {
-      if (!productsByCampaign.has(item.campaign_id)) productsByCampaign.set(item.campaign_id, new Set());
-      productsByCampaign.get(item.campaign_id)?.add(item.tenant_product_id);
-    }
-
-    const [orderItemsRes, estimateItemsRes] = await Promise.all([
-      orders.length > 0 && tenantProductIds.length > 0
-        ? db
-            .schema('app')
-            .from('order_items')
-            .select('order_id, tenant_product_id, qty, line_total, unit_price')
-            .in('order_id', orders.map((order) => order.id))
-            .in('tenant_product_id', tenantProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-      estimates.length > 0 && tenantProductIds.length > 0
-        ? db
-            .schema('app')
-            .from('estimate_items')
-            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
-            .in('estimate_id', estimates.map((estimate) => estimate.id))
-            .in('tenant_product_id', tenantProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (orderItemsRes.error || estimateItemsRes.error) {
-      console.error(
-        '[GET /api/tenant/catalogs] optimized enrichment line items error:',
-        orderItemsRes.error || estimateItemsRes.error,
-      );
-      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-    }
-
-    const orderItemsRaw = (orderItemsRes.data ?? []) as Array<{
-      order_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>;
-    const estimateItemsRaw = (estimateItemsRes.data ?? []) as Array<{
-      estimate_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>;
-    const channelOptions = {
-      includeOrders: createFlags.create_sales_orders,
-      includeEstimates: createFlags.create_enquiries,
-    };
-    const openedBuyerIds = new Set<string>();
-    const demandBuyerIds = new Set<string>();
-
-    for (const catalogId of metricCatalogIds) {
-      const conversionMetrics = buildCatalogAttributedMetrics(
-        catalogId,
-        productsByCampaign.get(catalogId) ?? new Set<string>(),
-        orders as CampaignOrderRow[],
-        estimates as CampaignEstimateRow[],
-        orderItemsRaw,
-        estimateItemsRaw,
-        channelOptions,
-      );
-      const viewMetrics = viewsByCampaign.get(catalogId);
-      const openedCustomers = viewMetrics?.uniqueViewers ?? 0;
-      const demandCustomers = conversionMetrics.convertingBuyerIds.size;
-      const conversionPct = openedCustomers > 0
-        ? Number(((demandCustomers / openedCustomers) * 100).toFixed(1))
-        : 0;
-
-      attributedByCampaign.set(catalogId, {
-        gmv: conversionMetrics.gmv,
-        conversionCount: conversionMetrics.conversionCount,
-        demandCustomers,
-        openedCustomers,
-        conversionPct,
+  const zeroMetric = (campaignId: string): CampaignMetricRow => ({
+    campaign_id: campaignId,
+    viewed_buyer_count: 0,
+    view_count: 0,
+    estimate_count: 0,
+    estimate_value: 0,
+    order_count: 0,
+    order_value: 0,
+    invoice_count: 0,
+    invoice_value: 0,
+    demand_buyer_count: 0,
+    revenue_buyer_count: 0,
+  });
+  const candidateCampaigns = ((campaignsRes.data ?? []) as CatalogRow[])
+    .map((campaign) => ({ campaign, metric: metricById.get(campaign.id) ?? zeroMetric(campaign.id) }))
+    .filter(({ campaign, metric }) => {
+      const workflowStatus = resolveCampaignWorkflowStatus({
+        rawStatus: campaign.status,
+        validFrom: campaign.valid_from,
+        validTo: campaign.valid_to,
+        now,
       });
+      const statusMatch = statusLabels.length === 0 || statusLabels.includes(workflowStatus.label);
+      return statusMatch && campaignMatchesConversion(metric, conversions);
+    });
+  const pagePairs = candidateCampaigns.slice(0, limit);
+  const extraPair = candidateCampaigns[limit];
+  const pageCampaignIds = pagePairs.map(({ campaign }) => campaign.id);
 
-      for (const buyerId of viewMetrics?.lastOpenedAtByBuyer.keys() ?? []) openedBuyerIds.add(buyerId);
-      for (const buyerId of conversionMetrics.convertingBuyerIds) demandBuyerIds.add(buyerId);
-      summaryDemandValue += conversionMetrics.gmv;
-      summaryDemandDocs += conversionMetrics.conversionCount;
-    }
-
-    summaryOpenedCustomers = openedBuyerIds.size;
-    summaryDemandCustomers = demandBuyerIds.size;
+  const [itemsRes, membersRes] = pageCampaignIds.length > 0
+    ? await Promise.all([
+        db
+          .schema('app')
+          .from('campaign_items')
+          .select('campaign_id, tenant_product_id')
+          .in('campaign_id', pageCampaignIds)
+          .is('deleted_at', null),
+        db
+          .schema('app')
+          .from('campaign_buyer_members')
+          .select('campaign_id, buyer_id')
+          .in('campaign_id', pageCampaignIds)
+          .is('valid_until', null),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  if (itemsRes.error || membersRes.error) {
+    console.error('[GET /api/tenant/catalogs] enrichment query error:', itemsRes.error || membersRes.error);
+    return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
   }
 
-  const rows = pageIds.flatMap((id, index) => {
-    const catalog = pageCatalogs.find((row) => row.id === id);
-    if (!catalog) return [];
-    const metric = metricsById[id] ?? {
-      gmv: 0, previous_gmv: 0, order_count: 0, estimate_count: 0, conversions: 0,
-      views: 0, view_pct: 0, conversion_pct: 0, growth_pct: 0, products_count: 0,
-      brands_count: 0, audience_label: 'All buyers', audience_count: 0,
-    };
-    const attributed = attributedByCampaign.get(id);
+  const items = (itemsRes.data ?? []) as CatalogItemRow[];
+  const productIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
+  const productsRes = productIds.length > 0
+    ? await db
+        .schema('app')
+        .from('tenant_products')
+        .select('id, tenant_brand_id')
+        .in('id', productIds)
+        .is('deleted_at', null)
+    : { data: [], error: null };
+  if (productsRes.error) {
+    console.error('[GET /api/tenant/catalogs] product enrichment error:', productsRes.error);
+    return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+  }
+
+  const itemsByCampaign = new Map<string, CatalogItemRow[]>();
+  for (const item of items) {
+    if (!itemsByCampaign.has(item.campaign_id)) itemsByCampaign.set(item.campaign_id, []);
+    itemsByCampaign.get(item.campaign_id)?.push(item);
+  }
+  const brandByProductId = new Map(
+    ((productsRes.data ?? []) as Array<{ id: string; tenant_brand_id: string | null }>).map((product) => [product.id, product.tenant_brand_id]),
+  );
+  const memberCountByCampaign = new Map<string, Set<string>>();
+  for (const member of (membersRes.data ?? []) as Array<{ campaign_id: string; buyer_id: string }>) {
+    if (!memberCountByCampaign.has(member.campaign_id)) memberCountByCampaign.set(member.campaign_id, new Set());
+    memberCountByCampaign.get(member.campaign_id)?.add(member.buyer_id);
+  }
+
+  const rows = pagePairs.map(({ campaign: catalog, metric }, index) => {
     const workflowStatus = resolveCampaignWorkflowStatus({
       rawStatus: catalog.status,
       validFrom: catalog.valid_from,
       validTo: catalog.valid_to,
       now,
     });
+    const catalogItems = itemsByCampaign.get(catalog.id) ?? [];
+    const brandSet = new Set<string>();
+    for (const item of catalogItems) {
+      const brandId = brandByProductId.get(item.tenant_product_id);
+      if (brandId) brandSet.add(brandId);
+    }
     const daysLeft = catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
       ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000))
       : null;
-    return [{
-      id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
+    const viewedBuyers = toNumber(metric.viewed_buyer_count);
+    const audienceCount = memberCountByCampaign.get(catalog.id)?.size ?? null;
+    const demandBuyers = toNumber(metric.demand_buyer_count);
+    const estimateCount = toNumber(metric.estimate_count);
+    const orderCount = toNumber(metric.order_count);
+    const estimateValue = toNumber(metric.estimate_value);
+    const orderValue = toNumber(metric.order_value);
+    const invoiceValue = toNumber(metric.invoice_value);
+    const invoiceCount = toNumber(metric.invoice_count);
+    return {
+      id: catalog.id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
       status: { value: workflowStatus.value, raw_value: catalog.status, label: workflowStatus.label, tone: workflowStatus.tone },
-      cohort_name: metric.audience_label, audience_count: metric.audience_count,
-      products_count: Number(metric.products_count), brands_count: Number(metric.brands_count),
-      gmv: Number(metric.gmv), orders: Number(metric.order_count), order_count: Number(metric.order_count),
-      estimate_count: Number(metric.estimate_count), conversions: attributed?.conversionCount ?? Number(metric.conversions),
-      demand_customers: attributed?.demandCustomers ?? 0,
-      views: attributed?.openedCustomers ?? Number(metric.views),
-      view_pct: Number(metric.view_pct),
-      conversion_pct: attributed?.conversionPct ?? Number(metric.conversion_pct),
+      cohort_name: audienceCount != null ? 'Campaign audience' : 'Audience rules',
+      audience_count: audienceCount,
+      products_count: catalogItems.length,
+      brands_count: brandSet.size,
+      gmv: orderValue > 0 ? orderValue : estimateValue,
+      orders: orderCount,
+      order_count: orderCount,
+      estimate_count: estimateCount,
+      conversions: orderCount + estimateCount,
+      demand_customers: demandBuyers,
+      invoice_value: invoiceValue,
+      invoice_count: invoiceCount,
+      revenue_buyer_count: toNumber(metric.revenue_buyer_count),
+      views: viewedBuyers,
+      view_pct: audienceCount && audienceCount > 0 ? Number(((viewedBuyers / audienceCount) * 100).toFixed(1)) : 0,
+      conversion_pct: viewedBuyers > 0 ? Number(((demandBuyers / viewedBuyers) * 100).toFixed(1)) : 0,
       valid_from: catalog.valid_from, valid_to: catalog.valid_to,
       valid_until_label: catalog.valid_to ? new Date(catalog.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'No end date',
-      days_left: daysLeft, created_at: catalog.created_at, growth_pct: Number(metric.growth_pct),
-    }];
+      days_left: daysLeft, created_at: catalog.created_at, growth_pct: 0,
+    };
   });
 
-  const summary = rpc.summary;
-  // Scheduled = published but not yet live (valid_from in the future). This bucket doesn't
-  // exist in get_catalog_landing_metrics' display_status (Draft/Live/Ended only), so it's
-  // derived here from the same page of campaign rows already fetched above — no new SQL.
-  const scheduledCatalogs = catalogs.filter(
-    (catalog) => catalog.status === 'published' && new Date(catalog.valid_from).getTime() > nowTs,
-  ).length;
+  const liveCount = rows.filter((row) => row.status.label === 'Live' || row.status.label === 'Live · Unpublished Changes').length;
+  const draftCount = rows.filter((row) => row.status.label === 'Draft').length;
+  const endedCount = rows.filter((row) => row.status.label === 'Expired' || row.status.label === 'Archived').length;
+  const last = pagePairs[pagePairs.length - 1]?.campaign;
   return timedJson({
     period,
-    channels: { orders_enabled: createFlags.create_sales_orders, estimates_enabled: createFlags.create_enquiries },
-    primary_demand_kind: primaryDemandKind,
-    ...(summary ? {
-      kpis: {
-        ...summary.kpis,
-        scheduled_catalogs: scheduledCatalogs,
-        opened_customers_mtd: summaryOpenedCustomers,
-        orders_attributed_mtd: summaryDemandDocs,
-        conversions_mtd: summaryDemandCustomers,
-        gmv_mtd: summaryDemandValue,
-        avg_conversion_pct: summaryOpenedCustomers > 0
-          ? Number(((summaryDemandCustomers / summaryOpenedCustomers) * 100).toFixed(1))
-          : 0,
-      },
-      todays_read: {
-        needs_attention: previewRows('needs_attention', summary.todays_read.needs_attention.map(calloutToLandingRow)),
-        top_performers: previewRows('top_performers', summary.todays_read.top_performers.map(calloutToLandingRow)),
-        top_risers: previewRows('top_risers', summary.todays_read.top_risers.map(calloutToLandingRow)),
-      },
-    } : {}),
+    channels: { orders_enabled: true, estimates_enabled: true },
+    primary_demand_kind: 'orders',
+    kpis: {
+      live_catalogs: liveCount,
+      draft_catalogs: draftCount,
+      ended_catalogs: endedCount,
+      expiring7d: rows.filter((row) => row.days_left != null && row.days_left <= 7 && row.days_left > 0).length,
+      opened_customers_mtd: 0,
+      gmv_mtd: 0,
+      gmv_prev_mtd: 0,
+      gmv_growth_pct: 0,
+      avg_conversion_pct: 0,
+      orders_attributed_mtd: 0,
+      conversions_mtd: 0,
+    },
+    todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
     catalogs: rows,
-    total: landingSearch.total,
+    total: candidateCampaigns.length,
     limit,
-    offset,
-    nextOffset: pageIds.length > 0 && offset + pageIds.length < landingSearch.total ? offset + pageIds.length : null,
+    nextCursor: extraPair && last ? encodeCampaignCursor({ t: last.created_at, i: last.id }) : null,
   });
 }
 
@@ -623,493 +466,6 @@ export async function GET(req: NextRequest) {
   };
 
   return getOptimizedCatalogsLanding(req, timedJson);
-
-  /* istanbul ignore next -- superseded implementation retained temporarily during the landing pagination rollout */
-  try {
-    const claims = await getVerifiedClaims(req);
-
-    if (!claims.tenant_id) {
-      return timedJson({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (claims.role !== 'seller_admin') {
-      return timedJson({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    if (!supabaseAdmin) {
-      return timedJson({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const tenantId = claims.tenant_id!;
-    const db = supabaseAdmin!;
-    const now = new Date();
-    const nowTs = now.getTime();
-    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
-    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-    const offset = parseRowsOffset(req.nextUrl.searchParams.get('offset'));
-    const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
-    const statuses = readArrayParam(req.nextUrl.searchParams, 'status')
-      .map((value) => value.toLowerCase().replace(/ /g, '_'))
-      .filter((value) => value !== 'all');
-    const landingSearch = await searchSellerLandingEntityIds({
-      tenantId,
-      entity: 'campaigns',
-      query: search,
-      statuses,
-      limit,
-      offset,
-    });
-
-    // Campaign rows and period-bounded facts below preserve the established KPI and
-    // callout attribution contract. Only landingSearch IDs are returned to the table.
-    const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes, activeBuyersRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('campaigns')
-        .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .not('campaign_id', 'is', null)
-        .or(buildPeriodFallbackFilter('order_date', 'created_at', period.current_start, period.current_end_exclusive)),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .not('campaign_id', 'is', null)
-        .or(buildPeriodFallbackFilter('order_date', 'created_at', period.previous_start, period.previous_end_exclusive)),
-      db
-        .schema('app')
-        .from('estimates')
-        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .not('campaign_id', 'is', null)
-        .or(buildPeriodFallbackFilter('estimate_date', 'created_at', period.current_start, period.current_end_exclusive)),
-      db
-        .schema('app')
-        .from('estimates')
-        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .not('campaign_id', 'is', null)
-        .or(buildPeriodFallbackFilter('estimate_date', 'created_at', period.previous_start, period.previous_end_exclusive)),
-      db
-        .schema('app')
-        .from('campaign_views')
-        .select('campaign_id, buyer_id, viewed_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('viewed_at', period.current_start)
-        .lt('viewed_at', period.current_end_exclusive),
-      db.schema('app').from('cohorts').select('id, name, cached_member_count').eq('tenant_id', tenantId).is('deleted_at', null),
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .is('deleted_at', null),
-    ]);
-
-    if (
-      catalogsRes.error
-      || ordersRes.error
-      || prevOrdersRes.error
-      || estimatesRes.error
-      || prevEstimatesRes.error
-      || viewsRes.error
-      || cohortsRes.error
-      || activeBuyersRes.error
-    ) {
-      console.error(
-        '[GET /api/tenant/catalogs] query error:',
-        catalogsRes.error
-          || ordersRes.error
-          || prevOrdersRes.error
-          || estimatesRes.error
-          || prevEstimatesRes.error
-          || viewsRes.error
-          || cohortsRes.error
-          || activeBuyersRes.error,
-      );
-      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-    }
-
-    const catalogs = (catalogsRes.data ?? []) as CatalogRow[];
-    const catalogIds = catalogs.map((catalog) => catalog.id);
-    let items: CatalogItemRow[] = [];
-    if (catalogIds.length > 0) {
-      const itemsRes = await db
-        .schema('app')
-        .from('campaign_items')
-        .select('campaign_id, tenant_product_id')
-        .in('campaign_id', catalogIds)
-        .is('deleted_at', null);
-
-      if (itemsRes.error) {
-        console.error('[GET /api/tenant/catalogs] items query error:', itemsRes.error);
-        return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-      }
-      items = (itemsRes.data ?? []) as CatalogItemRow[];
-    }
-    const orders = ((ordersRes.data ?? []) as OrderRow[]).map((order) => ({
-      ...order,
-      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
-    }));
-    const prevOrders = ((prevOrdersRes.data ?? []) as OrderRow[]).map((order) => ({
-      ...order,
-      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
-    }));
-    const estimates = ((estimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
-      ...estimate,
-      created_at: estimate.estimate_date ?? estimate.created_at,
-    }));
-    const prevEstimates = ((prevEstimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
-      ...estimate,
-      created_at: estimate.estimate_date ?? estimate.created_at,
-    }));
-    const campaignViews = (viewsRes.data ?? []) as CampaignViewRow[];
-    const cohorts = (cohortsRes.data ?? []) as CohortRow[];
-    const viewsByCampaign = aggregateCampaignViewsByCampaign(campaignViews);
-
-    const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort]));
-    const activeBuyersCount = activeBuyersRes.count ?? 0;
-    const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
-
-    let tenantProducts: TenantProductRow[] = [];
-    let tenantBrands: TenantBrandRow[] = [];
-    let masterBrands: MasterBrandRow[] = [];
-
-    if (tenantProductIds.length > 0) {
-      const tenantProductsRes = await db
-        .schema('app')
-        .from('tenant_products')
-        .select('id, tenant_brand_id')
-        .in('id', tenantProductIds)
-        .is('deleted_at', null);
-
-      if (tenantProductsRes.error) {
-        console.error('[GET /api/tenant/catalogs] tenant products error:', tenantProductsRes.error);
-        return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-      }
-
-      tenantProducts = (tenantProductsRes.data ?? []) as TenantProductRow[];
-      const tenantBrandIds = Array.from(new Set(tenantProducts.map((product) => product.tenant_brand_id).filter(Boolean))) as string[];
-
-      if (tenantBrandIds.length > 0) {
-        const tenantBrandsRes = await db
-          .schema('app')
-          .from('tenant_brands')
-          .select('id, display_name_override, master_brand_id')
-          .in('id', tenantBrandIds)
-          .is('deleted_at', null);
-
-        if (tenantBrandsRes.error) {
-          console.error('[GET /api/tenant/catalogs] tenant brands error:', tenantBrandsRes.error);
-          return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-        }
-
-        tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
-        const masterBrandIds = Array.from(
-          new Set(
-            tenantBrands
-              .map((brand) => brand.master_brand_id)
-              .filter((id): id is string => typeof id === 'string' && id.length > 0),
-          ),
-        );
-        if (masterBrandIds.length > 0) {
-          const masterBrandsRes = await db
-            .schema('catalog')
-            .from('brands')
-            .select('id, name')
-            .in('id', masterBrandIds)
-            .is('deleted_at', null);
-
-          if (masterBrandsRes.error) {
-            console.error('[GET /api/tenant/catalogs] master brands error:', masterBrandsRes.error);
-            return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-          }
-
-          masterBrands = (masterBrandsRes.data ?? []) as MasterBrandRow[];
-        }
-      }
-    }
-
-    const tenantProductToBrand = new Map<string, string | null>(tenantProducts.map((product) => [product.id, product.tenant_brand_id]));
-    const tenantBrandById = new Map(tenantBrands.map((brand) => [brand.id, brand]));
-    const masterBrandById = new Map(masterBrands.map((brand) => [brand.id, brand.name]));
-    const itemsByCatalog = new Map<string, CatalogItemRow[]>();
-    for (const item of items) {
-      if (!itemsByCatalog.has(item.campaign_id)) itemsByCatalog.set(item.campaign_id, []);
-      itemsByCatalog.get(item.campaign_id)?.push(item);
-    }
-
-    const allOrderIds = Array.from(new Set([...orders, ...prevOrders].map((order) => order.id)));
-    const allEstimateIds = Array.from(new Set([...estimates, ...prevEstimates].map((estimate) => estimate.id)));
-
-    const [orderItemsRes, estimateItemsRes, createFlags] = await Promise.all([
-      allOrderIds.length && tenantProductIds.length
-        ? db
-            .schema('app')
-            .from('order_items')
-            .select('order_id, tenant_product_id, qty, line_total, unit_price')
-            .in('order_id', allOrderIds)
-            .in('tenant_product_id', tenantProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-      allEstimateIds.length && tenantProductIds.length
-        ? db
-            .schema('app')
-            .from('estimate_items')
-            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
-            .in('estimate_id', allEstimateIds)
-            .in('tenant_product_id', tenantProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-      getInAppCreateFlags(tenantId),
-    ]);
-
-    if (orderItemsRes.error || estimateItemsRes.error) {
-      console.error('[GET /api/tenant/catalogs] line items error:', orderItemsRes.error || estimateItemsRes.error);
-      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
-    }
-
-    const orderItemsRaw = (orderItemsRes.data ?? []) as Array<{
-      order_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>;
-    const estimateItemsRaw = (estimateItemsRes.data ?? []) as Array<{
-      estimate_id: string;
-      tenant_product_id: string;
-      qty: number | null;
-      line_total: number | null;
-      unit_price: number | null;
-    }>;
-    const channelOptions = {
-      includeOrders: createFlags.create_sales_orders,
-      includeEstimates: createFlags.create_enquiries,
-    };
-
-    const productsByCampaign = new Map<string, Set<string>>();
-    for (const item of items) {
-      if (!productsByCampaign.has(item.campaign_id)) productsByCampaign.set(item.campaign_id, new Set());
-      productsByCampaign.get(item.campaign_id)?.add(item.tenant_product_id);
-    }
-
-    const catalogRows = catalogs.map((catalog, index) => {
-      const workflowStatus = resolveCampaignWorkflowStatus({
-        rawStatus: catalog.status,
-        validFrom: catalog.valid_from,
-        validTo: catalog.valid_to,
-        now,
-      });
-      const catalogItems = itemsByCatalog.get(catalog.id) ?? [];
-      const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
-      const conversionMetrics = buildCatalogAttributedMetrics(
-        catalog.id,
-        campaignProductIds,
-        orders as CampaignOrderRow[],
-        estimates as CampaignEstimateRow[],
-        orderItemsRaw,
-        estimateItemsRaw,
-        channelOptions,
-      );
-      const viewMetrics = viewsByCampaign.get(catalog.id);
-      const gmv = conversionMetrics.gmv;
-      const conversionCount = conversionMetrics.conversionCount;
-      const demandCustomers = conversionMetrics.convertingBuyerIds.size;
-      const views = viewMetrics?.uniqueViewers ?? 0;
-      const conversionPct = views > 0 ? Number(((demandCustomers / views) * 100).toFixed(1)) : 0;
-      const brandSet = new Set<string>();
-
-      for (const item of catalogItems) {
-        const tenantBrandId = tenantProductToBrand.get(item.tenant_product_id);
-        if (!tenantBrandId) continue;
-        const tenantBrand = tenantBrandById.get(tenantBrandId);
-        if (!tenantBrand) continue;
-        const brandName = tenantBrand.display_name_override ?? masterBrandById.get(tenantBrand.master_brand_id) ?? null;
-        if (brandName) brandSet.add(brandName);
-      }
-
-      const cohortId = catalog.scope_type === 'cohort' ? (catalog.scope_value?.cohort_id as string | undefined) : undefined;
-      const cohort = cohortId ? cohortById.get(cohortId) : null;
-      const audience = resolveCampaignLandingAudience({
-        scopeType: catalog.scope_type,
-        scopeValue: catalog.scope_value,
-        cohort: cohort ? { name: cohort.name, cached_member_count: cohort.cached_member_count } : null,
-        allBuyersCount: activeBuyersCount,
-      });
-      const orderCount = conversionMetrics.orderCount;
-      const estimateCount = conversionMetrics.estimateCount;
-      const viewPct =
-        audience.buyerCount != null && audience.buyerCount > 0
-          ? Number(((views / audience.buyerCount) * 100).toFixed(1))
-          : 0;
-      const daysLeft =
-        catalog.valid_to && (workflowStatus.value === 'published' || workflowStatus.value === 'published_dirty')
-          ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / (1000 * 60 * 60 * 24)))
-          : null;
-
-      return {
-        id: catalog.id,
-        name: catalog.name,
-        initials: getInitials(catalog.name),
-        hue: getHue(index),
-        status: {
-          value: workflowStatus.value,
-          raw_value: catalog.status,
-          label: workflowStatus.label,
-          tone: workflowStatus.tone,
-        },
-        cohort_name: audience.label,
-        audience_count: audience.buyerCount,
-        products_count: catalogItems.length,
-        brands_count: brandSet.size,
-        gmv,
-        order_count: orderCount,
-        estimate_count: estimateCount,
-        orders: orderCount,
-        conversions: conversionCount,
-        demand_customers: demandCustomers,
-        views,
-        view_pct: viewPct,
-        conversion_pct: conversionPct,
-        valid_from: catalog.valid_from,
-        valid_to: catalog.valid_to,
-        valid_until_label: catalog.valid_to ? new Date(catalog.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'No end date',
-        days_left: daysLeft,
-        created_at: catalog.created_at,
-      };
-    });
-
-    const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live' || catalog.status.label === 'Live · Unpublished Changes');
-    const draftCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Draft');
-    const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Expired' || catalog.status.label === 'Archived');
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    const expiring7d = liveCatalogs.filter(
-      (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
-    ).length;
-    const periodConversionMetrics = catalogs.reduce(
-      (acc, catalog) => {
-        const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
-        const metrics = buildCatalogAttributedMetrics(
-          catalog.id,
-          campaignProductIds,
-          orders as CampaignOrderRow[],
-          estimates as CampaignEstimateRow[],
-          orderItemsRaw,
-          estimateItemsRaw,
-          channelOptions,
-        );
-        acc.gmv += metrics.gmv;
-        acc.conversionCount += metrics.conversionCount;
-        for (const buyerId of metrics.convertingBuyerIds) acc.demandBuyerIds.add(buyerId);
-        return acc;
-      },
-      { gmv: 0, conversionCount: 0, demandBuyerIds: new Set<string>() },
-    );
-    const prevPeriodConversionMetrics = catalogs.reduce(
-      (acc, catalog) => {
-        const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
-        const metrics = buildCatalogAttributedMetrics(
-          catalog.id,
-          campaignProductIds,
-          prevOrders as CampaignOrderRow[],
-          prevEstimates as CampaignEstimateRow[],
-          orderItemsRaw,
-          estimateItemsRaw,
-          channelOptions,
-        );
-        acc.gmv += metrics.gmv;
-        acc.conversionCount += metrics.conversionCount;
-        for (const buyerId of metrics.convertingBuyerIds) acc.demandBuyerIds.add(buyerId);
-        return acc;
-      },
-      { gmv: 0, conversionCount: 0, demandBuyerIds: new Set<string>() },
-    );
-    const openedBuyerIds = new Set<string>();
-    for (const metrics of viewsByCampaign.values()) {
-      for (const buyerId of metrics.lastOpenedAtByBuyer.keys()) openedBuyerIds.add(buyerId);
-    }
-    const openedCustomers = openedBuyerIds.size;
-    const demandCustomers = periodConversionMetrics.demandBuyerIds.size;
-    const gmvMtd = periodConversionMetrics.gmv;
-    const gmvPrevMtd = prevPeriodConversionMetrics.gmv;
-    const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
-    const avgConversion = openedCustomers > 0 ? Number(((demandCustomers / openedCustomers) * 100).toFixed(1)) : 0;
-    const needsAttention = catalogRows
-      .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Expired' || catalog.status.label === 'Archived' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
-      .slice(0, 3);
-    const topPerformers = [...liveCatalogs].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
-    const latestByCohort = new Map<string, Array<typeof catalogRows[number]>>();
-    for (const catalog of [...catalogRows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())) {
-      const key = catalog.cohort_name;
-      if (!latestByCohort.has(key)) latestByCohort.set(key, []);
-      latestByCohort.get(key)?.push(catalog);
-    }
-
-    const withGrowth = catalogRows.map((catalog) => {
-      const cohortCatalogs = latestByCohort.get(catalog.cohort_name) ?? [];
-      const index = cohortCatalogs.findIndex((row) => row.id === catalog.id);
-      const prev = index > 0 ? cohortCatalogs[index - 1] : null;
-      const growthPct = prev && prev.gmv > 0 ? Math.round(((catalog.gmv - prev.gmv) / prev.gmv) * 100) : catalog.gmv > 0 ? 100 : 0;
-      return { ...catalog, growth_pct: growthPct };
-    });
-
-    const topRisers = [...withGrowth].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
-    const rowById = new Map(withGrowth.map((row) => [row.id, row]));
-    const pageRows = landingSearch.ids
-      .map((id) => rowById.get(id))
-      .filter((row): row is NonNullable<typeof row> => Boolean(row));
-
-    return timedJson({
-      period,
-      channels: {
-        orders_enabled: createFlags.create_sales_orders,
-        estimates_enabled: createFlags.create_enquiries,
-      },
-      kpis: {
-        live_catalogs: liveCatalogs.length,
-        draft_catalogs: draftCatalogs.length,
-        ended_catalogs: endedCatalogs.length,
-        expiring7d,
-        opened_customers_mtd: openedCustomers,
-        gmv_mtd: gmvMtd,
-        gmv_prev_mtd: gmvPrevMtd,
-        gmv_growth_pct: gmvGrowthPct,
-        avg_conversion_pct: avgConversion,
-        orders_attributed_mtd: periodConversionMetrics.conversionCount,
-        conversions_mtd: demandCustomers,
-      },
-      todays_read: {
-        needs_attention: needsAttention,
-        top_performers: topPerformers,
-        top_risers: topRisers,
-      },
-      catalogs: pageRows,
-      total: landingSearch.total,
-      limit,
-      offset,
-      nextOffset: landingSearch.ids.length > 0 && offset + landingSearch.ids.length < landingSearch.total
-        ? offset + landingSearch.ids.length
-        : null,
-    });
-  } catch (error) {
-    console.error('[GET /api/tenant/catalogs] unexpected error:', error);
-    return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  }
 }
 
 export async function POST(request: NextRequest) {

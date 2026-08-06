@@ -5,7 +5,7 @@ import { LocationsLandingSkeleton } from '@/components/seller/loading/SellerLoad
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { LocationsLandingResponse } from '@/hooks/useLocations';
+import type { LocationsLandingMetricsV4 } from '@/hooks/useLocations';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
 
 // Note: `?search=` seeding now happens client-side inside LocationsLandingClient via
@@ -20,18 +20,22 @@ export default async function LocationsLayout({ children }: { children: ReactNod
     <EntitySplitShell
       basePath="/locations"
       listSlot={
-        <SellerBootstrapBoundary<LocationsLandingResponse>
-          path="/api/tenant/locations/landing?period=last90&limit=50"
+        <SellerBootstrapBoundary<LocationsLandingMetricsV4>
+          // Bootstrap Pulse cards only — table rows are fetched by the infinite query.
+          path="/api/tenant/locations/metrics"
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/locations"
               ariaLabel="Loading locations"
+              eyebrowWidth="w-20"
+              titleWidth="w-44"
+              subtitleWidth="w-52"
               expandedFallback={<LocationsLandingSkeleton />}
             />
           }
           render={(initialData, status) => {
             if (status === 403) return <RoleForbiddenPage />;
-            return <LocationsLandingClient initialData={initialData} initialPeriod="last90" />;
+            return <LocationsLandingClient initialMetrics={initialData} />;
           }}
         />
       }

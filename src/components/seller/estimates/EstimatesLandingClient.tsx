@@ -17,12 +17,18 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileTransactionTabs, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
-import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
+import {
+  useTenantEstimatesInfinite,
+  useTenantEstimatesMetrics,
+  type EstimatesLandingKpiCardV4,
+  type EstimateLandingRow,
+  type EstimatesLandingMetricsV4,
+} from '@/hooks/useEstimates';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -32,8 +38,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
-import { parseSellerLandingPeriod, sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
-import { TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
+import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
@@ -84,25 +90,42 @@ function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean 
     .some((value) => value.toLowerCase().includes(needle));
 }
 
-function EstimatesDataSkeleton() {
-  return (
-    <>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-    </>
-  );
+function filtersFromEstimatePreset(preset: Record<string, unknown> | null | undefined) {
+  if (!preset) return {
+    source: [] as string[],
+    status: [] as string[],
+    location_id: [] as string[],
+    attention: [] as string[],
+  };
+  const attention: string[] = [];
+  if (preset.status === 'sent' && Number(preset.age_gte_days ?? 0) >= 3) attention.push('awaiting_action_3d');
+  if (Number(preset.expiry_lte_days ?? 0) > 0) attention.push('expiring_7d');
+  return {
+    source: [] as string[],
+    status: preset.status === 'open'
+      ? ['Draft', 'Sent', 'Accepted']
+      : preset.status === 'sent'
+        ? ['Sent']
+        : [],
+    location_id: [] as string[],
+    attention,
+  };
+}
+
+function periodFromEstimatePreset(preset: Record<string, unknown> | null | undefined): SellerLandingPeriod | null {
+  if (!preset || typeof preset.date_period !== 'string') return null;
+  if (preset.date_period === 'today') return 'today';
+  if (preset.date_period === 'this_week') return 'week';
+  if (preset.date_period === 'this_quarter') return 'quarter';
+  if (preset.date_period === 'this_month') return 'month';
+  return null;
 }
 
 function EstimatesLandingContent({
-  initialData,
+  initialMetrics,
   initialPeriod,
 }: {
-  initialData: TenantEstimatesResponse | null;
+  initialMetrics: EstimatesLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
@@ -113,9 +136,8 @@ function EstimatesLandingContent({
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(clientInitialPeriod);
-  const metricSuffix = sellerLandingMetricSuffix(period);
-  const summaryQuery = useTenantEstimates(period, initialData);
-  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
+  const metricsQuery = useTenantEstimatesMetrics(period, initialMetrics);
+  const metricsData = useRetainedValue(metricsQuery.data ?? initialMetrics);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
   const { createEstimates } = useCreateFlags();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -129,15 +151,18 @@ function EstimatesLandingContent({
         source: [] as string[],
         status: [] as string[],
         location_id: [] as string[],
+        attention: [] as string[],
       },
+      filterPreset: null as Record<string, unknown> | null,
       sortBy: 'Recent first' as SortOption,
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
-  const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
+  const filters = routeState.filters ?? { source: [], status: [], location_id: [], attention: [] };
+  const filterPreset = routeState.filterPreset ?? null;
   const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
-  const [selectedKpiKey, setSelectedKpiKey] = useState<string>('estimate-value');
+  const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
   const deferredFilters = useDeferredValue(filters);
@@ -146,7 +171,7 @@ function EstimatesLandingContent({
     JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantEstimatesInfinite(
     period,
-    { search: debouncedSearch, ...deferredFilters },
+    { search: debouncedSearch, ...deferredFilters, filter_preset: filterPreset },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -162,7 +187,7 @@ function EstimatesLandingContent({
 
   const firstPage = data?.pages?.[0];
   const allEstimates = useMemo(() => data?.pages?.flatMap((p) => p.estimates) ?? [], [data?.pages]);
-  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_estimates_this_period ?? allEstimates.length;
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? allEstimates.length;
 
   const filteredRows = useMemo(() => {
     return allEstimates
@@ -204,14 +229,8 @@ function EstimatesLandingContent({
   );
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filteredRows.length === 0;
   const subtitle = useMemo(() => {
-    const kpis = summaryData?.kpis;
-    if (!kpis) {
-      return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
-    }
-    return `${kpis.total_estimates_this_period} estimates in the trailing 90 days.`;
-  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
-
-  const pulseAggregates = summaryData?.pulse_aggregates;
+    return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
+  }, [lowerLabel]);
 
   if (isError && !data) {
     return (
@@ -223,49 +242,42 @@ function EstimatesLandingContent({
   }
   const showRefreshingState = isLoading && !data;
 
-  const kpis = summaryData?.kpis;
-  const kpiOptions = [
-    {
-      id: 'estimate-value',
-      label: 'Estimate value · 90D',
-      value: formatNumberValue(kpis?.total_gmv_this_period ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.total_estimates_this_period ?? 0} estimates in trailing 90 days`,
-    },
-    {
-      id: 'open-estimates',
-      label: 'Open estimates',
-      value: formatNumberValue(kpis?.open_estimate_value ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${kpis?.open_estimates_this_period ?? 0} open estimates`,
-    },
-    {
-      id: 'awaiting-action',
-      label: 'Awaiting action 3+ days',
-      value: formatNumberValue(pulseAggregates?.sent_awaiting_value ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending conversion`,
-    },
-    {
-      id: 'expiring-soon',
-      label: 'Expiring in 7 days',
-      value: formatNumberValue(pulseAggregates?.expiring_soon_value ?? 0, 'CURRENCY_THRESHOLD'),
-      sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates`,
-    },
-  ];
-  const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0];
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading estimates" showTransactionTabs variant="transaction" />
+    ) : (
+      <EstimatesLandingSkeleton />
+    );
+  }
+
+  const kpiOptions = (metricsData?.cards ?? []).map((card: EstimatesLandingKpiCardV4) => ({
+    id: card.id,
+    label: card.label,
+    value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
+    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} estimates`,
+    filterPreset: card.filter_preset ?? null,
+  }));
+  const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;
   const groups: FilterBarGroup[] = [
     {
       key: 'period',
       label: 'Period',
       options,
       values: [period],
-      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+      onChange: (values: string[]) => {
+        setSelectedKpiKey(null);
+        setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month');
+        setRouteState((current) => ({ ...current, filterPreset: null }));
+      },
     },
-    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+    ...(firstPage?.filters?.groups ?? []).map((group) => ({
       key: group.key,
       label: group.label,
       options: group.options,
       values: filters[group.key as keyof typeof filters] ?? [],
       onChange: (values: string[]) => setRouteState((current) => ({
         ...current,
+        filterPreset: null,
         filters: { ...(current.filters ?? filters), [group.key]: values },
       })),
     })),
@@ -283,8 +295,8 @@ function EstimatesLandingContent({
           >
             <PageHeader
               eyebrow={isPaneOpen ? 'Estimates' : 'Enquiries'}
-              title={isPaneOpen ? selectedOption.label : 'Estimates'}
-              subtitle={isPaneOpen ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+              title={isPaneOpen ? selectedOption?.label ?? 'Estimates' : 'Estimates'}
+              subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
               horizon={horizonLabel}
               showHorizonControl={false}
               primary={createEstimates ? 'Add an estimate' : undefined}
@@ -299,7 +311,16 @@ function EstimatesLandingContent({
                   label: option.label,
                   value: option.value,
                   sub: option.sub,
-                  onClick: () => setSelectedKpiKey(option.id),
+                  onClick: () => {
+                    setSelectedKpiKey(option.id);
+                    const presetPeriod = periodFromEstimatePreset(option.filterPreset);
+                    if (presetPeriod && presetPeriod !== period) setPeriod(presetPeriod);
+                    setRouteState((current) => ({
+                      ...current,
+                      filterPreset: option.filterPreset,
+                      filters: filtersFromEstimatePreset(option.filterPreset),
+                    }));
+                  },
                   selected: option.id === selectedKpiKey,
                 }))}
               />
@@ -315,7 +336,7 @@ function EstimatesLandingContent({
               compact={isPaneOpen}
               groups={groups}
               searchValue={search}
-              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filterPreset: null }))}
               sortOptions={SORT_OPTIONS}
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
@@ -323,82 +344,74 @@ function EstimatesLandingContent({
         </StickyListHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-        {showRefreshingState ? (
-          isPaneOpen ? (
-            <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-          ) : (
-            <EstimatesDataSkeleton />
-          )
-        ) : isError ? (
+        {isError ? (
           <ErrorState
             heading="Couldn't load estimates"
             description="There was a problem fetching the estimates workboard. Please try again."
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              {showTableSkeleton ? (
-                isPaneOpen ? (
-                  <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
-                ) : (
-                  <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
-                )
-              ) : filteredRows.length === 0 ? (
-                <EmptyState
-                  icon={<FileText size={28} strokeWidth={1.5} />}
-                  heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching estimates' : 'No estimates yet'}
-                  description={
-                    search.trim() || groups.some((group) => group.values.length > 0)
-                      ? 'Try a different search or filter combination.'
-                      : 'Create an estimate to share pricing with a buyer.'
-                  }
-                  action={
-                    createEstimates ? (
-                      <Button variant="accent" asChild>
-                        <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
-                          <Plus size={13} />
-                          Add an estimate
-                        </Link>
-                      </Button>
-                    ) : undefined
-                  }
-                />
+            {showTableSkeleton ? (
+              isPaneOpen ? (
+                <SplitPaneListRowsSkeleton isPaneOpen variant="transaction" />
               ) : (
-                <TransactionTable
-                  kind="estimate"
-                  showCampaignColumn={showCampaignColumn}
-                  tableMinWidth={showCampaignColumn ? 1450 : 1230}
-                  forceCompact={isPaneOpen}
-                  selectedId={openId}
-                  sentinelIndex={sentinelIndex}
-                  sentinelRef={sentinelRef}
-                  rows={filteredRows.map((row) => ({
-                    id: row.id,
-                    href: `/estimates/${row.id}`,
-                    document_number: row.estimate_number,
-                    realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
-                    source_kind: row.source_kind,
-                    source_label: estimateSourceDisplayLabel(row),
-                    buyer_name: row.buyer_name,
-                    buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
-                    buyer_initials: row.buyer_initials,
-                    buyer_hue: row.buyer_hue,
-                    location_name: row.location_name,
-                    campaign_name: row.campaign_name ?? row.catalog_name,
-                    items_count: row.items_count,
-                    total_amount: row.total_amount,
-                    status_label: row.status.label,
-                    status_tone: row.status.tone,
-                    created_at: row.created_at,
-                    expires_at: row.expires_at,
-                  }))}
-                  onRowClick={(row) => {
-                    markSeen(row.id);
-                    router.push(row.href);
-                  }}
-                />
-              )}
-            </div>
+                <TableRowsSkeleton gridClassName="grid-cols-[1.6fr_1.2fr_1fr_0.8fr_0.8fr_0.8fr_40px]" cellCount={7} />
+              )
+            ) : filteredRows.length === 0 ? (
+              <EmptyState
+                icon={<FileText size={28} strokeWidth={1.5} />}
+                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching estimates' : 'No estimates yet'}
+                description={
+                  search.trim() || groups.some((group) => group.values.length > 0)
+                    ? 'Try a different search or filter combination.'
+                    : 'Create an estimate to share pricing with a buyer.'
+                }
+                action={
+                  createEstimates ? (
+                    <Button variant="accent" asChild>
+                      <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add an estimate
+                      </Link>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <TransactionTable
+                kind="estimate"
+                showCampaignColumn={showCampaignColumn}
+                tableMinWidth={showCampaignColumn ? 1450 : 1230}
+                forceCompact={isPaneOpen}
+                selectedId={openId}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
+                rows={filteredRows.map((row) => ({
+                  id: row.id,
+                  href: `/estimates/${row.id}`,
+                  document_number: row.estimate_number,
+                  realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
+                  source_kind: row.source_kind,
+                  source_label: estimateSourceDisplayLabel(row),
+                  buyer_name: row.buyer_name,
+                  buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                  buyer_initials: row.buyer_initials,
+                  buyer_hue: row.buyer_hue,
+                  location_name: row.location_name,
+                  campaign_name: row.campaign_name ?? row.catalog_name,
+                  items_count: row.items_count,
+                  total_amount: row.total_amount,
+                  status_label: row.status.label,
+                  status_tone: row.status.tone,
+                  created_at: row.created_at,
+                  expires_at: row.expires_at,
+                }))}
+                onRowClick={(row) => {
+                  markSeen(row.id);
+                  router.push(row.href);
+                }}
+              />
+            )}
 
             {isFetchingNextPage && (
               <div className="flex justify-center py-4">
@@ -415,10 +428,12 @@ function EstimatesLandingContent({
 }
 
 export function EstimatesLandingClient({
+  initialMetrics,
   initialData,
   initialPeriod,
 }: {
-  initialData: TenantEstimatesResponse | null;
+  initialMetrics?: EstimatesLandingMetricsV4 | null;
+  initialData?: EstimatesLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
@@ -428,5 +443,5 @@ export function EstimatesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <EstimatesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
+  return <EstimatesLandingContent initialMetrics={initialMetrics ?? initialData ?? null} initialPeriod={initialPeriod} />;
 }

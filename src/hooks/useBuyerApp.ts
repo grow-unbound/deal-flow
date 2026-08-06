@@ -81,6 +81,32 @@ export interface BuyerAppLandingResponse {
   } | null;
 }
 
+export interface BuyerAppLandingKpiCardV4 {
+  id: string;
+  label: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  supporting_text?: string;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface BuyerAppLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: BuyerAppLandingKpiCardV4[];
+}
+
 export function useBuyerAppLanding(
   period: SellerLandingPeriod,
   initialData?: BuyerAppLandingResponse | null,
@@ -93,6 +119,21 @@ export function useBuyerAppLanding(
       return res.json() as Promise<BuyerAppLandingResponse>;
     },
     initialData: initialData ?? undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
+}
+
+export function useBuyerAppMetrics(initialData?: BuyerAppLandingMetricsV4 | null) {
+  return useQuery<BuyerAppLandingMetricsV4>({
+    queryKey: ['buyer-app-metrics'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/tenant/buyer-app/metrics');
+      if (!res.ok) throw new Error('Failed to fetch buyer app metrics');
+      return res.json() as Promise<BuyerAppLandingMetricsV4>;
+    },
+    initialData: initialData ?? undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
   });

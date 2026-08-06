@@ -195,6 +195,7 @@ function renderComposer(props: React.ComponentProps<typeof DocComposerEstimate>)
 
 describe('DocComposerEstimate', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     apiFetchMock.mockImplementation(async (url: string) => {
       if (url.includes('/api/tenant/buyers/search')) {
@@ -317,7 +318,7 @@ describe('DocComposerEstimate', () => {
     expect(await screen.findByText(/Searching products/i)).toBeInTheDocument();
   });
 
-  it('hydrates buyer card and over-limit warning after buyer + line selection', async () => {
+  it('hydrates buyer strip after buyer + line selection', async () => {
     useBuyerEstimateContextMock.mockImplementation((buyerId: string | null) => ({
       data: buyerId ? baseBuyer() : null,
       isLoading: false,
@@ -339,7 +340,7 @@ describe('DocComposerEstimate', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(/Over limit by/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Over limit by/i)).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Send estimate/i })).toBeEnabled();
         expect(screen.getAllByText(/₹1,392/i).length).toBeGreaterThan(0);
         expect(screen.getByDisplayValue('1')).toHaveFocus();

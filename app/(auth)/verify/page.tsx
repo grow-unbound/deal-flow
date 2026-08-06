@@ -8,6 +8,7 @@ import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
 import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
+import { markLoggedInOnDevice } from '@/lib/auth-device-login';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -76,6 +77,7 @@ function VerifyOtpForm() {
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
         });
+        markLoggedInOnDevice();
       }
 
       // Clear stale buyer route snapshots so a previous buyer's cached home data

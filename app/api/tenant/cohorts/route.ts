@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { createTimer } from '@/lib/server-timing';
 import { getCohortsLandingPayload } from '../../cohorts/route';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -37,8 +37,20 @@ export async function GET(request: NextRequest) {
     const payload = await getCohortsLandingPayload(claims.tenant_id, request.nextUrl.searchParams.get('period'), {
       search: request.nextUrl.searchParams.get('search')?.trim() ?? '',
       brands: readArrayParam(request.nextUrl.searchParams, 'brands'),
+      status: readArrayParam(request.nextUrl.searchParams, 'status'),
       limit: parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER),
-      offset: parseRowsOffset(request.nextUrl.searchParams.get('offset')),
+      cursor: request.nextUrl.searchParams.get('cursor'),
+      sort: request.nextUrl.searchParams.get('sort'),
+      filterPreset: (() => {
+        const raw = request.nextUrl.searchParams.get('filter_preset');
+        if (!raw?.trim()) return null;
+        try {
+          const parsed = JSON.parse(raw) as Record<string, unknown>;
+          return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+          return null;
+        }
+      })(),
     });
     return timedJson(payload);
   } catch (error: any) {

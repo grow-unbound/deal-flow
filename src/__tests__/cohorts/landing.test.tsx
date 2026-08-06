@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useCohortsLandingMock = vi.fn();
+const useCohortsLandingMetricsMock = vi.fn();
 const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -14,6 +15,18 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useCohorts', () => ({
   useCohortsLanding: () => useCohortsLandingMock(),
+  useCohortsLandingMetrics: () => useCohortsLandingMetricsMock(),
+  useSaveSimpleCustomerGroup: () => ({ mutate: vi.fn(), isPending: false }),
+  useCohortComposerBuyers: () => ({
+    data: { pages: [{ buyers: [], total: 0, nextCursor: null }] },
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  }),
+}));
+
+vi.mock('@/hooks/useBrands', () => ({
+  useTenantBrands: () => ({ data: { brands: [] } }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -27,8 +40,22 @@ describe('cohorts landing page', () => {
   beforeEach(() => {
     pushMock.mockReset();
     useCohortsLandingMock.mockReset();
+    useCohortsLandingMetricsMock.mockReset();
     useFlagMock.mockReset();
     useFlagMock.mockReturnValue(true);
+    useCohortsLandingMetricsMock.mockReturnValue({
+      data: {
+        page_key: 'customer_groups',
+        period: { period_key: 'this_quarter', grain: 'quarter', period_start: '', period_end_exclusive: '' },
+        computed_at: null,
+        source_watermark: null,
+        cards: [
+          { id: 'customers-assigned', label: 'Customers assigned to a Group', value: 8, supporting_text: '80% of 10 customers' },
+          { id: 'valuable-uncategorised', label: 'Valuable customers in no Group', value: 2, supporting_text: 'This quarter' },
+          { id: 'grouped-purchase-rate', label: 'Grouped customers who purchased', value: 17.4, supporting_text: 'Average purchase rate across groups' },
+        ],
+      },
+    });
   });
 
   it('renders uncategorised buyers count from backend KPI', () => {
@@ -84,7 +111,7 @@ describe('cohorts landing page', () => {
             total_members: 4,
             conversion_pct: 19.7,
             live_catalogs_count: 1,
-            status_label: 'Dynamic',
+            status_label: 'Active',
             status_tone: 'success',
           },
         ],
@@ -93,7 +120,7 @@ describe('cohorts landing page', () => {
     });
 
     render(<CohortsLandingClient initialData={null} />);
-    fireEvent.click(screen.getByText('South Tier-A'));
+    fireEvent.click(screen.getAllByText('South Tier-A')[1]!);
 
     expect(pushMock).toHaveBeenCalledWith('/customer-groups/coh-1');
   });
@@ -119,7 +146,7 @@ describe('cohorts landing page', () => {
     });
 
     render(<CohortsLandingClient initialData={null} />);
-    expect(screen.getByText('12.00%')).toBeInTheDocument();
+    expect(screen.getByText('17.4%')).toBeInTheDocument();
   });
 
   it('filters customer groups by selected brand', () => {
@@ -155,7 +182,7 @@ describe('cohorts landing page', () => {
             total_members: 4,
             conversion_pct: 19.7,
             live_catalogs_count: 1,
-            status_label: 'Dynamic',
+            status_label: 'Active',
             status_tone: 'success',
           },
           {
@@ -171,7 +198,7 @@ describe('cohorts landing page', () => {
             total_members: 4,
             conversion_pct: 9.7,
             live_catalogs_count: 1,
-            status_label: 'Dynamic',
+            status_label: 'Active',
             status_tone: 'success',
           },
         ],
@@ -182,7 +209,7 @@ describe('cohorts landing page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Brands: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Brand One' }));
 
-    expect(screen.getByText('Brand One Cohort')).toBeInTheDocument();
+    expect(screen.getAllByText('Brand One Cohort').length).toBeGreaterThan(0);
     expect(screen.queryByText('Brand Two Cohort')).not.toBeInTheDocument();
   });
 });

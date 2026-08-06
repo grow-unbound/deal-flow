@@ -5,7 +5,7 @@ import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLo
 import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
 import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
 import { EntitySplitShell } from '@/components/seller/layout';
-import type { TenantOrdersResponse } from '@/hooks/useOrders';
+import type { OrdersLandingMetricsV4 } from '@/hooks/useOrders';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
@@ -22,8 +22,8 @@ export default async function SalesOrdersLayout({ children }: { children: ReactN
     <EntitySplitShell
       basePath="/sales-orders"
       listSlot={
-        <SellerBootstrapBoundary<TenantOrdersResponse>
-          path={`/api/tenant/orders?limit=200&period=${DEFAULT_SELLER_LANDING_PERIOD}`}
+        <SellerBootstrapBoundary<OrdersLandingMetricsV4>
+          path={`/api/tenant/orders/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
               basePath="/sales-orders"
@@ -35,7 +35,7 @@ export default async function SalesOrdersLayout({ children }: { children: ReactN
           }
           render={(initialData, status) => {
             if (status === 403) return <FeatureForbiddenPage />;
-            return <SalesOrdersLandingClient initialData={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
+            return <SalesOrdersLandingClient initialMetrics={initialData} initialPeriod={DEFAULT_SELLER_LANDING_PERIOD} />;
           }}
         />
       }

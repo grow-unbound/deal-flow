@@ -29,8 +29,9 @@ export function TotalsCard({
   stagedCallout?: ReactNode;
   gstInclusiveOverride?: boolean;
 }) {
-  const { creditEnabled, gstInclusive } = useBusinessPolicy();
+  const { gstInclusive } = useBusinessPolicy();
   const showGstInclusive = gstInclusiveOverride ?? gstInclusive;
+  const stockWarning = creditWarning?.startsWith('Stock warning.') ? creditWarning : null;
 
   const resolvedTaxRows = taxRows && taxRows.length > 0
     ? taxRows
@@ -46,15 +47,14 @@ export function TotalsCard({
 
   return (
     <div className="space-y-3">
-      {/* creditEnabled && creditWarning ? (
-        <div className="callout callout--danger">
-          <strong>Over limit.</strong> {creditWarning}
+      {stockWarning ? (
+        <div className="callout callout--warning">
+          <strong>Stock warning.</strong> {stockWarning.replace(/^Stock warning\.\s*/, '')}
         </div>
-      ) : null */}
-
-      <section className="rounded-[14px] border border-cream-300 bg-white p-4">
-        <p className="text-base font-semibold text-cream-950">{title}</p>
-        <div className="mt-4 space-y-3 text-sm text-cream-700">
+      ) : null}
+      <section className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <p className="text-lg font-semibold text-cream-950">{title}</p>
+        <div className="mt-5 space-y-3.5 text-base text-cream-700">
           <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} previous={previousTotals?.subtotal ?? null} />
           <TotalRow label="Document discount" value={formatNumberValue(totals.discount_flat, 'CURRENCY_EXACT')} previous={previousTotals?.discount_flat ?? null} />
           {showGstInclusive ? (
@@ -81,7 +81,7 @@ export function TotalsCard({
             <TotalRow label="Grand total" value={formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')} previous={previousTotals?.grand_total ?? null} strong />
           </div>
           {stagedChanges && stagedChanges.length > 0 ? (
-            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-base text-amber-900">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">Staged changes</p>
               {stagedChanges.map((row) => (
                 <div key={row.label} className="flex items-start justify-between gap-4">
@@ -115,8 +115,8 @@ function TotalRow({
     <div className={cn('flex items-center justify-between gap-4', rowClassName)}>
       <span className={cn(strong ? 'font-semibold text-cream-950' : '')}>{label}</span>
       <div className="flex items-center gap-2">
-        {previous != null ? <span className="text-xs text-cream-500 line-through">{formatNumberValue(previous, 'CURRENCY_EXACT')}</span> : null}
-        <span className={cn('font-mono text-sm text-cream-900', strong && 'text-base font-semibold')}>{value}</span>
+        {previous != null ? <span className="text-sm text-cream-500 line-through">{formatNumberValue(previous, 'CURRENCY_EXACT')}</span> : null}
+        <span className={cn('font-mono text-base text-cream-900', strong && 'text-md font-semibold')}>{value}</span>
       </div>
     </div>
   );

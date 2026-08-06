@@ -9,10 +9,37 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { getPostHogClient } from '@/lib/posthog-server';
-import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
-import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
 type CohortType = 'Geo-based' | 'Activity-based' | 'Brand affinity';
+type CohortStatusFilter = 'Active' | 'Dormant' | 'Inactive';
+type CohortLandingSort = 'invoice_value_desc' | 'invoice_value_asc' | 'active_member_count_desc' | 'demand_value_desc';
+
+type CohortCursor = {
+  v: number;
+  i: string;
+};
+
+type CohortMetricRow = {
+  cohort_id: string;
+  member_count: number | string | null;
+  active_member_count: number | string | null;
+  demand_count: number | string | null;
+  demand_value: number | string | null;
+  invoice_count: number | string | null;
+  invoice_value: number | string | null;
+};
+
+type CohortIdentityRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  rules: unknown;
+  is_static: boolean | null;
+  cached_member_count: number | null;
+  created_at: string;
+  allowed_tenant_brand_ids: string[] | null;
+};
 
 function buildPeriodFallbackFilter(
   primaryColumn: string,
@@ -21,6 +48,103 @@ function buildPeriodFallbackFilter(
   endExclusiveIso: string,
 ) {
   return `and(${primaryColumn}.gte.${startIso},${primaryColumn}.lt.${endExclusiveIso}),and(${primaryColumn}.is.null,${fallbackColumn}.gte.${startIso},${fallbackColumn}.lt.${endExclusiveIso})`;
+}
+
+function toNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function encodeCohortCursor(payload: CohortCursor): string {
+  return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
+
+function decodeCohortCursor(cursor: string | null | undefined): CohortCursor | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as Partial<CohortCursor>;
+    if (typeof parsed.v !== 'number' || typeof parsed.i !== 'string') return null;
+    return { v: parsed.v, i: parsed.i };
+  } catch {
+    return null;
+  }
+}
+
+function parseCohortSort(value: string | null | undefined): CohortLandingSort {
+  if (value === 'invoice_value_asc' || value === 'active_member_count_desc' || value === 'demand_value_desc') return value;
+  return 'invoice_value_desc';
+}
+
+function normalizeCohortStatuses(values: string[]): CohortStatusFilter[] {
+  const allowed = new Set<CohortStatusFilter>(['Active', 'Dormant', 'Inactive']);
+  return values.filter((value): value is CohortStatusFilter => allowed.has(value as CohortStatusFilter));
+}
+
+function parseCohortFilterPreset(raw: string | null | undefined): Record<string, unknown> | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function statusesFromCohortPreset(preset: Record<string, unknown> | null): CohortStatusFilter[] {
+  if (!preset) return [];
+  if (preset.status === 'Active' || preset.active_period === true || typeof preset.sold_period === 'string') return ['Active'];
+  if (preset.status === 'Dormant' || preset.dormant_period === true || typeof preset.not_sold_period === 'string') return ['Dormant'];
+  if (preset.status === 'Inactive') return ['Inactive'];
+  return [];
+}
+
+function isCohortActive(metric: CohortMetricRow): boolean {
+  return toNumber(metric.active_member_count) > 0 || toNumber(metric.demand_count) > 0 || toNumber(metric.invoice_count) > 0 || toNumber(metric.invoice_value) > 0;
+}
+
+function cohortStatus(metric: CohortMetricRow): { label: CohortStatusFilter; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
+  return isCohortActive(metric)
+    ? { label: 'Active', tone: 'success' }
+    : { label: 'Dormant', tone: 'warning' };
+}
+
+function cohortMatchesStatus(metric: CohortMetricRow, statuses: CohortStatusFilter[]): boolean {
+  if (statuses.length === 0) return true;
+  const status = cohortStatus(metric).label;
+  return statuses.includes(status);
+}
+
+function cohortSortValue(row: { metric: CohortMetricRow }, sort: CohortLandingSort): number {
+  if (sort === 'active_member_count_desc') return toNumber(row.metric.active_member_count);
+  if (sort === 'demand_value_desc') return toNumber(row.metric.demand_value);
+  return toNumber(row.metric.invoice_value);
+}
+
+function compareCohortRows(
+  left: { id: string; metric: CohortMetricRow },
+  right: { id: string; metric: CohortMetricRow },
+  sort: CohortLandingSort,
+): number {
+  const leftValue = cohortSortValue(left, sort);
+  const rightValue = cohortSortValue(right, sort);
+  if (leftValue !== rightValue) {
+    return sort === 'invoice_value_asc' ? leftValue - rightValue : rightValue - leftValue;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function cohortAfterCursor(row: { id: string; metric: CohortMetricRow }, sort: CohortLandingSort, cursor: CohortCursor | null): boolean {
+  if (!cursor) return true;
+  const value = cohortSortValue(row, sort);
+  if (sort === 'invoice_value_asc') {
+    if (value > cursor.v) return true;
+    if (value < cursor.v) return false;
+    return row.id.localeCompare(cursor.i) > 0;
+  }
+  if (value < cursor.v) return true;
+  if (value > cursor.v) return false;
+  return row.id.localeCompare(cursor.i) > 0;
 }
 
 function deriveCohortType(rules: unknown): CohortType {
@@ -55,85 +179,93 @@ function deriveFocusChips(rules: unknown, type: CohortType): string[] {
 export async function getCohortsLandingPayload(
   tenantId: string,
   periodInput?: string | null,
-  filters: { search?: string; brands?: string[]; limit?: number; offset?: number; includeSummary?: boolean } = {},
+  filters: {
+    search?: string;
+    brands?: string[];
+    status?: string[];
+    limit?: number;
+    cursor?: string | null;
+    sort?: string | null;
+    filterPreset?: Record<string, unknown> | null;
+    includeSummary?: boolean;
+  } = {},
 ) {
   const db = supabaseAdmin as any;
-  const period = getSellerLandingPeriodMeta('last90');
+  const period = getSellerLandingPeriodMeta('quarter');
   const limit = filters.limit ?? PAGE_SIZE.SELLER;
-  const offset = filters.offset ?? 0;
   const search = filters.search?.trim() ?? '';
   const brandFilter = filters.brands ?? [];
-  const includeSummary = filters.includeSummary ?? true;
+  const sort = parseCohortSort(filters.sort);
+  const cursor = decodeCohortCursor(filters.cursor);
+  const presetStatuses = statusesFromCohortPreset(filters.filterPreset ?? null);
+  const statuses = normalizeCohortStatuses(filters.status ?? []).concat(presetStatuses);
+  const statusFilters = Array.from(new Set(statuses));
+  const periodStart = period.current_start.slice(0, 10);
+  const scanLimit = Math.max(limit * 6, 300);
 
-  const landingSearch = await searchSellerLandingEntityIds({
-    tenantId,
-    entity: 'cohorts',
-    query: search,
-    brandIds: brandFilter,
-    limit,
-    offset,
-  });
+  const metricsRes = await db
+    .schema('app')
+    .from('metrics_cohort_period_summary')
+    .select('cohort_id, member_count, active_member_count, demand_count, demand_value, invoice_count, invoice_value')
+    .eq('tenant_id', tenantId)
+    .eq('grain', 'quarter')
+    .eq('period_start', periodStart)
+    .is('deleted_at', null)
+    .limit(scanLimit);
+  if (metricsRes.error) throw metricsRes.error;
 
-  const pageIds = landingSearch.ids;
-  const cohortsQuery = pageIds.length > 0
-    ? db
-        .schema('app')
-        .from('cohorts')
-        .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
-        .eq('tenant_id', tenantId)
-        .in('id', pageIds)
-        .is('deleted_at', null)
-        .limit(limit)
-    : Promise.resolve({ data: [] as any[], error: null });
-  const { data: cohorts, error: cohortsError } = await cohortsQuery;
-
-  if (cohortsError) throw cohortsError;
-
-  const { data: aggregatePayload, error: aggregateError } = await db.schema('app').rpc(
-    'get_seller_cohort_landing_aggregates',
-    {
-      p_tenant_id: tenantId,
-      p_page_ids: pageIds,
-      p_current_start: period.current_start,
-      p_current_end_exclusive: period.current_end_exclusive,
-      p_views_by_cohort: {},
-      p_include_summary: includeSummary,
-    },
+  const metricById = new Map<string, CohortMetricRow>(
+    ((metricsRes.data ?? []) as CohortMetricRow[]).map((row) => [row.cohort_id, row]),
   );
-  if (aggregateError) throw aggregateError;
 
-  const aggregate = (aggregatePayload ?? {}) as any;
-  const summary = includeSummary ? aggregate.summary : null;
-  const calloutMetrics = summary?.callout_metrics ?? {};
-  const allMetrics = [
-    ...(aggregate.row_metrics ?? []),
-    ...(calloutMetrics.low_conversion ?? []),
-    ...(calloutMetrics.top_performers ?? []),
-    ...(calloutMetrics.top_risers ?? []),
-  ];
-  const metricsById = new Map<string, any>(allMetrics.map((row: any) => [row.id, row]));
-  const calloutIds = includeSummary
-    ? [...new Set(allMetrics.map((row: any) => row.id).filter((id: string) => !pageIds.includes(id)))]
-    : [];
-  const calloutCohortsRes = calloutIds.length > 0
-    ? await db
-        .schema('app')
-        .from('cohorts')
-        .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
-        .eq('tenant_id', tenantId)
-        .in('id', calloutIds)
-        .is('deleted_at', null)
-        .limit(6)
-    : { data: [] as any[], error: null };
-  if (calloutCohortsRes.error) throw calloutCohortsRes.error;
+  let identityQuery = db
+    .schema('app')
+    .from('cohorts')
+    .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(scanLimit);
+  if (search) {
+    identityQuery = identityQuery.or(`name.ilike.%${search.replace(/[%_]/g, '\\$&')}%,description.ilike.%${search.replace(/[%_]/g, '\\$&')}%`);
+  }
+  const identitiesRes = await identityQuery;
+  if (identitiesRes.error) throw identitiesRes.error;
+  const identities = (identitiesRes.data ?? []) as CohortIdentityRow[];
 
-  const cohortBaseById = new Map<string, any>(
-    [...(cohorts ?? []), ...(calloutCohortsRes.data ?? [])].map((row: any) => [row.id, row]),
-  );
-  const toLandingRow = (cohort: any, metric: any) => {
+  const rowsForSort = identities
+    .filter((cohort) => {
+      if (brandFilter.length === 0) return true;
+      return (cohort.allowed_tenant_brand_ids ?? []).some((brandId) => brandFilter.includes(brandId));
+    })
+    .map((cohort) => {
+      const metric = metricById.get(cohort.id) ?? {
+        cohort_id: cohort.id,
+        member_count: cohort.cached_member_count ?? 0,
+        active_member_count: 0,
+        demand_count: 0,
+        demand_value: 0,
+        invoice_count: 0,
+        invoice_value: 0,
+      };
+      return { id: cohort.id, identity: cohort, metric };
+    })
+    .filter((row) => cohortMatchesStatus(row.metric, statusFilters))
+    .sort((left, right) => compareCohortRows(left, right, sort))
+    .filter((row) => cohortAfterCursor(row, sort, cursor));
+
+  const pageRows = rowsForSort.slice(0, limit);
+  const extraRow = rowsForSort[limit];
+
+  const toLandingRow = (cohort: CohortIdentityRow, metric: CohortMetricRow) => {
     const type = deriveCohortType(cohort.rules);
-    const gmvMtd = Number(metric?.gmv_mtd ?? 0);
-    const orders = Number(metric?.orders_mtd ?? 0);
+    const invoiceValue = toNumber(metric.invoice_value);
+    const invoiceCount = toNumber(metric.invoice_count);
+    const demandValue = toNumber(metric.demand_value);
+    const demandCount = toNumber(metric.demand_count);
+    const memberCount = toNumber(metric.member_count ?? cohort.cached_member_count);
+    const purchasingMembers = toNumber(metric.active_member_count);
+    const status = cohortStatus(metric);
     return {
       id: cohort.id,
       name: cohort.name,
@@ -144,42 +276,32 @@ export async function getCohortsLandingPayload(
       allowed_brands_count: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids.length : null,
       allowed_brands_label: Array.isArray(cohort.allowed_tenant_brand_ids) ? `${cohort.allowed_tenant_brand_ids.length} brands` : 'All Brands',
       allowed_tenant_brand_ids: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids : null,
-      gmv_mtd: gmvMtd,
-      growth_pct: Number(metric?.growth_pct ?? 0),
-      active_members: Number(metric?.active_members ?? 0),
-      total_members: Number(metric?.total_members ?? cohort.cached_member_count ?? 0),
-      conversion_pct: Number(metric?.conversion_pct ?? 0),
-      live_catalogs_count: Number(metric?.live_catalogs_count ?? 0),
-      status_label: cohort.is_static ? 'Static' : 'Dynamic',
-      status_tone: cohort.is_static ? 'neutral' : 'success',
-      aov: orders > 0 ? gmvMtd / orders : 0,
-      orders_mtd: orders,
+      gmv_mtd: invoiceValue,
+      invoice_value: invoiceValue,
+      invoice_count: invoiceCount,
+      demand_value: demandValue,
+      demand_count: demandCount,
+      growth_pct: 0,
+      active_members: purchasingMembers,
+      total_members: memberCount,
+      conversion_pct: memberCount > 0 ? Number(((purchasingMembers / memberCount) * 100).toFixed(1)) : 0,
+      live_catalogs_count: 0,
+      status_label: status.label,
+      status_tone: status.tone,
+      aov: invoiceCount > 0 ? invoiceValue / invoiceCount : 0,
+      orders_mtd: demandCount,
     };
   };
-  const cohortRows = pageIds
-    .map((id) => {
-      const cohort = cohortBaseById.get(id);
-      return cohort ? toLandingRow(cohort, metricsById.get(id)) : null;
-    })
-    .filter(Boolean);
-  const buildCallouts = (key: string) => (calloutMetrics[key] ?? [])
-    .map((metric: any) => {
-      const cohort = cohortBaseById.get(metric.id);
-      return cohort ? toLandingRow(cohort, metric) : null;
-    })
-    .filter(Boolean);
 
-  const brandsRes = includeSummary
-    ? await db
-        .schema('app')
-        .from('tenant_brands')
-        .select('id, display_name_override, master_brand_id')
-        .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(100)
-    : { data: [] as any[], error: null };
+  const brandsRes = await db
+    .schema('app')
+    .from('tenant_brands')
+    .select('id, display_name_override, master_brand_id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
   if (brandsRes.error) throw brandsRes.error;
   const brands = brandsRes.data ?? [];
   const brandMasterIds = [...new Set(brands.map((brand: { master_brand_id: string | null }) => brand.master_brand_id).filter(Boolean) as string[])];
@@ -197,26 +319,29 @@ export async function getCohortsLandingPayload(
     }
   }
 
+  const last = pageRows[pageRows.length - 1];
   return {
-    ...(includeSummary ? {
-      brands: brands.map((brand: { id: string; display_name_override: string | null; master_brand_id: string | null }) => ({
-        id: brand.id,
-        name: brand.display_name_override ?? (brand.master_brand_id ? masterBrandNameById.get(brand.master_brand_id) ?? 'Unknown brand' : 'Unknown brand'),
-      })),
-      kpis: summary?.kpis,
-      todays_read: {
-        low_conversion: buildCallouts('low_conversion'),
-        top_performers: buildCallouts('top_performers'),
-        top_risers: buildCallouts('top_risers'),
-      },
-    } : {}),
-    cohorts: cohortRows,
-    total: landingSearch.total,
+    brands: brands.map((brand: { id: string; display_name_override: string | null; master_brand_id: string | null }) => ({
+      id: brand.id,
+      name: brand.display_name_override ?? (brand.master_brand_id ? masterBrandNameById.get(brand.master_brand_id) ?? 'Unknown brand' : 'Unknown brand'),
+    })),
+    kpis: {
+      total_cohorts: identities.length,
+      covered_members: pageRows.reduce((sum, row) => sum + toNumber(row.metric.member_count), 0),
+      total_buyers: pageRows.reduce((sum, row) => sum + toNumber(row.metric.member_count), 0),
+      combined_gmv_mtd: pageRows.reduce((sum, row) => sum + toNumber(row.metric.invoice_value), 0),
+      avg_conversion_pct: 0,
+      uncategorised_buyers: 0,
+    },
+    todays_read: {
+      low_conversion: [],
+      top_performers: [],
+      top_risers: [],
+    },
+    cohorts: pageRows.map((row) => toLandingRow(row.identity, row.metric)),
+    total: rowsForSort.length,
     limit,
-    offset,
-    nextOffset: landingSearch.ids.length > 0 && offset + landingSearch.ids.length < landingSearch.total
-      ? offset + landingSearch.ids.length
-      : null,
+    nextCursor: extraRow && last ? encodeCohortCursor({ v: cohortSortValue(last, sort), i: last.id }) : null,
     period,
   };
 }
@@ -250,49 +375,21 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Server configuration error' }, { status: 500 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabaseAdmin as any;
-  const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
-  const brandFilter = readArrayParam(request.nextUrl.searchParams, 'brands');
-  const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-  const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
-  const landingSearch = await searchSellerLandingEntityIds({
-    tenantId: claims.tenant_id,
-    entity: 'cohorts',
-    query: search,
-    brandIds: brandFilter,
-    limit,
-    offset,
-  });
-  const { data: rows, error } = landingSearch.ids.length > 0
-    ? await db
-        .schema('app')
-        .from('cohorts')
-        .select('*')
-        .eq('tenant_id', claims.tenant_id)
-        .in('id', landingSearch.ids)
-        .is('deleted_at', null)
-        .limit(limit)
-    : { data: [], error: null };
-
-  if (error) {
-    console.error('[GET /api/cohorts] DB error:', error.code, error.message);
+  try {
+    const payload = await getCohortsLandingPayload(claims.tenant_id, request.nextUrl.searchParams.get('period'), {
+      search: request.nextUrl.searchParams.get('search')?.trim() ?? '',
+      brands: readArrayParam(request.nextUrl.searchParams, 'brands'),
+      status: readArrayParam(request.nextUrl.searchParams, 'status'),
+      limit: parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER),
+      cursor: request.nextUrl.searchParams.get('cursor'),
+      sort: request.nextUrl.searchParams.get('sort'),
+      filterPreset: parseCohortFilterPreset(request.nextUrl.searchParams.get('filter_preset')),
+    });
+    return timedJson(payload);
+  } catch (error: any) {
+    console.error('[GET /api/cohorts] DB error:', error?.code, error?.message);
     return timedJson({ error: 'Failed to fetch cohorts' }, { status: 500 });
   }
-
-  const rowById = new Map((rows ?? []).map((row: { id: string }) => [row.id, row]));
-  const orderedRows = landingSearch.ids.flatMap((id) => {
-    const row = rowById.get(id);
-    return row ? [row] : [];
-  });
-
-  return timedJson({
-    cohorts: orderedRows,
-    total: landingSearch.total,
-    limit,
-    offset,
-    nextOffset: offset + orderedRows.length < landingSearch.total ? offset + orderedRows.length : null,
-  });
 }
 
 export async function POST(request: NextRequest) {

@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 const useTenantProductsMock = vi.fn();
 const useTenantProductsInfiniteMock = vi.fn();
+const useTenantProductsLandingMetricsMock = vi.fn();
 const useFlagMock = vi.fn();
 const useRoleMock = vi.fn();
 let landingProducts: Array<any> = [];
@@ -48,6 +49,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useProducts', () => ({
   useTenantProducts: () => useTenantProductsMock(),
+  useTenantProductsLandingMetrics: (...args: unknown[]) => useTenantProductsLandingMetricsMock(...args),
   useTenantProductsInfinite: (...args: unknown[]) => useTenantProductsInfiniteMock(...args),
 }));
 
@@ -77,15 +79,17 @@ describe('products landing integration', () => {
   beforeEach(() => {
     useTenantProductsMock.mockReset();
     useTenantProductsInfiniteMock.mockReset();
+    useTenantProductsLandingMetricsMock.mockReset();
     useFlagMock.mockReset();
     useRoleMock.mockReset();
     landingProducts = [];
+    useTenantProductsLandingMetricsMock.mockReturnValue({ isLoading: false, isError: false, data: { cards: [] } });
   });
 
   it('renders flag-off empty state and does not fetch data when disabled', () => {
     useFlagMock.mockReturnValue(false);
 
-    render(<ProductsLandingClient initialData={null} />);
+    render(<ProductsLandingClient initialMetrics={null} />);
 
     expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();
     expect(useTenantProductsMock).not.toHaveBeenCalled();
@@ -154,8 +158,9 @@ describe('products landing integration', () => {
                 revenue_prev_mtd: 500,
                 revenue_growth_pct: 100,
               },
+              filters: { groups: productFilterGroups },
               nextCursor: null,
-              total: alphaOnly || inactiveOnly ? 0 : 2,
+              total: alphaOnly ? 1 : inactiveOnly ? 0 : 2,
             },
           ],
         },
@@ -165,12 +170,12 @@ describe('products landing integration', () => {
       };
     });
 
-    render(<ProductsLandingClient initialData={null} />);
+    render(<ProductsLandingClient initialMetrics={null} />);
 
-    expect(screen.getByText('2 active products across 2 brands and 1 categories.')).toBeInTheDocument();
-    expect(screen.getByText('Stock status')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Water')).toBeInTheDocument();
-    expect(screen.getByText('Beta Juice')).toBeInTheDocument();
+    expect(screen.getByText('2 products across 2 brands and 1 categories.')).toBeInTheDocument();
+    expect(screen.queryByText('Stock status')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Alpha Water').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Beta Juice').length).toBeGreaterThan(0);
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByText('Inactive')).toBeInTheDocument();
@@ -178,13 +183,13 @@ describe('products landing integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Brand: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
 
-    expect(screen.getByText('2 active products across 2 brands and 1 categories.')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Water')).toBeInTheDocument();
+    expect(screen.getByText('1 products across 2 brands and 1 categories.')).toBeInTheDocument();
+    expect(screen.getAllByText('Alpha Water').length).toBeGreaterThan(0);
     expect(screen.queryByText('Beta Juice')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
-    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('last90', expect.objectContaining({ status: ['Inactive'] }));
+    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('quarter', expect.objectContaining({ status: ['Inactive'] }));
   });
 
   it('deduplicates repeated products before rendering rows', () => {
@@ -232,6 +237,7 @@ describe('products landing integration', () => {
               revenue_prev_mtd: 500,
               revenue_growth_pct: 100,
             },
+            filters: { groups: [] },
             nextCursor: null,
             total: 1,
           },
@@ -242,46 +248,28 @@ describe('products landing integration', () => {
       isFetchingNextPage: false,
     });
 
-    render(<ProductsLandingClient initialData={null} />);
+    render(<ProductsLandingClient initialMetrics={null} />);
 
-    expect(screen.getAllByText('Alpha Water')).toHaveLength(1);
+    expect(screen.getAllByText('Alpha Water')).toHaveLength(2);
     expect(screen.getByText('1 of 1 products')).toBeInTheDocument();
   });
 
-  it('shows full callout counts and the complete overlay list', async () => {
+  it('renders V4 KPI cards and applies the card filter preset', async () => {
     useFlagMock.mockReturnValue(true);
     useRoleMock.mockReturnValue({ isSellerAssistant: false });
-    useTenantProductsMock.mockReturnValue({
+    useTenantProductsLandingMetricsMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: {
-        kpis: {
-          active_skus: 4,
-          total_skus: 4,
-          archived_skus: 0,
-          out_of_stock: 0,
-          low_stock: 0,
-          recently_sold_out_of_stock: 0,
-          products_sold: 0,
-          brand_count: 2,
-          category_count: 1,
-          revenue_mtd: 0,
-          revenue_prev_mtd: 0,
-          revenue_growth_pct: 0,
-        },
-        products: [],
-        brands: ['Alpha', 'Beta'],
-        filters: { groups: productFilterGroups },
-        todays_read: {
-          recently_sold_out_of_stock: [],
-          running_low: [],
-          no_sale_90d: [
-            { id: 'p1', name: 'Alpha Syrup', sku: 'ALP-1', brand: 'Alpha', brand_initials: 'AL', brand_hue: 'teal', on_hand: 12 },
-            { id: 'p2', name: 'Beta Juice', sku: 'BET-2', brand: 'Beta', brand_initials: 'BE', brand_hue: 'ember', on_hand: 8 },
-            { id: 'p3', name: 'Citrus Mix', sku: 'CIT-3', brand: 'Alpha', brand_initials: 'AL', brand_hue: 'cream', on_hand: 16 },
-            { id: 'p4', name: 'Delta Soda', sku: 'DEL-4', brand: 'Beta', brand_initials: 'BE', brand_hue: 'teal', on_hand: 10 },
-          ],
-        },
+        cards: [
+          {
+            id: 'products-no-sale',
+            label: 'Products that did not sell',
+            value: 4,
+            supporting_text: 'current stock units',
+            filter_preset: { not_sold_period: 'this_quarter', stock_gt: 0 },
+          },
+        ],
       },
     });
     useTenantProductsInfiniteMock.mockReturnValue({
@@ -301,6 +289,7 @@ describe('products landing integration', () => {
               revenue_prev_mtd: 0,
               revenue_growth_pct: 0,
             },
+            filters: { groups: productFilterGroups },
             nextCursor: null,
             total: 0,
           },
@@ -311,17 +300,15 @@ describe('products landing integration', () => {
       isFetchingNextPage: false,
     });
 
-    render(<ProductsLandingClient initialData={null} />);
+    render(<ProductsLandingClient initialMetrics={null} />);
 
-    const button = screen.getByRole('button', { name: /open full stock with no sale in 90 days list/i });
-    expect(button).toHaveTextContent('4');
-    expect(screen.queryByText('Citrus Mix')).not.toBeInTheDocument();
-    expect(screen.queryByText('Delta Soda')).not.toBeInTheDocument();
+    expect(screen.getByText('Products that did not sell')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
 
-    fireEvent.click(button);
+    fireEvent.click(screen.getByText('Products that did not sell'));
 
-    expect(await screen.findByText('4 items')).toBeInTheDocument();
-    expect(screen.getByText('Citrus Mix')).toBeInTheDocument();
-    expect(screen.getByText('Delta Soda')).toBeInTheDocument();
+    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('quarter', expect.objectContaining({
+      filter_preset: { not_sold_period: 'this_quarter', stock_gt: 0 },
+    }));
   });
 });

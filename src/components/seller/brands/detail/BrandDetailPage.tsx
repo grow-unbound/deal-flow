@@ -22,6 +22,7 @@ import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
 import { BrandCatalogsTab } from './BrandCatalogsTab';
 import { AddBrandCommand } from '../AddBrandCommand';
+import { BrandDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const BrandPerformanceTab = dynamic(
   () => import('./BrandPerformanceTab').then((m) => m.BrandPerformanceTab),
@@ -114,6 +115,8 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
   if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load brand" description="There was a problem fetching this brand detail page." />;
   }
+
+  if (isLoading && !data) return <BrandDetailSkeleton />;
 
   return (
     <div className="px-4 py-4 md:px-6 md:py-4">

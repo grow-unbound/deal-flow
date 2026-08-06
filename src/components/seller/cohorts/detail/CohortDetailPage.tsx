@@ -15,6 +15,7 @@ import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
 import type { BuyerMembershipRules } from '@/lib/zod';
 import { CohortBuyersTab } from './CohortBuyersTab';
 import { CustomerGroupFormSheet } from '../CustomerGroupFormSheet';
+import { CohortDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const CohortPerformanceTab = dynamic(
   () => import('./CohortPerformanceTab').then((m) => m.CohortPerformanceTab),
@@ -84,6 +85,8 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
   if (isError || (!isLoading && !data)) {
     return <ErrorState heading="Couldn't load customer group" description="There was a problem fetching this customer group detail page." />;
   }
+
+  if (isLoading && !data) return <CohortDetailSkeleton />;
 
   return (
     <div className="px-4 py-4 md:px-6 md:py-4">

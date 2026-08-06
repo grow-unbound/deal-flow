@@ -9,9 +9,38 @@ function PulseCard({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-[14px] border border-cream-200 bg-cream-100', className)} />;
 }
 
+export function SellerPageHeaderSkeleton({
+  eyebrowWidth = 'w-20',
+  titleWidth = 'w-44',
+  subtitleWidth = 'w-[36rem] max-w-full',
+  actionWidths = ['w-36'],
+  compact = false,
+}: {
+  eyebrowWidth?: string;
+  titleWidth?: string;
+  subtitleWidth?: string;
+  actionWidths?: string[];
+  compact?: boolean;
+}) {
+  return (
+    <header className="mb-3 flex items-end justify-between gap-4 md:mb-4 md:gap-6">
+      <div className="min-w-0 flex-1">
+        <PulseLine className={cn('h-3', eyebrowWidth)} />
+        <PulseLine className={cn('mt-1 h-6 md:h-7', titleWidth)} />
+        <PulseLine className={cn('mt-1 h-4 md:h-5', subtitleWidth)} />
+      </div>
+      <div className="hidden shrink-0 items-center gap-2 pb-0.5 md:flex">
+        {actionWidths.map((width, index) => (
+          <PulseCard key={index} className={cn(compact ? 'h-9 w-9 rounded-[10px]' : 'h-9 rounded-[10px]', width)} />
+        ))}
+      </div>
+    </header>
+  );
+}
+
 export function TableRowsSkeleton({
   gridClassName,
-  rowCount = 6,
+  rowCount = 14,
   cellCount,
   cellHeight = 'h-10 rounded-md',
 }: {
@@ -21,7 +50,7 @@ export function TableRowsSkeleton({
   cellHeight?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
+    <div className="min-h-[calc(100dvh-var(--topbar-h)-20rem)] overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
       <div className="space-y-3 p-4">
         {Array.from({ length: rowCount }).map((_, row) => (
           <div key={row} className={cn('grid gap-3', gridClassName)}>
@@ -35,59 +64,56 @@ export function TableRowsSkeleton({
   );
 }
 
-function LandingSkeleton({
+export function SellerTableLandingSkeleton({
   ariaLabel,
-  titleWidth,
-  descriptionWidth,
-  topGridClassName,
-  topCount,
-  topCardHeight,
-  tableHeaderGridClassName,
-  tableHeaderCount,
-  tableRowGridClassName,
-  tableRowCount,
-  tableCellCount,
-  tableCellHeight,
+  eyebrowWidth = 'w-20',
+  titleWidth = 'w-44',
+  descriptionWidth = 'w-[36rem] max-w-full',
+  kpiCardHeight = 'h-36',
+  tableColumnGridClassName,
+  tableColumnCount,
+  tableRowCount = 6,
+  tableCellHeight = 'h-10 rounded-md',
+  className,
 }: {
   ariaLabel: string;
-  titleWidth: string;
-  descriptionWidth: string;
-  topGridClassName: string;
-  topCount: number;
-  topCardHeight: string;
-  tableHeaderGridClassName: string;
-  tableHeaderCount: number;
-  tableRowGridClassName: string;
-  tableRowCount: number;
-  tableCellCount: number;
+  eyebrowWidth?: string;
+  titleWidth?: string;
+  descriptionWidth?: string;
+  kpiCardHeight?: string;
+  tableColumnGridClassName: string;
+  tableColumnCount: number;
+  tableRowCount?: number;
   tableCellHeight: string;
+  className?: string;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1920px] px-8 py-6" role="status" aria-label={ariaLabel}>
-      <div className="space-y-5">
-        <div className="space-y-3">
-          <PulseLine className={titleWidth} />
-          <PulseLine className={descriptionWidth} />
-        </div>
+    <div className={cn('mx-auto w-full max-w-[1920px] px-8 py-6', className)} role="status" aria-label={ariaLabel}>
+      <div className="flex min-h-[calc(100dvh-var(--topbar-h)-3rem)] flex-col space-y-5">
+        <SellerPageHeaderSkeleton
+          eyebrowWidth={eyebrowWidth}
+          titleWidth={titleWidth}
+          subtitleWidth={descriptionWidth}
+        />
 
-        <div className={topGridClassName}>
-          {Array.from({ length: topCount }).map((_, index) => (
-            <PulseCard key={index} className={topCardHeight} />
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <PulseCard key={index} className={cn(kpiCardHeight, 'rounded-[14px]')} />
           ))}
         </div>
 
-        <PulseCard className="h-14" />
+        <PulseCard className="h-14 rounded-[14px]" />
 
-        <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className={cn('grid gap-3 border-b border-cream-200 px-5 py-3', tableHeaderGridClassName)}>
-            {Array.from({ length: tableHeaderCount }).map((_, index) => (
+        <div className="min-h-0 flex-1 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+          <div className={cn('grid gap-3 border-b border-cream-200 px-5 py-3', tableColumnGridClassName)}>
+            {Array.from({ length: tableColumnCount }).map((_, index) => (
               <PulseLine key={index} className="h-3 w-full" />
             ))}
           </div>
           <div className="space-y-3 p-4">
-            {Array.from({ length: tableRowCount }).map((_, row) => (
-              <div key={row} className={cn('grid gap-3', tableRowGridClassName)}>
-                {Array.from({ length: tableCellCount }).map((_, col) => (
+            {Array.from({ length: Math.max(tableRowCount, 14) }).map((_, row) => (
+              <div key={row} className={cn('grid gap-3', tableColumnGridClassName)}>
+                {Array.from({ length: tableColumnCount }).map((_, col) => (
                   <PulseCard key={col} className={tableCellHeight} />
                 ))}
               </div>
@@ -99,7 +125,44 @@ function LandingSkeleton({
   );
 }
 
-function DetailSkeleton({
+export function SellerDashboardLoadingSkeleton({
+  ariaLabel = 'Loading dashboard',
+  widgetCount = 5,
+  hero = false,
+}: {
+  ariaLabel?: string;
+  widgetCount?: number;
+  hero?: boolean;
+}) {
+  return (
+    <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label={ariaLabel}>
+      <div className="mb-7 flex items-end justify-between gap-6">
+        <div className="space-y-2">
+          <PulseLine className="h-3 w-24" />
+          <PulseLine className="h-8 w-44" />
+          <PulseLine className="h-4 w-[36rem] max-w-full" />
+        </div>
+        <PulseCard className="h-9 w-40 rounded-[10px]" />
+      </div>
+
+      {hero ? <PulseCard className="mb-5 h-24 rounded-[12px]" /> : null}
+
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <PulseCard key={index} className="h-[108px] rounded-[12px]" />
+        ))}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+        {Array.from({ length: widgetCount }).map((_, index) => (
+          <PulseCard key={index} className="h-[320px]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SellerEntityDetailSkeleton({
   ariaLabel,
   titleWidth,
   subtitleWidth,
@@ -110,6 +173,7 @@ function DetailSkeleton({
   tabCount,
   tabWidth,
   contentHeightClassName,
+  className,
 }: {
   ariaLabel: string;
   titleWidth: string;
@@ -121,9 +185,10 @@ function DetailSkeleton({
   tabCount: number;
   tabWidth: string;
   contentHeightClassName: string;
+  className?: string;
 }) {
   return (
-    <div className="px-4 py-4 md:px-6 md:py-4 space-y-6" role="status" aria-label={ariaLabel}>
+    <div className={cn('px-4 py-4 md:px-6 md:py-4 space-y-6', className)} role="status" aria-label={ariaLabel}>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -159,53 +224,11 @@ function DetailSkeleton({
 }
 
 export function DashboardSkeleton() {
-  return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label="Loading dashboard">
-      <div className="mb-7 flex items-end justify-between gap-6">
-        <div className="space-y-2">
-          <PulseLine className="h-3 w-24" />
-          <PulseLine className="h-8 w-44" />
-          <PulseLine className="h-4 w-[36rem]" />
-        </div>
-        <PulseCard className="h-9 w-40" />
-      </div>
-
-      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <PulseCard key={index} className="h-[108px]" />
-        ))}
-      </div>
-
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <PulseCard key={index} className="h-[320px]" />
-        ))}
-      </div>
-    </div>
-  );
+  return <SellerDashboardLoadingSkeleton />;
 }
 
 export function BuyerAppSkeleton() {
-  return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label="Loading buyer app">
-      <PulseCard className="h-24 rounded-[12px]" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <PulseCard key={index} className="h-[108px] rounded-[12px]" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <PulseCard key={index} className="h-[190px] rounded-[14px]" />
-        ))}
-      </div>
-      <div className="mt-6 grid grid-cols-2 gap-6">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <PulseCard key={index} className="h-[260px] rounded-[14px]" />
-        ))}
-      </div>
-    </div>
-  );
+  return <SellerDashboardLoadingSkeleton ariaLabel="Loading buyer app" widgetCount={4} hero />;
 }
 
 export function WorkboardLandingSkeleton({
@@ -226,77 +249,50 @@ export function WorkboardLandingSkeleton({
   tableRowCount?: number;
 }) {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label={ariaLabel}>
-      <div className="space-y-3">
-        <PulseLine className={titleWidth} />
-        <PulseLine className={descriptionWidth} />
-      </div>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <PulseCard key={index} className={cn(topCardHeight, 'rounded-[12px]')} />
-        ))}
-      </div>
-      <div className="mt-5 h-[46px] rounded-[12px] border border-cream-200 bg-cream-100 animate-pulse" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className={cn('grid gap-3 border-b border-cream-200 px-5 py-3', tableColumnGridClassName)}>
-          {Array.from({ length: tableColumnCount }).map((_, index) => (
-            <PulseLine key={index} className="h-3 w-full" />
-          ))}
-        </div>
-        <div className="space-y-3 p-4">
-          {Array.from({ length: tableRowCount }).map((_, row) => (
-            <div key={row} className={cn('grid gap-3', tableColumnGridClassName)}>
-              {Array.from({ length: tableColumnCount }).map((_, col) => (
-                <PulseCard key={col} className="h-10 rounded-md" />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <SellerTableLandingSkeleton
+      ariaLabel={ariaLabel}
+      titleWidth={titleWidth}
+      descriptionWidth={descriptionWidth}
+      kpiCardHeight={topCardHeight}
+      tableColumnGridClassName={tableColumnGridClassName}
+      tableColumnCount={tableColumnCount}
+      tableRowCount={tableRowCount}
+      tableCellHeight="h-10 rounded-md"
+    />
   );
 }
 
 export function CatalogLandingSkeleton({
   ariaLabel,
+  eyebrowWidth,
   titleWidth,
   descriptionWidth,
-  topGridClassName,
-  topCount,
   topCardHeight,
   tableHeaderGridClassName,
-  tableHeaderCount,
-  tableRowGridClassName,
   tableRowCount,
   tableCellCount,
   tableCellHeight,
 }: {
   ariaLabel: string;
+  eyebrowWidth?: string;
   titleWidth: string;
   descriptionWidth: string;
-  topGridClassName: string;
-  topCount: number;
   topCardHeight: string;
   tableHeaderGridClassName: string;
-  tableHeaderCount: number;
-  tableRowGridClassName: string;
   tableRowCount: number;
   tableCellCount: number;
   tableCellHeight: string;
 }) {
   return (
-    <LandingSkeleton
+    <SellerTableLandingSkeleton
       ariaLabel={ariaLabel}
+      eyebrowWidth={eyebrowWidth}
       titleWidth={titleWidth}
       descriptionWidth={descriptionWidth}
-      topGridClassName={topGridClassName}
-      topCount={topCount}
-      topCardHeight={topCardHeight}
-      tableHeaderGridClassName={tableHeaderGridClassName}
-      tableHeaderCount={tableHeaderCount}
-      tableRowGridClassName={tableRowGridClassName}
+      kpiCardHeight={topCardHeight}
+      tableColumnGridClassName={tableHeaderGridClassName}
+      tableColumnCount={tableCellCount}
       tableRowCount={tableRowCount}
-      tableCellCount={tableCellCount}
       tableCellHeight={tableCellHeight}
     />
   );
@@ -306,14 +302,11 @@ export function CustomersLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading customers"
-      titleWidth="h-3 w-24"
-      descriptionWidth="h-10 w-52"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-24"
+      titleWidth="w-52"
+      descriptionWidth="w-[40rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.6fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.8fr_0.9fr_40px]"
-      tableHeaderCount={12}
-      tableRowGridClassName="grid-cols-[1.6fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.7fr_0.9fr_0.7fr_0.85fr_0.8fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={12}
       tableCellHeight="h-10 rounded-md"
@@ -325,14 +318,11 @@ export function ProductsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading products"
-      titleWidth="h-7 w-44"
-      descriptionWidth="h-4 w-[36rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-16"
+      titleWidth="w-44"
+      descriptionWidth="w-[36rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.4fr_1fr_1fr_0.9fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr_40px]"
-      tableHeaderCount={9}
-      tableRowGridClassName="grid-cols-[1.4fr_1fr_1fr_0.9fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr_40px]"
       tableRowCount={6}
       tableCellCount={9}
       tableCellHeight="h-10 rounded-md"
@@ -344,14 +334,11 @@ export function BrandsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading brands"
-      titleWidth="h-7 w-44"
-      descriptionWidth="h-4 w-[36rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-20"
+      titleWidth="w-32"
+      descriptionWidth="w-[34rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
-      tableHeaderCount={6}
-      tableRowGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableRowCount={6}
       tableCellCount={6}
       tableCellHeight="h-10 rounded-md"
@@ -363,14 +350,11 @@ export function LocationsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading locations"
-      titleWidth="h-7 w-36"
-      descriptionWidth="h-4 w-[32rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-24"
+      titleWidth="w-36"
+      descriptionWidth="w-[30rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_1fr_0.9fr_0.8fr_0.9fr_0.9fr_0.9fr_40px]"
-      tableHeaderCount={7}
-      tableRowGridClassName="grid-cols-[1.8fr_1fr_0.9fr_0.8fr_0.9fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={7}
       tableCellHeight="h-10 rounded-md"
@@ -382,14 +366,11 @@ export function WarehousesLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading warehouses"
-      titleWidth="h-7 w-40"
-      descriptionWidth="h-4 w-[34rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-24"
+      titleWidth="w-40"
+      descriptionWidth="w-[34rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_1.1fr_1fr_0.8fr_0.9fr_0.8fr_0.9fr_0.9fr_40px]"
-      tableHeaderCount={8}
-      tableRowGridClassName="grid-cols-[1.8fr_1.1fr_1fr_0.8fr_0.9fr_0.8fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={8}
       tableCellHeight="h-10 rounded-md"
@@ -401,14 +382,11 @@ export function CategoriesLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading categories"
-      titleWidth="h-24 w-full max-w-sm"
-      descriptionWidth="h-24 w-full max-w-sm"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-16"
+      titleWidth="w-40"
+      descriptionWidth="w-[28rem] max-w-full"
       topCardHeight="h-[108px] rounded-[12px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_0.9fr_0.9fr_40px]"
-      tableHeaderCount={5}
-      tableRowGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={5}
       tableCellHeight="h-10 rounded-md"
@@ -420,14 +398,11 @@ export function CohortsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading cohorts"
-      titleWidth="h-7 w-44"
-      descriptionWidth="h-4 w-[36rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-28"
+      titleWidth="w-52"
+      descriptionWidth="w-[44rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_40px]"
-      tableHeaderCount={3}
-      tableRowGridClassName="grid-cols-[1.8fr_0.9fr_0.9fr_40px]"
       tableRowCount={6}
       tableCellCount={3}
       tableCellHeight="h-10 rounded-md"
@@ -439,14 +414,11 @@ export function PriceListsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading price lists"
-      titleWidth="h-7 w-44"
-      descriptionWidth="h-4 w-[40rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-20"
+      titleWidth="w-44"
+      descriptionWidth="w-[40rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.6fr_1fr_0.7fr_0.8fr_1.05fr_0.85fr_0.85fr_0.8fr_40px]"
-      tableHeaderCount={8}
-      tableRowGridClassName="grid-cols-[1.6fr_1fr_0.7fr_0.8fr_1.05fr_0.85fr_0.85fr_0.8fr_40px]"
       tableRowCount={6}
       tableCellCount={8}
       tableCellHeight="h-10 rounded-md"
@@ -458,14 +430,11 @@ export function CatalogsLandingSkeleton() {
   return (
     <CatalogLandingSkeleton
       ariaLabel="Loading campaigns"
-      titleWidth="h-7 w-44"
-      descriptionWidth="h-4 w-[36rem]"
-      topGridClassName="grid grid-cols-4 gap-3"
-      topCount={4}
+      eyebrowWidth="w-20"
+      titleWidth="w-44"
+      descriptionWidth="w-[36rem] max-w-full"
       topCardHeight="h-36 rounded-[14px]"
       tableHeaderGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
-      tableHeaderCount={6}
-      tableRowGridClassName="grid-cols-[1.8fr_0.8fr_0.8fr_1fr_0.9fr_1fr_40px]"
       tableRowCount={6}
       tableCellCount={6}
       tableCellHeight="h-10 rounded-md"
@@ -487,7 +456,7 @@ export function SalesOrdersLandingSkeleton() {
 
 export function CustomerDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading customer detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
@@ -504,7 +473,7 @@ export function CustomerDetailSkeleton() {
 
 export function ProductDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading product detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
@@ -521,7 +490,7 @@ export function ProductDetailSkeleton() {
 
 export function BrandDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading brand detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
@@ -538,7 +507,7 @@ export function BrandDetailSkeleton() {
 
 export function LocationDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading location detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 max-w-md"
@@ -555,7 +524,7 @@ export function LocationDetailSkeleton() {
 
 export function WarehouseDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading warehouse detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 max-w-md"
@@ -572,7 +541,7 @@ export function WarehouseDetailSkeleton() {
 
 export function CategoryDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading category detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
@@ -589,7 +558,7 @@ export function CategoryDetailSkeleton() {
 
 export function CohortDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading cohort detail"
       titleWidth="h-7 w-56"
       subtitleWidth="h-4 w-80"
@@ -606,7 +575,7 @@ export function CohortDetailSkeleton() {
 
 export function PriceListDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading price list detail"
       titleWidth="h-12 w-96"
       subtitleWidth="h-4 w-[42rem]"
@@ -623,7 +592,7 @@ export function PriceListDetailSkeleton() {
 
 export function CatalogDetailSkeleton() {
   return (
-    <DetailSkeleton
+    <SellerEntityDetailSkeleton
       ariaLabel="Loading catalog detail"
       titleWidth="h-7 w-64"
       subtitleWidth="h-4 max-w-md"
@@ -665,11 +634,17 @@ export function DocumentComposerLoadingSkeleton() {
             </div>
           ))}
         </div>
-        <div className={composerThreePanelGridClass}>
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white p-4" />
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="border-b border-cream-300 px-3 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
+              <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
+              <div className="mt-2 h-4 w-32 animate-pulse rounded bg-cream-100" />
+              {index === 0 ? <div className="mt-2 h-3 w-28 animate-pulse rounded bg-cream-100" /> : null}
+            </div>
+          ))}
         </div>
+        <div className="min-h-[22rem] animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+        <div className="min-h-[9rem] animate-pulse rounded-[14px] border border-cream-300 bg-white" />
       </div>
       <div className="sticky bottom-0 z-10 mt-4 shrink-0 rounded-[14px] border border-cream-300 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(34,52,43,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -680,6 +655,41 @@ export function DocumentComposerLoadingSkeleton() {
             <div className="h-10 w-32 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function DocumentDetailLoadingSkeleton() {
+  return (
+    <div
+      className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
+      role="status"
+      aria-label="Loading document details"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
+        <div className="flex flex-wrap items-start justify-between gap-8">
+          <div className="space-y-3">
+            <div className="h-12 w-80 animate-pulse rounded bg-cream-200" />
+            <div className="h-4 w-[38rem] animate-pulse rounded bg-cream-200" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-32 animate-pulse rounded-[9px] bg-cream-200" />
+            <div className="h-9 w-24 animate-pulse rounded-[9px] bg-cream-200" />
+          </div>
+        </div>
+        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="border-b border-cream-300 px-3 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
+              <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
+              <div className="mt-2 h-4 w-32 animate-pulse rounded bg-cream-100" />
+              {index === 0 ? <div className="mt-2 h-3 w-28 animate-pulse rounded bg-cream-100" /> : null}
+            </div>
+          ))}
+        </div>
+        <div className="min-h-[22rem] animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+        <div className="min-h-[10rem] animate-pulse rounded-[14px] border border-cream-300 bg-white" />
       </div>
     </div>
   );

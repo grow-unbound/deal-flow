@@ -533,17 +533,8 @@ describe('estimates landing API route', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    expect(body.kpis.total_estimates_this_period).toBe(3);
-    expect(body.kpis.total_estimates_prev_period).toBe(1);
-    expect(body.kpis.total_estimates_growth_pct).toBe(200);
-    expect(body.kpis.total_gmv_this_period).toBe(70000);
-    expect(body.kpis.total_gmv_prev_period).toBe(2000);
-    expect(body.kpis.aov).toBe(70000 / 3);
-    expect(body.kpis.open_estimates_this_period).toBe(3);
-    expect(body.kpis.converted_this_period).toBe(1);
-    expect(body.kpis.ready_to_convert).toBe(1);
-    expect(body.kpis.expiring_soon).toBe(2);
-    expect(body.kpis.open_total).toBe(3);
+    expect(body.kpis).toBeUndefined();
+    expect(body.todays_read).toBeUndefined();
 
     const buyerAppRow = body.estimates.find((r: { id: string }) => r.id === 'e1');
     expect(buyerAppRow.source_label).toBe('BUYER APP');
@@ -559,8 +550,7 @@ describe('estimates landing API route', () => {
     expect(legacyBuyerAppRow.source_label).toBe('BUYER APP');
     expect(legacyBuyerAppRow.expires_at).toBe('2026-06-20T23:59:59.000Z');
 
-    expect(body.todays_read.needs_follow_up.length).toBeGreaterThanOrEqual(1);
-    expect(body.todays_read.needs_follow_up[0].estimate_number).toBe('EST-2026-0002');
+    expect(body.filters.groups.some((group: { key: string }) => group.key === 'attention')).toBe(true);
   });
 
   it('returns 403 for non-seller roles', async () => {
@@ -578,7 +568,6 @@ describe('estimates landing API route', () => {
     const body = await res.json();
     expect(body.estimates).toHaveLength(1);
     expect(body.estimates[0].id).toBe('e1');
-    expect(body.kpis.total_estimates_this_period).toBe(1);
-    expect(body.kpis.open_total).toBe(1);
+    expect(body.kpis).toBeUndefined();
   });
 });

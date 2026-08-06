@@ -8,12 +8,10 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
-import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
-  BuyerCardFilled,
-  DocumentMetaCard,
+  DocumentCustomerStrip,
   LinesTable,
   estimateBandChipClass,
   resolveEstimateBandStatus,
@@ -50,7 +48,7 @@ import { formatNumberValue } from '@/lib/utils';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
-import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 
 const noop = () => {};
@@ -124,7 +122,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <SharedDocumentComposerLoadingSkeleton />;
+    return <DocumentDetailLoadingSkeleton />;
   }
 
   if (isError) {
@@ -262,7 +260,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.estimate_number}
           subtitle={buyer
-            ? `${buyer.business_name} · ${data.estimate_date || '—'} · valid until ${data.valid_until || '—'} · ${data.location_name || '—'}`
+            ? `${data.estimate_date || '—'} · valid until ${data.valid_until || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer assigned.'}
           status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
           titleActions={(
@@ -327,37 +325,15 @@ export function EstimateDetailPage({ id }: { id: string }) {
               ]}
             />
         )}
-        left={buyer
-          ? (
-              <ComposerSidebarCard>
-                <div className="space-y-4">
-                  <BuyerCardFilled
-                    buyer={buyer}
-                    previewTotal={0}
-                    paymentTermsValue={paymentTermsLabel}
-                    readOnly
-                    onPaymentTermsChange={noop}
-                    onChangeBuyer={noop}
-                  />
-                  <DocumentMetaCard
-                    readOnly
-                    placeOfSupplyValue={data.place_of_supply}
-                    notesValue={data.seller_note ?? data.notes ?? ''}
-                    freightValue={data.freight}
-                    onPlaceOfSupplyChange={noop}
-                    onNotesChange={noop}
-                    onFreightChange={noop}
-                  />
-                </div>
-              </ComposerSidebarCard>
-            )
-          : (
-              <ComposerSidebarCard>
-                <p className="text-base text-cream-700">No buyer on this estimate.</p>
-              </ComposerSidebarCard>
-            )}
-        center={(
+        body={(
           <div className="flex h-full min-h-0 flex-col gap-4">
+            <DocumentCustomerStrip
+              buyer={buyer}
+              previewTotal={totals.grand_total}
+              paymentTermsValue={paymentTermsLabel}
+              mode="view"
+              placeOfSupplyValue={data.place_of_supply}
+            />
             <LinesTable
               kind="estimate"
               buyerSelected={Boolean(data.buyer_id)}

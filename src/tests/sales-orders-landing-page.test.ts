@@ -336,11 +336,8 @@ describe('sales orders landing API route', () => {
 
     const body = await res.json();
 
-    expect(body.kpis.pending_dispatch_count).toBe(1);
-    expect(body.kpis.received_count).toBe(1);
-    expect(body.kpis.orders_mtd).toBe(7);
-    expect(body.kpis.gmv_mtd).toBe(142000);
-    expect(body.kpis.aov).toBe(142000 / 7);
+    expect(body.kpis).toBeUndefined();
+    expect(body.todays_read).toBeUndefined();
 
     const receivedRow = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-2');
     expect(receivedRow.status.label).toBe('Received');
@@ -373,16 +370,7 @@ describe('sales orders landing API route', () => {
     expect(buyerAppRow.source_label).toBe('BUYER_APP');
     expect(buyerAppRow.source_detail).toBe('');
 
-    expect(body.todays_read.needs_attention.length).toBeLessThanOrEqual(3);
-    expect(body.todays_read.needs_attention.every((r: { status: { value: string } }) => r.status.value === 'received')).toBe(true);
-
-    expect(body.todays_read.to_dispatch.length).toBeLessThanOrEqual(3);
-    expect(body.todays_read.stock_shortage.length).toBeLessThanOrEqual(3);
-    expect(
-      body.todays_read.to_dispatch.every(
-        (r: { status: { value: string } }) => r.status.value === 'confirmed'
-      )
-    ).toBe(true);
+    expect(body.filters.groups.some((group: { key: string }) => group.key === 'attention')).toBe(true);
   });
 
   it('returns 403 for non-seller roles', async () => {
@@ -401,7 +389,6 @@ describe('sales orders landing API route', () => {
     const body = await res.json();
     expect(body.orders).toHaveLength(4);
     expect(body.orders.every((row: { id: string }) => ['o1', 'o3', 'o6', 'o7'].includes(row.id))).toBe(true);
-    expect(body.kpis.orders_mtd).toBe(4);
-    expect(body.kpis.gmv_mtd).toBe(77000);
+    expect(body.kpis).toBeUndefined();
   });
 });

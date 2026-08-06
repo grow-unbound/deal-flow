@@ -14,6 +14,7 @@ import type {
   WarehouseDetailResponse,
   WarehouseStockPageResponse,
   WarehousesLandingResponse,
+  WarehousesLandingMetricsV4,
 } from '@/types/tenant-warehouses';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
@@ -22,6 +23,24 @@ export interface WarehousesLandingFilters {
   search?: string;
   status?: string[];
   stock?: string[];
+  sort?: string;
+  filter_preset?: Record<string, unknown> | null;
+}
+
+export function useWarehousesLandingMetrics(initialData?: WarehousesLandingMetricsV4 | null) {
+  const { currentTenantId } = useAuth();
+  return useQuery<WarehousesLandingMetricsV4>({
+    queryKey: ['warehouses-landing-metrics-v4', currentTenantId],
+    enabled: Boolean(currentTenantId),
+    queryFn: async () => {
+      const res = await apiFetch('/api/tenant/warehouses/metrics');
+      if (!res.ok) throw new Error('Failed to fetch warehouses metrics');
+      return res.json() as Promise<WarehousesLandingMetricsV4>;
+    },
+    initialData: initialData ?? undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useWarehousesLanding(
@@ -30,26 +49,37 @@ export function useWarehousesLanding(
   initialData: WarehousesLandingResponse | null,
 ) {
   const { currentTenantId } = useAuth();
-  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.stock?.length);
-  const baseSummary = initialData?.period === period ? initialData : null;
+  const baseSummary = initialData?.period_key === 'this_quarter' ? initialData : null;
+  const presetKey = filters.filter_preset ? JSON.stringify(filters.filter_preset) : null;
 
   const query = useInfiniteQuery<WarehousesLandingResponse>({
-    queryKey: ['warehouses-landing', currentTenantId, period, filters],
+    queryKey: ['warehouses-landing', currentTenantId, period, {
+      search: filters.search ?? '',
+      status: filters.status ?? [],
+      stock: filters.stock ?? [],
+      sort: filters.sort ?? 'invoice_value_desc',
+      filter_preset: presetKey,
+    }],
     enabled: Boolean(currentTenantId),
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
-    initialPageParam: 0,
+    initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) => {
-      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      const params = new URLSearchParams({ period, limit: '50' });
+      if (pageParam) params.set('cursor', String(pageParam));
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'stock', filters.stock);
+      if (filters.sort) params.set('sort', filters.sort);
+      if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
+        params.set('filter_preset', JSON.stringify(filters.filter_preset));
+      }
       const res = await apiFetch(`/api/tenant/warehouses/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error(`warehouses-landing ${res.status}`);
       return res.json();
     },
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
-    initialData: baseSummary ? { pages: [baseSummary], pageParams: [0] } : undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialData: baseSummary ? { pages: [baseSummary], pageParams: [undefined] } : undefined,
     initialDataUpdatedAt: baseSummary ? 0 : undefined,
     placeholderData: keepPreviousData,
   });
