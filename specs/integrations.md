@@ -2,7 +2,7 @@
 
 ## Overview
 
-The integrations system enables tenants to connect DealFlow to external tools (Zoho Books, Zoho Inventory, Tally Prime, Busy) for bidirectional data exchange. It has three layers:
+The integrations system enables tenants to connect yukti to external tools (Zoho Books, Zoho Inventory, Tally Prime, Busy) for bidirectional data exchange. It has three layers:
 
 1. **Credential management** — secure, per-tenant API token storage
 2. **Sync engine** — phased initial import + ongoing incremental sync
@@ -30,8 +30,8 @@ Defines available integration types. Adding a new integration is a row insert + 
 
 ```sql
 CREATE TABLE catalog.integration_types (
-  id                text PRIMARY KEY,
-  display_name      text NOT NULL,  -- 'zoho_books', 'zoho_inventory', 'tally_prime', 'busy'
+  id                text PRIMARY KEY,  -- 'zoho_books', 'zoho_inventory', 'tally_prime', 'busy'
+  display_name      text NOT NULL,
   description       text,
   logo_url          text,
   -- Describes what credential fields to collect in the UI wizard
@@ -61,9 +61,9 @@ CREATE TABLE catalog.integration_types (
 ```json
 {
   "inbound_reference":     ["brands", "products", "customers"],
-  "inbound_transactional": ["estimates", "orders", "invoices"],
+  "inbound_transactional": ["orders", "invoices"],
   "outbound_reference":    ["products", "customers"],
-  "outbound_transactional":["estimates", "orders", "invoices"],
+  "outbound_transactional":["orders"],
   "webhooks":              true
 }
 ```
@@ -152,7 +152,7 @@ CREATE TABLE app.integration_sync_jobs (
 
 ### 1.5 `app.integration_entity_map` — External ↔ Internal ID Registry
 
-Maps every synced entity to its DealFlow internal ID. Essential for deduplication and for pushing updates back out.
+Maps every synced entity to its yukti internal ID. Essential for deduplication and for pushing updates back out.
 
 ```sql
 CREATE TABLE app.integration_entity_map (
@@ -160,9 +160,9 @@ CREATE TABLE app.integration_entity_map (
   tenant_id             uuid NOT NULL REFERENCES app.tenants(id),
   tenant_integration_id uuid NOT NULL REFERENCES app.tenant_integrations(id),
 
-  entity_type   text NOT NULL,  -- 'brand' | 'product' | 'customer' | 'order' | 'invoice' | 'estimate'
+  entity_type   text NOT NULL,  -- 'brand' | 'product' | 'customer' | 'order' | 'invoice'
   external_id   text NOT NULL,  -- ID from the external system
-  internal_id   uuid NOT NULL,  -- DealFlow record UUID
+  internal_id   uuid NOT NULL,  -- yukti record UUID
 
   last_synced_at   timestamptz,
   sync_status      text,  -- 'synced' | 'pending_push' | 'conflict' | 'error'
@@ -187,7 +187,7 @@ CREATE TABLE app.integration_data_flows (
   tenant_id             uuid NOT NULL REFERENCES app.tenants(id),
   tenant_integration_id uuid NOT NULL REFERENCES app.tenant_integrations(id),
 
-  entity_type   text NOT NULL,  -- 'products' | 'customers' | 'orders' | 'invoices' | 'estimates'
+  entity_type   text NOT NULL,  -- 'products' | 'customers' | 'orders' | 'invoices'
   direction     text NOT NULL,  -- 'inbound' | 'outbound' | 'bidirectional'
 
   trigger_type  text NOT NULL,  -- 'webhook' | 'scheduled' | 'event'
@@ -271,8 +271,7 @@ integrations-sync-worker
 
   Phase 2 — Transactional Data (last 90 days)
     → Adapter.fetchOrders(since: now()-90d)  → upsert orders + order_items
-    → Adapter.fetchEstimates(since: now()-90d)  → upsert estimates + estimate_items
-    → Adapter.fetchInvoices(since: now()-90d)  → upsert invoices + invoice_items
+    → Adapter.fetchInvoices(since: now()-90d)
     → Update progress JSONB after each page
 
   On completion → update status: 'completed', write summary JSONB
@@ -329,14 +328,11 @@ interface IntegrationAdapter {
   fetchCustomers(cursor?: string): Promise<PagedResult<Customer>>;
 
   // Transactional data
-  fetchEstiamtes(since: Date, cursor?: string): Promise<PagedResult<Estimate>>;
   fetchOrders(since: Date, cursor?: string): Promise<PagedResult<Order>>;
   fetchInvoices(since: Date, cursor?: string): Promise<PagedResult<Invoice>>;
 
   // Outbound push
-  pushEstimates(estimate: Estimate): Promise<{ external_id: string }>;
   pushOrder(order: Order): Promise<{ external_id: string }>;
-  pushInvoice(invoice: Invoice): Promise<{ external_id: string }>;
   pushCustomer(customer: Customer): Promise<{ external_id: string }>;
 
   // Webhook registration (if supported)
@@ -349,10 +345,10 @@ interface IntegrationAdapter {
 Tally and Busy run **on-premise** and expose an XML/HTTP API on `localhost:9000` (Tally) or similar. They are **not cloud-reachable** by default.
 
 Two options:
-1. **DealFlow Bridge Agent** — a lightweight desktop app (Electron or Go binary) installed on the customer's machine that authenticates to DealFlow and forwards data. This is the recommended path for SMB customers.
+1. **yukti Bridge Agent** — a lightweight desktop app (Electron or Go binary) installed on the customer's machine that authenticates to yukti and forwards data. This is the recommended path for SMB customers.
 2. **Ngrok/Cloudflare Tunnel** — power users expose their local instance. Not recommended for production.
 
-Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a "Download Bridge Agent" step in the setup wizard for these integrations. The bridge agent handles auth with DealFlow via a tenant-scoped API token, not raw Supabase credentials.
+Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a "Download Bridge Agent" step in the setup wizard for these integrations. The bridge agent handles auth with yukti via a tenant-scoped API token, not raw Supabase credentials.
 
 ---
 
@@ -385,7 +381,7 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 ### 3.3 Setup Wizard (Dialog — 4 steps)
 
 **Step 1: What you'll get**
-- List of data that will be imported (brands, products, customers, 90-day orders, 90-day estimates, 90-day invoices)
+- List of data that will be imported (brands, products, customers, 90-day orders)
 - Estimated time to complete initial sync
 
 **Step 2: Connect**
@@ -399,8 +395,8 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 - Shows success (org name, item counts from external system) or specific error
 
 **Step 4: Start Import**
-- Shows what will be synced and in what order 
-- Date picker: "Import orders/invoices/estimates since [date, default 90 days ago]"
+- Shows what will be synced and in what order
+- Date picker: "Import orders since [date, default 90 days ago]"
 - "Start Import" button → triggers sync job → closes wizard, opens detail panel
 
 ### 3.4 Integration Detail Panel
@@ -425,7 +421,6 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 │  │ Entity       Direction      Trigger          Status              │    │
 │  │ Products     ← Inbound      Daily at 2am     Active ●            │    │
 │  │ Customers    ← Inbound      Daily at 2am     Active ●            │    │
-│  │ Estimates    → Outbound     On status change Active ●            │    │
 │  │ Orders       → Outbound     On status change Active ●            │    │
 │  │ Invoices     ← Inbound      Webhook          Active ●            │    │
 │  │                                              [+ Add flow]        │    │
@@ -469,7 +464,7 @@ Users configure ongoing data sync after the initial import is done. Each flow is
 │  What data?         [Orders ▾]                                  │
 │  Direction?         (●) Push orders to Zoho                     │
 │                     ( ) Pull orders from Zoho                   │
-│  When?              (●) On status change in DealFlow            │
+│  When?              (●) On status change in yukti               │
 │                     ( ) Daily schedule  [2:00 AM ▾]             │
 │                     ( ) On webhook from Zoho                    │
 │  Which statuses?    [✓] Confirmed  [✓] Dispatched  [ ] Draft    │
@@ -482,7 +477,7 @@ Users configure ongoing data sync after the initial import is done. Each flow is
 
 ## 4. Feature Flag Gating
 
-The integrations module is already scoped under `df_zoho_integration` in the feature flag list. Rename umbrella df_zoho_integration to df_integrations and use df_zoho_integration for a smaller zoho scope. Update it:
+The integrations module is already scoped under `df_zoho_integration` in the feature flag list. Extend it:
 
 | Flag | Scope |
 |---|---|
