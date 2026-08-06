@@ -50,6 +50,7 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
+    currentTenantId: 'tenant-1',
     user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
   }),
 }));
@@ -64,6 +65,10 @@ import { InvoiceDetailPage } from '@/components/seller/invoices/detail/InvoiceDe
 function renderWithQueryClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+function openMoreActions() {
+  fireEvent.click(screen.getByRole('button', { name: /More actions/i }));
 }
 
 function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDetailResponse {
@@ -203,7 +208,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
     expect(screen.getByRole('button', { name: /^send invoice$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /edit before send/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/edit before send/i)).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
@@ -241,7 +247,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Overdue/i);
     expect(screen.getByRole('button', { name: /collect payment/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /edit (before send|invoice)/i })).toBeInTheDocument();
+    openMoreActions();
+    expect(screen.getByText(/edit (before send|invoice)/i)).toBeInTheDocument();
   });
 
   it('hides Edit for paid and void', () => {
@@ -254,7 +261,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     const { unmount: u2 } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    expect(screen.queryByRole('button', { name: /edit (before send|invoice)/i })).toBeNull();
+    expect(screen.queryByText(/edit (before send|invoice)/i)).toBeNull();
     u2();
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'void', status: 'void', voided_at: '2026-06-10T10:00:00.000Z' }),
@@ -263,7 +270,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    expect(screen.queryByRole('button', { name: /edit (before send|invoice)/i })).toBeNull();
+    expect(screen.queryByText(/edit (before send|invoice)/i)).toBeNull();
   });
 
   it('shows version badge when version > 1', () => {
@@ -300,6 +307,38 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     expect(frame).toBeTruthy();
     const bad = frame?.querySelectorAll('input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])');
     expect(bad?.length ?? 0).toBe(0);
+  });
+
+  it('renders refreshed readonly customer strip, subtitle, and item counts', () => {
+    useInvoiceDetailMock.mockReturnValue({
+      data: baseInvoice({
+        buyer: {
+          ...baseInvoice().buyer,
+          active_pricelist: { id: 'pl-1', name: 'Retail Platinum' },
+        },
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    const { container } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    const frame = container.querySelector('.doc-readonly');
+    expect(frame).toBeTruthy();
+    const readonly = within(frame as HTMLElement);
+
+    expect(readonly.getByText(/Branch: Mumbai HQ/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Bill to/i)).not.toBeInTheDocument();
+    expect(readonly.getByText(/Place of supply/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Karnataka/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Notes/i)).not.toBeInTheDocument();
+    expect(readonly.queryByText(/Freight charges/i)).not.toBeInTheDocument();
+    expect(readonly.getByText('29ABCDE1234F1Z5')).toBeInTheDocument();
+    expect(readonly.getByText(/15 days/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Retail Platinum/i)).toBeInTheDocument();
+    expect(readonly.getByText(/Credit headroom/i)).toBeInTheDocument();
+    expect(readonly.getByText(/₹5,000 utilized of ₹1,00,000 limit/i)).toBeInTheDocument();
+    expect(readonly.getByText(/1 item\. 2 units/i)).toBeInTheDocument();
+    expect(readonly.queryByText(/Edit to make changes/i)).not.toBeInTheDocument();
   });
 
   it('shows payments card with due amount for sent invoices', () => {
@@ -426,7 +465,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
 
   it('edit before send prefetches composer then navigates', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /edit before send/i }));
+    openMoreActions();
+    fireEvent.click(screen.getByText(/edit before send/i));
     expect(prefetchInvoiceComposerMock).toHaveBeenCalledWith(expect.anything(), 'inv-1');
     expect(pushMock).toHaveBeenCalledWith('/invoices/inv-1/edit');
   });

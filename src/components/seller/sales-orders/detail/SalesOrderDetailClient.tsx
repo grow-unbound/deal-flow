@@ -8,12 +8,10 @@ import { Edit2, Loader2, PackageCheck, Send, Truck, X } from 'lucide-react';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
-import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
-  BuyerCardFilled,
-  DocumentMetaCard,
+  DocumentCustomerStrip,
   LinesTable,
   salesOrderBandChipClass,
   TotalsCard,
@@ -52,7 +50,7 @@ import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatNumberValue } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
-import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
 import { ModalCancelOrder } from './ModalCancelOrder';
@@ -179,7 +177,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <SharedDocumentComposerLoadingSkeleton />;
+    return <DocumentDetailLoadingSkeleton />;
   }
 
   if (isError) {
@@ -266,7 +264,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.order_number}
           subtitle={buyer
-            ? `${buyer.business_name} · ${formatPlacedAt(data.placed_at)} · expected ${data.expected_delivery || '—'} · ${data.location_name || '—'}`
+            ? `${formatPlacedAt(data.placed_at)} · expected ${data.expected_delivery || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer assigned.'}
           status={{
             label: statusLabel,
@@ -336,47 +334,25 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               ]}
             />
         )}
-        left={(
-          <ComposerSidebarCard>
-            <div className="space-y-4">
-              {buyer ? (
-                <div className="space-y-4">
-                  <BuyerCardFilled
-                    buyer={buyer}
-                    previewTotal={0}
-                    paymentTermsValue={paymentTermsLabel}
-                    readOnly
-                    onPaymentTermsChange={noop}
-                    onChangeBuyer={noop}
-                  />
-                  <DocumentMetaCard
-                    readOnly
-                    placeOfSupplyValue={data.place_of_supply ?? buyer.place_of_supply ?? 'Unknown'}
-                    notesValue={data.seller_note ?? data.notes ?? ''}
-                    freightValue={data.freight}
-                    onPlaceOfSupplyChange={noop}
-                    onNotesChange={noop}
-                    onFreightChange={noop}
-                  />
-                </div>
-              ) : (
-                <p className="text-base text-cream-700">No buyer on this order.</p>
-              )}
-              {orderMeta ? (
-                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-sm leading-[1.55] text-cream-800">
-                  {orderMeta}
-                </div>
-              ) : null}
-              {data.has_backorder && (ui === 'confirmed' || ui === 'dispatched') ? (
-                <div className="callout callout--warning text-sm leading-[1.5]">
-                  <strong>Backorder.</strong> Some lines exceed available stock — buyer has been notified.
-                </div>
-              ) : null}
-            </div>
-          </ComposerSidebarCard>
-        )}
-        center={(
+        body={(
           <div className="flex h-full min-h-0 flex-col gap-4">
+            <DocumentCustomerStrip
+              buyer={buyer}
+              previewTotal={totals.grand_total}
+              paymentTermsValue={paymentTermsLabel}
+              mode="view"
+              placeOfSupplyValue={data.place_of_supply ?? buyer?.place_of_supply ?? ''}
+            />
+            {orderMeta ? (
+              <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-sm leading-[1.55] text-cream-800">
+                {orderMeta}
+              </div>
+            ) : null}
+            {data.has_backorder && (ui === 'confirmed' || ui === 'dispatched') ? (
+              <div className="callout callout--warning text-sm leading-[1.5]">
+                <strong>Backorder.</strong> Some lines exceed available stock — buyer has been notified.
+              </div>
+            ) : null}
             <LinesTable
               kind="so"
               buyerSelected={Boolean(data.buyer_context)}

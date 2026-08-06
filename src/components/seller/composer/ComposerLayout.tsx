@@ -21,6 +21,7 @@ export function ComposerTitleRow({
   subtitle,
   status,
   actions,
+  onRequestClose,
 }: {
   title: string;
   subtitle: string;
@@ -31,8 +32,10 @@ export function ComposerTitleRow({
     chipClassName?: string;
   };
   actions?: React.ReactNode;
+  onRequestClose?: () => void;
 }) {
   const closePane = useContext(SplitPaneCloseContext);
+  const requestClose = onRequestClose ?? closePane;
   return (
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
@@ -61,13 +64,13 @@ export function ComposerTitleRow({
         <p className="mt-1.5 max-w-[72ch] text-base leading-[1.55] text-cream-700">{subtitle}</p>
       </div>
 
-      {actions || closePane ? (
+      {actions || requestClose ? (
         <div className="flex shrink-0 items-center gap-2">
           {actions}
-          {closePane ? (
+          {requestClose ? (
             <button
               type="button"
-              onClick={closePane}
+              onClick={requestClose}
               aria-label="Close detail pane"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-cream-300 bg-white text-cream-600 shadow-sm transition-colors hover:bg-cream-100 hover:text-cream-900"
             >

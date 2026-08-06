@@ -7,12 +7,10 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
-import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import { DetailActions, type DetailActionItem } from '@/components/seller/detail';
 import {
-  BuyerCardFilled,
-  DocumentMetaCard,
+  DocumentCustomerStrip,
   invoiceBandChipClass,
   LinesTable,
   resolveInvoiceBandStatus,
@@ -40,7 +38,7 @@ import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
 import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatNumberValue } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
-import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
 
@@ -185,7 +183,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <SharedDocumentComposerLoadingSkeleton />;
+    return <DocumentDetailLoadingSkeleton />;
   }
 
   if (isError) {
@@ -259,7 +257,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           kind="invoice"
           title={data.doc_number}
           subtitle={buyerContext
-            ? `${data.buyer.name} · ${data.invoice_date || '—'} · due ${data.due_date || '—'} · ${data.location_name || '—'}`
+            ? `${data.invoice_date || '—'} · due ${data.due_date || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer on this invoice.'}
           status={{
             label: INVOICE_CHIP_LABEL[invoiceBandStatus],
@@ -323,37 +321,15 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               ]}
             />
         )}
-        left={buyerContext
-          ? (
-              <ComposerSidebarCard>
-                <div className="space-y-4">
-                  <BuyerCardFilled
-                    buyer={buyerContext}
-                    previewTotal={totals.grand_total}
-                    paymentTermsValue={paymentTermsLabel}
-                    readOnly
-                    onPaymentTermsChange={noop}
-                    onChangeBuyer={noop}
-                  />
-                  <DocumentMetaCard
-                    readOnly
-                    placeOfSupplyValue={data.place_of_supply}
-                    notesValue={data.seller_note}
-                    freightValue={data.totals.freight}
-                    onPlaceOfSupplyChange={noop}
-                    onNotesChange={noop}
-                    onFreightChange={noop}
-                  />
-                </div>
-              </ComposerSidebarCard>
-            )
-          : (
-              <ComposerSidebarCard>
-                <p className="text-base text-cream-700">No buyer on this invoice.</p>
-              </ComposerSidebarCard>
-            )}
-        center={(
+        body={(
           <div className="flex h-full min-h-0 flex-col gap-4">
+            <DocumentCustomerStrip
+              buyer={buyerContext}
+              previewTotal={totals.grand_total}
+              paymentTermsValue={paymentTermsLabel}
+              mode="view"
+              placeOfSupplyValue={data.place_of_supply}
+            />
             <LinesTable
               kind="invoice"
               buyerSelected={Boolean(data.buyer_id)}

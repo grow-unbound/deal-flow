@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
-import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -17,9 +16,8 @@ import { DocumentComposerShell } from '@/components/seller/composer/DocumentComp
 import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import {
   BuyerCardEmpty,
-  BuyerCardFilled,
   BuyerCardLoading,
-  DocumentMetaCard,
+  DocumentCustomerStrip,
   LinesTable,
   TotalsCard,
   type EstimateComposerLineRow,
@@ -757,118 +755,103 @@ export function DocComposerInvoice({
             </Button>
           </>
         )}
-        basics={(
-          <DocumentBasicsStrip
-            kind="invoice"
-            docNumber={documentState.invoice_number}
-            locationId={documentState.location_id}
-            locationName={documentState.location_name}
-            availableLocations={availableLocationOptions}
-            dateIssued={documentState.invoice_date}
-            secondDate={documentState.due_date ?? ''}
-            buyerPoRef={documentState.buyer_po_ref}
-            onDateIssuedChange={(value) => {
-              setDocumentState((current) => {
-                if (!current) return current;
-                const bumped = bumpSecondDateAfterFirst(value, current.due_date ?? '');
-                return bumped
-                  ? { ...current, invoice_date: value, due_date: bumped }
-                  : { ...current, invoice_date: value };
-              });
-            }}
-            onSecondDateChange={(value) => setDocumentPatch({ due_date: value || null })}
-            onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
-          />
-        )}
-        left={(
-          <ComposerSidebarCard>
-            <div className="space-y-4">
-              {documentState.buyer_id && buyerContextQuery.isLoading && !buyer ? (
-                <BuyerCardLoading />
-              ) : buyer ? (
-                <BuyerCardFilled
-                  buyer={buyer}
-                  previewTotal={totals.grand_total}
-                  paymentTermsValue={paymentTermsLabel}
-                  onPaymentTermsChange={setPaymentTermsLabel}
-                  priceListOptions={priceListOptionsQuery.data ?? []}
-                  selectedPriceListId={selectedPriceListId}
-                  onPriceListChange={setSelectedPriceListId}
-                  onChangeBuyer={() => {
-                    setSelectedPriceListId(null);
-                    setDocumentPatch({ buyer_id: null, buyer_context: null });
-                  }}
-                />
-              ) : (
-                <BuyerCardEmpty
-                  query={buyerQuery}
-                  results={buyerPickerQuery.data ?? []}
-                  searchOpen={buyerSearchOpen}
-                  searchLoading={buyerPickerQuery.isLoading}
-                  onQueryChange={setBuyerQuery}
-                  onSearchOpenChange={setBuyerSearchOpen}
-                  onSelectBuyer={handleSelectBuyer}
-                />
-              )}
-              <DocumentMetaCard
+        onRequestClose={() => dirtyGuard.handleOpenChange(false)}
+        body={(
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            {documentState.buyer_id && buyerContextQuery.isLoading && !buyer ? (
+              <BuyerCardLoading />
+            ) : buyer ? (
+              <DocumentCustomerStrip
+                buyer={buyer}
+                previewTotal={totals.grand_total}
+                paymentTermsValue={paymentTermsLabel}
+                mode="edit"
                 placeOfSupplyValue={documentState.place_of_supply}
-                notesValue={documentState.seller_note}
-                freightValue={documentState.freight}
                 onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
-                onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
-                onFreightChange={(value) => setDocumentPatch({ freight: value })}
+                priceListOptions={priceListOptionsQuery.data ?? []}
+                selectedPriceListId={selectedPriceListId}
+                onPriceListChange={setSelectedPriceListId}
+                onChangeBuyer={() => {
+                  setSelectedPriceListId(null);
+                  setDocumentPatch({ buyer_id: null, buyer_context: null });
+                }}
               />
-            </div>
-          </ComposerSidebarCard>
-        )}
-        center={(
-          <LinesTable
-            kind="invoice"
-            buyerSelected={Boolean(documentState.buyer_id)}
-            readOnly={false}
-            lines={diffLines}
-            productQuery={productQuery}
-            productResults={filteredProductSearchResults}
-            searchOpen={searchOpen}
-            productSearchLoading={productSearchQuery.isLoading}
-            productSearchFetchingNextPage={productSearchQuery.isFetchingNextPage}
-            productSearchHasMore={productSearchQuery.hasNextPage}
-            onProductSearchLoadMore={() => {
-              if (productSearchQuery.hasNextPage && !productSearchQuery.isFetchingNextPage) {
-                void productSearchQuery.fetchNextPage();
-              }
-            }}
-            notesExpanded={false}
-            freightExpanded={false}
-            internalExpanded={false}
-            singleNoteMode
-            title="Invoice lines"
-            description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
-            autoFocusLineId={autoFocusLineId}
-            onAutoFocusHandled={() => setAutoFocusLineId(null)}
-            showNotesControls={false}
-            showFreightControls={false}
-            notesValue={documentState.seller_note}
-            freightValue={String(documentState.freight || '')}
-            internalValue=""
-            onProductQueryChange={setProductQuery}
-            onSearchOpenChange={setSearchOpen}
-            onAddProduct={handleAddProduct}
-            onResetOverrides={handleResetOverrides}
-            resetEnabled={mode === 'edit' || dirty}
-            onLineChange={handleLineChange}
-            onRemoveLine={handleRemoveLine}
-            onNotesValueChange={(value) => setDocumentPatch({ seller_note: value })}
-            onFreightValueChange={(value) => setDocumentPatch({ freight: Number(value || 0) })}
-            onInternalValueChange={(value) => setDocumentPatch({ seller_note: value })}
-            onToggleNotes={() => {}}
-            onToggleFreight={() => {}}
-            onToggleInternal={() => {}}
-          />
-        )}
-        right={(
-          <div className="space-y-4">
+            ) : (
+              <BuyerCardEmpty
+                query={buyerQuery}
+                results={buyerPickerQuery.data ?? []}
+                searchOpen={buyerSearchOpen}
+                searchLoading={buyerPickerQuery.isLoading}
+                onQueryChange={setBuyerQuery}
+                onSearchOpenChange={setBuyerSearchOpen}
+                onSelectBuyer={handleSelectBuyer}
+              />
+            )}
+            <DocumentBasicsStrip
+              kind="invoice"
+              docNumber={documentState.invoice_number}
+              locationId={documentState.location_id}
+              locationName={documentState.location_name}
+              availableLocations={availableLocationOptions}
+              dateIssued={documentState.invoice_date}
+              secondDate={documentState.due_date ?? ''}
+              buyerPoRef={documentState.buyer_po_ref}
+              onDateIssuedChange={(value) => {
+                setDocumentState((current) => {
+                  if (!current) return current;
+                  const bumped = bumpSecondDateAfterFirst(value, current.due_date ?? '');
+                  return bumped
+                    ? { ...current, invoice_date: value, due_date: bumped }
+                    : { ...current, invoice_date: value };
+                });
+              }}
+              onSecondDateChange={(value) => setDocumentPatch({ due_date: value || null })}
+              onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
+              onLocationChange={(value) => setDocumentPatch({ location_id: value })}
+            />
+            <LinesTable
+              kind="invoice"
+              buyerSelected={Boolean(documentState.buyer_id)}
+              readOnly={false}
+              lines={diffLines}
+              productQuery={productQuery}
+              productResults={filteredProductSearchResults}
+              searchOpen={searchOpen}
+              productSearchLoading={productSearchQuery.isLoading}
+              productSearchFetchingNextPage={productSearchQuery.isFetchingNextPage}
+              productSearchHasMore={productSearchQuery.hasNextPage}
+              onProductSearchLoadMore={() => {
+                if (productSearchQuery.hasNextPage && !productSearchQuery.isFetchingNextPage) {
+                  void productSearchQuery.fetchNextPage();
+                }
+              }}
+              notesExpanded={false}
+              freightExpanded={false}
+              internalExpanded={false}
+              singleNoteMode
+              title="Invoice lines"
+              description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
+              autoFocusLineId={autoFocusLineId}
+              onAutoFocusHandled={() => setAutoFocusLineId(null)}
+              showNotesControls={false}
+              showFreightControls={false}
+              notesValue={documentState.seller_note}
+              freightValue={String(documentState.freight || '')}
+              internalValue=""
+              onProductQueryChange={setProductQuery}
+              onSearchOpenChange={setSearchOpen}
+              onAddProduct={handleAddProduct}
+              onResetOverrides={handleResetOverrides}
+              resetEnabled={mode === 'edit' || dirty}
+              onLineChange={handleLineChange}
+              onRemoveLine={handleRemoveLine}
+              onNotesValueChange={(value) => setDocumentPatch({ seller_note: value })}
+              onFreightValueChange={(value) => setDocumentPatch({ freight: Number(value || 0) })}
+              onInternalValueChange={(value) => setDocumentPatch({ seller_note: value })}
+              onToggleNotes={() => {}}
+              onToggleFreight={() => {}}
+              onToggleInternal={() => {}}
+            />
             <TotalsCard
               totals={totals}
               previousTotals={null}
