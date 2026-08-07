@@ -59,10 +59,13 @@ describe('warehouse detail page', () => {
         updated_at: '2026-07-05T10:00:00.000Z',
         tracked_skus_count: 14,
         meta_strip: {
+          sales_qtd_value: 250000,
           tracked_skus: 14,
           sellable_units: 120,
           low_stock_skus: 3,
+          out_of_stock_skus: 1,
           idle_stock_skus: 2,
+          idle_stock_units: 18,
         },
         details: {
           associated_users_count: 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 import { getPostHogClient } from '@/lib/posthog-server';
@@ -676,12 +677,12 @@ export async function POST(req: NextRequest) {
   try {
     const claims = await getVerifiedClaims(req);
 
-    if (!claims.tenant_id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!claims.role?.startsWith('seller_')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const adminCheck = assertSellerAdmin(claims);
+    if (!adminCheck.ok) {
+      return NextResponse.json(
+        { error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' },
+        { status: adminCheck.status },
+      );
     }
 
     if (!supabaseAdmin) {
@@ -695,7 +696,7 @@ export async function POST(req: NextRequest) {
     try {
       const ph = getPostHogClient();
       ph.capture({
-        distinctId: claims.sub ?? claims.tenant_id,
+        distinctId: claims.sub ?? claims.tenant_id ?? undefined,
         event: 'brand_created',
         properties: {
           tenant_id: claims.tenant_id,

@@ -16,7 +16,7 @@ vi.mock('@/hooks/useBrands', () => ({
         id: 'b1', brand_name: 'WineYard Vintners', category: 'Wines', region: 'Nashik', carried_since: '2024-01-01T00:00:00Z',
         skus: 10, portfolio_share_pct: 10, status_label: 'ON PACE', status_tone: 'success', initials: 'WY', hue: 'teal',
       },
-      meta_strip_4: { gmv_mtd: 1000, growth_pct: 10, active_buyers: 1, total_buyers: 2, low_stock_skus: 1, days_since_catalog: 1, last_sent_date: '2026-01-01T00:00:00Z', latest_catalog_name: 'Summer' },
+      meta_strip_4: { member_product_count: 10, selling_product_count_qtd: 6, selling_units_qtd: 120, sales_qtd_value: 1000, sales_qtd_count: 8, selling_product_out_of_stock_count: 1, low_stock_product_count: 2, days_since_catalog: 1, last_sent_date: '2026-01-01T00:00:00Z' },
       details: { id: 'b1', tenant_id: 't1', master_brand_id: 'm1', display_name_override: 'WineYard', margin_pct: 15, exclusivity: false, is_active: true, external_ref: null, created_at: '2024-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', deleted_at: null },
       performance: { monthly_trend: [], cohort_breakdown: [], top_skus: [], top_buyers: [], catalog_history: [], insights: { margin_avg_pct: 15, sell_through_pct: 0, repeat_rate_pct: 0, buyer_reach: '1/2' } },
       buyers_total: 1,

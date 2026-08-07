@@ -32,6 +32,7 @@ import {
 } from '@/hooks/useLocations';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { LOCATIONS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -170,9 +171,9 @@ function LocationsLandingContent({
   const totalLocations = landingData?.total ?? rows.length;
   const selectedOption = selectedCard
     ? {
-        label: selectedCard.label,
+        label: kpiLabel(LOCATIONS_KPI_COPY, selectedCard),
         value: formatCardValue(selectedCard),
-        sub: selectedCard.supporting_text ?? selectedCard.time_basis ?? '',
+        sub: kpiSupportingText(LOCATIONS_KPI_COPY, selectedCard),
       }
     : {
         label: 'Locations',
@@ -203,9 +204,9 @@ function LocationsLandingContent({
         {isPaneOpen ? null : (
           <InsightStrip4
             tiles={kpiCards.map((card): InsightTile => ({
-              label: card.label,
+              label: kpiLabel(LOCATIONS_KPI_COPY, card),
               value: formatCardValue(card),
-              sub: card.supporting_text ?? card.time_basis ?? '',
+              sub: kpiSupportingText(LOCATIONS_KPI_COPY, card),
               onClick: () => {
                 setSelectedKpiKey(card.id);
                 setRouteState((current) => ({

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { CohortUpdateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getPostHogClient } from '@/lib/posthog-server';
@@ -136,7 +137,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to fetch cohort detail' }, { status: 500 });
   }
 
-  const [{ data: buyers }, { data: members }] = await Promise.all([
+  const cohortQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const cohortQuarterStart = cohortQuarterMeta.current_start.slice(0, 10);
+
+  const [{ data: buyers }, { data: members }, cohortPeriodRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -149,7 +153,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('cohort_members_active')
       .select('cohort_id, buyer_id')
       .eq('cohort_id', id),
+    db
+      .schema('app')
+      .from('metrics_cohort_period_summary')
+      .select('member_count, active_member_count, demand_count, demand_value, invoice_count, invoice_value')
+      .eq('cohort_id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .eq('grain', 'quarter')
+      .eq('period_start', cohortQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
+
+  if (cohortPeriodRes.error) {
+    console.error('[GET /api/cohorts/[id]] metrics_cohort_period_summary fetch failed', cohortPeriodRes.error);
+    return NextResponse.json({ error: 'Failed to fetch cohort detail' }, { status: 500 });
+  }
+  const cohortQuarter = (cohortPeriodRes.data ?? null) as {
+    member_count: number;
+    active_member_count: number;
+    demand_count: number;
+    demand_value: number;
+    invoice_count: number;
+    invoice_value: number;
+  } | null;
 
   const buyerRows = (buyers ?? []) as BuyerRow[];
   const memberRows = members ?? [];
@@ -460,11 +487,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     },
     meta_strip_4: {
-      gmv_mtd: gmvMtd,
-      active_members: activeMembersSet.size,
-      total_members: totalMembers,
-      aov,
-      conversion_pct: conversionPct,
+      active_member_count: cohortQuarter?.active_member_count ?? activeMembersSet.size,
+      member_count: cohortQuarter?.member_count ?? totalMembers,
+      sales_qtd_value: cohortQuarter?.invoice_value ?? 0,
+      sales_qtd_count: cohortQuarter?.invoice_count ?? 0,
+      demand_qtd_value: cohortQuarter?.demand_value ?? 0,
+      demand_qtd_count: cohortQuarter?.demand_count ?? 0,
+      brands_count: allowedTenantBrandIds && allowedTenantBrandIds.length > 0 ? allowedTenantBrandIds.length : null,
     },
     details_rules: {
       id: cohort.id,

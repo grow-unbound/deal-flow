@@ -81,33 +81,24 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
-        // get_seller_brand_detail_v2 has no prior-period comparison, so this used to
-        // show a fabricated growth badge. Show the doc-recommended supporting value
-        // (product count) instead — see doc line 758.
-        label: 'Invoiced sales 90D',
-        value: formatNumberValue(m.gmv_mtd, 'CURRENCY_THRESHOLD'),
-        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
+        label: 'Member products',
+        value: m.member_product_count,
       },
       {
-        // "Customers who purchased" (doc line 759, starred) has no backing data in
-        // get_seller_brand_detail_v2 — no brand-buyer read model exists yet (same gap
-        // as the "customers-buying-the-brand" performance card). Units sold is a
-        // real, doc-listed alternative (line 761) rather than a fake 0/0.
-        label: 'Units sold 90D',
-        value: `${m.units_90d}`,
-        sub: 'in the last 90 days',
+        label: 'Selling products · QTD',
+        value: m.selling_product_count_qtd,
+        sub: `${m.selling_units_qtd} units`,
       },
       {
-        label: 'Recent sellers low/out of stock',
-        value: m.low_stock_skus != null ? `${m.low_stock_skus}` : '—',
-        sub: m.low_stock_skus != null ? 'reorder this week' : 'Not available yet',
+        label: 'Sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Recent campaign activity',
-        value: m.days_since_catalog != null ? `${m.days_since_catalog}d ago` : '—',
-        sub: m.last_sent_date
-          ? `last sent ${new Date(m.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
-          : 'No catalog sent',
+        label: 'Selling products out of stock',
+        value: m.selling_product_out_of_stock_count,
+        sub: `${m.low_stock_product_count} low stock`,
+        tone: m.selling_product_out_of_stock_count > 0 ? ('warn' as const) : undefined,
       },
     ];
   }, [data]);

@@ -22,6 +22,7 @@ import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding, useWarehousesLandingMetrics } from '@/hooks/useWarehouses';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { WAREHOUSES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -168,9 +169,9 @@ export function WarehousesLandingClient({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: WarehousesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(WAREHOUSES_KPI_COPY, card),
     value: formatCardValue(card),
-    sub: card.supporting_text ?? card.time_basis ?? '',
+    sub: kpiSupportingText(WAREHOUSES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? {

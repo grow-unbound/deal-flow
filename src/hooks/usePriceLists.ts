@@ -191,11 +191,15 @@ export interface PriceListDetail extends PriceList {
   activity?: PriceListActivity[];
   performance_cards?: unknown[];
   detail_v2?: unknown;
+  /** products_covered/avg_discount_pct/assigned_buyer_count/avg_margin_pct sourced from metrics_price_lists_now_summary. */
   stats?: {
     products_covered: number;
     brands_covered: number;
     assignments_count: number;
+    assigned_buyer_count: number;
+    assigned_cohort_count: number;
     avg_discount_pct: number;
+    avg_margin_pct: number;
     days_left: number;
   };
 }

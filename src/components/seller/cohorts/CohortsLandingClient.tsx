@@ -33,6 +33,7 @@ import {
 } from '@/hooks/useCohorts';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { CUSTOMER_GROUPS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -205,7 +206,7 @@ function CohortsLandingContent({
   const kpis = landingData?.kpis;
   const metricCards = metricsData?.cards ?? [];
   const formatMetricCard = (card: CohortsLandingKpiCardV4) => {
-    const idLabel = `${card.id} ${card.label}`.toLowerCase();
+    const idLabel = card.id.toLowerCase();
     if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue')) {
       return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
     }
@@ -246,9 +247,9 @@ function CohortsLandingContent({
         {isPaneOpen ? null : (
           <InsightStrip4
             tiles={metricCards.slice(0, 4).map((card): InsightTile => ({
-              label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+              label: card.time_basis ? `${kpiLabel(CUSTOMER_GROUPS_KPI_COPY, card)} · ${card.time_basis}` : kpiLabel(CUSTOMER_GROUPS_KPI_COPY, card),
               value: formatMetricCard(card),
-              sub: card.supporting_text ?? '',
+              sub: kpiSupportingText(CUSTOMER_GROUPS_KPI_COPY, card),
               onClick: () => {
                 const preset = card.filter_preset ?? null;
                 setRouteState((current) => ({

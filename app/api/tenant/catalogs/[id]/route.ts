@@ -12,6 +12,7 @@ import {
 } from '@/lib/campaign-workflow-status';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import {
   aggregateCampaignViewsByCampaign,
   computeCampaignAttributedMetrics,
@@ -312,7 +313,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [detailV2Res, catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload] = await Promise.all([
+  const campaignQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const campaignQuarterStart = campaignQuarterMeta.current_start.slice(0, 10);
+
+  const [detailV2Res, catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload, campaignPeriodRes] = await Promise.all([
     includePerformance
       ? db.schema('app').rpc('get_seller_campaign_detail_v2', {
           p_tenant_id: claims.tenant_id,
@@ -354,13 +358,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // currently. See app.filter_campaign_views_by_audience_at_view_time.
     db.schema('app').rpc('filter_campaign_views_by_audience_at_view_time', { p_campaign_id: id }),
     getCatalogComposerPayload(db, claims.tenant_id, claims.role),
+    db
+      .schema('app')
+      .from('metrics_campaign_period_summary')
+      .select('viewed_buyer_count, view_count, estimate_value, estimate_count, order_value, order_count, invoice_value, invoice_count, demand_buyer_count, revenue_buyer_count')
+      .eq('campaign_id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .eq('grain', 'quarter')
+      .eq('period_start', campaignQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
   if (catalogRes.error) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
-  if (detailV2Res.error || itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
+  if (detailV2Res.error || itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error || campaignPeriodRes.error) {
     return NextResponse.json({ error: 'Failed to load catalog detail' }, { status: 500 });
   }
   const detailV2 = detailV2Res.data as any;
+  const campaignQuarter = (campaignPeriodRes.data ?? null) as {
+    viewed_buyer_count: number;
+    view_count: number;
+    estimate_value: number;
+    estimate_count: number;
+    order_value: number;
+    order_count: number;
+    invoice_value: number;
+    invoice_count: number;
+    demand_buyer_count: number;
+    revenue_buyer_count: number;
+  } | null;
 
   const catalog = catalogRes.data as {
     id: string;
@@ -866,15 +892,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     },
     meta_strip_4: {
-      gmv,
-      orders: conversionCount,
-      conversions: conversionCount,
-      demand_customers: demandCustomers,
-      order_count: orderCount,
-      estimate_count: estimateCount,
-      conversion_rate: conversionRate,
-      unique_viewers: uniqueViewers,
-      cohort_members: cohortMemberIds.length,
+      target_buyer_count: cohortMemberIds.length,
+      viewed_buyer_count: campaignQuarter?.viewed_buyer_count ?? 0,
+      view_count: campaignQuarter?.view_count ?? 0,
+      view_rate_pct: cohortMemberIds.length > 0
+        ? Math.round(((campaignQuarter?.viewed_buyer_count ?? 0) / cohortMemberIds.length) * 1000) / 10
+        : 0,
+      demand_buyer_count: campaignQuarter?.demand_buyer_count ?? 0,
+      demand_value: (campaignQuarter?.estimate_value ?? 0) + (campaignQuarter?.order_value ?? 0),
+      demand_count: (campaignQuarter?.estimate_count ?? 0) + (campaignQuarter?.order_count ?? 0),
+      enquiry_rate_pct: (campaignQuarter?.viewed_buyer_count ?? 0) > 0
+        ? Math.round(((campaignQuarter?.demand_buyer_count ?? 0) / (campaignQuarter?.viewed_buyer_count ?? 1)) * 1000) / 10
+        : 0,
+      revenue_buyer_count: campaignQuarter?.revenue_buyer_count ?? 0,
+      invoice_value: campaignQuarter?.invoice_value ?? 0,
+      invoice_count: campaignQuarter?.invoice_count ?? 0,
+      billing_rate_pct: (campaignQuarter?.demand_buyer_count ?? 0) > 0
+        ? Math.round(((campaignQuarter?.revenue_buyer_count ?? 0) / (campaignQuarter?.demand_buyer_count ?? 1)) * 1000) / 10
+        : 0,
       days_left: daysLeft,
       valid_until_label: formatDate(catalog.valid_to),
     },

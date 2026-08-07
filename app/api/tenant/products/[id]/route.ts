@@ -6,6 +6,7 @@ import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-s
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { chunkArray, POSTGREST_IN_CHUNK_SIZE } from '@/lib/server/warehouse-data';
 import { getPriceListStatus, type PriceListStatus } from '@/lib/utils';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { z } from 'zod';
 
 const PRODUCT_PRICELIST_ROWS_LIMIT = 200;
@@ -228,7 +229,12 @@ export async function GET(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    const [detailV2Res, masterProductRes, tenantBrandRes, tenantCategoryRes] = await Promise.all([
+    const monthMeta = getSellerLandingPeriodMeta('month');
+    const quarterMeta = getSellerLandingPeriodMeta('quarter');
+    const monthStart = monthMeta.current_start.slice(0, 10);
+    const quarterStart = quarterMeta.current_start.slice(0, 10);
+
+    const [detailV2Res, masterProductRes, tenantBrandRes, tenantCategoryRes, productPeriodRes, inventoryRes] = await Promise.all([
       db.schema('app').rpc('get_seller_product_detail_v2', {
         p_tenant_id: tenantId,
         p_tenant_product_id: id,
@@ -242,6 +248,16 @@ export async function GET(
       product.tenant_category_id
         ? db.schema('app').from('tenant_categories').select('id, name').eq('id', product.tenant_category_id).eq('tenant_id', tenantId).is('deleted_at', null).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
+      db
+        .schema('app')
+        .from('metrics_product_period_summary')
+        .select('grain, period_start, invoice_value, invoice_count, invoice_buyer_count, invoice_units, estimate_units, estimate_value, estimate_count, order_units, order_value, order_count')
+        .eq('tenant_product_id', id)
+        .eq('tenant_id', tenantId)
+        .in('grain', ['month', 'quarter'])
+        .in('period_start', [monthStart, quarterStart])
+        .is('deleted_at', null),
+      db.schema('app').from('tenant_inventory').select('qty_available').eq('tenant_product_id', id).is('deleted_at', null),
     ]);
 
     if (detailV2Res.error) {
@@ -249,15 +265,46 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
     }
 
+    if (productPeriodRes.error || inventoryRes.error) {
+      console.error(
+        '[GET /api/tenant/products/[id]] v4 metrics fetch failed',
+        productPeriodRes.error ?? inventoryRes.error,
+      );
+      return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
+    }
+
     const detailV2 = (detailV2Res.data ?? {}) as any;
     const v2Header = detailV2.header ?? {};
-    const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
     const displayName = product.name_override ?? masterProductRes.data?.name ?? product.internal_sku;
     const brandName = tenantBrandRes.data?.display_name_override ?? masterProductRes.data?.brands?.name ?? 'Unbranded';
-    const available = Number(kpiByLabel.get('Available') ?? 0);
-    const invoiceUnits90d = Number(kpiByLabel.get('Units sold 90D') ?? 0);
-    const invoiceValue90d = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
-    const daysCover = kpiByLabel.get('Days cover') == null ? null : Number(kpiByLabel.get('Days cover'));
+
+    const periodRows = (productPeriodRes.data ?? []) as Array<{
+      grain: string;
+      period_start: string;
+      invoice_value: number;
+      invoice_count: number;
+      invoice_buyer_count: number;
+      invoice_units: number;
+      estimate_units: number;
+      estimate_value: number;
+      estimate_count: number;
+      order_units: number;
+      order_value: number;
+      order_count: number;
+    }>;
+    const quarterRow = periodRows.find((row) => row.grain === 'quarter' && row.period_start === quarterStart) ?? null;
+    const monthRow = periodRows.find((row) => row.grain === 'month' && row.period_start === monthStart) ?? null;
+
+    const available = ((inventoryRes.data ?? []) as Array<{ qty_available: number | null }>).reduce(
+      (sum, row) => sum + Number(row.qty_available ?? 0),
+      0,
+    );
+    const invoiceUnitsQtd = Number(quarterRow?.invoice_units ?? 0);
+    const invoiceUnitsMtd = Number(monthRow?.invoice_units ?? 0);
+    const daysCover = invoiceUnitsMtd > 0 ? Math.round((available / invoiceUnitsMtd) * 10) / 10 : null;
+    const demandQtdValue = Number(quarterRow?.estimate_value ?? 0) + Number(quarterRow?.order_value ?? 0);
+    const demandQtdUnits = Number(quarterRow?.estimate_units ?? 0) + Number(quarterRow?.order_units ?? 0);
+    const demandQtdCount = Number(quarterRow?.estimate_count ?? 0) + Number(quarterRow?.order_count ?? 0);
     const pricingRows = await loadProductPricingRows(db, tenantId, id);
 
     const detailResponse = {
@@ -272,10 +319,15 @@ export async function GET(
         status_tone: !product.is_active ? 'neutral' : available <= 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success',
       },
       meta_strip_4: {
-        units_mtd: invoiceUnits90d,
-        days_cover: daysCover ?? 0,
-        on_hand: available,
-        sell_through_pct: available + invoiceUnits90d > 0 ? Math.round((invoiceUnits90d / (available + invoiceUnits90d)) * 100) : 0,
+        sales_qtd_value: Number(quarterRow?.invoice_value ?? 0),
+        sales_qtd_count: Number(quarterRow?.invoice_count ?? 0),
+        purchased_buyers_qtd: Number(quarterRow?.invoice_buyer_count ?? 0),
+        units_qtd: invoiceUnitsQtd,
+        demand_qtd_value: demandQtdValue,
+        demand_qtd_units: demandQtdUnits,
+        demand_qtd_count: demandQtdCount,
+        total_stock: available,
+        days_cover: daysCover,
       },
       details: {
         id: product.id,
@@ -302,13 +354,13 @@ export async function GET(
         inventory_ops: {
           on_hand: available,
           days_cover: daysCover,
-          sell_through_pct: available + invoiceUnits90d > 0 ? Math.round((invoiceUnits90d / (available + invoiceUnits90d)) * 100) : 0,
+          sell_through_pct: available + invoiceUnitsQtd > 0 ? Math.round((invoiceUnitsQtd / (available + invoiceUnitsQtd)) * 100) : 0,
           last_ordered_at: null,
           last_ordered_buyer: null,
         },
         top_buyers: [],
         price_by_cohort: [{ cohort: 'All buyers (base)', price: Number(product.base_selling_price ?? 0), has_override: false }],
-        units_snapshot: { units_mtd: invoiceUnits90d, revenue_last_30d: Math.round(invoiceValue90d) },
+        units_snapshot: { units_mtd: invoiceUnitsMtd, revenue_last_30d: Math.round(Number(quarterRow?.invoice_value ?? 0)) },
       },
       pricing_summary: {
         mrp: product.mrp,

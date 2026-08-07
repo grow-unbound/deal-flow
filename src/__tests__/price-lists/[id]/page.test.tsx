@@ -74,7 +74,7 @@ const detail = {
       priority: 1,
     },
   ],
-  stats: { products_covered: 1, brands_covered: 1, assignments_count: 1, avg_discount_pct: 10, days_left: 12 },
+  stats: { products_covered: 1, brands_covered: 1, assignments_count: 1, assigned_buyer_count: 1, assigned_cohort_count: 0, avg_discount_pct: 10, avg_margin_pct: 20, days_left: 12 },
 };
 
 describe('price-lists/[id] detail page', () => {

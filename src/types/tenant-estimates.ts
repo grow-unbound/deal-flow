@@ -115,12 +115,10 @@ export interface TenantEstimatesResponse {
 
 export interface EstimatesLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }

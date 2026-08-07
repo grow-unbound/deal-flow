@@ -37,6 +37,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { formatNumberValue } from '@/lib/utils';
+import { ESTIMATES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -252,9 +253,9 @@ function EstimatesLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: EstimatesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(ESTIMATES_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} estimates`,
+    sub: kpiSupportingText(ESTIMATES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;

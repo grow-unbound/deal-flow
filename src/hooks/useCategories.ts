@@ -62,12 +62,10 @@ export type CategoryLandingSort = 'invoice_value_desc' | 'name_asc' | 'oos_sku_c
 
 export interface CategoriesLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -159,12 +157,14 @@ export interface CategoryDetailHeader {
   updated_at: string;
 }
 
+/** Quarter-to-date KPI strip, sourced from metrics_category_period_summary + metrics_category_now_summary. */
 export interface CategoryDetailMetaStrip {
-  gmv_mtd: number;
-  /** Product count supporting invoiced sales (doc: "Invoiced sales - amount + product count"). */
-  product_count: number;
-  /** Units sold in the last 90 days, from get_seller_category_detail_v2's kpi_grid. */
-  units_90d: number;
+  sales_qtd_value: number;
+  sales_qtd_count: number;
+  selling_product_count_qtd: number;
+  total_product_count: number;
+  purchasing_customers_qtd: number;
+  brand_count: number;
   /** Products with invoiced sales > 0 in the last 90 days (from product-action-list, capped at 20 items). */
   sold_sku_count: number;
   active_sku_count: number;

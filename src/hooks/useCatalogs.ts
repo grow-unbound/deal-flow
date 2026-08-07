@@ -102,12 +102,10 @@ export interface CatalogsLandingResponse {
 
 export interface CatalogsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -154,17 +152,20 @@ export interface CatalogDetailResponse {
       display_label: string;
     };
   };
+  /** Quarter-to-date KPI strip, sourced from metrics_campaign_period_summary (grain='quarter'). */
   meta_strip_4: {
-    gmv: number;
-    growth_pct: number;
-    orders: number;
-    conversions?: number;
-    demand_customers?: number;
-    order_count?: number;
-    estimate_count?: number;
-    conversion_rate: number;
-    unique_viewers: number;
-    cohort_members: number;
+    target_buyer_count: number;
+    viewed_buyer_count: number;
+    view_count: number;
+    view_rate_pct: number;
+    demand_buyer_count: number;
+    demand_value: number;
+    demand_count: number;
+    enquiry_rate_pct: number;
+    revenue_buyer_count: number;
+    invoice_value: number;
+    invoice_count: number;
+    billing_rate_pct: number;
     days_left: number;
     valid_until_label: string;
   };

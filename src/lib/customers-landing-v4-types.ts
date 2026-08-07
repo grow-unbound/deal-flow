@@ -1,12 +1,10 @@
 /** V4 landing KPI card from app.get_landing_metrics_v4 / metrics_v4_kpi. */
 export interface CustomersLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }

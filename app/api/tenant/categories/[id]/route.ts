@@ -69,7 +69,10 @@ export async function GET(
     return jsonError(404, 'Category not found', 'NOT_FOUND');
   }
 
-  const [detailV2Res, productsRes, activityRes] = await Promise.all([
+  const categoryQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const categoryQuarterStart = categoryQuarterMeta.current_start.slice(0, 10);
+
+  const [detailV2Res, productsRes, activityRes, categoryPeriodRes, categoryNowRes] = await Promise.all([
     db.schema('app').rpc('get_seller_category_detail_v2', {
       p_tenant_id: tenantId,
       p_tenant_category_id: id,
@@ -91,12 +94,41 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(20),
+    db
+      .schema('app')
+      .from('metrics_category_period_summary')
+      .select('invoice_value, invoice_count, invoice_product_count, invoice_buyer_count')
+      .eq('tenant_category_id', id)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'quarter')
+      .eq('period_start', categoryQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_category_now_summary')
+      .select('product_count, brand_count')
+      .eq('tenant_category_id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
-  if (detailV2Res.error || productsRes.error || activityRes.error) {
-    console.error('[GET /api/tenant/categories/[id]] V2 detail failed', detailV2Res.error ?? productsRes.error ?? activityRes.error);
+  if (detailV2Res.error || productsRes.error || activityRes.error || categoryPeriodRes.error || categoryNowRes.error) {
+    console.error(
+      '[GET /api/tenant/categories/[id]] V2 detail failed',
+      detailV2Res.error ?? productsRes.error ?? activityRes.error ?? categoryPeriodRes.error ?? categoryNowRes.error,
+    );
     return jsonError(500, 'Failed to fetch category detail', 'ERROR');
   }
+
+  const categoryQuarter = (categoryPeriodRes.data ?? null) as {
+    invoice_value: number;
+    invoice_count: number;
+    invoice_product_count: number;
+    invoice_buyer_count: number;
+  } | null;
+  const categoryNow = (categoryNowRes.data ?? null) as { product_count: number; brand_count: number } | null;
 
   const detailV2 = (detailV2Res.data ?? {}) as any;
   const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
@@ -113,8 +145,6 @@ export async function GET(
   // hard-clamped to 20), so oos/low_stock/sold counts above are only exact for
   // categories with <=20 products — a known approximation, not a bug introduced here.
   const sold_sku_count = actionItems.filter((item) => Number(item.value ?? 0) > 0).length;
-  const gmv_mtd = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
-  const units_90d = Number(kpiByLabel.get('Units 90D') ?? 0);
 
   // Build base lookup maps
   const actionItemById = new Map<string, any>(actionItems.map((item) => [String(item.id), item]));
@@ -260,15 +290,15 @@ export async function GET(
       initials: getInitials(category.name),
       image_url: r2Url(category.r2_image_thumb_key) ?? r2Url(category.r2_image_medium_key),
       active_sku_count,
-      brand_count: brandIds.size,
+      brand_count: categoryNow?.brand_count ?? brandIds.size,
     },
     meta_strip_4: {
-      gmv_mtd,
-      // get_seller_category_detail_v2 does not compute a prior-period comparison, so
-      // growth_pct was previously always 0 — a fabricated "flat" badge, not real data.
-      // product_count is a real, doc-recommended supporting value (see doc line 962).
-      product_count: active_sku_count,
-      units_90d,
+      sales_qtd_value: categoryQuarter?.invoice_value ?? 0,
+      sales_qtd_count: categoryQuarter?.invoice_count ?? 0,
+      selling_product_count_qtd: categoryQuarter?.invoice_product_count ?? 0,
+      total_product_count: categoryNow?.product_count ?? active_sku_count,
+      purchasing_customers_qtd: categoryQuarter?.invoice_buyer_count ?? 0,
+      brand_count: categoryNow?.brand_count ?? brandIds.size,
       sold_sku_count,
       active_sku_count,
       oos_sku_count,

@@ -131,7 +131,7 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [detailV2Res, itemsRes, assignmentsRes, activityRes] = await Promise.all([
+  const [detailV2Res, itemsRes, assignmentsRes, activityRes, priceListNowRes] = await Promise.all([
     includePerformance
       ? db.schema('app').rpc('get_seller_pricelist_detail_v2', {
           p_tenant_id: claims.tenant_id,
@@ -167,15 +167,30 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(100),
+    db
+      .schema('app')
+      .from('metrics_price_lists_now_summary')
+      .select('member_product_count, assigned_cohort_count, assigned_buyer_count, avg_discount_pct, avg_margin_pct')
+      .eq('price_list_id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
-  if (itemsRes.error || assignmentsRes.error || activityRes.error) {
+  if (itemsRes.error || assignmentsRes.error || activityRes.error || priceListNowRes.error) {
     console.error(
       '[GET /api/price-lists/[id]] related fetch error:',
-      itemsRes.error || assignmentsRes.error || activityRes.error,
+      itemsRes.error || assignmentsRes.error || activityRes.error || priceListNowRes.error,
     );
     return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
   }
+  const priceListNow = (priceListNowRes.data ?? null) as {
+    member_product_count: number;
+    assigned_cohort_count: number;
+    assigned_buyer_count: number;
+    avg_discount_pct: number;
+    avg_margin_pct: number;
+  } | null;
 
   if (detailV2Res.error) {
     console.warn(
@@ -395,10 +410,13 @@ export async function GET(
       performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
       detail_v2: includePerformance ? detailV2 : null,
       stats: {
-        products_covered: enrichedItems.length,
+        products_covered: priceListNow?.member_product_count ?? enrichedItems.length,
         brands_covered: brandSet.size,
         assignments_count: assignments.length,
-        avg_discount_pct: avgDiscountPct,
+        assigned_buyer_count: priceListNow?.assigned_buyer_count ?? 0,
+        assigned_cohort_count: priceListNow?.assigned_cohort_count ?? 0,
+        avg_discount_pct: priceListNow?.avg_discount_pct ?? avgDiscountPct,
+        avg_margin_pct: priceListNow?.avg_margin_pct ?? 0,
         days_left: daysLeft,
       },
     },

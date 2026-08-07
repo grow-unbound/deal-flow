@@ -63,19 +63,25 @@ export interface TenantCustomerDetailResponse {
       last_activity_date_label: string;
     };
   };
+  /** Quarter-to-date KPI strip, sourced from metrics_buyer_now_summary + metrics_buyer_period_summary (grain='quarter'). */
   meta_strip_4: {
-    invoiced_sales_90d: number;
-    invoice_count_90d: number;
+    sales_qtd_value: number;
+    sales_qtd_count: number;
+    sales_qtd_trend_pct: number | null;
+    receivable_amount: number;
+    receivable_invoice_count: number;
+    overdue_amount: number;
+    overdue_invoice_count: number;
     primary_demand_kind: 'orders' | 'estimates' | 'none';
-    demand_90d: number;
-    demand_order_count_90d: number;
-    demand_estimate_count_90d: number;
+    demand_qtd_value: number;
+    demand_qtd_count: number;
+    demand_qtd_trend_pct: number | null;
+    app_engagement_value: number;
+    app_engagement_count: number;
     credit_used: number;
     credit_available: number;
     credit_limit: number;
     credit_used_pct: number;
-    last_invoice_value: number;
-    last_invoice_date: string | null;
   };
   details: {
     business_name: string;

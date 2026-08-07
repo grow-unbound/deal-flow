@@ -3,6 +3,7 @@ import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { firstStoredImageUrl } from '@/lib/r2-url';
 import { computeSellableUnits, computeWarehouseInitials, computeWarehouseStockStatus, isIdleStockSku } from '@/lib/server/warehouse-metrics';
 import type { TenantWarehouse, WarehouseDetailInventoryItem, WarehouseDetailResponse, WarehouseInventoryTrendWeek } from '@/types/tenant-warehouses';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 /** PostgREST `.in()` filters are serialized into the URL; keep chunks under ~16KB. */
 export const POSTGREST_IN_CHUNK_SIZE = 80;
@@ -541,11 +542,51 @@ export async function loadWarehouseSummary(
   const storedSnapshot = await loadWarehouseSnapshot(db, tenantId, warehouseId);
   const snapshot = storedSnapshot ?? await loadLatestWarehouseDailySnapshot(db, tenantId, warehouseId);
 
-  const trackedSkus = snapshot?.tracked_skus ?? 0;
-  const sellableUnits = snapshot?.sellable_units ?? 0;
-  const lowStockSkus = snapshot?.low_stock_skus ?? 0;
-  const stockoutSkus = snapshot?.stockout_skus ?? 0;
-  const idleStockSkus = snapshot?.idle_stock_skus ?? 0;
+  const warehouseQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const warehouseQuarterStart = warehouseQuarterMeta.current_start.slice(0, 10);
+  const [warehouseNowRes, warehousePeriodRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('metrics_warehouse_now_summary')
+      .select('available_product_count, in_stock_product_count, sellable_units, low_stock_product_count, out_of_stock_product_count, idle_stock_product_count, idle_stock_units')
+      .eq('warehouse_id', warehouseId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_warehouse_period_summary')
+      .select('invoice_value, sold_sku_count, sold_units')
+      .eq('warehouse_id', warehouseId)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'quarter')
+      .eq('period_start', warehouseQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
+  ]);
+  if (warehouseNowRes.error) throw warehouseNowRes.error;
+  if (warehousePeriodRes.error) throw warehousePeriodRes.error;
+
+  const warehouseNow = (warehouseNowRes.data ?? null) as {
+    available_product_count: number;
+    in_stock_product_count: number;
+    sellable_units: number;
+    low_stock_product_count: number;
+    out_of_stock_product_count: number;
+    idle_stock_product_count: number;
+    idle_stock_units: number;
+  } | null;
+  const warehouseQuarter = (warehousePeriodRes.data ?? null) as {
+    invoice_value: number;
+    sold_sku_count: number;
+    sold_units: number;
+  } | null;
+
+  const trackedSkus = warehouseNow?.in_stock_product_count ?? snapshot?.tracked_skus ?? 0;
+  const sellableUnits = warehouseNow?.sellable_units ?? snapshot?.sellable_units ?? 0;
+  const lowStockSkus = warehouseNow?.low_stock_product_count ?? snapshot?.low_stock_skus ?? 0;
+  const stockoutSkus = warehouseNow?.out_of_stock_product_count ?? snapshot?.stockout_skus ?? 0;
+  const idleStockSkus = warehouseNow?.idle_stock_product_count ?? snapshot?.idle_stock_skus ?? 0;
   const reorderTriggeredSkus = lowStockSkus + stockoutSkus;
 
   return {
@@ -572,10 +613,13 @@ export async function loadWarehouseSummary(
     updated_at: warehouse.updated_at,
     tracked_skus_count: trackedSkus,
     meta_strip: {
+      sales_qtd_value: warehouseQuarter?.invoice_value ?? 0,
       tracked_skus: trackedSkus,
       sellable_units: sellableUnits,
-      low_stock_skus: reorderTriggeredSkus,
+      low_stock_skus: lowStockSkus,
+      out_of_stock_skus: stockoutSkus,
       idle_stock_skus: idleStockSkus,
+      idle_stock_units: warehouseNow?.idle_stock_units ?? 0,
     },
     details: {
       associated_users_count: mappedLocationUsers.length > 0 ? mappedLocationUsers.length : warehouse.associated_users.length,

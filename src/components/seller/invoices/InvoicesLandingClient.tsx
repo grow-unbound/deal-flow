@@ -36,6 +36,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatAsOfLabel, formatNumberValue } from '@/lib/utils';
+import { INVOICES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -232,9 +233,9 @@ function InvoicesLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: InvoicesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(INVOICES_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} invoices`,
+    sub: kpiSupportingText(INVOICES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;

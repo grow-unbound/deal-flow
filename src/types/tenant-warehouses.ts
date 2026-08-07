@@ -89,12 +89,10 @@ export interface WarehousesLandingKpis {
 
 export interface WarehousesLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -221,11 +219,15 @@ export interface WarehouseDetailResponse {
   created_at: string;
   updated_at: string;
   tracked_skus_count: number;
+  /** Quarter-to-date KPI strip, sourced from metrics_warehouse_period_summary + metrics_warehouse_now_summary. */
   meta_strip: {
+    sales_qtd_value: number;
     tracked_skus: number;
     sellable_units: number;
     low_stock_skus: number;
+    out_of_stock_skus: number;
     idle_stock_skus: number;
+    idle_stock_units: number;
   };
   details: {
     associated_users_count: number;

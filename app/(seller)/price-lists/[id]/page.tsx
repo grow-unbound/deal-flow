@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PriceListProductsTab } from '@/components/seller/price-lists/detail/PriceListProductsTab';
-import { getDiscountBandCounts } from '@/lib/price-list-pricing-checks';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
@@ -78,11 +77,6 @@ export default function PriceListDetailPage() {
   }, [activeTab, priceList, setActiveTab, tabs]);
 
   const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'products';
-
-  const discountBands = useMemo(
-    () => (priceList ? getDiscountBandCounts(priceList) : { discounted: 0, atBase: 0, aboveBase: 0, total: 0 }),
-    [priceList],
-  );
 
   const subtitle = priceList
     ? [
@@ -139,14 +133,14 @@ export default function PriceListDetailPage() {
               showSupportingText
               tiles={[
                 {
-                  label: 'Products priced',
+                  label: 'Custom priced products',
                   value: priceList.stats?.products_covered ?? priceList.items.length,
                   sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                 },
                 {
                   label: 'Customers assigned',
-                  value: priceList.stats?.assignments_count ?? priceList.assignments.length,
-                  sub: 'customers',
+                  value: priceList.stats?.assigned_buyer_count ?? priceList.assignments.length,
+                  sub: `${priceList.stats?.assigned_cohort_count ?? 0} customer groups`,
                 },
                 {
                   label: 'Average discount',
@@ -154,9 +148,9 @@ export default function PriceListDetailPage() {
                   sub: 'from base selling price',
                 },
                 {
-                  label: 'Discounted products',
-                  value: `${formatNumberValue(discountBands.discounted, 'COUNT')}`,
-                  sub: 'priced below base selling price',
+                  label: 'Average margin',
+                  value: `${formatNumberValue(priceList.stats?.avg_margin_pct ?? 0, 'PERCENTAGE')}`,
+                  sub: 'over cost price',
                 },
               ]}
             />
