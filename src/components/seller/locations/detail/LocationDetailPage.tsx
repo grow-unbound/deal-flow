@@ -174,11 +174,11 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         }
       />
 
-      {data ? (
+      {/* {data ? (
         <LocationProfileStrip phoneNumber={data.phone_number} status={data.status} users={data.associated_users} />
       ) : (
         <Skeleton className="mt-4 h-[92px] rounded-[14px]" />
-      )}
+      )} */}
 
       {data ? (
         <InsightStrip4 className="mt-6" showSupportingText tiles={tiles} />
