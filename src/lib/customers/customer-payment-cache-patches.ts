@@ -30,6 +30,9 @@ export function patchCustomerDetailAfterPayment(
     meta_strip_4: {
       ...prev.meta_strip_4,
       ...creditFields,
+      // receivable_amount tracks the same underlying balance as credit_used —
+      // keep both in sync after an optimistic payment patch.
+      receivable_amount: creditFields.credit_used,
     },
     performance_v2: {
       ...prev.performance_v2,

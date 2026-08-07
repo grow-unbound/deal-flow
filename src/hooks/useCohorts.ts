@@ -74,12 +74,10 @@ export interface CohortsLandingResponse {
 
 export interface CohortsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -126,12 +124,16 @@ export interface CohortDetailHeader {
   };
 }
 
+/** Quarter-to-date KPI strip, sourced from metrics_cohort_period_summary (grain='quarter'). */
 export interface CohortDetailMetaStrip4 {
-  gmv_mtd: number;
-  active_members: number;
-  total_members: number;
-  aov: number;
-  conversion_pct: number;
+  active_member_count: number;
+  member_count: number;
+  sales_qtd_value: number;
+  sales_qtd_count: number;
+  demand_qtd_value: number;
+  demand_qtd_count: number;
+  /** null = no brand restriction ("All brands"). */
+  brands_count: number | null;
 }
 
 export interface CohortDetailBuyer {
@@ -808,7 +810,7 @@ export function useRefreshCohort(id: string) {
           },
           meta_strip_4: {
             ...old.meta_strip_4,
-            total_members: result.cached_member_count ?? old.meta_strip_4.total_members,
+            member_count: result.cached_member_count ?? old.meta_strip_4.member_count,
           },
         };
       });

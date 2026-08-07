@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
@@ -12,8 +13,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const parsed = ParamsSchema.safeParse(await params);
   const claims = await getVerifiedClaims(request);
   if (!parsed.success) return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
-  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return NextResponse.json(
+      { error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' },
+      { status: adminCheck.status },
+    );
+  }
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
   const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), 50);

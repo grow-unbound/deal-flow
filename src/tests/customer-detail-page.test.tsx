@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
@@ -123,6 +124,51 @@ function setBootstrapDefaults() {
   ];
   dbResponses['app.price_list_assignments'] = [{ data: { price_list_id: 'pl-1' } }];
   dbResponses['app.price_lists'] = [{ data: { id: 'pl-1', name: 'North Premium Pricing' } }];
+  dbResponses['app.metrics_buyer_now_summary'] = [
+    {
+      data: {
+        receivable_amount: 64000,
+        receivable_invoice_count: 2,
+        overdue_amount: 12000,
+        overdue_invoice_count: 1,
+        credit_limit: 100000,
+        credit_available: 36000,
+      },
+    },
+  ];
+  const quarterMeta = getSellerLandingPeriodMeta('quarter');
+  dbResponses['app.metrics_buyer_period_summary'] = [
+    {
+      data: [
+        {
+          period_start: quarterMeta.current_start.slice(0, 10),
+          invoice_value: 250000,
+          invoice_count: 4,
+          estimate_value: 40000,
+          estimate_count: 1,
+          order_value: 188000,
+          order_count: 3,
+          app_demand_value: 50000,
+          app_demand_count: 2,
+          primary_demand_count: 3,
+          primary_demand_value: 188000,
+        },
+        {
+          period_start: quarterMeta.previous_start.slice(0, 10),
+          invoice_value: 200000,
+          invoice_count: 3,
+          estimate_value: 0,
+          estimate_count: 0,
+          order_value: 150000,
+          order_count: 2,
+          app_demand_value: 30000,
+          app_demand_count: 1,
+          primary_demand_count: 2,
+          primary_demand_value: 150000,
+        },
+      ],
+    },
+  ];
   dbResponses['rpc.get_seller_customer_detail_v2'] = [
     {
       data: {
@@ -188,9 +234,15 @@ describe('customer detail bootstrap route', () => {
       invoices_90d: 4,
       price_lists_assigned: 2,
     });
-    expect(body.meta_strip_4.invoiced_sales_90d).toBe(250000);
-    expect(body.meta_strip_4.demand_90d).toBe(188000);
-    expect(body.meta_strip_4.last_invoice_value).toBe(84200);
+    expect(body.meta_strip_4.sales_qtd_value).toBe(250000);
+    expect(body.meta_strip_4.sales_qtd_count).toBe(4);
+    expect(body.meta_strip_4.sales_qtd_trend_pct).toBe(25);
+    expect(body.meta_strip_4.receivable_amount).toBe(64000);
+    expect(body.meta_strip_4.overdue_amount).toBe(12000);
+    expect(body.meta_strip_4.overdue_invoice_count).toBe(1);
+    expect(body.meta_strip_4.demand_qtd_value).toBe(188000);
+    expect(body.meta_strip_4.app_engagement_value).toBe(50000);
+    expect(body.meta_strip_4.app_engagement_count).toBe(2);
     expect(body.price_lists).toEqual({ assigned_count: 2 });
     expect(body.header.subtitle_meta.last_activity_kind).toBe('sale');
     expect(body.details.default_price_list_id).toBe('pl-1');

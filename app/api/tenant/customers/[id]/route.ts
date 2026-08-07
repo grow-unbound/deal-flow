@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -86,7 +87,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    const [detailV2Res, buyerUsersRes, cohortMembersRes, buyerPriceListAssignmentRes] = await Promise.all([
+    const quarterMeta = getSellerLandingPeriodMeta('quarter');
+    const currentQuarterStart = quarterMeta.current_start.slice(0, 10);
+    const previousQuarterStart = quarterMeta.previous_start.slice(0, 10);
+
+    const [
+      detailV2Res,
+      buyerUsersRes,
+      cohortMembersRes,
+      buyerPriceListAssignmentRes,
+      buyerNowSummaryRes,
+      buyerPeriodSummaryRes,
+    ] = await Promise.all([
       db.schema('app').rpc('get_seller_customer_detail_v2', {
         p_tenant_id: tenantId,
         p_buyer_id: id,
@@ -113,22 +125,74 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      db
+        .schema('app')
+        .from('metrics_buyer_now_summary')
+        .select('receivable_amount, receivable_invoice_count, overdue_amount, overdue_invoice_count, credit_limit, credit_available')
+        .eq('buyer_id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('metrics_buyer_period_summary')
+        .select(
+          'period_start, invoice_value, invoice_count, estimate_value, estimate_count, order_value, order_count, app_demand_value, app_demand_count, primary_demand_count, primary_demand_value',
+        )
+        .eq('buyer_id', id)
+        .eq('tenant_id', tenantId)
+        .eq('grain', 'quarter')
+        .in('period_start', [currentQuarterStart, previousQuarterStart])
+        .is('deleted_at', null),
     ]);
 
     if (
       detailV2Res.error ||
       buyerUsersRes.error ||
       cohortMembersRes.error ||
-      buyerPriceListAssignmentRes.error
+      buyerPriceListAssignmentRes.error ||
+      buyerNowSummaryRes.error ||
+      buyerPeriodSummaryRes.error
     ) {
       console.error(
         '[GET /api/tenant/customers/[id]] bootstrap failed',
         detailV2Res.error ??
           buyerUsersRes.error ??
           cohortMembersRes.error ??
-          buyerPriceListAssignmentRes.error,
+          buyerPriceListAssignmentRes.error ??
+          buyerNowSummaryRes.error ??
+          buyerPeriodSummaryRes.error,
       );
       return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+    }
+
+    const nowSummary = (buyerNowSummaryRes.data ?? null) as {
+      receivable_amount: number;
+      receivable_invoice_count: number;
+      overdue_amount: number;
+      overdue_invoice_count: number;
+      credit_limit: number;
+      credit_available: number;
+    } | null;
+    const periodRows = (buyerPeriodSummaryRes.data ?? []) as Array<{
+      period_start: string;
+      invoice_value: number;
+      invoice_count: number;
+      estimate_value: number;
+      estimate_count: number;
+      order_value: number;
+      order_count: number;
+      app_demand_value: number;
+      app_demand_count: number;
+      primary_demand_count: number;
+      primary_demand_value: number;
+    }>;
+    const currentQuarter = periodRows.find((row) => row.period_start === currentQuarterStart) ?? null;
+    const previousQuarter = periodRows.find((row) => row.period_start === previousQuarterStart) ?? null;
+
+    function trendPct(current: number, previous: number): number | null {
+      if (previous <= 0) return null;
+      return Math.round(((current - previous) / previous) * 1000) / 10;
     }
 
     const detailV2 = (detailV2Res.data ?? {}) as {
@@ -198,16 +262,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       status: !contact.is_active ? 'Inactive' : contact.user_id ? 'Active' : 'Pending invite',
     }));
 
-    const creditLimit = Number(summaryMetrics.credit_limit ?? buyer.credit_limit ?? 0);
-    const creditUsed = Number(summaryMetrics.receivable_amount ?? kpiByLabel.get('Receivable') ?? 0);
-    const creditAvailable = Number(summaryMetrics.credit_available ?? kpiByLabel.get('Credit available') ?? 0);
+    const creditLimit = Number(nowSummary?.credit_limit ?? buyer.credit_limit ?? 0);
+    const creditUsed = Number(nowSummary?.receivable_amount ?? 0);
+    const creditAvailable = Number(nowSummary?.credit_available ?? 0);
     const creditUsedPct = creditLimit > 0 ? Math.round((creditUsed / creditLimit) * 1000) / 10 : 0;
+    // Retained for performance_v2 (dead code while showPerformanceTab is false) —
+    // meta_strip_4 below is v4-sourced and no longer reads these.
     const invoiceCount90d = Number(summaryMetrics.invoice_count_90d ?? kpiByLabel.get('Invoices 90D') ?? 0);
     const invoicedSales90d = Number(summaryMetrics.invoiced_sales_90d ?? kpiByLabel.get('Invoiced sales 90D') ?? 0);
     const primaryDemandKind = summaryMetrics.primary_demand_kind ?? 'none';
-    const primaryDemandValue90d = Number(summaryMetrics.primary_demand_value_90d ?? kpiByLabel.get('Demand 90D') ?? 0);
-    const demandOrderCount90d = Number(summaryMetrics.primary_demand_order_count_90d ?? 0);
-    const demandEstimateCount90d = Number(summaryMetrics.primary_demand_estimate_count_90d ?? 0);
 
     const defaultPriceListId =
       (buyerPriceListAssignmentRes.data?.price_list_id as string | undefined) ?? null;
@@ -264,18 +327,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
       },
       meta_strip_4: {
-        invoiced_sales_90d: invoicedSales90d,
-        invoice_count_90d: invoiceCount90d,
+        sales_qtd_value: Number(currentQuarter?.invoice_value ?? 0),
+        sales_qtd_count: Number(currentQuarter?.invoice_count ?? 0),
+        sales_qtd_trend_pct: trendPct(Number(currentQuarter?.invoice_value ?? 0), Number(previousQuarter?.invoice_value ?? 0)),
+        receivable_amount: Number(nowSummary?.receivable_amount ?? 0),
+        receivable_invoice_count: Number(nowSummary?.receivable_invoice_count ?? 0),
+        overdue_amount: Number(nowSummary?.overdue_amount ?? 0),
+        overdue_invoice_count: Number(nowSummary?.overdue_invoice_count ?? 0),
         primary_demand_kind: primaryDemandKind,
-        demand_90d: primaryDemandValue90d,
-        demand_order_count_90d: demandOrderCount90d,
-        demand_estimate_count_90d: demandEstimateCount90d,
+        demand_qtd_value: Number(currentQuarter?.primary_demand_value ?? 0),
+        demand_qtd_count: Number(currentQuarter?.primary_demand_count ?? 0),
+        demand_qtd_trend_pct: trendPct(Number(currentQuarter?.primary_demand_value ?? 0), Number(previousQuarter?.primary_demand_value ?? 0)),
+        app_engagement_value: Number(currentQuarter?.app_demand_value ?? 0),
+        app_engagement_count: Number(currentQuarter?.app_demand_count ?? 0),
         credit_used: creditUsed,
         credit_available: creditAvailable,
         credit_limit: creditLimit,
         credit_used_pct: creditUsedPct,
-        last_invoice_value: Number(summaryMetrics.last_invoice_value ?? 0),
-        last_invoice_date: summaryMetrics.last_invoice_date ?? null,
       },
       details: {
         business_name: buyer.business_name,

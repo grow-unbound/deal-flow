@@ -33,6 +33,7 @@ import {
 } from '@/hooks/useBrands';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { BRANDS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -217,9 +218,9 @@ function BrandLandingContent({
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && visibleRows.length === 0;
   const selectedOption = selectedCard
     ? {
-        label: selectedCard.label,
+        label: kpiLabel(BRANDS_KPI_COPY, selectedCard),
         value: formatCardValue(selectedCard),
-        sub: selectedCard.supporting_text ?? selectedCard.time_basis ?? '',
+        sub: kpiSupportingText(BRANDS_KPI_COPY, selectedCard),
       }
     : {
         label: 'Brands',
@@ -271,9 +272,9 @@ function BrandLandingContent({
         {isPaneOpen ? null : (
           <InsightStrip4
             tiles={kpiCards.map((option): InsightTile => ({
-              label: option.label,
+              label: kpiLabel(BRANDS_KPI_COPY, option),
               value: formatCardValue(option),
-              sub: option.supporting_text ?? option.time_basis ?? '',
+              sub: kpiSupportingText(BRANDS_KPI_COPY, option),
               onClick: () => {
                 setSelectedKpiKey(option.id);
                 setRouteState((current) => ({

@@ -79,23 +79,24 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
     const m = data.detail.meta_strip_4;
     return [
       {
-        label: 'Units · MTD',
-        value: m.units_mtd,
+        label: 'Sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Days of cover',
-        value: <span className={daysCoverClass(m.days_cover)}>{m.days_cover} d</span>,
-        sub: 'at current pace',
+        label: 'Purchased buyers · QTD',
+        value: m.purchased_buyers_qtd,
+        sub: `${m.units_qtd} units sold`,
       },
       {
-        label: 'On hand',
-        value: m.on_hand,
-        sub: 'units',
+        label: 'Demand · QTD',
+        value: formatNumberValue(m.demand_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.demand_qtd_units} units · ${m.demand_qtd_count} docs`,
       },
       {
-        label: 'Sell-through',
-        value: `${m.sell_through_pct}%`,
-        sub: 'last 30 days',
+        label: 'Stock on hand',
+        value: m.total_stock,
+        sub: m.days_cover != null ? <span className={daysCoverClass(m.days_cover)}>{m.days_cover}d cover</span> : 'No sales this month',
       },
     ];
   }, [data]);

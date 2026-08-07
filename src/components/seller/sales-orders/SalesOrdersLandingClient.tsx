@@ -38,6 +38,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { formatNumberValue } from '@/lib/utils';
+import { ORDERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -230,9 +231,9 @@ function SalesOrdersLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: OrdersLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(ORDERS_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} orders`,
+    sub: kpiSupportingText(ORDERS_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
 

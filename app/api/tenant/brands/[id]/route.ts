@@ -4,6 +4,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { TenantBrandUpdateSchema } from '@/lib/zod';
 import { r2Url } from '@/lib/r2-url';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 type OrderRow = {
@@ -67,12 +69,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
-  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return NextResponse.json(
+      { error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' },
+      { status: adminCheck.status },
+    );
+  }
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
   const db = supabaseAdmin as DbClient as any;
-  const tenantId = claims.tenant_id;
+  const tenantId = claims.tenant_id!;
 
   const { data: tenantBrand, error: brandError } = await db
     .schema('app')
@@ -87,7 +94,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!tenantBrand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
   if (tenantBrand.tenant_id !== tenantId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [detailV2Res, masterBrandRes, tenantProductsRes, catalogsItemsRes, auditRes] = await Promise.all([
+  const brandQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const brandQuarterStart = brandQuarterMeta.current_start.slice(0, 10);
+
+  const [detailV2Res, masterBrandRes, tenantProductsRes, catalogsItemsRes, auditRes, brandPeriodRes, brandNowRes] = await Promise.all([
     db.schema('app').rpc('get_seller_brand_detail_v2', {
       p_tenant_id: tenantId,
       p_tenant_brand_id: id,
@@ -119,6 +129,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(20),
+    db
+      .schema('app')
+      .from('metrics_brand_period_summary')
+      .select('invoice_value, invoice_count, invoice_units, invoice_product_count, invoice_buyer_count')
+      .eq('tenant_brand_id', id)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'quarter')
+      .eq('period_start', brandQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_brand_now_summary')
+      .select('member_product_count, selling_product_out_of_stock_count, low_stock_product_count')
+      .eq('tenant_brand_id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
   if (detailV2Res.error) {
@@ -126,14 +154,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to fetch brand detail' }, { status: 500 });
   }
 
+  if (brandPeriodRes.error || brandNowRes.error) {
+    console.error('[GET /api/tenant/brands/[id]] v4 metrics fetch failed', brandPeriodRes.error ?? brandNowRes.error);
+    return NextResponse.json({ error: 'Failed to fetch brand detail' }, { status: 500 });
+  }
+
+  const brandQuarter = (brandPeriodRes.data ?? null) as {
+    invoice_value: number;
+    invoice_count: number;
+    invoice_units: number;
+    invoice_product_count: number;
+    invoice_buyer_count: number;
+  } | null;
+  const brandNow = (brandNowRes.data ?? null) as {
+    member_product_count: number;
+    selling_product_out_of_stock_count: number;
+    low_stock_product_count: number;
+  } | null;
+
   const detailV2 = (detailV2Res.data ?? {}) as any;
-  const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
   const brandName = tenantBrand.display_name_override ?? masterBrandRes.data?.name ?? 'Brand';
   const brandLogoUrl = r2Url(tenantBrand.r2_logo_thumb_key) ?? tenantBrand.logo_url ?? masterBrandRes.data?.logo_url ?? null;
   const products = tenantProductsRes.data ?? [];
-  const productCount = Number(kpiByLabel.get('Products') ?? products.length ?? 0);
-  const invoicedSales90d = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
-  const units90d = Number(kpiByLabel.get('Units 90D') ?? 0);
+  const productCount = brandNow?.member_product_count ?? products.length ?? 0;
 
   const catalogs = (catalogsItemsRes.data ?? [])
     .filter((item: any) => products.some((product: any) => product.id === item.tenant_product_id))
@@ -169,16 +212,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       portfolio_share_pct: 0,
     },
     meta_strip_4: {
-      gmv_mtd: invoicedSales90d,
-      // get_seller_brand_detail_v2's kpi_grid only returns {Invoiced sales 90D, Units
-      // 90D, Products} — no buyer/prior-period/stock-risk data. product_count and
-      // units_90d below are real; active_buyers/total_buyers/low_stock_skus stay null
-      // (rendered as "Not available" — see doc lines 759-760) rather than fake zeros.
-      product_count: productCount,
-      units_90d: units90d,
-      active_buyers: null,
-      total_buyers: null,
-      low_stock_skus: null,
+      member_product_count: productCount,
+      selling_product_count_qtd: brandQuarter?.invoice_product_count ?? 0,
+      selling_units_qtd: brandQuarter?.invoice_units ?? 0,
+      sales_qtd_value: brandQuarter?.invoice_value ?? 0,
+      sales_qtd_count: brandQuarter?.invoice_count ?? 0,
+      selling_product_out_of_stock_count: brandNow?.selling_product_out_of_stock_count ?? 0,
+      low_stock_product_count: brandNow?.low_stock_product_count ?? 0,
       days_since_catalog: daysSinceCatalog,
       last_sent_date: latestCatalogDate,
     },
@@ -188,7 +228,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       name: brandName,
       master_brand: masterBrandRes.data,
       product_count: productCount,
-      units_90d: units90d,
+      units_90d: brandQuarter?.invoice_units ?? 0,
     },
     performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
     detail_v2: includePerformance ? detailV2 : null,
@@ -217,8 +257,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const claims = await getVerifiedClaims(request);
 
-  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return NextResponse.json(
+      { error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' },
+      { status: adminCheck.status },
+    );
+  }
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
   const body = await request.json().catch(() => null);

@@ -23,6 +23,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { CUSTOMERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
@@ -85,14 +86,7 @@ function formatKpiValue(card: CustomersLandingKpiCardV4): string {
 }
 
 function formatKpiSub(card: CustomersLandingKpiCardV4): string {
-  const parts: string[] = [];
-  if (card.supporting_text) parts.push(card.supporting_text);
-  if (card.document_count != null) {
-    parts.push(`${formatNumberValue(Number(card.document_count), 'COUNT')} invoices`);
-  } else if (card.entity_count != null && card.id === 'overdue_receivables') {
-    parts.push(`${formatNumberValue(Number(card.entity_count), 'COUNT')} customers`);
-  }
-  return parts.join(' · ') || '—';
+  return kpiSupportingText(CUSTOMERS_KPI_COPY, card);
 }
 
 /** Customer count for "Showing X of Y" when a KPI is selected — prefer entity_count (overdue is a ₹ value). */
@@ -459,7 +453,7 @@ function CustomersLandingContent({
         >
           <PageHeader
             eyebrow={isPaneOpen ? 'Customers' : 'Buyers'}
-            title={isPaneOpen && headerCard ? headerCard.label : 'Customers'}
+            title={isPaneOpen && headerCard ? kpiLabel(CUSTOMERS_KPI_COPY, headerCard) : 'Customers'}
             subtitle={
               isPaneOpen && headerCard
                 ? `${formatKpiValue(headerCard)} · ${formatKpiSub(headerCard)}`
@@ -484,7 +478,7 @@ function CustomersLandingContent({
           {isPaneOpen ? null : (
             <InsightStrip4
               tiles={cards.map((card): InsightTile => ({
-                label: card.label,
+                label: kpiLabel(CUSTOMERS_KPI_COPY, card),
                 value: formatKpiValue(card),
                 sub: formatKpiSub(card),
                 onClick: () => handleKpiClick(card),

@@ -99,24 +99,23 @@ export function WarehouseDetailPage({ id }: { id: string }) {
           showSupportingText
           tiles={[
             {
+              label: 'Sales · QTD',
+              value: formatNumberValue(data.meta_strip.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+            },
+            {
               label: 'Products in stock',
               value: `${data.meta_strip.tracked_skus}`,
-              sub: `${data.details.stockout_skus} stockout SKUs`,
+              sub: `${formatNumberValue(data.meta_strip.sellable_units, 'COUNT')} sellable units`,
             },
             {
-              label: 'Sellable units',
-              value: formatNumberValue(data.meta_strip.sellable_units, 'COUNT'),
-              sub: 'available to fulfill',
-            },
-            {
-              label: 'Stock risk SKUs',
-              value: `${data.meta_strip.low_stock_skus}`,
+              label: 'Low / out of stock',
+              value: `${data.meta_strip.low_stock_skus} / ${data.meta_strip.out_of_stock_skus}`,
               sub: 'reorder-triggered exposure',
             },
             {
-              label: 'Idle stock SKUs',
+              label: 'Idle stock',
               value: `${data.meta_strip.idle_stock_skus}`,
-              sub: 'no recent demand',
+              sub: `${formatNumberValue(data.meta_strip.idle_stock_units, 'COUNT')} units · no sales this quarter`,
             },
           ]}
         />

@@ -62,12 +62,10 @@ export interface LocationsLandingKpis {
 
 export interface LocationsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -257,16 +255,21 @@ export interface LocationDetailResponse {
   initials: string;
   is_active: boolean;
   associated_users: Array<{ email: string; user_name: string | null; user_id: string | null }>;
+  /** Quarter-to-date KPI strip, sourced from metrics_location_period_summary + metrics_location_now_summary. */
   meta_strip: {
-    gmv_mtd: number;
-    outstanding_dues: number;
+    sales_qtd_value: number;
+    sales_qtd_count: number;
+    sales_qtd_buyer_count: number;
+    demand_qtd_value: number;
+    demand_qtd_count: number;
+    demand_qtd_buyer_count: number;
     overdue_amount: number;
+    overdue_invoice_count: number;
     invoice_count: number;
     unpaid_invoice_count: number;
     total_invoice_count: number;
     open_estimate_count: number;
     total_estimate_count: number;
-    purchasing_customers_90d: number;
     open_primary_demand_kind: PrimaryDemandKind;
     open_primary_demand_value: number;
     open_primary_demand_count: number;

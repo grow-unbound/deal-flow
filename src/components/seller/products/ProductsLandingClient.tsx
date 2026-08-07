@@ -37,6 +37,7 @@ import {
   type TenantProduct,
 } from '@/hooks/useProducts';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { PRODUCTS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -221,9 +222,9 @@ function ProductsLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: ProductsLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(PRODUCTS_KPI_COPY, card),
     value: formatNumberValue(card.value ?? card.entity_count ?? 0, 'COUNT'),
-    sub: card.supporting_text ?? card.time_basis ?? '',
+    sub: kpiSupportingText(PRODUCTS_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0] ?? {

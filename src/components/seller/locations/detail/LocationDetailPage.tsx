@@ -123,21 +123,22 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
   const tiles = meta
     ? [
         {
-          label: 'Invoiced sales 90D',
-          value: formatNumberValue(meta.gmv_mtd, 'CURRENCY_THRESHOLD'),
+          label: 'Sales · QTD',
+          value: formatNumberValue(meta.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+          sub: `${meta.sales_qtd_count} invoices · ${meta.sales_qtd_buyer_count} customers`,
         },
         {
-          label: 'Overdue amount',
+          label: 'Demand · QTD',
+          value: formatNumberValue(meta.demand_qtd_value, 'CURRENCY_THRESHOLD'),
+          sub: `${meta.demand_qtd_count} docs · ${meta.demand_qtd_buyer_count} customers`,
+        },
+        {
+          label: 'Overdue',
           value: formatNumberValue(meta.overdue_amount, 'CURRENCY_THRESHOLD'),
           sub:
             meta.overdue_amount > 0 ? (
-              <span className="text-danger-600">across {meta.unpaid_invoice_count} invoices</span>
+              <span className="text-danger-600">across {meta.overdue_invoice_count} invoices</span>
             ) : undefined,
-        },
-        {
-          label: 'Customers who purchased here',
-          value: `${meta.purchasing_customers_90d}`,
-          sub: 'local market activity, last 90 days',
         },
         {
           label: demandKindLabel,

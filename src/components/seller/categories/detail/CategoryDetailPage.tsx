@@ -47,27 +47,24 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
-        // get_seller_category_detail_v2 has no prior-period comparison, so this used
-        // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
-        // supporting value (product count) instead — see doc line 962.
-        label: 'Invoiced sales 90D',
-        value: formatNumberValue(m.gmv_mtd, 'CURRENCY_THRESHOLD'),
-        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
+        label: 'Sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Units sold',
-        value: formatNumberValue(m.units_90d, 'COUNT'),
-        sub: `${m.sold_sku_count} products that sold`,
+        label: 'Selling products',
+        value: formatNumberValue(m.selling_product_count_qtd, 'COUNT'),
+        sub: `of ${m.total_product_count} products`,
       },
       {
-        label: 'Recent sellers low/out of stock',
-        value: formatNumberValue(m.oos_sku_count, 'COUNT'),
-        sub: `${m.low_stock_sku_count} more low-stock`,
+        label: 'Purchasing customers',
+        value: formatNumberValue(m.purchasing_customers_qtd, 'COUNT'),
+        sub: 'this quarter',
       },
       {
-        label: 'Products in category',
-        value: formatNumberValue(m.active_sku_count, 'COUNT'),
-        sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
+        label: 'Brands',
+        value: formatNumberValue(m.brand_count, 'COUNT'),
+        sub: `${m.total_product_count} products in category`,
       },
     ];
   }, [data]);

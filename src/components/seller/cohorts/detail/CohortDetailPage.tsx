@@ -58,26 +58,27 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    const m = data.meta_strip_4;
 
     return [
       {
-        label: 'Invoiced sales 90D',
-        value: formatNumberValue(data.meta_strip_4.gmv_mtd, 'CURRENCY_THRESHOLD'),
+        label: 'Active members',
+        value: `${m.active_member_count}/${m.member_count}`,
+        sub: 'purchased this quarter',
       },
       {
-        label: 'Members who purchased',
-        value: `${data.meta_strip_4.active_members}/${data.meta_strip_4.total_members}`,
-        sub: 'current members in the last 90 days',
+        label: 'Group sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Avg invoice value',
-        value: formatNumberValue(data.meta_strip_4.aov, 'CURRENCY_THRESHOLD'),
-        sub: 'across current members',
+        label: 'Group demand · QTD',
+        value: formatNumberValue(m.demand_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.demand_qtd_count} docs`,
       },
       {
-        label: 'Response rate',
-        value: `${formatNumberValue(data.meta_strip_4.conversion_pct, 'PERCENTAGE')}`,
-        sub: 'campaign to submitted demand',
+        label: 'Brands',
+        value: m.brands_count == null ? 'All brands' : `${m.brands_count} brands`,
       },
     ];
   }, [data]);
@@ -149,7 +150,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           <CohortBuyersTab
             cohortId={id}
             rules_summary={data.rules_summary}
-            activeMembersMtd={data.meta_strip_4.active_members}
+            activeMembersMtd={data.meta_strip_4.active_member_count}
             details_rules={data.details_rules}
           />
         ) : (

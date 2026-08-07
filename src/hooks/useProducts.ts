@@ -114,11 +114,18 @@ export interface ProductDetailResponse {
       status_label: string;
       status_tone: 'success' | 'warning' | 'danger' | 'neutral';
     };
+    /** Quarter-to-date KPI strip, sourced from metrics_product_period_summary + app.tenant_inventory. */
     meta_strip_4: {
-      units_mtd: number;
-      days_cover: number;
-      on_hand: number;
-      sell_through_pct: number;
+      sales_qtd_value: number;
+      sales_qtd_count: number;
+      purchased_buyers_qtd: number;
+      units_qtd: number;
+      demand_qtd_value: number;
+      demand_qtd_units: number;
+      demand_qtd_count: number;
+      total_stock: number;
+      /** total_stock / invoice_units this month — null when nothing sold this month. */
+      days_cover: number | null;
     };
     details: {
       id: string;
@@ -220,12 +227,10 @@ export interface TenantProductsResponse {
 
 export interface ProductsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }

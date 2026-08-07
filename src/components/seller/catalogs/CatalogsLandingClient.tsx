@@ -30,6 +30,7 @@ import {
   type CatalogsLandingResponse,
 } from '@/hooks/useCatalogs';
 import { formatNumberValue } from '@/lib/utils';
+import { CAMPAIGNS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -166,8 +167,8 @@ function CatalogsLandingContent({
   const estimatesEnabled = landingData?.channels?.estimates_enabled ?? true;
   const metricCards = metricsData?.cards ?? [];
   const formatMetricCard = (card: CatalogsLandingKpiCardV4) => {
-    const idLabel = `${card.id} ${card.label}`.toLowerCase();
-    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue')) {
+    const idLabel = card.id.toLowerCase();
+    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel === 'campaign_demand') {
       return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
     }
     if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
@@ -218,9 +219,9 @@ function CatalogsLandingContent({
 
         <InsightStrip4
           tiles={metricCards.slice(0, 4).map((card, index) => ({
-            label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+            label: card.time_basis ? `${kpiLabel(CAMPAIGNS_KPI_COPY, card)} · ${card.time_basis}` : kpiLabel(CAMPAIGNS_KPI_COPY, card),
             value: formatMetricCard(card),
-            sub: card.supporting_text ?? '',
+            sub: kpiSupportingText(CAMPAIGNS_KPI_COPY, card),
             tone: index === 2 ? 'accent' : undefined,
             selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
             onClick: () => {

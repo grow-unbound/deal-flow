@@ -26,6 +26,10 @@ function matchesStockFilter(stock: string | null, onHand: number, lowStock: bool
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const context = await getDetailSearchContext(request);
   if (context instanceof NextResponse) return context;
+  // Brands is a Growth-section module scoped to seller_admin only — getDetailSearchContext
+  // is shared across modules (e.g. Products) that do allow seller_assistant, so the
+  // brand-specific admin gate has to live here rather than in the shared helper.
+  if (context.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
   const stock = request.nextUrl.searchParams.get('stock') || null;
