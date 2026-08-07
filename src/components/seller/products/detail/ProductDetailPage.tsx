@@ -24,7 +24,12 @@ const ProductPerformanceTab = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'details' | 'performance' | 'pricing';
+const ProductStockTab = dynamic(
+  () => import('./ProductStockTab').then((m) => m.ProductStockTab),
+  { ssr: false, loading: () => <Skeleton className="mt-4 h-[28rem] w-full" /> },
+);
+
+type TabId = 'details' | 'performance' | 'pricing' | 'stock';
 
 function getInitials(name: string): string {
   return name
@@ -63,6 +68,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
       { id: 'details', label: 'Details' },
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'pricing', label: 'Pricelists' },
+      { id: 'stock', label: 'Stock' },
     ],
     [showPerformanceTab],
   );
@@ -210,6 +216,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
         )
       ) : null}
+      {activeTab === 'stock' ? <ProductStockTab productId={id} /> : null}
 
       {!isSellerAssistant ? (
         <AddProductSheet
