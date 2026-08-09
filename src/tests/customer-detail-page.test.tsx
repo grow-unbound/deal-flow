@@ -122,8 +122,16 @@ function setBootstrapDefaults() {
   dbResponses['app.cohort_members'] = [
     { data: [{ cohort_id: 'cohort-1', cohorts: { name: 'Premium', deleted_at: null } }] },
   ];
-  dbResponses['app.price_list_assignments'] = [{ data: { price_list_id: 'pl-1' } }];
+  dbResponses['app.price_list_assignments'] = [
+    { data: { price_list_id: 'pl-1' } },
+    { data: [{ price_list_id: 'pl-1' }, { price_list_id: 'pl-2' }] },
+  ];
   dbResponses['app.price_lists'] = [{ data: { id: 'pl-1', name: 'North Premium Pricing' } }];
+  dbResponses['app.invoices'] = [{ data: { total_amount: 84200, invoice_date: '2026-07-16', created_at: '2026-07-16T00:00:00Z' } }];
+  dbResponses['app.estimates'] = [{ data: null }];
+  dbResponses['app.orders'] = [{ data: null }];
+  dbResponses['app.buyer_app_activity'] = [{ data: null }];
+  dbResponses['rpc.metrics_v4_primary_demand_kind'] = [{ data: 'orders' }];
   dbResponses['app.metrics_buyer_now_summary'] = [
     {
       data: {
@@ -169,40 +177,6 @@ function setBootstrapDefaults() {
       ],
     },
   ];
-  dbResponses['rpc.get_seller_customer_detail_v2'] = [
-    {
-      data: {
-        performance_cards: [],
-        summary_metrics: {
-          invoiced_sales_90d: 250000,
-          invoice_count_90d: 4,
-          primary_demand_kind: 'orders',
-          primary_demand_value_90d: 188000,
-          primary_demand_order_count_90d: 3,
-          primary_demand_estimate_count_90d: 1,
-          receivable_amount: 64000,
-          credit_available: 36000,
-          credit_limit: 100000,
-          last_invoice_value: 84200,
-          last_invoice_date: '2026-07-16T00:00:00Z',
-          last_activity_at: '2026-07-16T00:00:00Z',
-          last_activity_kind: 'sale',
-        },
-        subtitle_meta: {
-          buyer_app_status_label: 'Buyer App enabled',
-          last_activity_at: '2026-07-16T00:00:00Z',
-          last_activity_kind: 'sale',
-          last_activity_days_ago: 3,
-        },
-        tab_badges: {
-          estimates_90d: 1,
-          orders_90d: 3,
-          invoices_90d: 4,
-          price_lists_assigned: 2,
-        },
-      },
-    },
-  ];
 }
 
 describe('customer detail bootstrap route', () => {
@@ -229,9 +203,6 @@ describe('customer detail bootstrap route', () => {
 
     expect(response.status).toBe(200);
     expect(body.tab_badges).toEqual({
-      estimates_90d: 1,
-      orders_90d: 3,
-      invoices_90d: 4,
       price_lists_assigned: 2,
     });
     expect(body.meta_strip_4.sales_qtd_value).toBe(250000);

@@ -114,6 +114,7 @@ export const SalesOrderDetailSchema = z.object({
   ui_status: SalesOrderUiStatusSchema,
   placed_at: z.string().nullable(),
   source: z.string().nullable(),
+  is_buyer_app: z.boolean(),
   catalog_name: z.string().nullable(),
   subtotal: z.number(),
   tax_amount: z.number(),

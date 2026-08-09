@@ -2,40 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { detailSearchResponse, getDetailSearchContext } from '@/lib/server/detail-tab-search-route';
 import { firstStoredImageUrl } from '@/lib/r2-url';
-
-function monthBounds() {
-  const now = new Date();
-  const currentStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const nextStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const previousStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  return {
-    currentStart: currentStart.toISOString().slice(0, 10),
-    nextStart: nextStart.toISOString().slice(0, 10),
-    previousStart: previousStart.toISOString().slice(0, 10),
-  };
-}
-
-function matchesStockFilter(stock: string | null, onHand: number, lowStock: boolean, outOfStock: boolean) {
-  if (!stock) return true;
-  if (stock === 'out_of_stock') return outOfStock || onHand <= 0;
-  if (stock === 'low_stock') return lowStock && onHand > 0;
-  if (stock === 'in_stock') return onHand > 0;
-  return true;
-}
+import {
+  daysCoverFromQtd,
+  deriveStockFlags,
+  fetchInventoryOnHandByProduct,
+  fetchProductPeriodSummaries,
+  getProductTabQuarterBounds,
+  isIdleStockSku,
+  loadLatestDemandByProduct,
+  trendPct,
+} from '@/lib/server/product-tab-metrics';
+import { matchesProductStockStatuses, parseProductStockStatusParams } from '@/lib/server/product-stock-status';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const context = await getDetailSearchContext(request);
   if (context instanceof NextResponse) return context;
-  // Brands is a Growth-section module scoped to seller_admin only — getDetailSearchContext
-  // is shared across modules (e.g. Products) that do allow seller_assistant, so the
-  // brand-specific admin gate has to live here rather than in the shared helper.
   if (context.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await params;
-  const stock = request.nextUrl.searchParams.get('stock') || null;
-  const sort = request.nextUrl.searchParams.get('sort') || 'gmv_desc';
+  const stockStatuses = parseProductStockStatusParams(request.nextUrl.searchParams);
+  const sort = request.nextUrl.searchParams.get('sort') || 'sales_qtd_desc';
   const q = context.query?.toLowerCase() ?? '';
-  const { currentStart, nextStart, previousStart } = monthBounds();
+  const quarterBounds = getProductTabQuarterBounds();
 
   const productsRes = await context.db
     .schema('app')
@@ -60,19 +48,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     image_urls: string[] | null;
   }>;
   const productIds = products.map((row) => row.id);
-  const categoryIds = Array.from(new Set(products.flatMap((row) => row.tenant_category_id ? [row.tenant_category_id] : [])));
-  const masterProductIds = Array.from(new Set(products.flatMap((row) => row.master_product_id ? [row.master_product_id] : [])));
+  const categoryIds = Array.from(new Set(products.flatMap((row) => (row.tenant_category_id ? [row.tenant_category_id] : []))));
+  const masterProductIds = Array.from(new Set(products.flatMap((row) => (row.master_product_id ? [row.master_product_id] : []))));
 
-  const [metricsRes, categoriesRes, masterProductsRes, invoiceItemsRes] = await Promise.all([
-    productIds.length > 0
-      ? context.db
-          .schema('app')
-          .from('metrics_product_snapshot')
-          .select('tenant_product_id, available, days_cover, low_stock, out_of_stock, invoice_value_90d')
-          .eq('tenant_id', context.tenantId)
-          .in('tenant_product_id', productIds)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
+  const [categoriesRes, masterProductsRes, inventoryByProduct, periodByProduct, latestDemandByProduct] = await Promise.all([
     categoryIds.length > 0
       ? context.db
           .schema('app')
@@ -88,28 +67,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .select('id, name')
           .in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
-    productIds.length > 0
-      ? context.db
-          .schema('app')
-          .from('invoice_items')
-          .select('tenant_product_id, qty, line_total, invoices!inner(tenant_id, invoice_date, created_at)')
-          .in('tenant_product_id', productIds)
-          .is('deleted_at', null)
-          .eq('invoices.tenant_id', context.tenantId)
-      : Promise.resolve({ data: [], error: null }),
+    fetchInventoryOnHandByProduct(context.db, productIds),
+    fetchProductPeriodSummaries(context.db, context.tenantId, productIds, quarterBounds),
+    loadLatestDemandByProduct(context.db, productIds),
   ]);
 
-  const extraError = metricsRes.error ?? categoriesRes.error ?? masterProductsRes.error ?? invoiceItemsRes.error;
+  const extraError = categoriesRes.error ?? masterProductsRes.error;
   if (extraError) {
     return NextResponse.json({ error: 'Failed to search brand products' }, { status: 500 });
   }
 
-  const metricsById = new Map(
-    ((metricsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [
-      String(row.tenant_product_id),
-      row,
-    ]),
-  );
   const categoryById = new Map(
     ((categoriesRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [String(row.id), String(row.name ?? 'Uncategorized')]),
   );
@@ -117,36 +84,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ((masterProductsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [String(row.id), String(row.name ?? '')]),
   );
 
-  const monthlyByProduct = new Map<string, { unitsMtd: number; gmvMtd: number; gmvPrev: number }>();
-  for (const row of (invoiceItemsRes.data ?? []) as Array<Record<string, unknown>>) {
-    const productId = String(row.tenant_product_id);
-    const invoice = (row.invoices as Record<string, unknown>) ?? {};
-    const invoiceDate = String(invoice.invoice_date ?? invoice.created_at ?? '');
-    if (!invoiceDate) continue;
-    const bucket = monthlyByProduct.get(productId) ?? { unitsMtd: 0, gmvMtd: 0, gmvPrev: 0 };
-    const qty = Number(row.qty ?? 0);
-    const lineTotal = Number(row.line_total ?? 0);
-    if (invoiceDate >= currentStart && invoiceDate < nextStart) {
-      bucket.unitsMtd += qty;
-      bucket.gmvMtd += lineTotal;
-    } else if (invoiceDate >= previousStart && invoiceDate < currentStart) {
-      bucket.gmvPrev += lineTotal;
-    }
-    monthlyByProduct.set(productId, bucket);
-  }
-
   const rows = products
     .map((product) => {
-      const metric = metricsById.get(product.id);
-      const monthly = monthlyByProduct.get(product.id) ?? { unitsMtd: 0, gmvMtd: 0, gmvPrev: 0 };
+      const period = periodByProduct.get(product.id) ?? { current: null, previous: null };
+      const onHand = inventoryByProduct.get(product.id) ?? 0;
+      const unitsQtd = period.current?.invoice_units ?? 0;
+      const salesQtd = period.current?.invoice_value ?? 0;
+      const previousUnits = period.previous?.invoice_units ?? 0;
+      const previousSales = period.previous?.invoice_value ?? 0;
+      const daysCover = daysCoverFromQtd(onHand, unitsQtd, quarterBounds.elapsedDays);
+      const { outOfStock, lowStock } = deriveStockFlags(onHand, daysCover);
+      const isIdle = isIdleStockSku(onHand, latestDemandByProduct.get(product.id) ?? null);
       const productName = product.name_override?.trim()
         || (product.master_product_id ? masterProductById.get(product.master_product_id) : '')
         || product.internal_sku
         || 'Product';
       const categoryName = product.tenant_category_id ? categoryById.get(product.tenant_category_id) ?? 'Uncategorized' : 'Uncategorized';
-      const onHand = Number(metric?.available ?? 0);
-      const gmvPrev = monthly.gmvPrev;
-      const growthPct = gmvPrev > 0 ? Number((((monthly.gmvMtd - gmvPrev) / gmvPrev) * 100).toFixed(1)) : 0;
+
       return {
         tenant_product_id: product.id,
         product_name: productName,
@@ -156,14 +110,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         base_selling_price: product.base_selling_price,
         cost_price: context.role === 'seller_admin' ? product.cost_price : null,
         on_hand: onHand,
-        days_cover: metric?.days_cover == null ? 0 : Number(metric.days_cover),
-        units_mtd: monthly.unitsMtd,
-        gmv_mtd: monthly.gmvMtd,
-        growth_pct: growthPct,
+        days_cover: daysCover ?? 0,
+        units_qtd: unitsQtd,
+        sales_qtd: salesQtd,
+        units_qtd_trend_pct: trendPct(unitsQtd, previousUnits),
+        sales_qtd_trend_pct: trendPct(salesQtd, previousSales),
         image_url: firstStoredImageUrl(product.image_urls),
-        sort_gmv_90d: Number(metric?.invoice_value_90d ?? monthly.gmvMtd),
-        low_stock: Boolean(metric?.low_stock),
-        out_of_stock: Boolean(metric?.out_of_stock),
+        low_stock: lowStock,
+        out_of_stock: outOfStock,
+        is_idle: isIdle,
       };
     })
     .filter((row) => {
@@ -171,14 +126,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const haystack = [row.product_name, row.sku, row.category_name].filter(Boolean).join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      return matchesStockFilter(stock, Number(row.on_hand ?? 0), row.low_stock, row.out_of_stock);
+      return matchesProductStockStatuses(stockStatuses, {
+        onHand: Number(row.on_hand ?? 0),
+        lowStock: row.low_stock,
+        outOfStock: row.out_of_stock,
+        isIdle: row.is_idle,
+      });
     });
 
   rows.sort((a, b) => {
-    if (sort === 'gmv_asc') return a.sort_gmv_90d - b.sort_gmv_90d || a.product_name.localeCompare(b.product_name);
-    if (sort === 'growth_desc') return b.growth_pct - a.growth_pct || a.product_name.localeCompare(b.product_name);
+    if (sort === 'sales_qtd_asc') return a.sales_qtd - b.sales_qtd || a.product_name.localeCompare(b.product_name);
+    if (sort === 'units_qtd_trend_desc') {
+      const aTrend = a.units_qtd_trend_pct ?? Number.NEGATIVE_INFINITY;
+      const bTrend = b.units_qtd_trend_pct ?? Number.NEGATIVE_INFINITY;
+      return bTrend - aTrend || a.product_name.localeCompare(b.product_name);
+    }
     if (sort === 'on_hand_asc') return Number(a.on_hand) - Number(b.on_hand) || a.product_name.localeCompare(b.product_name);
-    return b.sort_gmv_90d - a.sort_gmv_90d || a.product_name.localeCompare(b.product_name);
+    return b.sales_qtd - a.sales_qtd || a.product_name.localeCompare(b.product_name);
   });
 
   const total = rows.length;

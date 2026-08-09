@@ -236,6 +236,7 @@ export async function PATCH(request: NextRequest) {
       event: enabled ? 'buyer_app_access_enabled' : 'buyer_app_access_disabled',
       properties: {
         tenant_id: claims.tenant_id,
+        seller_id: claims.sub,
         requested_buyer_count: buyer_ids.length,
         updated_buyer_count: (updated ?? []).length,
         newly_enabled_count: newlyEnabledIds.length,

@@ -37,6 +37,7 @@ export interface CatalogLandingRow {
   name: string;
   initials: string;
   hue: CatalogAvatarHue;
+  hero_image_url?: string | null;
   status: {
     value: CampaignWorkflowStatus;
     raw_value?: RawCampaignStatus;
@@ -169,15 +170,6 @@ export interface CatalogDetailResponse {
     days_left: number;
     valid_until_label: string;
   };
-  composition: Array<{
-    tenant_product_id: string;
-    product: string;
-    brand: string;
-    mrp: number;
-    catalog_price: number;
-    override_price: number | null;
-    stock_status: 'In stock' | 'Low stock' | 'Out of stock' | string;
-  }>;
   products_summary: {
     filters: CatalogComposerFilterState;
     included_count: number;
@@ -185,82 +177,6 @@ export interface CatalogDetailResponse {
     in_stock_count: number;
     tag_overrides_count: number;
   };
-  products: Array<{
-    tenant_product_id: string;
-    product_name: string;
-    internal_sku: string;
-    brand_name: string;
-    catalog_gmv: number;
-    catalog_units_sold: number;
-    stock_label: string;
-    stock_tone: 'success' | 'warning' | 'neutral';
-    mrp: number | null;
-    base_selling_price: number | null;
-    units_mtd: number;
-    days_cover: number | null;
-    tag: CatalogComposerTag | null;
-    override_price: number | null;
-    catalog_order: number;
-  }>;
-  performance: {
-    channels?: {
-      estimates_enabled: boolean;
-      orders_enabled: boolean;
-    };
-    summary: {
-      orders: number;
-      conversions?: number;
-      demand_customers?: number;
-      order_count?: number;
-      estimate_count?: number;
-      gmv: number;
-      growth_pct: number;
-      aov: number;
-      views: number;
-      unique_viewers: number;
-      conversion_rate: number;
-      abandoners: number;
-      valid_until_label: string;
-      published_at_label: string;
-    };
-    funnel: {
-      unique_viewers: number;
-      conversions: number;
-      demand_customers?: number;
-      orders: number;
-      estimates?: number;
-      gmv: number;
-    };
-    daily: Array<{
-      date: string;
-      revenue: number;
-      conversion_rate: number;
-    }>;
-    cumulative_orders: Array<{
-      date: string;
-      orders_cumulative: number;
-      gmv_cumulative: number;
-    }>;
-    top_skus: Array<{
-      tenant_product_id: string;
-      product_name: string;
-      internal_sku: string;
-      gmv: number;
-      units: number;
-    }>;
-    per_buyer_activity: Array<{
-      buyer_id: string;
-      buyer_name: string;
-      city: string;
-      opened_status: 'Opened' | 'Converted' | 'Not yet';
-      orders: number;
-      gmv: number;
-      last_opened_at: string | null;
-      last_order_at: string | null;
-    }>;
-  };
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
   buyers: Array<{
     buyer_id: string;
     buyer_name: string;
@@ -402,6 +318,7 @@ export interface CatalogComposerBootstrapResponse {
 
 export interface CatalogComposerProductsResponse {
   products: CatalogComposerProduct[];
+  selected_products: CatalogComposerProduct[];
   total: number;
   nextCursor: string | null;
 }
@@ -411,6 +328,7 @@ export interface CatalogComposerProductFilters {
   brands?: string[];
   categories?: string[];
   availability?: CatalogComposerFilterState['availability'];
+  selectedIds?: string[];
   limit?: number;
   enabled?: boolean;
 }
@@ -542,8 +460,8 @@ export function useCatalogBuyers(id: string, filters: {
   query?: string;
   status?: string[];
   member?: string;
-  lastSale?: string[];
-  sales90d?: string[];
+  invoiceThisQuarter?: string[];
+  demandThisQuarter?: string[];
   buyerApp?: string[];
   sort?: string;
   page?: number;
@@ -557,8 +475,8 @@ export function useCatalogBuyers(id: string, filters: {
       if (filters.query?.trim()) params.set('q', filters.query.trim());
       if (filters.member) params.set('member', filters.member);
       filters.status?.forEach((value) => params.append('status', value));
-      filters.lastSale?.forEach((value) => params.append('last_sale', value));
-      filters.sales90d?.forEach((value) => params.append('sales_90d', value));
+      filters.invoiceThisQuarter?.forEach((value) => params.append('invoice_this_quarter', value));
+      filters.demandThisQuarter?.forEach((value) => params.append('demand_this_quarter', value));
       filters.buyerApp?.forEach((value) => params.append('buyer_app', value));
       if (filters.sort) params.set('sort', filters.sort);
       const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal });
@@ -606,11 +524,12 @@ export function useCatalogComposerProducts({
   brands = [],
   categories = [],
   availability = 'show_everything',
+  selectedIds = [],
   limit = 50,
   enabled = true,
 }: CatalogComposerProductFilters) {
   return useInfiniteQuery({
-    queryKey: ['catalog-composer-products', query?.trim() ?? '', brands, categories, availability, limit],
+    queryKey: ['catalog-composer-products', query?.trim() ?? '', brands, categories, availability, selectedIds, limit],
     queryFn: async ({ pageParam, signal }): Promise<CatalogComposerProductsResponse> => {
       const params = new URLSearchParams();
       if (query?.trim()) params.set('q', query.trim());
@@ -619,6 +538,7 @@ export function useCatalogComposerProducts({
       if (pageParam) params.set('cursor', pageParam as string);
       appendArrayParam(params, 'brand', brands);
       appendArrayParam(params, 'category', categories);
+      appendArrayParam(params, 'selected_id', selectedIds);
       const res = await apiFetch(`/api/tenant/catalogs/composer/products?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch campaign products');
       return res.json();
@@ -644,7 +564,7 @@ export function useCatalogComposerBuyerPicker({
   enabled = true,
 }: CatalogComposerBuyerPickerFilters & { enabled?: boolean }) {
   return useInfiniteQuery({
-    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, limit],
+    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, selectedIds, limit],
     queryFn: async ({ pageParam, signal }): Promise<CatalogComposerBuyerPickerResponse> => {
       const params = new URLSearchParams();
       if (query?.trim()) params.set('q', query.trim());
@@ -795,6 +715,7 @@ export function useSaveSimpleCatalog(catalogId?: string) {
             name: payload.name,
             initials: matchingExisting?.initials ?? campaignInitials(payload.name),
             hue: matchingExisting?.hue ?? 'ember',
+            hero_image_url: matchingExisting?.hero_image_url ?? payload.hero_image_url ?? null,
             status: matchingExisting?.status ?? {
               value: 'draft',
               label: 'Draft',
@@ -1309,29 +1230,8 @@ export function useAddCatalogProduct(id: string) {
 
       return res.json() as Promise<{ ok: true }>;
     },
-    onMutate: async (payload) => {
+    onMutate: async () => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id]]);
-
-      queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', id], (old) =>
-        old
-          ? {
-              ...old,
-              composition: [
-                {
-                  tenant_product_id: payload.tenant_product_id,
-                  product: 'Added product',
-                  brand: '—',
-                  mrp: 0,
-                  catalog_price: 0,
-                  override_price: payload.price_override ?? null,
-                  stock_status: 'In stock',
-                },
-                ...old.composition,
-              ],
-            }
-          : old,
-      );
-
       return { snapshots };
     },
     onError: (_err, _payload, context) => {
@@ -1364,18 +1264,8 @@ export function useRemoveCatalogProduct(id: string) {
 
       return res.json() as Promise<{ ok: true }>;
     },
-    onMutate: async (payload) => {
+    onMutate: async () => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id]]);
-
-      queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', id], (old) =>
-        old
-          ? {
-              ...old,
-              composition: old.composition.filter((item) => item.tenant_product_id !== payload.tenant_product_id),
-            }
-          : old,
-      );
-
       return { snapshots };
     },
     onError: (_err, _payload, context) => {

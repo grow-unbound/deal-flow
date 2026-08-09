@@ -8,6 +8,7 @@ import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 
 export interface MultiSelectOverlayItem {
   id: string;
+  value?: string;
   title: string;
   description?: string;
 }
@@ -22,6 +23,9 @@ export interface MultiSelectOverlayFieldProps {
   searchPlaceholder?: string;
   countNoun?: string;
 }
+
+const itemValue = (item: MultiSelectOverlayItem) => item.value ?? item.id;
+const itemSelected = (item: MultiSelectOverlayItem, values: string[]) => values.includes(item.id) || values.includes(itemValue(item));
 
 /**
  * Reusable stacked-overlay multi-select. Generalizes the brand-picker pattern that was
@@ -52,17 +56,20 @@ export function MultiSelectOverlayField({
   }, [items, search]);
 
   const selectedTitles = useMemo(
-    () => items.filter((item) => selectedIds.includes(item.id)).map((item) => item.title),
+    () => items.filter((item) => itemSelected(item, selectedIds)).map((item) => item.title),
     [items, selectedIds],
   );
   const draftSelectedTitles = useMemo(
-    () => items.filter((item) => draftSelectedIds.includes(item.id)).map((item) => item.title),
+    () => items.filter((item) => itemSelected(item, draftSelectedIds)).map((item) => item.title),
     [draftSelectedIds, items],
   );
 
-  const toggle = (id: string) => {
+  const toggle = (item: MultiSelectOverlayItem) => {
+    const value = itemValue(item);
     setDraftSelectedIds((current) =>
-      current.includes(id) ? current.filter((existing) => existing !== id) : [...current, id],
+      itemSelected(item, current)
+        ? current.filter((existing) => existing !== item.id && existing !== value)
+        : [...current, value],
     );
   };
 
@@ -112,13 +119,13 @@ export function MultiSelectOverlayField({
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {draftSelectedIds.map((id) => {
-              const item = items.find((entry) => entry.id === id);
+              const item = items.find((entry) => entry.id === id || itemValue(entry) === id);
               if (!item) return null;
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => toggle(id)}
+                  onClick={() => toggle(item)}
                   className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
                 >
                   <span>{item.title}</span>
@@ -147,12 +154,12 @@ export function MultiSelectOverlayField({
           </span>
         </button>
         {filteredItems.map((item) => {
-          const selected = draftSelectedIds.includes(item.id);
+          const selected = itemSelected(item, draftSelectedIds);
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => toggle(item.id)}
+              onClick={() => toggle(item)}
               className={[
                 'flex w-full items-center justify-between border-b border-cream-200 px-3 py-[10px] text-left transition-colors last:border-b-0',
                 selected ? 'border-ember-100 bg-ember-50' : 'hover:bg-cream-50',

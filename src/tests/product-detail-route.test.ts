@@ -139,13 +139,11 @@ describe('GET /api/tenant/products/[id]', () => {
     dbResponses['app.price_list_items'] = {
       data: [{ id: 'item-1', price_list_id: 'pl-1', price: 95 }],
     };
-    dbResponses['app.rpc.get_seller_price_list_landing_aggregates'] = {
-      data: {
-        row_metrics: [
-          { id: 'pl-1', avg_discount_pct: 12.5, avg_margin_pct: 22 },
-          { id: 'pl-2', avg_discount_pct: null, avg_margin_pct: null },
-        ],
-      },
+    dbResponses['app.metrics_price_lists_now_summary'] = {
+      data: [
+        { price_list_id: 'pl-1', avg_discount_pct: 12.5, avg_margin_pct: 22 },
+        { price_list_id: 'pl-2', avg_discount_pct: null, avg_margin_pct: null },
+      ],
     };
 
     const response = await GET(

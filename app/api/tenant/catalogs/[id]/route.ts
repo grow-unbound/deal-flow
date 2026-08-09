@@ -14,7 +14,6 @@ import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import {
-  aggregateCampaignViewsByCampaign,
   computeCampaignAttributedMetrics,
   computeCampaignViewMetrics,
   filterLineItemsByMembershipWindow,
@@ -22,7 +21,6 @@ import {
   groupLineItemsByParent,
   isEligibleCampaignEstimate,
   isEligibleCampaignOrder,
-  rollupSkuMetrics,
   type CampaignEstimateRow,
   type CampaignItemMembershipWindow,
   type CampaignOrderRow,
@@ -267,23 +265,6 @@ function formatDate(date: string | null): string {
   return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function dayKey(input: string): string {
-  return new Date(input).toISOString().slice(0, 10);
-}
-
-function canonicalOrderDay(order: { order_date?: string | null; placed_at?: string | null; created_at?: string | null }) {
-  if (order.order_date) return order.order_date;
-  if (order.placed_at) return dayKey(order.placed_at);
-  if (order.created_at) return dayKey(order.created_at);
-  return null;
-}
-
-function canonicalEstimateDay(estimate: { estimate_date?: string | null; created_at?: string | null }) {
-  if (estimate.estimate_date) return estimate.estimate_date;
-  if (estimate.created_at) return dayKey(estimate.created_at);
-  return null;
-}
-
 function extractBuyerCity(geography: unknown): string {
   if (!geography || typeof geography !== 'object') return 'Unknown';
   const city = (geography as { city?: unknown }).city;
@@ -292,7 +273,6 @@ function extractBuyerCity(geography: unknown): string {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -316,13 +296,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const campaignQuarterMeta = getSellerLandingPeriodMeta('quarter');
   const campaignQuarterStart = campaignQuarterMeta.current_start.slice(0, 10);
 
-  const [detailV2Res, catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload, campaignPeriodRes] = await Promise.all([
-    includePerformance
-      ? db.schema('app').rpc('get_seller_campaign_detail_v2', {
-          p_tenant_id: claims.tenant_id,
-          p_campaign_id: id,
-        })
-      : Promise.resolve({ data: null, error: null }),
+  const [catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload, campaignPeriodRes] = await Promise.all([
     db
       .schema('app')
       .from('campaigns')
@@ -371,10 +345,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   ]);
 
   if (catalogRes.error) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
-  if (detailV2Res.error || itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error || campaignPeriodRes.error) {
+  if (itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error || campaignPeriodRes.error) {
     return NextResponse.json({ error: 'Failed to load catalog detail' }, { status: 500 });
   }
-  const detailV2 = detailV2Res.data as any;
   const campaignQuarter = (campaignPeriodRes.data ?? null) as {
     viewed_buyer_count: number;
     view_count: number;
@@ -572,13 +545,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     includeOrders: createFlags.create_sales_orders,
     includeEstimates: createFlags.create_enquiries,
   };
-  const channelEligibleOrders = channelOptions.includeOrders ? eligibleOrders : [];
-  const channelEligibleEstimates = channelOptions.includeEstimates ? eligibleEstimates : [];
-  const channelValidOrderIds = new Set(channelEligibleOrders.map((order) => order.id));
-  const channelValidEstimateIds = new Set(channelEligibleEstimates.map((estimate) => estimate.id));
-
-  const viewMetrics = computeCampaignViewMetrics(campaignViewRows);
-  const viewMetricsByCampaign = aggregateCampaignViewsByCampaign(campaignViewRows);
   const conversionMetrics = computeCampaignAttributedMetrics(
     orders,
     estimates,
@@ -586,180 +552,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     estimateItemsByParent,
     channelOptions,
   );
-  const { uniqueViewers, totalViews, lastOpenedAtByBuyer } = viewMetrics;
-  const {
-    conversionCount,
-    orderCount,
-    estimateCount,
-    gmv,
-    convertingBuyerIds,
-    conversionsByBuyer,
-    spendByBuyer,
-    lastConversionAtByBuyer,
-    attributedGmvByOrderId,
-    attributedGmvByEstimateId,
-  } = conversionMetrics;
+  const { lastOpenedAtByBuyer } = computeCampaignViewMetrics(campaignViewRows);
+  const { conversionsByBuyer, spendByBuyer, lastConversionAtByBuyer } = conversionMetrics;
 
-  const skuMetricsByProduct = rollupSkuMetrics(
-    attributedOrderItems,
-    attributedEstimateItems,
-    channelValidOrderIds,
-    channelValidEstimateIds,
-  );
-
-  const dailyRollup = new Map<string, { revenue: number; conversions: number }>();
-
-  for (const order of channelEligibleOrders) {
-    const date = canonicalOrderDay(order);
-    if (!date) continue;
-    const amount = attributedGmvByOrderId.get(order.id) ?? 0;
-    if (amount <= 0) continue;
-    const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
-    current.revenue += amount;
-    current.conversions += 1;
-    dailyRollup.set(date, current);
-  }
-
-  for (const estimate of channelEligibleEstimates) {
-    const date = canonicalEstimateDay(estimate);
-    if (!date) continue;
-    const amount = attributedGmvByEstimateId.get(estimate.id) ?? 0;
-    if (amount <= 0) continue;
-    const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
-    current.revenue += amount;
-    current.conversions += 1;
-    dailyRollup.set(date, current);
-  }
-
-  const previousCatalogRes = await db
-    .schema('app')
-    .from('campaigns')
-    .select('id, valid_from')
-    .eq('tenant_id', claims.tenant_id)
-    .neq('id', id)
-    .eq('status', 'published')
-    .is('deleted_at', null)
-    .lt('valid_from', catalog.valid_from)
-    .order('valid_from', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let previousGmv = 0;
-  if (!previousCatalogRes.error && previousCatalogRes.data?.id) {
-    const prevCampaignId = previousCatalogRes.data.id;
-    const [prevItemsRes, prevOrdersRes, prevEstimatesRes] = await Promise.all([
-      // No deleted_at filter here either -- same point-in-time reasoning as the current period.
-      db
-        .schema('app')
-        .from('campaign_items')
-        .select('tenant_product_id, valid_from, deleted_at')
-        .eq('campaign_id', prevCampaignId),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, buyer_id, total_amount, placed_at, order_date, status, created_at')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('campaign_id', prevCampaignId)
-        .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('estimates')
-        .select('id, buyer_id, total_amount, status, converted_to_order_id, estimate_date, created_at')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('campaign_id', prevCampaignId)
-        .is('deleted_at', null),
-    ]);
-
-    const prevItemRows = (prevItemsRes.data ?? []) as Array<{
-      tenant_product_id: string;
-      valid_from: string;
-      deleted_at: string | null;
-    }>;
-    const prevWindowsByProduct = new Map<string, CampaignItemMembershipWindow[]>();
-    for (const row of prevItemRows) {
-      const windows = prevWindowsByProduct.get(row.tenant_product_id) ?? [];
-      windows.push({ valid_from: row.valid_from, deleted_at: row.deleted_at });
-      prevWindowsByProduct.set(row.tenant_product_id, windows);
-    }
-    const prevProductIds = Array.from(prevWindowsByProduct.keys());
-    const prevOrders = ((prevOrdersRes.data ?? []) as CampaignOrderRow[]) ?? [];
-    const prevEstimates = ((prevEstimatesRes.data ?? []) as CampaignEstimateRow[]) ?? [];
-    const prevEligibleOrders = prevOrders.filter(isEligibleCampaignOrder);
-    const prevEligibleEstimates = prevEstimates.filter(isEligibleCampaignEstimate);
-    const prevOrderIds = prevOrders.map((order) => order.id);
-
-    const [prevOrderItemsRes, prevEstimateItemsRes] = await Promise.all([
-      prevOrderIds.length && prevProductIds.length
-        ? db
-            .schema('app')
-            .from('order_items')
-            .select('order_id, tenant_product_id, qty, line_total, unit_price')
-            .in('order_id', prevOrderIds)
-            .in('tenant_product_id', prevProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-      prevEligibleEstimates.length && prevProductIds.length
-        ? db
-            .schema('app')
-            .from('estimate_items')
-            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
-            .in('estimate_id', prevEligibleEstimates.map((estimate) => estimate.id))
-            .in('tenant_product_id', prevProductIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (!prevOrderItemsRes.error && !prevEstimateItemsRes.error) {
-      const prevOrderDateByParentId = new Map(prevOrders.map((order) => [order.id, order.placed_at ?? order.created_at]));
-      const prevEstimateDateByParentId = new Map(prevEstimates.map((estimate) => [estimate.id, estimate.created_at]));
-      const prevRawOrderItems = ((prevOrderItemsRes.data ?? []) as Array<{
-        order_id: string;
-        tenant_product_id: string;
-        qty: number | null;
-        line_total: number | null;
-        unit_price: number | null;
-      }>).map((item) => ({ ...item, parent_id: item.order_id }));
-      const prevRawEstimateItems = ((prevEstimateItemsRes.data ?? []) as Array<{
-        estimate_id: string;
-        tenant_product_id: string;
-        qty: number | null;
-        line_total: number | null;
-        unit_price: number | null;
-      }>).map((item) => ({ ...item, parent_id: item.estimate_id }));
-
-      const prevMetrics = computeCampaignAttributedMetrics(
-        prevOrders,
-        prevEstimates,
-        groupLineItemsByParent(
-          filterLineItemsByMembershipWindow(prevRawOrderItems, prevOrderDateByParentId, prevWindowsByProduct),
-        ),
-        groupLineItemsByParent(
-          filterLineItemsByMembershipWindow(prevRawEstimateItems, prevEstimateDateByParentId, prevWindowsByProduct),
-        ),
-        channelOptions,
-      );
-      previousGmv = prevMetrics.gmv;
-    }
-  }
-
-  const growthPct = previousGmv > 0 ? Number((((gmv - previousGmv) / previousGmv) * 100).toFixed(1)) : gmv > 0 ? 100 : 0;
-  const demandCustomers = convertingBuyerIds.size;
-  const conversionRate = uniqueViewers > 0 ? Number(((demandCustomers / uniqueViewers) * 100).toFixed(1)) : 0;
-  const abandoners = Math.max(0, uniqueViewers - convertingBuyerIds.size);
-  const aov = conversionCount > 0 ? gmv / conversionCount : 0;
   const today = Date.now();
   const daysLeft = catalog.valid_to ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - today) / (1000 * 60 * 60 * 24))) : 0;
 
+  // Only the counts/metadata below feed header/products_summary — the composition/catalog_gmv
+  // breakdown used to live here too, but CatalogCompositionTab sources its rows from the
+  // already-paginated search_catalog_products_detail RPC instead, so it was dead weight.
   const products = catalogItems.map((item, index) => {
     const composerProduct = productMetaById.get(item.tenant_product_id);
-    const catalogMetrics = skuMetricsByProduct.get(item.tenant_product_id) ?? { units: 0, gmv: 0 };
     return {
       tenant_product_id: item.tenant_product_id,
       product_name: composerProduct?.display_name ?? 'Unknown product',
       internal_sku: composerProduct?.internal_sku ?? item.tenant_product_id,
       brand_name: composerProduct?.brand_name ?? 'Unknown brand',
-      catalog_gmv: catalogMetrics.gmv,
-      catalog_units_sold: catalogMetrics.units,
       stock_label: composerProduct?.stock_label ?? 'Out',
       stock_tone: composerProduct?.stock_tone ?? 'neutral',
       mrp: composerProduct?.mrp ?? null,
@@ -772,61 +580,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     };
   });
 
-  const composition = products.map((product) => ({
-    tenant_product_id: product.tenant_product_id,
-    product: product.product_name,
-    brand: product.brand_name,
-    mrp: Number(product.mrp ?? 0),
-    catalog_price: Number(product.base_selling_price ?? 0),
-    override_price: product.override_price,
-    stock_status: product.stock_tone === 'warning' ? 'Low stock' : product.stock_tone === 'success' ? 'In stock' : 'Out of stock',
-  }));
-
   const brandsCovered = new Set(products.map((item) => item.brand_name)).size;
-
-  const performanceDaily = Array.from(dailyRollup.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, value]) => ({
-      date,
-      revenue: value.revenue,
-      conversion_rate: uniqueViewers > 0 ? Number(((value.conversions / uniqueViewers) * 100).toFixed(2)) : 0,
-    }));
-
-  const cumulativeOrders = Array.from(dailyRollup.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .reduce<Array<{ date: string; orders_cumulative: number; gmv_cumulative: number }>>((acc, [date, value]) => {
-      const previous = acc[acc.length - 1] ?? { orders_cumulative: 0, gmv_cumulative: 0 };
-      acc.push({
-        date,
-        orders_cumulative: previous.orders_cumulative + value.conversions,
-        gmv_cumulative: previous.gmv_cumulative + value.revenue,
-      });
-      return acc;
-    }, []);
-
-  const safeCumulativeOrders =
-    cumulativeOrders.length > 0
-      ? cumulativeOrders
-      : [{ date: dayKey(catalog.valid_from), orders_cumulative: 0, gmv_cumulative: 0 }];
-
-  const topSkus = products
-    .map((product) => {
-      const metrics = skuMetricsByProduct.get(product.tenant_product_id) ?? { units: 0, gmv: 0 };
-      return {
-        tenant_product_id: product.tenant_product_id,
-        product_name: product.product_name,
-        internal_sku: product.internal_sku,
-        gmv: metrics.gmv,
-        units: metrics.units,
-        catalog_order: product.catalog_order,
-      };
-    })
-    .sort((a, b) => {
-      if (b.gmv !== a.gmv) return b.gmv - a.gmv;
-      if (b.units !== a.units) return b.units - a.units;
-      return a.catalog_order - b.catalog_order;
-    })
-    .map(({ catalog_order, ...row }) => row);
 
   const buyers = cohortMemberIds
     .map((buyerId) => {
@@ -861,8 +615,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     validTo: catalog.valid_to,
     hasUnpublishedChanges: Boolean(composerDraft),
   });
-  const currentCatalogViewMetrics = viewMetricsByCampaign.get(catalog.id) ?? viewMetrics;
-
   return NextResponse.json({
     header: {
       id: catalog.id,
@@ -913,7 +665,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       days_left: daysLeft,
       valid_until_label: formatDate(catalog.valid_to),
     },
-    composition,
     products_summary: {
       filters,
       included_count: products.length,
@@ -921,51 +672,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       in_stock_count: products.filter((product) => product.stock_tone === 'success').length,
       tag_overrides_count: Object.values(tagOverrides).filter(Boolean).length,
     },
-    products,
-    performance: {
-      channels: {
-        estimates_enabled: createFlags.create_enquiries,
-        orders_enabled: createFlags.create_sales_orders,
-      },
-      summary: {
-        orders: conversionCount,
-        conversions: conversionCount,
-        demand_customers: demandCustomers,
-        order_count: orderCount,
-        estimate_count: estimateCount,
-        gmv,
-        aov,
-        views: totalViews,
-        unique_viewers: currentCatalogViewMetrics.uniqueViewers,
-        conversion_rate: conversionRate,
-        abandoners,
-        valid_until_label: formatDate(catalog.valid_to),
-        published_at_label: formatDate(catalog.valid_from),
-      },
-      funnel: {
-        unique_viewers: uniqueViewers,
-        conversions: conversionCount,
-        demand_customers: demandCustomers,
-        orders: orderCount,
-        estimates: estimateCount,
-        gmv,
-      },
-      daily: performanceDaily,
-      cumulative_orders: safeCumulativeOrders,
-      top_skus: topSkus,
-      per_buyer_activity: buyers.map((buyer) => ({
-        buyer_id: buyer.buyer_id,
-        buyer_name: buyer.buyer_name,
-        city: buyer.city,
-        opened_status: buyer.opened_status,
-        orders: buyer.orders,
-        gmv: buyer.spend,
-        last_opened_at: buyer.last_opened_at,
-        last_order_at: buyer.last_order_at,
-      })),
-    },
-    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
     buyers: buyers.slice(0, 50),
     permissions: {
       can_extend_validity: claims.role === 'seller_admin',
@@ -1165,6 +871,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         properties: {
           campaign_id: id,
           tenant_id: claims.tenant_id,
+          seller_id: claims.sub,
           scope_type: globalCatalog.scope_type,
           share_token: shareToken,
           notify_whatsapp: publishInput.notify_whatsapp,
@@ -1573,10 +1280,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
   }
 
-  const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
-  const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
-  if (validProductIds.size !== tenantProductIds.length) {
-    return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+  if (!payload.is_dynamic) {
+    const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
+    const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+    if (validProductIds.size !== tenantProductIds.length) {
+      return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+    }
   }
 
   if (globalCatalog.status === 'published' && payload.save_mode === 'draft') {
@@ -1711,7 +1420,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Failed to refresh catalog items' }, { status: 500 });
   }
 
-  if (payload.items.length > 0) {
+  if (!payload.is_dynamic && payload.items.length > 0) {
     const { error: insertItemsError } = await db
       .schema('app')
       .from('campaign_items')

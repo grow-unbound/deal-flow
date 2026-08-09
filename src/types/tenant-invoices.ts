@@ -316,6 +316,7 @@ export interface InvoiceDetailResponse {
   payments: InvoicePaymentRecordDto[];
   whatsapp_send: WhatsAppDocumentSendState;
   whatsapp_reminder: WhatsAppInvoiceReminderState;
+  is_buyer_app: boolean;
 }
 
 export interface InvoiceDetailPayload {

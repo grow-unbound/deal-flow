@@ -61,6 +61,7 @@ export interface EstimateDetailPayload {
   activity: EstimateDetailActivity[];
   /** JWT role for UI gating (e.g. seller_note edit). */
   viewer_role: string | null;
+  is_buyer_app: boolean;
 }
 
 /** Merged GET `/api/tenant/estimates/[id]` payload (detail KPIs + composer document). */

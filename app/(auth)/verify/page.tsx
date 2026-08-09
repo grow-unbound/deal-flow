@@ -97,8 +97,11 @@ function VerifyOtpForm() {
         serverRedirect === '/buy/home' && next
           ? decodeURIComponent(next)
           : serverRedirect;
-      router.replace(destination);
-      router.refresh();
+      // Hard navigation, not router.replace()/router.refresh() — see
+      // /login/select-context/page.tsx for why: a soft navigation back to an
+      // already-visited pathname (e.g. re-logging in as a different account in the
+      // same tab) can serve a cached RSC payload for the PREVIOUS identity's data.
+      window.location.assign(destination);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {

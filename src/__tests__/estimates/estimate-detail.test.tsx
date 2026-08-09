@@ -130,6 +130,7 @@ function basePayload(overrides: Partial<TenantEstimateDetailResponse> = {}): Ten
     credit_available: 80_000,
     activity: [],
     viewer_role: ROLES.SELLER_ADMIN,
+    is_buyer_app: false,
     buyer_id: 'buyer-1',
     location_id: 'loc-1',
     location_name: 'Main warehouse',
@@ -203,6 +204,20 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
     expect(screen.queryByRole('button', { name: /convert to so/i })).toBeNull();
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
+  });
+
+  it('shows store origin mark by default and buyer-app mark when flagged', () => {
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
+    expect(screen.getByLabelText('Store Estimate')).toBeInTheDocument();
+
+    useEstimateDetailMock.mockReturnValue({
+      data: basePayload({ is_buyer_app: true }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
+    expect(screen.getByLabelText('Buyer App Estimate')).toBeInTheDocument();
   });
 
   it('sent shows Sent chip in title row', () => {

@@ -223,22 +223,14 @@ export interface CategoryDetailActivity {
 export interface CategoryDetailResponse {
   header: CategoryDetailHeader;
   meta_strip_4: CategoryDetailMetaStrip;
-  overview: CategoryDetailOverview;
-  products: CategoryDetailProduct[];
-  brands: CategoryDetailBrand[];
-  activity: CategoryDetailActivity[];
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
 }
 
-export function useCategoryDetail(id: string, options?: { includePerformance?: boolean }) {
+export function useCategoryDetail(id: string) {
   const { session } = useAuth();
   return useQuery<CategoryDetailResponse>({
-    queryKey: ['category-detail', id, options?.includePerformance ?? true],
+    queryKey: ['category-detail', id],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set('include_performance', String(options?.includePerformance ?? true));
-      const res = await apiFetch(`/api/tenant/categories/${id}?${params.toString()}`);
+      const res = await apiFetch(`/api/tenant/categories/${id}`);
       if (!res.ok) throw new Error('Failed to fetch category detail');
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);

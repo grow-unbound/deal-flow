@@ -81,7 +81,7 @@ export async function loadEstimateDocument(
     .schema('app')
     .from('estimates')
     .select(
-    'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, estimate_date, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
+    'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, estimate_date, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by, source, is_buyer_app_estimate',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -272,6 +272,7 @@ export async function loadEstimateDocument(
 
   const status = normalizeEstimateStatus(String(estimate.status ?? 'draft'));
   const statusMeta = statusPresentation(status);
+  const isBuyerApp = Boolean(estimate.is_buyer_app_estimate) || estimate.source === 'buyer_app';
   const activity: EstimateDetailActivity[] = ((auditRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.id),
     at: String(row.ts),
@@ -315,6 +316,7 @@ export async function loadEstimateDocument(
     credit_available: creditAvailable,
     activity,
     viewer_role: viewerRole,
+    is_buyer_app: isBuyerApp,
   };
 
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
@@ -367,6 +369,7 @@ export async function loadEstimateDocument(
     voided_at: (estimate.voided_at as string | null | undefined) ?? null,
     converted_to_order_id: (estimate.converted_to_order_id as string | null | undefined) ?? null,
     linked_order_number: linkedOrderNumber,
+    is_buyer_app: isBuyerApp,
   };
 
   return { detailPayload, composerPayload };

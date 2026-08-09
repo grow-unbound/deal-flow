@@ -6,6 +6,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +139,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         console.error('[PATCH invoice pay] payments insert', payInsertErr);
       }
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'invoice_paid',
+      properties: {
+        ...withTenantSellerIds(claims),
+        invoice_id: id,
+        amount: payAmount,
+        payment_method: parsed.data.payment_method,
+        next_status: nextStatus,
+      },
+    });
 
     return NextResponse.json({ data: { id, amount_paid: nextPaid, outstanding_balance: nextOutstanding, status: nextStatus } });
   } catch (e) {

@@ -11,6 +11,9 @@ export interface LoginOtpContext {
   tenant_whatsapp_display_name: string | null;
   role: string;
   buyer_id: string | null;
+  // Disambiguates accounts that share a phone number but belong to different
+  // auth users (currently only populated for seller candidates).
+  email?: string | null;
 }
 
 export interface LoginOtpCandidate extends LoginOtpContext {
@@ -20,7 +23,6 @@ export interface LoginOtpCandidate extends LoginOtpContext {
   phone: string;
   business_name: string;
   contact_name: string | null;
-  email?: string | null;
   full_name?: string | null;
   membership_id?: string | null;
 }
@@ -134,3 +136,23 @@ export const buyerOtpStore = {
     }
   },
 };
+
+const VERIFIED_RECORD_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Writes a short-lived `verified` handoff record for the multi-account picker
+ * and returns its ref_id (or null on failure). Shared by the OTP verify route
+ * (candidates.length > 1) and the authenticated switch-account route — both
+ * hand the resulting ref_id to the same /login/select-context picker.
+ */
+export async function writeVerifiedCandidatesRecord(
+  phone: string,
+  candidates: LoginOtpCandidate[],
+): Promise<string | null> {
+  return buyerOtpStore.insert({
+    kind: 'verified',
+    phone,
+    expiresAt: Date.now() + VERIFIED_RECORD_TTL_MS,
+    candidates,
+  });
+}

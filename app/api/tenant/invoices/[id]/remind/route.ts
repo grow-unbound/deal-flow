@@ -5,6 +5,8 @@ import { getFlag } from '@/lib/flags';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { sendInvoiceReminderWhatsApp } from '@/lib/server/whatsapp-document-send';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +85,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         invoice_number: inv.invoice_number,
       },
       ts: now,
+    });
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'invoice_reminder_sent',
+      properties: { ...withTenantSellerIds(claims), invoice_id: id },
     });
 
     return NextResponse.json({ data: { id, last_reminder_at: now } });

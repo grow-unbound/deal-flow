@@ -163,6 +163,7 @@ function baseDocument(overrides: Partial<EstimateComposerDocument> = {}): Estima
     voided_at: null,
     converted_to_order_id: null,
     linked_order_number: null,
+    is_buyer_app: false,
   };
   return { ...base, ...overrides, estimate_version: overrides.estimate_version ?? base.estimate_version };
 }

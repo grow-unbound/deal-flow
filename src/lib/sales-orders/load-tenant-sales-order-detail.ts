@@ -68,6 +68,7 @@ export async function loadTenantSalesOrderDetail(
         'order_number',
         'status',
         'source',
+        'is_buyer_app_order',
         'campaign_id',
         'placed_at',
         'subtotal',
@@ -431,6 +432,8 @@ export async function loadTenantSalesOrderDetail(
     ? String(order.expected_delivery).slice(0, 10)
     : null;
 
+  const isBuyerApp = Boolean(order.is_buyer_app_order) || order.source === 'buyer_app';
+
   const raw: SalesOrderDetail = {
     id: String(order.id),
     order_number: String(order.order_number ?? order.id),
@@ -440,6 +443,7 @@ export async function loadTenantSalesOrderDetail(
     ui_status: uiStatus,
     placed_at: placedAt,
     source: (order.source as string | null) ?? null,
+    is_buyer_app: isBuyerApp,
     catalog_name: catalogName,
     subtotal: Number(order.subtotal ?? 0),
     tax_amount: Number(order.tax_amount ?? 0),

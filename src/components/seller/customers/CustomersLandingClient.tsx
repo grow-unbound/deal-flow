@@ -608,17 +608,15 @@ function CustomersLandingContent({
                       : null,
                   ),
                   trailing:
-                    buyer.receivable_amount > 0
-                      ? formatNumberValue(buyer.receivable_amount, 'CURRENCY_THRESHOLD')
-                      : showInvoices
-                        ? formatNumberValue(buyer.invoice_value, 'CURRENCY_THRESHOLD')
-                        : showOrders
-                          ? formatNumberValue(buyer.order_value, 'CURRENCY_THRESHOLD')
-                          : showEstimates
-                            ? formatNumberValue(buyer.estimate_value, 'CURRENCY_THRESHOLD')
-                            : showBuyerApp
-                              ? formatNumberValue(buyer.app_demand_value, 'CURRENCY_THRESHOLD')
-                              : formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD'),
+                    showInvoices
+                      ? formatNumberValue(buyer.invoice_value, 'CURRENCY_THRESHOLD')
+                      : showOrders
+                        ? formatNumberValue(buyer.order_value, 'CURRENCY_THRESHOLD')
+                        : showEstimates
+                          ? formatNumberValue(buyer.estimate_value, 'CURRENCY_THRESHOLD')
+                          : showBuyerApp
+                            ? formatNumberValue(buyer.app_demand_value, 'CURRENCY_THRESHOLD')
+                            : null,
                   selected: buyer.id === openId,
                 }))}
               >

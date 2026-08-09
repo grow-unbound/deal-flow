@@ -271,9 +271,9 @@ export interface BrandDetailResponse {
       buyer_reach: string;
     };
   };
-  buyers_total: number;
-  buyers: BrandDetailBuyer[];
-  catalogs: BrandDetailCatalog[];
+  buyers_total?: number;
+  buyers?: BrandDetailBuyer[];
+  catalogs?: BrandDetailCatalog[];
   activity: BrandDetailActivity[];
   performance_cards?: unknown[];
   detail_v2?: unknown;

@@ -5,6 +5,7 @@ import { FEATURE_FLAGS, ROLES } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         'intra_state_tax',
         'notes',
         'sent_channel',
+        'is_buyer_app_invoice',
         'created_at',
         'updated_at',
       ].join(', '),
@@ -458,6 +460,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     payments,
     whatsapp_send: whatsappSend,
     whatsapp_reminder: whatsappReminder,
+    is_buyer_app: Boolean(inv.is_buyer_app_invoice),
   };
 
   return NextResponse.json(payload, { headers: SELLER_CACHE_PERSONAL });
@@ -601,6 +604,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!next || next === 'forbidden') {
       return NextResponse.json({ error: 'Failed to reload invoice' }, { status: 500 });
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'invoice_updated',
+      properties: { ...withTenantSellerIds(claims), invoice_id: id, item_count: items.length },
+    });
+
     return NextResponse.json({ data: next.composerPayload });
   }
 

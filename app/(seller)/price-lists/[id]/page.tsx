@@ -63,12 +63,12 @@ export default function PriceListDetailPage() {
   const priceList = data?.price_list;
 
   const tabs = useMemo(() => {
-    const itemsCount = priceList?.items?.length ?? 0;
+    const itemsCount = priceList?.stats?.products_covered ?? 0;
     return [
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
     ];
-  }, [isSellerAdmin, priceList?.items?.length, showPerformanceTab]);
+  }, [isSellerAdmin, priceList?.stats?.products_covered, showPerformanceTab]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -80,7 +80,7 @@ export default function PriceListDetailPage() {
 
   const subtitle = priceList
     ? [
-        `${priceList.items.length} products`,
+        `${priceList.stats?.products_covered ?? 0} products`,
         `Valid ${formatDate(priceList.valid_from)} → ${formatDate(priceList.valid_to)}`,
       ]
     : ['—', '—'];
@@ -134,12 +134,12 @@ export default function PriceListDetailPage() {
               tiles={[
                 {
                   label: 'Custom priced products',
-                  value: priceList.stats?.products_covered ?? priceList.items.length,
+                  value: priceList.stats?.products_covered ?? 0,
                   sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                 },
                 {
                   label: 'Customers assigned',
-                  value: priceList.stats?.assigned_buyer_count ?? priceList.assignments.length,
+                  value: priceList.stats?.assigned_buyer_count ?? 0,
                   sub: `${priceList.stats?.assigned_cohort_count ?? 0} customer groups`,
                 },
                 {
@@ -165,14 +165,14 @@ export default function PriceListDetailPage() {
           <DetailTabs tabs={tabs} active={tabActive} onChange={setActiveTab} />
 
           {showPerformanceTab && tabActive === 'performance' ? (
-            priceList ? <PriceListPerformanceTab priceList={priceList} performanceCards={priceList.performance_cards} /> : <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
+            priceList ? <PriceListPerformanceTab priceList={priceList} /> : <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
           ) : null}
           {tabActive === 'products' ? (
             priceList ? (
               <PriceListProductsTab
                 priceListId={priceListId}
                 filters={priceList.filters}
-                items={priceList.items}
+                productsCovered={priceList.stats?.products_covered ?? 0}
                 brandsCovered={priceList.stats?.brands_covered ?? 0}
                 canViewFinancials={isSellerAdmin}
                 pricingStrategy={priceList.pricing_strategy}

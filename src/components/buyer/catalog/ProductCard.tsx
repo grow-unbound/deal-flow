@@ -16,6 +16,7 @@ import {
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
+import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
 import {
@@ -69,6 +70,7 @@ export function ProductCard({
 }: ProductCardProps): React.ReactNode {
   const isCompact = variant === 'compact';
   const posthog = usePostHog();
+  const analyticsIds = useBuyerAnalyticsIds();
   const queryClient = useQueryClient();
   const prefetchOnPress = usePointerPrefetch();
   const delivery = useBuyerDeliveryOptional();
@@ -119,6 +121,7 @@ export function ProductCard({
     });
     if (recoCtx) {
       posthog?.capture('reco_add_to_cart', {
+        ...analyticsIds,
         widget: recoCtx.widget,
         product_id: item.tenant_product_id,
         source_product_id: recoCtx.sourceProductId ?? null,

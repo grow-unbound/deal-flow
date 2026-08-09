@@ -5,9 +5,15 @@ import { FileText, Package, Receipt } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { FilterBar, type FilterBarGroup } from '@/components/seller/layout';
-import { TransactionTable, type TransactionTableKind, type TransactionTableRow } from '@/components/seller/transactional';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import {
+  TransactionTable,
+  transactionTableColumnCount,
+  transactionTableMinWidth,
+  type TransactionTableKind,
+  type TransactionTableRow,
+} from '@/components/seller/transactional';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useLocationDocuments } from '@/hooks/useLocations';
 import type { LocationDocumentRow } from '@/hooks/useLocations';
@@ -118,9 +124,9 @@ function toMappedRow(kind: TransactionTableKind, routeBase: string, row: Locatio
     id: row.id,
     href: `${routeBase}/${row.id}`,
     document_number: row.number ?? row.id.slice(0, 8),
+    is_buyer_app: row.is_buyer_app,
     source_kind: row.source_kind,
-    source_label: sourceLabel(kind, row),
-    source_detail: row.source_label ?? null,
+    source_label: row.source_kind === 'converted' ? row.source_label : null,
     buyer_name: row.buyer_name ?? '—',
     buyer_place_of_supply: row.place_of_supply ?? null,
     location_name: null,
@@ -321,10 +327,12 @@ export function LocationOrdersTab({
     [rows, kind, routeBase],
   );
 
-  const loading = documentsQuery.isLoading && !documentsQuery.data;
+  const tableMinWidth = transactionTableMinWidth(kind, showCampaignColumn);
+  const tableColumnCount = transactionTableColumnCount(kind, showCampaignColumn);
+  const showTableSkeleton = documentsQuery.isPending && tableRows.length === 0;
 
   return (
-    <section className="mt-5">
+    <section className="mt-5 min-w-0 max-w-full">
       <FilterBar
         count={`Showing ${tableRows.length} of ${documentsQuery.data?.total ?? 0}${(documentsQuery.isFetching || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder={searchPlaceholder(kind)}
@@ -339,33 +347,24 @@ export function LocationOrdersTab({
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
-      <div className="overflow-x-auto">
-        {loading ? (
-          <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-            <div className="h-[420px] animate-pulse bg-cream-50" />
-          </div>
-        ) : tableRows.length === 0 ? (
-          <EmptyState
-            icon={kind === 'estimate' ? <FileText size={28} strokeWidth={1.5} /> : kind === 'invoice' ? <Receipt size={28} strokeWidth={1.5} /> : <Package size={28} strokeWidth={1.5} />}
-            heading={`No matching ${kind === 'order' ? 'sales orders' : `${kind}s`}`}
-            description="Try a different search or filter combination."
-          />
-        ) : (
-          <TransactionTable
-            kind={kind}
-            showCampaignColumn={showCampaignColumn}
-            tableMinWidth={showCampaignColumn ? (kind === 'invoice' ? 1480 : kind === 'estimate' ? 1450 : 1380) : kind === 'invoice' ? 1260 : kind === 'estimate' ? 1230 : 1180}
-            rows={tableRows}
-            onRowClick={(row) => router.push(row.href)}
-          />
-        )}
-      </div>
-
-      {documentsQuery.isFetching && documentsQuery.data ? (
-        <div className="mt-4 flex justify-center">
-          <Skeleton className="h-8 w-40 rounded-full" />
-        </div>
-      ) : null}
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={tableColumnCount} tableMinWidth={tableMinWidth} />
+      ) : tableRows.length === 0 ? (
+        <EmptyState
+          icon={kind === 'estimate' ? <FileText size={28} strokeWidth={1.5} /> : kind === 'invoice' ? <Receipt size={28} strokeWidth={1.5} /> : <Package size={28} strokeWidth={1.5} />}
+          heading={`No matching ${kind === 'order' ? 'sales orders' : `${kind}s`}`}
+          description="Try a different search or filter combination."
+        />
+      ) : (
+        <TransactionTable
+          kind={kind}
+          showCampaignColumn={showCampaignColumn}
+          horizontalScrollOnly
+          tableMinWidth={tableMinWidth}
+          rows={tableRows}
+          onRowClick={(row) => router.push(row.href)}
+        />
+      )}
     </section>
   );
 }

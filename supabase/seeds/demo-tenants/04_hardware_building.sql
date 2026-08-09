@@ -82,7 +82,7 @@ BEGIN
 
   INSERT INTO app.tenant_products (tenant_id, tenant_brand_id, master_product_id, internal_sku, mrp, base_selling_price, cost_price, is_active)
   SELECT v_tenant_id, tb.id, p.id, p.master_sku, v.mrp, v.base_rate,
-         round(v.base_rate * (1 - (0.05 + random() * 0.15)), 2), true
+         round((v.base_rate * (1 - (0.05 + random() * 0.15)))::numeric, 2), true
   FROM (VALUES
     ('HRD-ASP-TRC20',  3200, 2850),
     ('HRD-ASP-APX10',  2900, 2580),

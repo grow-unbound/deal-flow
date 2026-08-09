@@ -180,8 +180,6 @@ export interface ProductDetailResponse {
       cost_price: number | null;
       margin_pct: number | null;
     };
-    performance_cards?: unknown[];
-    detail_v2?: unknown;
     pricing: Array<{
       item_id: string | null;
       price_list_id: string;

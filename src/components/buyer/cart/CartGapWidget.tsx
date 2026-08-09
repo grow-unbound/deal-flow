@@ -8,6 +8,7 @@ import { ProductCard } from '@/components/buyer/catalog/ProductCard';
 import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
+import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import type { CartBundle } from '@/hooks/useCartBundles';
 import { BUYER_PRODUCT_CAROUSEL_COMPACT_WIDTH_CLASS } from '@/lib/buyer-lookbook';
 import {
@@ -32,6 +33,7 @@ const CART_GAP_CAROUSEL_MIN_COUNT = 5;
 
 export function CartGapWidget({ bundles, items, tenantId }: CartGapWidgetProps) {
   const posthog = usePostHog();
+  const { buyer_id } = useBuyerAnalyticsIds();
   const recommendations = buildCartGapRecommendations(bundles, items);
   const shownRef = React.useRef(false);
   const useCarousel = recommendations.length >= CART_GAP_CAROUSEL_MIN_COUNT;
@@ -42,10 +44,11 @@ export function CartGapWidget({ bundles, items, tenantId }: CartGapWidgetProps) 
     posthog?.capture('reco_widget_shown', {
       widget: 'cart_gap',
       tenant_id: tenantId,
+      buyer_id,
       result_count: recommendations.length,
       layout: useCarousel ? 'carousel' : 'list',
     });
-  }, [posthog, recommendations.length, tenantId, useCarousel]);
+  }, [posthog, recommendations.length, tenantId, buyer_id, useCarousel]);
 
   if (recommendations.length === 0) return null;
 
@@ -114,6 +117,7 @@ function CartGapListItem({
   showDivider: boolean;
 }) {
   const posthog = usePostHog();
+  const { buyer_id } = useBuyerAnalyticsIds();
   const { addItem } = useCart();
   const { product, bundleName, tenantCategoryId, slotLabel } = recommendation;
   const imageUrl = getBuyerProductPrimaryImageUrl(product);
@@ -149,12 +153,15 @@ function CartGapListItem({
     posthog?.capture('reco_add_to_cart', {
       widget: 'cart_gap',
       product_id: product.tenant_product_id,
+      tenant_id: tenantId,
+      buyer_id,
     });
     posthog?.capture('reco_cart_gap_add', {
       bundle_name: bundleName,
       slot_category: slotCategory,
       added_product_id: product.tenant_product_id,
       tenant_id: tenantId,
+      buyer_id,
     });
   }
 

@@ -153,6 +153,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     || data.header.status_value === 'published_dirty'
     || data.header.status_value === 'scheduled'
     || data.header.status_value === 'expired';
+  const editValidTo = data.composer?.valid_to ?? data.header.valid_until_iso ?? null;
   const activeMutationPending =
     publishMutation.isPending
     || publishUpdatesMutation.isPending
@@ -346,7 +347,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       ) : null}
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        <CatalogPerformanceTab performanceCards={data.performance_cards} />
+        <CatalogPerformanceTab />
       ) : null}
       {activeTab === 'buyers' ? (
         <CatalogBuyersTab
@@ -369,9 +370,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
           name: data.header.name,
           description: data.composer?.description ?? '',
           valid_from: new Date(data.composer?.valid_from ?? new Date().toISOString()),
-          valid_to: data.composer?.valid_to ? new Date(data.composer.valid_to) : undefined,
+          valid_to: editValidTo ? new Date(editValidTo) : undefined,
           buyer_note: data.composer?.message ?? '',
-          hero_image_url: '',
+          hero_image_url: data.header.hero_image_url ?? '',
           target_mode: data.composer?.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
           target_cohort_id: data.composer?.scope_type === 'cohort' ? (data.composer.cohort_id ?? null) : null,
           pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',

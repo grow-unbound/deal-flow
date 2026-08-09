@@ -155,12 +155,17 @@ async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<stri
 export async function resolveSellerAuthPhone(userId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
 
+  // A user can belong to multiple tenants (multi-tenant seller_admin) — .maybeSingle()
+  // errors on >1 rows. Phone is the same real person regardless of which tenant_users
+  // row we read it off, so just take one deterministically.
   const { data } = await supabaseAdmin
     .schema('app')
     .from('tenant_users')
     .select('id, phone')
     .eq('user_id', userId)
     .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   const row = data as { id: string; phone: string | null } | null;
@@ -724,6 +729,7 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     tenant_slug: string;
     role: string;
     location_ids: string[] | null;
+    email: string | null;
   }>).map((row) => ({
     kind: 'seller' as const,
     tenant_id: row.tenant_id,
@@ -739,6 +745,7 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     phone: normalizedPhone,
     business_name: '',
     contact_name: null,
+    email: row.email,
   }));
 }
 

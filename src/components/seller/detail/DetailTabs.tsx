@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 
 import { getAnalyticsRouteInfo } from '@/lib/analytics-route';
+import { useSellerAnalyticsIds } from '@/lib/analytics-identity';
 import { cn } from '@/lib/utils';
 
 interface DetailTab {
@@ -32,6 +33,7 @@ function getSellerDetailEntityType(pathname: string) {
 export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
   const posthog = usePostHog();
   const pathname = usePathname();
+  const analyticsIds = useSellerAnalyticsIds();
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === active) ?? null, [active, tabs]);
   const routeInfo = useMemo(() => getAnalyticsRouteInfo(pathname), [pathname]);
   const entityType = useMemo(() => getSellerDetailEntityType(pathname), [pathname]);
@@ -45,11 +47,12 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
 
     posthog?.capture('seller_detail_tab_viewed', {
       ...routeInfo,
+      ...analyticsIds,
       entity_type: entityType,
       tab_id: activeTab.id,
       tab_label: activeTab.label,
     });
-  }, [activeTab, entityType, pathname, posthog, routeInfo]);
+  }, [activeTab, analyticsIds, entityType, pathname, posthog, routeInfo]);
 
   return (
     <div
@@ -69,6 +72,7 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
             onClick={() => {
               posthog?.capture('seller_detail_tab_clicked', {
                 ...routeInfo,
+                ...analyticsIds,
                 entity_type: entityType,
                 tab_id: tab.id,
                 tab_label: tab.label,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
@@ -15,10 +15,10 @@ import {
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
 import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
-import type { PriceListItem } from '@/hooks/usePriceLists';
 import { useAddPriceListItems, useRemovePriceListItems, useSaveSimplePriceList, useUpdatePriceListItem } from '@/hooks/usePriceLists';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, usePriceListProductsDetail } from '@/hooks/useDetailTabSearch';
+import { useDetailTableInfiniteScroll } from '@/hooks/useDetailTableInfiniteScroll';
 import type { MembershipMode, PriceListFilterState, PriceListPricingStrategy, ProductMembershipRules } from '@/lib/zod';
 import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 
@@ -32,7 +32,7 @@ type SortOption =
 export interface PriceListProductsTabProps {
   priceListId: string;
   filters: PriceListFilterState | null | undefined;
-  items: PriceListItem[];
+  productsCovered: number;
   brandsCovered: number;
   canViewFinancials?: boolean;
   pricingStrategy?: PriceListPricingStrategy;
@@ -71,7 +71,7 @@ function stockLabel(value: number | null | undefined) {
 export function PriceListProductsTab({
   priceListId,
   filters,
-  items,
+  productsCovered,
   brandsCovered,
   canViewFinancials = true,
   pricingStrategy = 'edit_each',
@@ -106,6 +106,12 @@ export function PriceListProductsTab({
   const removeItems = useRemovePriceListItems(priceListId);
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
+  const { sentinelIndex, sentinelRef } = useDetailTableInfiniteScroll({
+    itemCount: rows.length,
+    hasNextPage: result.hasNextPage,
+    isFetchingNextPage: result.isFetchingNextPage,
+    fetchNextPage: () => result.fetchNextPage(),
+  });
 
   // Automatic-mode rule editing (requirement 5). Automatic price lists reuse the legacy
   // `filters` column to store ProductMembershipRules instead of PriceListFilterState.
@@ -167,7 +173,7 @@ export function PriceListProductsTab({
           <div>
             <h3 className="font-display text-lg text-cream-950">{membershipMode === 'automatic' ? 'Filters applied' : 'Manual product list'}</h3>
             <p className="mt-1 text-base text-cream-700">
-              {detailRowsTotal(result.data) || items.length} products across {brandsCovered} brands.
+              {detailRowsTotal(result.data) || productsCovered} products across {brandsCovered} brands.
             </p>
           </div>
         </div>
@@ -272,11 +278,19 @@ export function PriceListProductsTab({
           {isInitialLoading ? (
             <TableBodySkeleton columns={canViewFinancials ? 8 : 7} />
           ) : (
-            rows.map((row) => {
+            rows.map((row, index) => {
               const isSelected = selection.selectedIds.includes(row.tenant_product_id);
               const isEditing = editingId === row.item_id;
               return (
-                <SelectableRow key={row.tenant_product_id} selected={isSelected}>
+                <Fragment key={row.tenant_product_id}>
+                {index === sentinelIndex ? (
+                  <tr aria-hidden="true" style={{ height: 0 }}>
+                    <td colSpan={canViewFinancials ? 8 : 7} className="p-0">
+                      <div ref={sentinelRef} />
+                    </td>
+                  </tr>
+                ) : null}
+                <SelectableRow selected={isSelected}>
                   <td className="px-3 py-3"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
@@ -335,11 +349,11 @@ export function PriceListProductsTab({
                   ) : null}
                   <td className="px-3 py-3 text-right font-mono text-sm text-cream-900">{stockLabel(row.on_hand)}</td>
                 </SelectableRow>
+                </Fragment>
               );
             })
           )}
         </LandingTable>
-        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
     </section>
   );

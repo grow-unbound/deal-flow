@@ -22,10 +22,10 @@ import { formatDate, formatNumberValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type SortOption =
-  | 'Spend 90D (high → low)'
-  | 'Invoices 90D (high → low)'
-  | 'Orders 90D (high → low)'
-  | 'Estimates 90D (high → low)'
+  | 'Spend QTD (high → low)'
+  | 'Invoices QTD (high → low)'
+  | 'Orders QTD (high → low)'
+  | 'Estimates QTD (high → low)'
   | 'Buyer name (A → Z)'
   | 'Last invoice (recent first)';
 
@@ -35,18 +35,14 @@ const MEMBER_OPTIONS = [
   { value: 'all', label: 'All' },
 ];
 
-const LAST_SALE_OPTIONS = [
-  { value: 'within_30_days', label: 'Last 30d' },
-  { value: 'within_90_days', label: 'Last 90d' },
-  { value: 'dormant_90_plus_days', label: 'Dormant 90d+' },
-  { value: 'never_ordered', label: 'Never ordered' },
+const DEMAND_THIS_QUARTER_OPTIONS = [
+  { value: 'has_demand', label: 'Has demand' },
+  { value: 'no_demand', label: 'No demand' },
 ];
 
-const SALES_OPTIONS = [
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-  { value: 'none', label: 'None' },
+const INVOICE_THIS_QUARTER_OPTIONS = [
+  { value: 'purchased', label: 'Purchased' },
+  { value: 'not_purchased', label: 'Not purchased' },
 ];
 
 const BUYER_APP_OPTIONS = [
@@ -88,17 +84,17 @@ function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string, count:
 export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, details_rules }: CohortBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
-  const [lastSale, setLastSale] = useState<string[]>([]);
-  const [sales90d, setSales90d] = useState<string[]>([]);
+  const [demandThisQuarter, setDemandThisQuarter] = useState<string[]>([]);
+  const [invoiceThisQuarter, setInvoiceThisQuarter] = useState<string[]>([]);
   const [buyerApp, setBuyerApp] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>('Spend 90D (high → low)');
+  const [sortBy, setSortBy] = useState<SortOption>('Spend QTD (high → low)');
 
   const debouncedSearch = useDebounce(search, 300);
-  const sort = sortBy === 'Invoices 90D (high → low)' ? 'invoices_desc' : sortBy === 'Orders 90D (high → low)' || sortBy === 'Estimates 90D (high → low)' ? 'demand_desc' : sortBy === 'Buyer name (A → Z)' ? 'name_asc' : sortBy === 'Last invoice (recent first)' ? 'last_invoice_desc' : 'spend_desc';
+  const sort = sortBy === 'Invoices QTD (high → low)' ? 'invoices_desc' : sortBy === 'Orders QTD (high → low)' || sortBy === 'Estimates QTD (high → low)' ? 'demand_desc' : sortBy === 'Buyer name (A → Z)' ? 'name_asc' : sortBy === 'Last invoice (recent first)' ? 'last_invoice_desc' : 'spend_desc';
   const result = useCohortBuyersDetail(cohortId, {
     query: debouncedSearch,
     sort,
-    params: { member, last_sale: lastSale, sales_90d: sales90d, buyer_app: buyerApp },
+    params: { member, demand_this_quarter: demandThisQuarter, invoice_this_quarter: invoiceThisQuarter, buyer_app: buyerApp },
   });
   const buyers = useMemo(() => flattenDetailRows(result.data), [result.data]);
   const primaryDemandKind = buyers.find((buyer) => buyer.primary_demand_kind !== 'none')?.primary_demand_kind ?? buyers[0]?.primary_demand_kind ?? 'none';
@@ -128,12 +124,12 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
 
   useEffect(() => {
     selection.clearSelection();
-  }, [member, lastSale, sales90d, buyerApp, debouncedSearch, sort, selection.clearSelection]);
+  }, [member, demandThisQuarter, invoiceThisQuarter, buyerApp, debouncedSearch, sort, selection.clearSelection]);
 
   const filterGroups: FilterBarGroup[] = [
     { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
-    { key: 'last-sale', label: 'Last sale', options: LAST_SALE_OPTIONS, values: lastSale, onChange: setLastSale },
-    { key: 'sales-90d', label: 'Sales 90d', options: SALES_OPTIONS, values: sales90d, onChange: setSales90d },
+    { key: 'demand-this-quarter', label: 'Demand QTD', options: DEMAND_THIS_QUARTER_OPTIONS, values: demandThisQuarter, onChange: setDemandThisQuarter },
+    { key: 'invoice-this-quarter', label: 'Invoices QTD', options: INVOICE_THIS_QUARTER_OPTIONS, values: invoiceThisQuarter, onChange: setInvoiceThisQuarter },
     { key: 'buyer-app', label: 'Buyer App', options: BUYER_APP_OPTIONS, values: buyerApp, onChange: setBuyerApp },
   ];
 
@@ -229,9 +225,9 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
           searchLoading={search.trim() !== debouncedSearch.trim()}
           onSearchChange={setSearch}
           sortOptions={[
-            'Spend 90D (high → low)',
-            'Invoices 90D (high → low)',
-            `${primaryDemandLabel} 90D (high → low)`,
+            'Spend QTD (high → low)',
+            'Invoices QTD (high → low)',
+            `${primaryDemandLabel} QTD (high → low)`,
             'Buyer name (A → Z)',
             'Last invoice (recent first)',
           ]}
@@ -244,10 +240,10 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
             { label: 'Buyer Name', width: 280, className: 'px-5' },
             { label: 'Member', width: 150, className: 'px-5' },
             { label: 'Geography', className: 'px-5' },
-            { label: 'Spend · 90D', align: 'right', className: 'px-5' },
+            { label: 'Spend · QTD', align: 'right', className: 'px-5' },
             { label: 'Last invoice', className: 'px-5' },
             { label: 'Outstanding due', align: 'right', className: 'px-5' },
-            { label: `${primaryDemandLabel} · 90D`, align: 'right', className: 'px-5' },
+            { label: `${primaryDemandLabel} · QTD`, align: 'right', className: 'px-5' },
             { label: `Last ${demandSingularLabel(primaryDemandKind)}`, className: 'px-5' },
           ]}
           tableMinWidth={1280}

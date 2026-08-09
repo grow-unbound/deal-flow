@@ -263,16 +263,18 @@ describe('estimates landing page', () => {
     expect(screen.getAllByText('Invoiced').length).toBeGreaterThan(0);
   });
 
-  it('shows source as supporting text beneath the estimate number on every row', () => {
+  it('shows buyer-app origin marks beside estimate numbers', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getAllByText('BUYER APP').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByLabelText('Buyer App Estimate').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByLabelText('Store Estimate').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('BUYER APP')).not.toBeInTheDocument();
     expect(screen.queryByText('created by Priya Shah')).not.toBeInTheDocument();
   });
 
-  it('renders catalog and buyer-app source labels in the landing table', () => {
+  it('renders campaign column and origin marks in the landing table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getByText('Summer 2026 Retail')).toBeInTheDocument();
-    expect(screen.getAllByText('BUYER APP').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Buyer App Estimate').length).toBeGreaterThan(0);
   });
 
   it('navigates to estimate detail on row click', () => {

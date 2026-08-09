@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { InsightStrip4 } from '@/components/seller/layout';
@@ -19,11 +18,6 @@ import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-const CategoryPerformanceTab = dynamic(
-  () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
-);
-
 type TabId = 'performance' | 'products' | 'brands';
 
 interface CategoryDetailPageProps {
@@ -37,7 +31,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     scopeKey: id,
     initialState: 'products',
   });
-  const { data, isLoading, isError } = useCategoryDetail(id, { includePerformance: false });
+  const { data, isLoading, isError } = useCategoryDetail(id);
   const { isSellerAdmin } = useRole();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -148,14 +142,10 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       <DetailTabs tabs={tabs as unknown as Array<{ id: string; label: string; badge?: number }>} active={activeTab} onChange={(value) => setTab(value as TabId)} />
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        data ? <CategoryPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
-      {activeTab === 'products' ? (
-        data ? <CategoryProductsTab products={data.products} categoryId={id} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-      ) : null}
-      {activeTab === 'brands' ? (
-        data ? <CategoryBrandsTab brands={data.brands} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-      ) : null}
+      {activeTab === 'products' ? <CategoryProductsTab categoryId={id} /> : null}
+      {activeTab === 'brands' ? <CategoryBrandsTab categoryId={id} /> : null}
 
       <CategoryFormSheet
         open={editOpen}

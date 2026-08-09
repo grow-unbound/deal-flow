@@ -57,18 +57,14 @@ const STATUS_OPTIONS = [
   { value: 'CONVERTED', label: 'CONVERTED' },
 ];
 
-const LAST_SALE_OPTIONS = [
-  { value: 'within_30_days', label: 'Last 30d' },
-  { value: 'within_90_days', label: 'Last 90d' },
-  { value: 'dormant_90_plus_days', label: 'Dormant 90d+' },
-  { value: 'never_ordered', label: 'Never ordered' },
+const DEMAND_THIS_QUARTER_OPTIONS = [
+  { value: 'has_demand', label: 'Has demand' },
+  { value: 'no_demand', label: 'No demand' },
 ];
 
-const SALES_OPTIONS = [
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-  { value: 'none', label: 'None' },
+const INVOICE_THIS_QUARTER_OPTIONS = [
+  { value: 'purchased', label: 'Purchased' },
+  { value: 'not_purchased', label: 'Not purchased' },
 ];
 
 const BUYER_APP_OPTIONS = [
@@ -127,8 +123,8 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
   const [status, setStatus] = useState<string[]>([]);
-  const [lastSale, setLastSale] = useState<string[]>([]);
-  const [sales90d, setSales90d] = useState<string[]>([]);
+  const [demandThisQuarter, setDemandThisQuarter] = useState<string[]>([]);
+  const [invoiceThisQuarter, setInvoiceThisQuarter] = useState<string[]>([]);
   const [buyerApp, setBuyerApp] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('Demand Value (high → low)');
   const [page, setPage] = useState(0);
@@ -137,14 +133,14 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
     query: debouncedSearch,
     member,
     status,
-    lastSale,
-    sales90d,
+    demandThisQuarter,
+    invoiceThisQuarter,
     buyerApp,
     sort: sortValue[sortBy],
     page,
   });
 
-  useEffect(() => setPage(0), [debouncedSearch, sortBy, member, status, lastSale, sales90d, buyerApp]);
+  useEffect(() => setPage(0), [debouncedSearch, sortBy, member, status, demandThisQuarter, invoiceThisQuarter, buyerApp]);
 
   const fallbackTotals = useMemo(() => ({
     opens: buyers.filter((buyer) => normalizeStatus(buyer.opened_status) !== 'NOT YET OPENED').length,
@@ -162,7 +158,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
 
   useEffect(() => {
     selection.clearSelection();
-  }, [debouncedSearch, sortBy, member, status, lastSale, sales90d, buyerApp, selection.clearSelection]);
+  }, [debouncedSearch, sortBy, member, status, demandThisQuarter, invoiceThisQuarter, buyerApp, selection.clearSelection]);
 
   const addBuyers = useAddCampaignBuyers(catalogId);
   const removeBuyers = useRemoveCampaignBuyers(catalogId);
@@ -208,8 +204,8 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   const filterGroups: FilterBarGroup[] = [
     { key: 'member', label: 'Member', options: MEMBER_OPTIONS, values: [member], onChange: (values) => setMember(values.at(-1) ?? 'all') },
     { key: 'status', label: 'Status', options: STATUS_OPTIONS, values: status, onChange: setStatus },
-    { key: 'last-sale', label: 'Last sale', options: LAST_SALE_OPTIONS, values: lastSale, onChange: setLastSale },
-    { key: 'sales-90d', label: 'Sales 90d', options: SALES_OPTIONS, values: sales90d, onChange: setSales90d },
+    { key: 'demand-this-quarter', label: 'Demand QTD', options: DEMAND_THIS_QUARTER_OPTIONS, values: demandThisQuarter, onChange: setDemandThisQuarter },
+    { key: 'invoice-this-quarter', label: 'Invoices QTD', options: INVOICE_THIS_QUARTER_OPTIONS, values: invoiceThisQuarter, onChange: setInvoiceThisQuarter },
     { key: 'buyer-app', label: 'Buyer App', options: BUYER_APP_OPTIONS, values: buyerApp, onChange: setBuyerApp },
   ];
 

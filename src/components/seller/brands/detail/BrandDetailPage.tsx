@@ -19,8 +19,6 @@ import {
 import { formatNumberValue } from '@/lib/utils';
 import { BrandDetailsTab } from './BrandDetailsTab';
 import { BrandProductsTab } from './BrandProductsTab';
-import { BrandBuyersTab } from './BrandBuyersTab';
-import { BrandCatalogsTab } from './BrandCatalogsTab';
 import { AddBrandCommand } from '../AddBrandCommand';
 import { BrandDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -29,7 +27,7 @@ const BrandPerformanceTab = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs';
+type TabId = 'details' | 'performance' | 'products';
 
 interface BrandDetailPageProps {
   id: string;
@@ -63,10 +61,8 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       { id: 'details', label: 'Details' },
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: 'Products', badge: data?.header.skus },
-      { id: 'buyers', label: 'Buyers', badge: data?.buyers_total },
-      { id: 'catalogs', label: 'Catalogs', badge: data?.catalogs.length },
     ],
-    [data?.buyers_total, data?.catalogs.length, data?.header.skus, showPerformanceTab],
+    [data?.header.skus, showPerformanceTab],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -181,10 +177,6 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         data ? <BrandPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
       {activeTab === 'products' ? <BrandProductsTab brandId={id} /> : null}
-      {activeTab === 'buyers' ? (
-        data ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-      ) : null}
-      {activeTab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
 
       <AddBrandCommand
         open={editOpen}

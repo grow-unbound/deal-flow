@@ -186,10 +186,10 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
       .or(`is_active.eq.false,valid_to.is.null,valid_to.gt.${nowIso}`)
       .order('updated_at', { ascending: false })
       .limit(PRICE_LISTS_LIMIT),
-    // Metrics V2 setup snapshot: accurate active product count (O(1))
+    // metrics_tenant_now_summary (v4): accurate active product count (O(1))
     db
       .schema('app')
-      .from('metrics_tenant_setup_snapshot')
+      .from('metrics_tenant_now_summary')
       .select('active_product_count')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)

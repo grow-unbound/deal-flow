@@ -43,7 +43,6 @@ function formatShortDate(value: string | null): string {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
 
   try {
     const claims = await getVerifiedClaims(request);
@@ -92,17 +91,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const previousQuarterStart = quarterMeta.previous_start.slice(0, 10);
 
     const [
-      detailV2Res,
       buyerUsersRes,
       cohortMembersRes,
       buyerPriceListAssignmentRes,
       buyerNowSummaryRes,
       buyerPeriodSummaryRes,
+      lastInvoiceRes,
+      lastEstimateRes,
+      lastOrderRes,
+      lastBuyerAppActivityRes,
+      primaryDemandKindRes,
     ] = await Promise.all([
-      db.schema('app').rpc('get_seller_customer_detail_v2', {
-        p_tenant_id: tenantId,
-        p_buyer_id: id,
-      }),
       db
         .schema('app')
         .from('buyer_users')
@@ -144,27 +143,85 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq('grain', 'quarter')
         .in('period_start', [currentQuarterStart, previousQuarterStart])
         .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('invoices')
+        .select('total_amount, invoice_date, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', id)
+        .is('deleted_at', null)
+        .not('status', 'in', '("draft","void")')
+        .order('invoice_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('estimates')
+        .select('estimate_date, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', id)
+        .is('deleted_at', null)
+        .order('estimate_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('orders')
+        .select('placed_at, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', id)
+        .is('deleted_at', null)
+        .not('status', 'in', '("cancelled","draft")')
+        .order('placed_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('buyer_app_activity')
+        .select('occurred_at')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', id)
+        .order('occurred_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db.schema('app').rpc('metrics_v4_primary_demand_kind', { p_tenant_id: tenantId }),
     ]);
 
     if (
-      detailV2Res.error ||
       buyerUsersRes.error ||
       cohortMembersRes.error ||
       buyerPriceListAssignmentRes.error ||
       buyerNowSummaryRes.error ||
-      buyerPeriodSummaryRes.error
+      buyerPeriodSummaryRes.error ||
+      lastInvoiceRes.error ||
+      lastEstimateRes.error ||
+      lastOrderRes.error ||
+      lastBuyerAppActivityRes.error ||
+      primaryDemandKindRes.error
     ) {
       console.error(
         '[GET /api/tenant/customers/[id]] bootstrap failed',
-        detailV2Res.error ??
-          buyerUsersRes.error ??
+        buyerUsersRes.error ??
           cohortMembersRes.error ??
           buyerPriceListAssignmentRes.error ??
           buyerNowSummaryRes.error ??
-          buyerPeriodSummaryRes.error,
+          buyerPeriodSummaryRes.error ??
+          lastInvoiceRes.error ??
+          lastEstimateRes.error ??
+          lastOrderRes.error ??
+          lastBuyerAppActivityRes.error ??
+          primaryDemandKindRes.error,
       );
       return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
     }
+
+    const primaryDemandKind = (typeof primaryDemandKindRes.data === 'string' ? primaryDemandKindRes.data : 'none') as
+      | 'orders'
+      | 'estimates'
+      | 'none';
 
     const nowSummary = (buyerNowSummaryRes.data ?? null) as {
       receivable_amount: number;
@@ -195,44 +252,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return Math.round(((current - previous) / previous) * 1000) / 10;
     }
 
-    const detailV2 = (detailV2Res.data ?? {}) as {
-      performance_cards?: unknown[];
-      summary_metrics?: {
-        invoiced_sales_90d?: number | string | null;
-        invoice_count_90d?: number | string | null;
-        primary_demand_kind?: 'orders' | 'estimates' | 'none' | null;
-        primary_demand_value_90d?: number | string | null;
-        primary_demand_order_count_90d?: number | string | null;
-        primary_demand_estimate_count_90d?: number | string | null;
-        receivable_amount?: number | string | null;
-        credit_available?: number | string | null;
-        credit_limit?: number | string | null;
-        last_invoice_value?: number | string | null;
-        last_invoice_date?: string | null;
-        last_activity_at?: string | null;
-        last_activity_kind?: string | null;
-      };
-      subtitle_meta?: {
-        buyer_app_status_label?: string | null;
-        last_activity_at?: string | null;
-        last_activity_kind?: string | null;
-        last_activity_days_ago?: number | null;
-      };
-      tab_badges?: {
-        estimates_90d?: number | string | null;
-        orders_90d?: number | string | null;
-        invoices_90d?: number | string | null;
-        price_lists_assigned?: number | string | null;
-      };
-      kpi_grid?: Array<{ label?: string; value?: number | string | null }>;
-    };
+    const lastInvoice = lastInvoiceRes.data as { total_amount: number; invoice_date: string | null; created_at: string } | null;
+    const lastEstimate = lastEstimateRes.data as { estimate_date: string | null; created_at: string } | null;
+    const lastOrder = lastOrderRes.data as { placed_at: string | null; created_at: string } | null;
+    const lastBuyerAppActivity = lastBuyerAppActivityRes.data as { occurred_at: string } | null;
 
-    const kpiByLabel = new Map<string, number>(
-      (detailV2.kpi_grid ?? []).map((item) => [String(item.label ?? ''), Number(item.value ?? 0)]),
-    );
-    const summaryMetrics = detailV2.summary_metrics ?? {};
-    const subtitleMeta = detailV2.subtitle_meta ?? {};
-    const tabBadges = detailV2.tab_badges ?? {};
+    const lastInvoiceAt = lastInvoice ? (lastInvoice.invoice_date ?? lastInvoice.created_at) : null;
+    const lastEstimateAt = lastEstimate ? (lastEstimate.estimate_date ?? lastEstimate.created_at) : null;
+    const lastOrderAt = lastOrder ? (lastOrder.placed_at ?? lastOrder.created_at) : null;
+    const lastBuyerAppActivityAt = lastBuyerAppActivity?.occurred_at ?? null;
+
+    const activityCandidates: Array<{ kind: string; at: string | null }> = [
+      { kind: 'sale', at: lastInvoiceAt },
+      { kind: 'order', at: lastOrderAt },
+      { kind: 'estimate', at: lastEstimateAt },
+      { kind: 'buyer app', at: lastBuyerAppActivityAt },
+    ];
+    const lastActivity = activityCandidates
+      .filter((candidate): candidate is { kind: string; at: string } => candidate.at != null)
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0] ?? null;
+    const lastActivityDaysAgo = lastActivity
+      ? Math.max(0, Math.floor((Date.now() - new Date(lastActivity.at).getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
+
     const memberCohortIds = ((cohortMembersRes.data ?? []) as Array<{ cohort_id: string }>).map((row) => row.cohort_id);
     let activeCohorts: Array<{ id: string; name: string }> = [];
     if (memberCohortIds.length > 0) {
@@ -247,6 +289,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: row.name ?? 'Customer group',
       }));
     }
+
+    const cohortFilter = memberCohortIds.length
+      ? `,and(target_type.eq.cohort,target_id.in.(${memberCohortIds.join(',')}))`
+      : '';
+    const { data: priceListAssignmentRows, error: priceListAssignmentsError } = await db
+      .schema('app')
+      .from('price_list_assignments')
+      .select('price_list_id, price_lists!inner(tenant_id, deleted_at)')
+      .eq('price_lists.tenant_id', tenantId)
+      .is('price_lists.deleted_at', null)
+      .is('deleted_at', null)
+      .or(`and(target_type.eq.buyer,target_id.eq.${id}),target_type.eq.all_buyers${cohortFilter}`);
+    if (priceListAssignmentsError) {
+      console.error('[GET /api/tenant/customers/[id]] failed to load price list assignments', priceListAssignmentsError);
+      return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+    }
+    const priceListsAssignedCount = new Set(
+      ((priceListAssignmentRows ?? []) as Array<{ price_list_id: string }>).map((row) => row.price_list_id),
+    ).size;
+
     const contacts = (buyerUsersRes.data ?? []).map((contact: any) => ({
       id: contact.id,
       user_id: contact.user_id ?? null,
@@ -266,11 +328,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const creditUsed = Number(nowSummary?.receivable_amount ?? 0);
     const creditAvailable = Number(nowSummary?.credit_available ?? 0);
     const creditUsedPct = creditLimit > 0 ? Math.round((creditUsed / creditLimit) * 1000) / 10 : 0;
-    // Retained for performance_v2 (dead code while showPerformanceTab is false) —
-    // meta_strip_4 below is v4-sourced and no longer reads these.
-    const invoiceCount90d = Number(summaryMetrics.invoice_count_90d ?? kpiByLabel.get('Invoices 90D') ?? 0);
-    const invoicedSales90d = Number(summaryMetrics.invoiced_sales_90d ?? kpiByLabel.get('Invoiced sales 90D') ?? 0);
-    const primaryDemandKind = summaryMetrics.primary_demand_kind ?? 'none';
 
     const defaultPriceListId =
       (buyerPriceListAssignmentRes.data?.price_list_id as string | undefined) ?? null;
@@ -294,8 +351,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const response = {
-      detail_v2: includePerformance ? detailV2 : null,
-      performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
       header: {
         id: buyer.id,
         buyer_name: buyer.business_name,
@@ -310,20 +365,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         years_label: yearsLoyalLabel(buyer.created_at),
         net_terms_days: Number(buyer.payment_terms_days ?? 0),
         subtitle_meta: {
-          buyer_app_status_label:
-            subtitleMeta.buyer_app_status_label ??
-            (buyer.buyer_app_enabled ? 'Buyer App enabled' : 'Buyer App disabled'),
+          buyer_app_status_label: buyer.buyer_app_enabled ? 'Buyer App enabled' : 'Buyer App disabled',
           city: typeof buyer.geography?.city === 'string' ? buyer.geography.city : null,
           phone: buyer.phone ?? null,
-          last_activity_at: subtitleMeta.last_activity_at ?? summaryMetrics.last_activity_at ?? null,
-          last_activity_kind: subtitleMeta.last_activity_kind ?? summaryMetrics.last_activity_kind ?? null,
-          last_activity_days_ago:
-            subtitleMeta.last_activity_days_ago != null
-              ? Number(subtitleMeta.last_activity_days_ago)
-              : null,
-          last_activity_date_label: formatShortDate(
-            subtitleMeta.last_activity_at ?? summaryMetrics.last_activity_at ?? null,
-          ),
+          last_activity_at: lastActivity?.at ?? null,
+          last_activity_kind: lastActivity?.kind ?? null,
+          last_activity_days_ago: lastActivityDaysAgo,
+          last_activity_date_label: formatShortDate(lastActivity?.at ?? null),
         },
       },
       meta_strip_4: {
@@ -376,31 +424,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         top_skus: [],
         price_list_summary: [],
       },
-      performance_v2: {
-        headline: {
-          spend_mtd: invoicedSales90d,
-          orders_mtd: invoiceCount90d,
-          aov_mtd: invoiceCount90d > 0 ? invoicedSales90d / invoiceCount90d : 0,
-        },
-        brand_mix: { rows: [] },
-        top_skus: [],
-        credit_ops: {
-          credit_used: creditUsed,
-          credit_limit: creditLimit,
-          credit_util_pct: creditUsedPct,
-          last_order_days_ago:
-            subtitleMeta.last_activity_days_ago != null ? `${Number(subtitleMeta.last_activity_days_ago)}d ago` : '—',
-          last_order_value: Number(summaryMetrics.last_invoice_value ?? 0),
-          catalog_opens_mtd: 0,
-          payment_behavior_summary:
-            creditUsed > 0 ? 'Payment behavior - current receivables present' : 'Payment behavior - current',
-        },
-      },
       tab_badges: {
-        estimates_90d: Number(tabBadges.estimates_90d ?? 0),
-        orders_90d: Number(tabBadges.orders_90d ?? 0),
-        invoices_90d: Number(tabBadges.invoices_90d ?? 0),
-        price_lists_assigned: Number(tabBadges.price_lists_assigned ?? 0),
+        price_lists_assigned: priceListsAssignedCount,
       },
       cohorts_summary: {
         rows: activeCohorts.map((cohort) => ({
@@ -410,7 +435,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         })),
       },
       price_lists: {
-        assigned_count: Number(tabBadges.price_lists_assigned ?? 0),
+        assigned_count: priceListsAssignedCount,
       },
       role: claims.role,
     };

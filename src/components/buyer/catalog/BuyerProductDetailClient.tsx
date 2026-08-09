@@ -4,6 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
@@ -13,6 +14,7 @@ import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
+import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -20,6 +22,8 @@ interface BuyerProductDetailClientProps {
 
 export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetailClientProps): React.ReactNode {
   const router = useRouter();
+  const posthog = usePostHog();
+  const analyticsIds = useBuyerAnalyticsIds();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const {
     item,
@@ -32,6 +36,21 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const [categoryImgError, setCategoryImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
+  const viewedKeyRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (!item || viewedKeyRef.current === item.tenant_product_id) return;
+    viewedKeyRef.current = item.tenant_product_id;
+    posthog?.capture('product_viewed', {
+      ...analyticsIds,
+      tenant_product_id: item.tenant_product_id,
+      internal_sku: item.internal_sku ?? null,
+      brand: item.brand_name ?? null,
+      has_campaign_price: item.has_campaign_price === true,
+      campaign_id: item.campaign_id ?? null,
+      stock_status: item.stock_status ?? null,
+    });
+  }, [item, posthog, analyticsIds]);
 
   const cartLine = item ? cartItems.find((i) => i.tenant_product_id === item.tenant_product_id) : undefined;
 

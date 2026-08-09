@@ -98,6 +98,7 @@ async function callStage(
   ownerToken: string,
   identity: ClaimIdentity | null,
   deadlineMs: number | null = null,
+  errorText: string | null = null,
 ): Promise<TickResult> {
   const remainingMs = deadlineMs === null ? STAGE_RPC_TIMEOUT_MS : deadlineMs - performance.now();
   if (remainingMs <= 0) throw new TickStageError(stage, 'metrics_tick_wall_budget_exceeded');
@@ -114,6 +115,7 @@ async function callStage(
       p_fencing_epoch: identity?.fencingEpoch ?? null,
       p_tenant_id: identity?.tenantId ?? null,
       p_domain: identity?.domain ?? null,
+      p_error_text: errorText,
     })
     .abortSignal(controller.signal);
   clearTimeout(timeout);
@@ -127,9 +129,10 @@ async function bestEffortStage(
   stage: 'fail' | 'release',
   ownerToken: string,
   identity: ClaimIdentity,
+  errorText: string | null = null,
 ): Promise<TickResult> {
   try {
-    return await callStage(admin, stage, ownerToken, identity);
+    return await callStage(admin, stage, ownerToken, identity, null, errorText);
   } catch (error) {
     console.error(`[metrics-refresh-tick] best-effort ${stage} failed`, error);
     return null;
@@ -180,7 +183,8 @@ Deno.serve(async (request: Request) => {
       stages.compute = await callStage(admin, 'compute', ownerToken, identity, deadlineMs);
       stages.acknowledge = await callStage(admin, 'acknowledge', ownerToken, identity, deadlineMs);
     } catch (error) {
-      stages.fail = await bestEffortStage(admin, 'fail', ownerToken, identity);
+      const errorText = error instanceof Error ? error.message : String(error);
+      stages.fail = await bestEffortStage(admin, 'fail', ownerToken, identity, errorText);
       stages.release = await bestEffortStage(admin, 'release', ownerToken, identity);
       throw error;
     }

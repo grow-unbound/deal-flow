@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CatalogComposerPayloadSchema } from '@/lib/zod';
+import { CatalogComposerPayloadSchema, ProductMembershipRulesSchema } from '@/lib/zod';
 
 const buyerId = '11111111-1111-4111-8111-111111111111';
 const productId = '22222222-2222-4222-8222-222222222222';
@@ -36,7 +36,7 @@ describe('CatalogComposerPayloadSchema', () => {
       scope_type: 'buyer',
       buyer_ids: [],
       valid_from: '2026-07-01T00:00:00.000Z',
-      message: 'x'.repeat(51),
+      message: 'x'.repeat(201),
       price_source: 'manual',
       filters: { brand_names: [], category_names: [], availability: 'show_everything' },
       items: [{ tenant_product_id: productId, display_order: 0, price_override: 725 }],
@@ -48,5 +48,27 @@ describe('CatalogComposerPayloadSchema', () => {
     expect(parsed.error.issues.map((issue) => issue.path.join('.'))).toEqual(
       expect.arrayContaining(['buyer_ids', 'message']),
     );
+  });
+
+  it('treats null product filters as all values', () => {
+    const parsedRules = ProductMembershipRulesSchema.parse({
+      brand_names: null,
+      category_names: null,
+    });
+    const parsedPayload = CatalogComposerPayloadSchema.parse({
+      name: 'All products campaign',
+      scope_type: 'all',
+      valid_from: '2026-07-01T00:00:00.000Z',
+      filters: { brand_names: null, category_names: null, availability: 'show_everything' },
+      is_dynamic: true,
+      items: [],
+      save_mode: 'draft',
+    });
+
+    expect(parsedRules.brand_names).toEqual([]);
+    expect(parsedRules.category_names).toEqual([]);
+    expect(parsedPayload.filters.brand_names).toEqual([]);
+    expect(parsedPayload.filters.category_names).toEqual([]);
+    expect(parsedPayload.items).toEqual([]);
   });
 });

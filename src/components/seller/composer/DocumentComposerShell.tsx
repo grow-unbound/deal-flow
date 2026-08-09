@@ -17,6 +17,7 @@ export function DocumentComposerShell({
   kind,
   title,
   subtitle,
+  titleLeading,
   status,
   titleActions,
   basics,
@@ -32,6 +33,7 @@ export function DocumentComposerShell({
   kind: 'estimate' | 'so' | 'invoice';
   title: string;
   subtitle: string;
+  titleLeading?: ReactNode;
   status?: { label: string; tone?: 'draft' | 'live'; chipClassName?: string };
   titleActions?: ReactNode;
   basics?: ReactNode;
@@ -54,6 +56,7 @@ export function DocumentComposerShell({
           <ComposerTitleRow
             title={title}
             subtitle={subtitle}
+            titleLeading={titleLeading}
             status={status}
             actions={titleActions}
             onRequestClose={onRequestClose}

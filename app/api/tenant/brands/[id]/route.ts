@@ -97,29 +97,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const brandQuarterMeta = getSellerLandingPeriodMeta('quarter');
   const brandQuarterStart = brandQuarterMeta.current_start.slice(0, 10);
 
-  const [detailV2Res, masterBrandRes, tenantProductsRes, catalogsItemsRes, auditRes, brandPeriodRes, brandNowRes] = await Promise.all([
-    db.schema('app').rpc('get_seller_brand_detail_v2', {
-      p_tenant_id: tenantId,
-      p_tenant_brand_id: id,
-    }),
+  const [masterBrandRes, auditRes, brandPeriodRes, brandNowRes] = await Promise.all([
     tenantBrand.master_brand_id
       ? db.schema('catalog').from('brands').select('id, name, slug, description, logo_url').eq('id', tenantBrand.master_brand_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, master_product_id, internal_sku, name_override, base_selling_price, is_active')
-      .eq('tenant_id', tenantId)
-      .eq('tenant_brand_id', id)
-      .is('deleted_at', null)
-      .limit(200),
-    db
-      .schema('app')
-      .from('campaign_items')
-      .select('campaign_id, tenant_product_id, updated_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .limit(50),
     db
       .schema('app')
       .from('audit_log')
@@ -149,11 +130,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .maybeSingle(),
   ]);
 
-  if (detailV2Res.error) {
-    console.error('[GET /api/tenant/brands/[id]] get_seller_brand_detail_v2 failed', detailV2Res.error);
-    return NextResponse.json({ error: 'Failed to fetch brand detail' }, { status: 500 });
-  }
-
   if (brandPeriodRes.error || brandNowRes.error) {
     console.error('[GET /api/tenant/brands/[id]] v4 metrics fetch failed', brandPeriodRes.error ?? brandNowRes.error);
     return NextResponse.json({ error: 'Failed to fetch brand detail' }, { status: 500 });
@@ -172,29 +148,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     low_stock_product_count: number;
   } | null;
 
-  const detailV2 = (detailV2Res.data ?? {}) as any;
   const brandName = tenantBrand.display_name_override ?? masterBrandRes.data?.name ?? 'Brand';
   const brandLogoUrl = r2Url(tenantBrand.r2_logo_thumb_key) ?? tenantBrand.logo_url ?? masterBrandRes.data?.logo_url ?? null;
-  const products = tenantProductsRes.data ?? [];
-  const productCount = brandNow?.member_product_count ?? products.length ?? 0;
-
-  const catalogs = (catalogsItemsRes.data ?? [])
-    .filter((item: any) => products.some((product: any) => product.id === item.tenant_product_id))
-    .slice(0, 10)
-    .map((item: any) => ({
-      id: item.campaign_id,
-      name: 'Campaign',
-      scope_label: 'Brand product',
-      status: 'active',
-      updated_at: item.updated_at,
-    }));
-  const latestCatalogDate = catalogs.reduce((latest: string | null, item: { updated_at: string | null }) => {
-    if (!item.updated_at) return latest;
-    return !latest || item.updated_at > latest ? item.updated_at : latest;
-  }, null as string | null);
-  const daysSinceCatalog = latestCatalogDate
-    ? Math.max(0, Math.floor((Date.now() - new Date(latestCatalogDate).getTime()) / 86_400_000))
-    : null;
+  const productCount = brandNow?.member_product_count ?? 0;
 
   const response = {
     header: {
@@ -219,8 +175,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       sales_qtd_count: brandQuarter?.invoice_count ?? 0,
       selling_product_out_of_stock_count: brandNow?.selling_product_out_of_stock_count ?? 0,
       low_stock_product_count: brandNow?.low_stock_product_count ?? 0,
-      days_since_catalog: daysSinceCatalog,
-      last_sent_date: latestCatalogDate,
+      days_since_catalog: null,
+      last_sent_date: null,
     },
     details: {
       ...tenantBrand,
@@ -230,11 +186,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       product_count: productCount,
       units_90d: brandQuarter?.invoice_units ?? 0,
     },
-    performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
-    buyers_total: 0,
-    buyers: [],
-    catalogs,
+    performance_cards: includePerformance ? [] : [],
+    detail_v2: includePerformance ? null : null,
     activity: (auditRes.data ?? []).map((row: any) => ({
       id: row.id,
       kind: row.action,

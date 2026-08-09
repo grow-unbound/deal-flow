@@ -142,6 +142,7 @@ export async function POST(
     event: 'customer_group_members_updated',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: id,
       action: 'add',
       requested_member_count: parsed.data.buyer_ids.length,
@@ -213,6 +214,7 @@ export async function DELETE(
     event: 'customer_group_members_updated',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: id,
       action: 'remove',
       changed_member_count: 1,

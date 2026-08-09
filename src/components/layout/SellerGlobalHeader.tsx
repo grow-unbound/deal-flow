@@ -1,8 +1,10 @@
 'use client';
 
-import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone } from 'lucide-react';
+import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone, Repeat } from 'lucide-react';
 import { use, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
+import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -12,6 +14,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
+import { apiPost } from '@/lib/api-fetch';
+
+const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
 function NotificationsBell({ unreadCount, onClick }: { unreadCount: number; onClick: () => void }) {
   const showBadge = unreadCount > 0;
@@ -55,7 +60,9 @@ interface SellerGlobalHeaderProps {
 export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeaderProps) {
   const tenantBranding = use(tenantBrandingPromise);
   const posthog = usePostHog();
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [switchPending, setSwitchPending] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
@@ -70,6 +77,28 @@ export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeader
 
   async function handleLogout() {
     await signOut();
+  }
+
+  async function handleSwitchSeller() {
+    setSwitchPending(true);
+    try {
+      const res = await apiPost('/api/auth/switch-context', {});
+      const data = await res.json();
+      if (!res.ok || !data.contexts || !data.ref_id) {
+        toast.error(data.error ?? 'No other accounts linked to this number.');
+        return;
+      }
+      posthog?.capture('seller_switch_seller_clicked', {
+        tenant_id: currentTenant?.id ?? null,
+        account_count: data.contexts.length,
+      });
+      sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(data.contexts));
+      router.push(`/login/select-context?ref_id=${encodeURIComponent(data.ref_id)}`);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setSwitchPending(false);
+    }
   }
 
   return (
@@ -152,7 +181,17 @@ export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeader
                 </div>
               </div>
 
-              <div className="border-t border-cream-200 p-3">
+              <div className="border-t border-cream-200 p-3 space-y-1">
+                <Button
+                  variant="ghost"
+                  className="h-11 w-full justify-start rounded-[12px] text-[#221E1A] hover:bg-cream-100"
+                  onClick={handleSwitchSeller}
+                  disabled={switchPending}
+                  haptic
+                >
+                  <Repeat size={16} strokeWidth={2} />
+                  Switch Seller
+                </Button>
                 <Button
                   variant="ghost"
                   className="h-11 w-full justify-start rounded-[12px] text-[#221E1A] hover:bg-cream-100"

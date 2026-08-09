@@ -5,6 +5,8 @@ import { FEATURE_FLAGS, ROLES } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +88,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       action: 'invoice_voided',
       diff: {},
       ts: now,
+    });
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'invoice_voided',
+      properties: { ...withTenantSellerIds(claims), invoice_id: id },
     });
 
     return NextResponse.json({ data: { id, status: 'void' } });

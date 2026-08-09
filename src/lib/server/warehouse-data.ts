@@ -1,6 +1,7 @@
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { firstStoredImageUrl } from '@/lib/r2-url';
+import { matchesWarehouseStockStatuses } from '@/lib/server/product-stock-status';
 import { computeSellableUnits, computeWarehouseInitials, computeWarehouseStockStatus, isIdleStockSku } from '@/lib/server/warehouse-metrics';
 import type { TenantWarehouse, WarehouseDetailInventoryItem, WarehouseDetailResponse, WarehouseInventoryTrendWeek } from '@/types/tenant-warehouses';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
@@ -262,22 +263,7 @@ export interface WarehouseSnapshotRow {
   low_stock_skus: number;
   stockout_skus: number;
   idle_stock_skus: number;
-  last_inventory_update: string | null;
   refreshed_at: string;
-}
-
-function hydrateWarehouseSnapshot(row: Record<string, unknown>): WarehouseSnapshotRow {
-  return {
-    warehouse_id: String(row.warehouse_id),
-    tenant_id: String(row.tenant_id),
-    tracked_skus: Number(row.tracked_skus ?? 0),
-    sellable_units: Number(row.sellable_units ?? 0),
-    low_stock_skus: Number(row.low_stock_skus ?? 0),
-    stockout_skus: Number(row.stockout_skus ?? 0),
-    idle_stock_skus: Number(row.idle_stock_skus ?? 0),
-    last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
-    refreshed_at: typeof row.refreshed_at === 'string' ? row.refreshed_at : new Date().toISOString(),
-  };
 }
 
 export interface WarehouseStockPageResult {
@@ -367,36 +353,8 @@ export async function loadWarehouseSnapshot(
     low_stock_skus: lowStockSkus,
     stockout_skus: stockoutSkus,
     idle_stock_skus: idleStockSkus,
-    last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
     refreshed_at: new Date().toISOString(),
   };
-}
-
-export async function loadLatestWarehouseDailySnapshot(
-  db: any,
-  tenantId: string,
-  warehouseId: string,
-): Promise<WarehouseSnapshotRow | null> {
-  return loadWarehouseSnapshot(db, tenantId, warehouseId);
-}
-
-export async function loadWarehouseInventoryTrend(
-  db: any,
-  tenantId: string,
-  warehouseId: string,
-): Promise<WarehouseInventoryTrendWeek[]> {
-  const snapshot = await loadWarehouseSnapshot(db, tenantId, warehouseId);
-  if (!snapshot) return [];
-
-  return bucketWarehouseInventoryTrend([
-    {
-      day: new Date().toISOString().slice(0, 10),
-      tracked_skus: snapshot.tracked_skus,
-      sellable_units: snapshot.sellable_units,
-      low_stock_skus: snapshot.low_stock_skus,
-      stockout_skus: snapshot.stockout_skus,
-    },
-  ]);
 }
 
 async function hydrateInventoryItems(
@@ -429,21 +387,19 @@ async function hydrateInventoryItems(
 export async function loadWarehouseStockPage(
   db: any,
   warehouseId: string,
-  options?: { page?: number; pageSize?: number },
+  options?: {
+    page?: number;
+    pageSize?: number;
+    query?: string | null;
+    statuses?: string[] | null;
+    sort?: string;
+  },
 ): Promise<WarehouseStockPageResult> {
   const page = Math.max(1, options?.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 50));
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-
-  const { count, error: countError } = await db
-    .schema('app')
-    .from('tenant_inventory')
-    .select('id', { count: 'exact', head: true })
-    .eq('warehouse_id', warehouseId)
-    .is('deleted_at', null);
-
-  if (countError) throw countError;
+  const query = options?.query?.trim().toLowerCase() ?? '';
+  const statuses = options?.statuses?.filter(Boolean) ?? [];
+  const sort = options?.sort ?? 'product_asc';
 
   const { data, error } = await db
     .schema('app')
@@ -452,79 +408,48 @@ export async function loadWarehouseStockPage(
     .eq('warehouse_id', warehouseId)
     .is('deleted_at', null)
     .order('updated_at', { ascending: false })
-    .range(from, to);
+    .limit(5000);
 
   if (error) throw error;
 
   const baseRows = await loadWarehouseInventoryRows(db, [warehouseId], true, (data ?? []) as Array<Record<string, unknown>>);
   const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
   const latestDemandByProduct = await loadLatestDemandByProduct(db, productIds);
-  const items = await hydrateInventoryItems(baseRows, latestDemandByProduct);
-  const total = Number(count ?? 0);
+  let items = await hydrateInventoryItems(baseRows, latestDemandByProduct);
+
+  if (query) {
+    items = items.filter((item) => {
+      const haystack = [item.product_name, item.brand_name, item.sku].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+
+  if (statuses.length > 0) {
+    items = items.filter((item) => matchesWarehouseStockStatuses(statuses, item));
+  }
+
+  items.sort((a, b) => {
+    if (sort === 'on_hand_desc') return b.qty_available - a.qty_available || a.product_name.localeCompare(b.product_name);
+    if (sort === 'reserved_desc') return b.qty_reserved - a.qty_reserved || a.product_name.localeCompare(b.product_name);
+    if (sort === 'sellable_desc') return b.sellable_units - a.sellable_units || a.product_name.localeCompare(b.product_name);
+    if (sort === 'reorder_asc') {
+      const aValue = a.reorder_point ?? Number.POSITIVE_INFINITY;
+      const bValue = b.reorder_point ?? Number.POSITIVE_INFINITY;
+      return aValue - bValue || a.product_name.localeCompare(b.product_name);
+    }
+    return a.product_name.localeCompare(b.product_name) || a.tenant_product_id.localeCompare(b.tenant_product_id);
+  });
+
+  const total = items.length;
+  const from = (page - 1) * pageSize;
+  const pagedItems = items.slice(from, from + pageSize);
 
   return {
-    items,
+    items: pagedItems,
     total,
     page,
     page_size: pageSize,
-    has_more: from + items.length < total,
-  };
-}
-
-export async function loadWarehousePerformanceHighlights(
-  db: any,
-  warehouseId: string,
-  snapshot?: WarehouseSnapshotRow | null,
-): Promise<{
-  idle_stock: Array<{ tenant_product_id: string; product_name: string; brand_name: string; sellable_units: number; last_demand_at: string | null }>;
-  recent_replenishment: Array<{ tenant_product_id: string; product_name: string; brand_name: string; qty_available: number; qty_reserved: number; updated_at: string }>;
-}> {
-  if (snapshot && snapshot.tracked_skus <= 0 && snapshot.sellable_units <= 0) {
-    return {
-      idle_stock: [],
-      recent_replenishment: [],
-    };
-  }
-
-  const { data, error } = await db
-    .schema('app')
-    .from('tenant_inventory')
-    .select('tenant_product_id, qty_available, qty_reserved, updated_at')
-    .eq('warehouse_id', warehouseId)
-    .is('deleted_at', null)
-    .order('updated_at', { ascending: false })
-    .limit(100);
-
-  if (error) throw error;
-
-  const baseRows = await loadWarehouseInventoryRows(db, [warehouseId], true, (data ?? []) as Array<Record<string, unknown>>);
-  const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
-  const latestDemandByProduct = await loadLatestDemandByProduct(db, productIds);
-  const items = await hydrateInventoryItems(baseRows, latestDemandByProduct);
-
-  return {
-    idle_stock: items
-      .filter((row) => row.is_idle)
-      .sort((a, b) => b.sellable_units - a.sellable_units)
-      .slice(0, 5)
-      .map((row) => ({
-        tenant_product_id: row.tenant_product_id,
-        product_name: row.product_name,
-        brand_name: row.brand_name,
-        sellable_units: row.sellable_units,
-        last_demand_at: row.last_demand_at,
-      })),
-    recent_replenishment: [...items]
-      .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
-      .slice(0, 5)
-      .map((row) => ({
-        tenant_product_id: row.tenant_product_id,
-        product_name: row.product_name,
-        brand_name: row.brand_name,
-        qty_available: row.qty_available,
-        qty_reserved: row.qty_reserved,
-        updated_at: row.last_updated,
-      })),
+    has_more: from + pagedItems.length < total,
   };
 }
 
@@ -538,9 +463,6 @@ export async function loadWarehouseSummary(
   if (!warehouse) return null;
 
   const mappedLocationUsers = warehouse.location?.associated_users?.length ? warehouse.location.associated_users : [];
-
-  const storedSnapshot = await loadWarehouseSnapshot(db, tenantId, warehouseId);
-  const snapshot = storedSnapshot ?? await loadLatestWarehouseDailySnapshot(db, tenantId, warehouseId);
 
   const warehouseQuarterMeta = getSellerLandingPeriodMeta('quarter');
   const warehouseQuarterStart = warehouseQuarterMeta.current_start.slice(0, 10);
@@ -581,6 +503,10 @@ export async function loadWarehouseSummary(
     sold_sku_count: number;
     sold_units: number;
   } | null;
+
+  // Opportunistic fallback: only hit the RPC when metrics_warehouse_now_summary has no row
+  // yet for this warehouse (table is new, backfill not guaranteed) — not on every load.
+  const snapshot = warehouseNow ? null : await loadWarehouseSnapshot(db, tenantId, warehouseId);
 
   const trackedSkus = warehouseNow?.in_stock_product_count ?? snapshot?.tracked_skus ?? 0;
   const sellableUnits = warehouseNow?.sellable_units ?? snapshot?.sellable_units ?? 0;
@@ -625,7 +551,6 @@ export async function loadWarehouseSummary(
       associated_users_count: mappedLocationUsers.length > 0 ? mappedLocationUsers.length : warehouse.associated_users.length,
       stockout_skus: stockoutSkus,
       reorder_triggered_skus: reorderTriggeredSkus,
-      last_inventory_update: snapshot?.last_inventory_update ?? null,
     },
   };
 }

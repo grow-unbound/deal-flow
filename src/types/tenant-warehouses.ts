@@ -233,38 +233,5 @@ export interface WarehouseDetailResponse {
     associated_users_count: number;
     stockout_skus: number;
     reorder_triggered_skus: number;
-    last_inventory_update: string | null;
   };
-  performance?: {
-    inventory_health: {
-      active_skus: number;
-      low_stock_skus: number;
-      stockout_skus: number;
-      avg_sellable_per_sku: number | null;
-    };
-    stock_posture: {
-      sellable_units: number;
-      reorder_triggered_skus: number;
-      is_default: boolean;
-      linked_location_name: string | null;
-    };
-    inventory_trend: WarehouseInventoryTrendWeek[];
-    idle_stock: Array<{
-      tenant_product_id: string;
-      product_name: string;
-      brand_name: string;
-      sellable_units: number;
-      last_demand_at: string | null;
-    }>;
-    recent_replenishment: Array<{
-      tenant_product_id: string;
-      product_name: string;
-      brand_name: string;
-      qty_available: number;
-      qty_reserved: number;
-      updated_at: string;
-    }>;
-  };
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
 }

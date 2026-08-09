@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { PencilIcon } from 'lucide-react';
 import { InsightStrip4 } from '@/components/seller/layout';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useLocationDetail } from '@/hooks/useLocations';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
+import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { formatNumberValue } from '@/lib/utils';
 import { LocationOrdersTab } from './LocationOrdersTab';
@@ -84,13 +85,26 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     initialState: 'orders',
   });
   const { data, isLoading, isError, refetch } = useLocationDetail(id, { includePerformance: false });
+  const { data: settings } = useTenantSettings();
 
   const meta = data?.meta_strip;
+  const featureVisibility = useMemo(
+    () => ({
+      estimates: settings?.modules.orders.features.enquiries !== false,
+      salesOrders: settings?.modules.orders.features.sales_orders !== false,
+      invoices: settings?.modules.orders.features.invoices !== false,
+    }),
+    [
+      settings?.modules.orders.features.enquiries,
+      settings?.modules.orders.features.sales_orders,
+      settings?.modules.orders.features.invoices,
+    ],
+  );
   const tabs = [
     ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-    { id: 'orders', label: 'Orders', badge: data?.tab_badges.orders_mtd },
-    { id: 'estimates', label: 'Estimates', badge: data?.tab_badges.estimates_mtd },
-    { id: 'invoices', label: 'Invoices', badge: data?.tab_badges.invoices_mtd },
+    ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders' }] : []),
+    ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates' }] : []),
+    ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices' }] : []),
   ];
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'orders';
 
@@ -198,7 +212,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       />
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        data ? <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        data ? <LocationPerformanceTab overview={data.overview} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
       {activeTab === 'orders' ? <LocationOrdersTab locationId={id} /> : null}
       {activeTab === 'estimates' ? <LocationEstimatesTab locationId={id} /> : null}

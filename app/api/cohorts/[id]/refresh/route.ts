@@ -59,6 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     event: 'customer_group_refreshed',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: id,
       cached_member_count: updated?.cached_member_count ?? null,
       last_refreshed_at: (updated as any)?.last_refreshed_at ?? null,

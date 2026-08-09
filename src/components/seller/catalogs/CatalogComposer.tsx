@@ -249,8 +249,6 @@ export function CatalogComposer({
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [availability, setAvailability] = useState<CatalogComposerAvailability>('show_everything');
-  const [selectedLastOrderBucket, setSelectedLastOrderBucket] = useState<string>('');
-  const [selectedGmv90dBucket, setSelectedGmv90dBucket] = useState<string>('');
   const [isDynamic, setIsDynamic] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -308,8 +306,6 @@ export function CatalogComposer({
       setSelectedBrands(nextBrands);
       setSelectedCategories(nextCategories);
       setAvailability(detailComposer.filters.availability);
-      setSelectedLastOrderBucket(detailComposer.filters.last_ordered_bucket ?? '');
-      setSelectedGmv90dBucket(detailComposer.filters.gmv_90d_bucket ?? '');
       setIsDynamic(detailComposer.is_dynamic ?? false);
       setSelectedIds(nextSelectedIds);
       setTagOverrides(detailComposer.tag_overrides ?? {});
@@ -335,8 +331,6 @@ export function CatalogComposer({
     setSelectedBrands([]);
     setSelectedCategories([]);
     setAvailability('show_everything');
-    setSelectedLastOrderBucket('');
-    setSelectedGmv90dBucket('');
     setIsDynamic(false);
     setSelectedIds(nextSelectedIds);
     setTagOverrides({});
@@ -450,13 +444,11 @@ export function CatalogComposer({
       selectedBrands,
       selectedCategories,
       availability,
-      selectedLastOrderBucket,
-      selectedGmv90dBucket,
       isDynamic,
       selectedIds: Array.from(selectedIds).sort(),
       tagOverrides,
     }),
-    [availability, campaignPrices, cohortId, isDynamic, name, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedGmv90dBucket, selectedIds, selectedLastOrderBucket, tagOverrides, validFrom, validTo],
+    [availability, campaignPrices, cohortId, isDynamic, name, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
   );
 
   useEffect(() => {
@@ -593,15 +585,15 @@ export function CatalogComposer({
         brand_names: selectedBrands,
         category_names: selectedCategories,
         availability,
-        last_ordered_bucket: selectedLastOrderBucket || undefined,
-        gmv_90d_bucket: selectedGmv90dBucket || undefined,
       },
       tag_overrides: tagOverrides,
-      items: filteredSelectedProducts.map((product, index) => ({
-        tenant_product_id: product.id,
-        display_order: index,
-        price_override: resolvedCampaignPrice(product),
-      })),
+      items: isDynamic
+        ? []
+        : filteredSelectedProducts.map((product, index) => ({
+            tenant_product_id: product.id,
+            display_order: index,
+            price_override: resolvedCampaignPrice(product),
+          })),
       save_mode: saveMode,
       ...(saveMode === 'publish' && publishOptions
         ? {
@@ -639,7 +631,7 @@ export function CatalogComposer({
       }
     }
 
-    if (payload.items.length === 0) {
+    if (!payload.is_dynamic && payload.items.length === 0) {
       nextErrors.products = 'Select at least one product to save this campaign.';
     }
 
@@ -1013,45 +1005,6 @@ export function CatalogComposer({
                         </label>
                       ))}
                     </div>
-                  </section>
-
-                  <section>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Order history</h3>
-                    <Select
-                      value={selectedLastOrderBucket || 'any'}
-                      onValueChange={(v) => setSelectedLastOrderBucket(v === 'any' ? '' : v)}
-                    >
-                      <SelectTrigger className="w-full bg-cream-50 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any time</SelectItem>
-                        <SelectItem value="within_30_days">Last 30 days</SelectItem>
-                        <SelectItem value="within_90_days">Last 90 days</SelectItem>
-                        <SelectItem value="dormant_90_plus_days">Dormant (90+ days)</SelectItem>
-                        <SelectItem value="anytime">Ever ordered</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </section>
-
-                  <section>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">GMV · last 90 days</h3>
-                    <Select
-                      value={selectedGmv90dBucket || 'any'}
-                      onValueChange={(v) => setSelectedGmv90dBucket(v === 'any' ? '' : v)}
-                    >
-                      <SelectTrigger className="w-full bg-cream-50 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any amount</SelectItem>
-                        <SelectItem value="gmv_0">No revenue</SelectItem>
-                        <SelectItem value="gmv_1_50000">₹1 – ₹50K</SelectItem>
-                        <SelectItem value="gmv_50001_200000">₹50K – ₹2L</SelectItem>
-                        <SelectItem value="gmv_200001_500000">₹2L – ₹5L</SelectItem>
-                        <SelectItem value="gmv_500001_plus">₹5L+</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </section>
 
                   <section className="border-t border-cream-200 pt-4">

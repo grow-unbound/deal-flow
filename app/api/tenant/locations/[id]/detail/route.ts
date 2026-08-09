@@ -5,14 +5,7 @@ import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import type {
-  LocationDetailResponse,
-  LocationDetailGmvWeek,
-  LocationDetailInventoryHealth,
-  LocationDetailTopBuyer,
-  LocationDetailOrder,
-  LocationDetailActivityItem,
-} from '@/hooks/useLocations';
+import type { LocationDetailResponse } from '@/hooks/useLocations';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,15 +26,10 @@ function getCity(address: unknown): string {
   return '';
 }
 
-function sumNumberField(rows: Array<Record<string, unknown>>, field: string): number {
-  return rows.reduce((sum, row) => sum + Number(row[field] ?? 0), 0);
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
@@ -78,11 +66,7 @@ export async function GET(
   const locationQuarterMeta = getSellerLandingPeriodMeta('quarter');
   const locationQuarterStart = locationQuarterMeta.current_start.slice(0, 10);
 
-  const [detailV2Res, ordersRes, estimatesRes, invoicesRes, activityRes, demandKindRes, locationPeriodRes, locationNowRes] = await Promise.all([
-    db.schema('app').rpc('get_seller_location_detail_v2', {
-      p_tenant_id: tenantId,
-      p_location_id: id,
-    }),
+  const [ordersRes, estimatesRes, invoicesRes, activityRes, locationPeriodRes, locationNowRes, locationMonthlyRes] = await Promise.all([
     db
       .schema('app')
       .from('orders')
@@ -120,9 +104,6 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(20),
-    // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
-    // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
-    db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId }),
     db
       .schema('app')
       .from('metrics_location_period_summary')
@@ -141,11 +122,25 @@ export async function GET(
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .maybeSingle(),
+    // Last 12 monthly-grain rows for the gmv_trend chart (LocationPerformanceTab, currently
+    // unmounted — showPerformanceTab=false). Rows are populated per dirty-day reconciliation,
+    // not a fixed rolling window, so a tenant with no historical backfill may see fewer than
+    // 12 points; that's expected, not a bug.
+    db
+      .schema('app')
+      .from('metrics_location_period_summary')
+      .select('period_start, invoice_value')
+      .eq('location_id', id)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'month')
+      .is('deleted_at', null)
+      .order('period_start', { ascending: true })
+      .limit(12),
   ]);
 
   const firstError =
-    detailV2Res.error ?? ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error ?? demandKindRes.error
-    ?? locationPeriodRes.error ?? locationNowRes.error;
+    ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error
+    ?? locationPeriodRes.error ?? locationNowRes.error ?? locationMonthlyRes.error;
   if (firstError) {
     console.error('[GET /api/tenant/locations/[id]/detail]', firstError.code, firstError.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
@@ -155,6 +150,7 @@ export async function GET(
     invoice_value: number;
     invoice_count: number;
     invoice_buyer_count: number;
+    primary_demand_kind: 'orders' | 'estimates' | 'none' | null;
     primary_demand_value: number;
     primary_demand_count: number;
     primary_demand_buyer_count: number;
@@ -168,17 +164,19 @@ export async function GET(
     open_order_value: number;
   } | null;
 
-  const detailV2 = (detailV2Res.data ?? {}) as any;
-  const trendCard = (detailV2.performance_cards ?? []).find((card: any) => card.id === 'sales-over-time');
-  const trendPoints = trendCard?.body?.points ?? [];
   const invoices = invoicesRes.data ?? [];
   const estimates = estimatesRes.data ?? [];
   const orders = ordersRes.data ?? [];
 
-  const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
-    | 'orders'
-    | 'estimates'
-    | 'none';
+  const primaryDemandKind = locationQuarter?.primary_demand_kind ?? 'none';
+
+  const monthlyRows = (locationMonthlyRes.data ?? []) as Array<{ period_start: string; invoice_value: number }>;
+  const gmvTrend = monthlyRows.map((row) => ({
+    week_label: new Date(`${row.period_start}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' }),
+    week_start: row.period_start,
+    gmv: Number(row.invoice_value ?? 0),
+    orders_count: 0,
+  }));
 
   // Open primary demand: open estimate value/count for Estimate-primary tenants, open
   // order value/count for Order-primary tenants — now read directly from
@@ -194,17 +192,7 @@ export async function GET(
       ? Number(locationNow?.open_order_count ?? 0)
       : 0;
 
-  const buyerIds = Array.from(new Set([
-    ...orders.map((row: any) => row.buyer_id).filter(Boolean),
-    ...estimates.map((row: any) => row.buyer_id).filter(Boolean),
-    ...invoices.map((row: any) => row.buyer_id).filter(Boolean),
-  ]));
-  const { data: buyers } = buyerIds.length
-    ? await db.schema('app').from('buyers').select('id, business_name, geography').eq('tenant_id', tenantId).in('id', buyerIds)
-    : { data: [] };
-  const buyerById = new Map<string, any>((buyers ?? []).map((buyer: any) => [buyer.id, buyer]));
-
-  const response: LocationDetailResponse & { performance_cards: any[]; detail_v2: any } = {
+  const response: LocationDetailResponse = {
     id: baseLocation.id,
     name: baseLocation.name,
     city: getCity(baseLocation.address),
@@ -232,12 +220,7 @@ export async function GET(
       open_primary_demand_count: openPrimaryDemandCount,
     },
     overview: {
-      gmv_trend: trendPoints.map((point: any) => ({
-        week_label: String(point.month ?? point.label ?? 'Period'),
-        week_start: String(point.month ?? point.label ?? ''),
-        gmv: Number(point.value ?? 0),
-        orders_count: 0,
-      })),
+      gmv_trend: gmvTrend,
       inventory_health: {
         active_skus: 0,
         oos_skus: 0,
@@ -253,60 +236,6 @@ export async function GET(
         outstanding_dues: locationNow?.overdue_amount ?? 0,
       }] : [],
     },
-    orders: orders.map((order: any) => {
-      const buyer = buyerById.get(order.buyer_id);
-      return {
-        order_id: order.id,
-        order_number: order.order_number,
-        placed_at: order.placed_at ?? order.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: order.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: order.is_buyer_app_order ? 'buyer_app' : order.estimate_id ? 'converted' : 'direct',
-        source_label: order.source,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(order.total_amount ?? 0),
-        status: order.status,
-      };
-    }),
-    estimates: estimates.map((estimate: any) => {
-      const buyer = buyerById.get(estimate.buyer_id);
-      return {
-        estimate_id: estimate.id,
-        estimate_number: estimate.estimate_number,
-        issued_at: estimate.estimate_date ?? estimate.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: estimate.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: estimate.is_buyer_app_estimate ? 'buyer_app' : 'seller',
-        source_label: estimate.source,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(estimate.total_amount ?? 0),
-        expires_at: estimate.expires_at,
-        status: estimate.status,
-      };
-    }),
-    invoices: invoices.map((invoice: any) => {
-      const buyer = buyerById.get(invoice.buyer_id);
-      return {
-        invoice_id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        issued_at: invoice.invoice_date ?? invoice.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: invoice.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: invoice.is_buyer_app_invoice ? 'buyer_app' : invoice.estimate_id ? 'converted' : 'direct',
-        source_label: null,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(invoice.total_amount ?? 0),
-        outstanding_amount: Number(invoice.outstanding_balance ?? 0),
-        due_date: invoice.due_date,
-        status: invoice.status,
-      };
-    }),
     activity: (activityRes.data ?? []).map((row: any) => ({
       id: row.id,
       action: row.action,
@@ -315,13 +244,6 @@ export async function GET(
       ts: row.ts,
       actor_name: row.actor_user_id,
     })),
-    tab_badges: {
-      orders_mtd: orders.length,
-      estimates_mtd: estimates.length,
-      invoices_mtd: invoices.length,
-    },
-    performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
   };
 
   return timedJson(response);

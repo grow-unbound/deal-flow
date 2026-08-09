@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Fragment, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { triggerHaptic } from '@/lib/haptics';
-import Link from 'next/link';
 import { Plus, Library } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -20,19 +19,25 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot, type SellerMobileListItem } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
+import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import {
   useTenantCatalogs,
   useTenantCatalogsMetrics,
+  type CatalogLandingRow,
   type CatalogsLandingKpiCardV4,
   type CatalogsLandingMetricsV4,
   type CatalogsLandingResponse,
 } from '@/hooks/useCatalogs';
-import { formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 import { CAMPAIGNS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
+import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { CampaignFormSheet } from './CampaignFormSheet';
 
@@ -46,6 +51,22 @@ const CONVERSION_OPTIONS = [
   { value: 'has_revenue', label: 'Revenue generated' },
 ] as const;
 
+function formatMetricCard(card: CatalogsLandingKpiCardV4): string {
+  const idLabel = card.id.toLowerCase();
+  if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel === 'campaign_demand') {
+    return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+  }
+  if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
+    return `${card.value ?? 0}%`;
+  }
+  return `${card.value ?? 0}`;
+}
+
+function campaignExpiryText(catalog: CatalogLandingRow): string | null {
+  if (catalog.days_left == null) return null;
+  return `Expires in ${catalog.days_left}d`;
+}
+
 function CatalogsLandingContent({
   initialData,
   initialMetrics,
@@ -56,6 +77,8 @@ function CatalogsLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
+  const { id: openId } = useParams<{ id?: string }>();
+  const isPaneOpen = useSplitPaneOpen('/campaigns');
   const [campaignFormOpen, setCampaignFormOpen] = useState(false);
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
@@ -63,6 +86,7 @@ function CatalogsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/campaigns',
     version: 4,
     initialState: {
       search: '',
@@ -81,7 +105,8 @@ function CatalogsLandingContent({
   const statusFilter = filters.status ?? [];
   const conversionFilter = filters.conversion ?? [];
   const filterPreset = routeState.filter_preset ?? null;
-  const { data: metricsData } = useTenantCatalogsMetrics(initialMetrics);
+  const metricsQuery = useTenantCatalogsMetrics(initialMetrics);
+  const metricsData = useRetainedValue(metricsQuery.data ?? initialMetrics);
   const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantCatalogs(
     period,
     { search, status: statusFilter, conversion: conversionFilter, filter_preset: filterPreset },
@@ -92,6 +117,7 @@ function CatalogsLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-catalogs-landing',
     scopeKey: 'fixed-90d',
+    pathnameOverride: '/campaigns',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -153,29 +179,31 @@ function CatalogsLandingContent({
       });
   }, [catalogs, conversionFilter, search, sortBy, statusFilter]);
 
-  if (isError && !landingData) {
-    return (
-      <ErrorState
-        heading="Couldn't load campaigns"
-        description="There was a problem fetching campaign funnel metrics. Please try again."
-      />
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
+  const sentinelIndex = useMemo(
+    () => getSentinelInsertIndex(filtered.length, SELLER_INFINITE_SCROLL_RATIO),
+    [filtered.length],
+  );
+
+  const showRefreshingState = metricsQuery.isLoading && !metricsData && isLoading && !landingData;
+  if (showRefreshingState) {
+    return isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading campaigns" />
+    ) : (
+      <CatalogsLandingSkeleton />
     );
   }
-  const showRefreshingState = isLoading && !landingData;
-  if (showRefreshingState) return <CatalogsLandingSkeleton />;
 
   const estimatesEnabled = landingData?.channels?.estimates_enabled ?? true;
   const metricCards = metricsData?.cards ?? [];
-  const formatMetricCard = (card: CatalogsLandingKpiCardV4) => {
-    const idLabel = card.id.toLowerCase();
-    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel === 'campaign_demand') {
-      return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
-    }
-    if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
-      return `${card.value ?? 0}%`;
-    }
-    return `${card.value ?? 0}`;
-  };
+  const selectedCard =
+    metricCards.find((card) => filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null)) ?? null;
+  const headerCard = selectedCard ?? metricCards[0] ?? null;
   const filtersFromCampaignPreset = (preset?: Record<string, unknown>) => {
     if (!preset) return { status: [] as string[], conversion: [] as string[] };
     const status = typeof preset.status === 'string' ? [preset.status] : Array.isArray(preset.status) ? preset.status.map(String) : [];
@@ -206,59 +234,78 @@ function CatalogsLandingContent({
   );
 
   return (
-    <PageWrap className="flex min-h-0 flex-col md:h-[calc(100vh-var(--topbar-h))] md:overflow-hidden">
+    <PageWrap className="flex h-full min-h-0 flex-col">
       <StickyListHeader>
-        <PageHeader
-          eyebrow="Growth"
-          title="Campaigns"
-          subtitle={`${landingData?.total ?? catalogs.length} campaigns · ${landingData?.kpis.live_catalogs ?? 0} live · ${landingData?.kpis.scheduled_catalogs ?? 0} scheduled.`}
-          horizon={horizonLabel}
-          primary="Add a campaign"
-          onPrimaryClick={() => setCampaignFormOpen(true)}
-        />
+        <SplitPaneStickyHeaderSlot
+          isPaneOpen={isPaneOpen}
+          showRefreshingState={showRefreshingState}
+          isError={isError || metricsQuery.isError}
+        >
+          <PageHeader
+            eyebrow="Growth"
+            title={isPaneOpen && headerCard ? kpiLabel(CAMPAIGNS_KPI_COPY, headerCard) : 'Campaigns'}
+            subtitle={
+              isPaneOpen && headerCard
+                ? `${formatMetricCard(headerCard)} · ${kpiSupportingText(CAMPAIGNS_KPI_COPY, headerCard)}`
+                : `${landingData?.total ?? catalogs.length} campaigns · ${landingData?.kpis.live_catalogs ?? 0} live · ${landingData?.kpis.scheduled_catalogs ?? 0} scheduled.`
+            }
+            horizon={horizonLabel}
+            showHorizonControl={!isPaneOpen}
+            primary="Add a campaign"
+            onPrimaryClick={() => setCampaignFormOpen(true)}
+            compact={isPaneOpen}
+          />
 
-        <InsightStrip4
-          tiles={metricCards.slice(0, 4).map((card, index) => ({
-            label: card.time_basis ? `${kpiLabel(CAMPAIGNS_KPI_COPY, card)} · ${card.time_basis}` : kpiLabel(CAMPAIGNS_KPI_COPY, card),
-            value: formatMetricCard(card),
-            sub: kpiSupportingText(CAMPAIGNS_KPI_COPY, card),
-            tone: index === 2 ? 'accent' : undefined,
-            selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
-            onClick: () => {
-              const preset = card.filter_preset ?? null;
-              setRouteState((current) => ({
-                ...current,
-                filter_preset: preset,
-                filters: filtersFromCampaignPreset(preset ?? undefined),
-              }));
-            },
-          }))}
-        />
+          {isPaneOpen ? null : (
+            <InsightStrip4
+              tiles={metricCards.slice(0, 4).map((card, index) => ({
+                label: card.time_basis ? `${kpiLabel(CAMPAIGNS_KPI_COPY, card)} · ${card.time_basis}` : kpiLabel(CAMPAIGNS_KPI_COPY, card),
+                value: formatMetricCard(card),
+                sub: kpiSupportingText(CAMPAIGNS_KPI_COPY, card),
+                tone: index === 2 ? 'accent' : undefined,
+                selected: filterPreset != null && JSON.stringify(filterPreset) === JSON.stringify(card.filter_preset ?? null),
+                onClick: () => {
+                  const preset = card.filter_preset ?? null;
+                  setRouteState((current) => ({
+                    ...current,
+                    filter_preset: preset,
+                    filters: filtersFromCampaignPreset(preset ?? undefined),
+                  }));
+                },
+              }))}
+            />
+          )}
 
-        <FilterBar
-          count={`${filtered.length} campaigns`}
-          searchPlaceholder="Search campaign…"
-          chips={[]}
-          activeChip=""
-          sortBy={sortBy}
-          hideViewToggle
-          groups={groups}
-          searchValue={search}
-          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
-          sortOptions={SORT_OPTIONS}
-          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-        />
+          <FilterBar
+            count={`${filtered.length} campaigns${(isFetching || isFetchingNextPage) ? ' · Updating' : ''}`}
+            searchPlaceholder="Search campaign…"
+            chips={[]}
+            activeChip=""
+            sortBy={sortBy}
+            hideViewToggle
+            compact={isPaneOpen}
+            groups={groups}
+            searchValue={search}
+            onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value, filter_preset: null }))}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+          />
+        </SplitPaneStickyHeaderSlot>
       </StickyListHeader>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {isError ? (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {isError || metricsQuery.isError ? (
           <ErrorState
             heading="Couldn't load campaigns"
             description="There was a problem fetching campaign funnel metrics. Please try again."
           />
         ) : (
           <>
-            <div className="min-h-0 flex-1">
+            {(isLoading || isFetching) && filtered.length === 0 ? (
+              isPaneOpen ? (
+                <SplitPaneListRowsSkeleton isPaneOpen showLeading />
+              ) : null
+            ) : (
               <LandingTable
                 showEmptyState={filtered.length === 0 && !isLoading}
                 emptyState={
@@ -280,96 +327,145 @@ function CatalogsLandingContent({
                 }
                 columns={tableColumns}
                 tableClassName={estimatesEnabled ? 'min-w-[1400px]' : 'min-w-[1270px]'}
+                forceCompact={isPaneOpen}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
+                mobileRows={filtered.map((catalog): SellerMobileListItem => ({
+                  id: catalog.id,
+                  href: `/campaigns/${catalog.id}`,
+                  leading: (
+                    <EntityAvatar
+                      initials={catalog.initials}
+                      hue={catalog.hue}
+                      imageUrl={catalog.hero_image_url}
+                      size={38}
+                    />
+                  ),
+                  eyebrow: catalog.status.label,
+                  primary: catalog.name,
+                  supporting: joinSplitListMeta(
+                    catalog.audience_count != null ? `${catalog.view_pct}% open rate` : null,
+                    `${catalog.conversion_pct}% conversion`,
+                    campaignExpiryText(catalog),
+                  ),
+                  trailing:
+                    (catalog.invoice_value ?? 0) > 0
+                      ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD')
+                      : catalog.gmv > 0
+                        ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD')
+                        : '—',
+                  selected: catalog.id === openId,
+                }))}
               >
-                {filtered.map((catalog) => (
-                  <tr
-                    key={catalog.id}
-                    className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
-                    onClick={() => router.push(`/campaigns/${catalog.id}`)}
-                    onPointerDown={() => triggerHaptic()}
-                  >
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-3">
-                        <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-medium text-cream-900">{catalog.name}</p>
-                          <p className="mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
-                            {catalog.products_count} products · {catalog.brands_count} brands
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-1">
-                        <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
-                        <p className="text-xs text-cream-600">
-                          {catalog.audience_count != null ? `${catalog.audience_count} buyers` : '—'}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                      {catalog.order_count > 0 ? catalog.order_count : '—'}
-                    </td>
-                    {estimatesEnabled ? (
-                      <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                        {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
-                      </td>
-                    ) : null}
-                    <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
-                      {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="space-y-1">
-                        <p className="font-mono text-sm text-cream-900">
-                          {(catalog.invoice_value ?? 0) > 0 ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD') : '—'}
-                        </p>
-                        <p className="text-xs text-cream-600">
-                          {(catalog.invoice_count ?? 0) > 0 ? `${catalog.invoice_count} invoices · ${catalog.revenue_buyer_count ?? 0} customers` : '—'}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="space-y-1">
-                        <p className="font-mono text-sm text-cream-900">
-                          {catalog.views > 0 ? catalog.views : '—'}
-                        </p>
-                        <p className="text-xs text-cream-600">
-                          {catalog.audience_count ? `${catalog.view_pct}% of buyers` : '—'}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="space-y-1">
-                        <p className="font-mono text-sm text-cream-900">
-                          {catalog.demand_customers ?? 0}
-                        </p>
-                        <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-1">
-                        <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
-                        <p className="text-xs text-cream-600">
-                          {catalog.status.label === 'Draft'
-                            ? 'Not yet sent'
-                            : catalog.status.label === 'Scheduled'
-                              ? `Starts ${catalog.valid_from ? new Date(catalog.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'soon'}`
-                              : catalog.status.label === 'Live · Unpublished Changes'
-                                ? 'Live campaign has unpublished changes'
-                                : catalog.status.label === 'Expired' || catalog.status.label === 'Archived'
-                              ? catalog.valid_until_label
-                              : catalog.days_left != null
-                                ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
-                                : catalog.valid_until_label}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right text-cream-500">›</td>
-                  </tr>
-                ))}
+                {filtered.map((catalog, index) => {
+                  const colSpan = tableColumns.length;
+                  return (
+                    <Fragment key={catalog.id}>
+                      {index === sentinelIndex ? (
+                        <tr aria-hidden="true" style={{ height: 0 }}>
+                          <td colSpan={colSpan} className="p-0">
+                            <div ref={sentinelRef} />
+                          </td>
+                        </tr>
+                      ) : null}
+                      <tr
+                        className={cn(
+                          'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
+                          catalog.id === openId ? 'bg-ember-50' : 'bg-white',
+                        )}
+                        onClick={() => router.push(`/campaigns/${catalog.id}`)}
+                        onPointerDown={() => triggerHaptic()}
+                      >
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-3">
+                            <EntityAvatar initials={catalog.initials} hue={catalog.hue} imageUrl={catalog.hero_image_url} size={38} />
+                            <div className="min-w-0">
+                              <p className="truncate text-base font-medium text-cream-900">{catalog.name}</p>
+                              <p className="mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
+                                {catalog.products_count} products · {catalog.brands_count} brands
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="space-y-1">
+                            <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
+                            <p className="text-xs text-cream-600">
+                              {catalog.audience_count != null ? `${catalog.audience_count} buyers` : '—'}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                          {catalog.order_count > 0 ? catalog.order_count : '—'}
+                        </td>
+                        {estimatesEnabled ? (
+                          <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                            {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">
+                          {catalog.gmv > 0 ? formatNumberValue(catalog.gmv, 'CURRENCY_THRESHOLD') : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="space-y-1">
+                            <p className="font-mono text-sm text-cream-900">
+                              {(catalog.invoice_value ?? 0) > 0 ? formatNumberValue(catalog.invoice_value ?? 0, 'CURRENCY_THRESHOLD') : '—'}
+                            </p>
+                            <p className="text-xs text-cream-600">
+                              {(catalog.invoice_count ?? 0) > 0 ? `${catalog.invoice_count} invoices · ${catalog.revenue_buyer_count ?? 0} customers` : '—'}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="space-y-1">
+                            <p className="font-mono text-sm text-cream-900">
+                              {catalog.views > 0 ? catalog.views : '—'}
+                            </p>
+                            <p className="text-xs text-cream-600">
+                              {catalog.audience_count ? `${catalog.view_pct}% of buyers` : '—'}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="space-y-1">
+                            <p className="font-mono text-sm text-cream-900">
+                              {catalog.demand_customers ?? 0}
+                            </p>
+                            <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="space-y-1">
+                            <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
+                            <p className="text-xs text-cream-600">
+                              {catalog.status.label === 'Draft'
+                                ? 'Not yet sent'
+                                : catalog.status.label === 'Scheduled'
+                                  ? `Starts ${catalog.valid_from ? new Date(catalog.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'soon'}`
+                                  : catalog.status.label === 'Live · Unpublished Changes'
+                                    ? 'Live campaign has unpublished changes'
+                                    : catalog.status.label === 'Expired' || catalog.status.label === 'Archived'
+                                  ? catalog.valid_until_label
+                                  : catalog.days_left != null
+                                    ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
+                                    : catalog.valid_until_label}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right text-cream-500">›</td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
               </LandingTable>
-            </div>
-            <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
+            )}
+
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <Skeleton className="h-8 w-48 rounded-full" />
+              </div>
+            )}
+
             <CampaignFormSheet open={campaignFormOpen} onOpenChange={setCampaignFormOpen} mode="create" />
           </>
         )}

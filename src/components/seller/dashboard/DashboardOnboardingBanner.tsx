@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { X, Sparkles } from 'lucide-react';
 import { useCaptureEvent } from '@/hooks/useFeatureFlag';
+import { useSellerAnalyticsIds } from '@/lib/analytics-identity';
 import { shouldShowTenantOnboardingBanner } from '@/lib/seller-onboarding-banner';
 
 interface DashboardOnboardingBannerProps {
@@ -20,6 +21,7 @@ export function DashboardOnboardingBanner({
 }: DashboardOnboardingBannerProps) {
   const searchParams = useSearchParams();
   const captureEvent = useCaptureEvent();
+  const { seller_id } = useSellerAnalyticsIds();
   const [showOnboarding, setShowOnboarding] = useState(() =>
     shouldShowTenantOnboardingBanner({
       isTenantCreator,
@@ -48,8 +50,9 @@ export function DashboardOnboardingBanner({
   }, [searchParams]);
 
   useEffect(() => {
-    captureEvent('dashboard_viewed', { tenant_id: tenantId });
-  }, [captureEvent, tenantId]);
+    if (!showOnboarding || !tenantId) return;
+    captureEvent('onboarding_banner_shown', { tenant_id: tenantId, seller_id });
+  }, [captureEvent, showOnboarding, tenantId, seller_id]);
 
   if (!showOnboarding || !tenantId) return null;
 

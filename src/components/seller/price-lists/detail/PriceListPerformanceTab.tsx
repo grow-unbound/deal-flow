@@ -9,10 +9,9 @@ interface PriceListPerformanceTabProps {
 }
 
 /**
- * Coverage & checks explore surface for a price list (doc lines 702-713):
- * who-receives-this-pricing, product-coverage-gaps, discount-bands-and-price-checks —
- * all three ready from app.get_seller_pricelist_detail_v2's performance_cards.
- * Falls back to a locally-computed equivalent if the API ever omits performance_cards.
+ * Coverage & checks explore surface for a price list: who-receives-this-pricing,
+ * product-coverage-gaps, discount-bands-and-price-checks — computed locally from
+ * priceList.items/assignments (no backing API cards).
  */
 export function PriceListPerformanceTab({ priceList, performanceCards }: PriceListPerformanceTabProps) {
   if (performanceCards?.length) {

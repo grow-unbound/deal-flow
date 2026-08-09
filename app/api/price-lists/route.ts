@@ -535,6 +535,7 @@ export async function POST(request: NextRequest) {
       event: isSimpleForm ? 'price_list_created_simple' : data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
       properties: {
         tenant_id: claims.tenant_id,
+        seller_id: claims.sub,
         price_list_id: priceList.id,
         item_count: isSimpleForm
           ? data.selected_product_ids.length

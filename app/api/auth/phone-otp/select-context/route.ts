@@ -31,10 +31,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!ref_id.startsWith('v_')) {
-      return NextResponse.json({ error: 'Invalid context selection token' }, { status: 400 });
-    }
-
     const record = await buyerOtpStore.get(ref_id);
 
     if (!record || record.kind !== 'verified') {

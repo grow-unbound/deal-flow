@@ -1,4 +1,6 @@
-import { Fragment, type ReactNode, type RefObject } from 'react';
+'use client';
+
+import { Fragment, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
@@ -11,6 +13,43 @@ import {
   type SellerSplitListVariant,
 } from '@/lib/seller-split-list-ui';
 import { cn } from '@/lib/utils';
+
+const SELECTED_VISIBILITY_PAD_PX = 8;
+
+function getVerticalScrollParent(node: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = node.parentElement;
+  while (current) {
+    const { overflowY } = getComputedStyle(current);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
+      && current.scrollHeight > current.clientHeight
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function isFullyVisibleInScrollParent(node: HTMLElement, scrollParent: HTMLElement): boolean {
+  const parentRect = scrollParent.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  return (
+    nodeRect.top >= parentRect.top + SELECTED_VISIBILITY_PAD_PX
+    && nodeRect.bottom <= parentRect.bottom - SELECTED_VISIBILITY_PAD_PX
+  );
+}
+
+/** Bring the open split-pane row into the list scrollport when it would otherwise be clipped. */
+function scrollSelectedSplitListItemIntoView(listRoot: HTMLElement, selectedId: string): void {
+  const active = listRoot.querySelector<HTMLElement>(`[data-split-list-id="${CSS.escape(selectedId)}"]`);
+  if (!active || typeof active.scrollIntoView !== 'function') return;
+
+  const scrollParent = getVerticalScrollParent(active);
+  if (scrollParent && isFullyVisibleInScrollParent(active, scrollParent)) return;
+
+  active.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+}
 
 export interface SellerMobileListItem {
   id: string;
@@ -119,13 +158,36 @@ function SellerSplitListItemSkeleton({
 }
 
 export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef }: SellerMobileListProps) {
+  const listRootRef = useRef<HTMLDivElement>(null);
+  const selectedId = items.find((item) => item.selected)?.id ?? null;
+
+  // Split-pane list remounts at scrollTop=0 when forceCompact flips on — without this,
+  // a mid-table selection opens with the ember highlight off-screen and no cue which
+  // row is active. Skip when already fully visible so in-pane clicks don't jump.
+  useLayoutEffect(() => {
+    if (!forceVisible || !selectedId) return;
+    const listRoot = listRootRef.current;
+    if (!listRoot) return;
+
+    scrollSelectedSplitListItemIntoView(listRoot, selectedId);
+    // ResizablePanel applies the 30/70 split after the first layout pass — re-center once
+    // sizes settle so the row isn't clipped by the narrowed list column.
+    const frame = requestAnimationFrame(() => {
+      scrollSelectedSplitListItemIntoView(listRoot, selectedId);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [forceVisible, selectedId, items.length]);
+
   if (items.length === 0 && emptyState) {
     return <div className={forceVisible ? undefined : 'md:hidden'}>{emptyState}</div>;
   }
 
   if (forceVisible) {
     return (
-      <div className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
+      <div
+        ref={listRootRef}
+        className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
+      >
         <div className="divide-y divide-cream-200">
           {items.map((item, index) => (
             <Fragment key={item.id}>
@@ -135,6 +197,8 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
               <Link
                 href={item.href}
                 onClick={item.onClick}
+                data-split-list-id={item.id}
+                aria-current={item.selected ? 'page' : undefined}
                 className={cn(
                   'block text-left no-underline transition-colors hover:bg-cream-50',
                   SELLER_SPLIT_LIST_ROW_PADDING_CLASS,

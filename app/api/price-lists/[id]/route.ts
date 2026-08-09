@@ -85,7 +85,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
@@ -131,13 +130,7 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [detailV2Res, itemsRes, assignmentsRes, activityRes, priceListNowRes] = await Promise.all([
-    includePerformance
-      ? db.schema('app').rpc('get_seller_pricelist_detail_v2', {
-          p_tenant_id: claims.tenant_id,
-          p_price_list_id: id,
-        })
-      : Promise.resolve({ data: null, error: null }),
+  const [itemsRes, assignmentsRes, activityRes, priceListNowRes] = await Promise.all([
     db
       .schema('app')
       .from('price_list_items')
@@ -191,13 +184,6 @@ export async function GET(
     avg_discount_pct: number;
     avg_margin_pct: number;
   } | null;
-
-  if (detailV2Res.error) {
-    console.warn(
-      '[GET /api/price-lists/[id]] get_seller_pricelist_detail_v2 unavailable; serving base detail only',
-      detailV2Res.error,
-    );
-  }
 
   const items = itemsRes.data ?? [];
   const assignments = assignmentsRes.data ?? [];
@@ -373,11 +359,8 @@ export async function GET(
 
   const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : 0;
   const daysLeft = priceList.valid_to ? Math.max(0, Math.ceil((new Date(priceList.valid_to).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
-  const detailV2 = detailV2Res.error ? null : detailV2Res.data as any;
 
   return NextResponse.json({
-    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
     price_list: {
       ...priceList,
       status,
@@ -407,8 +390,6 @@ export async function GET(
         };
       }),
       activity: events,
-      performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
-      detail_v2: includePerformance ? detailV2 : null,
       stats: {
         products_covered: priceListNow?.member_product_count ?? enrichedItems.length,
         brands_covered: brandSet.size,

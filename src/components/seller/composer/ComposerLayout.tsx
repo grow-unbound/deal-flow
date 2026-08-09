@@ -1,6 +1,6 @@
 'use client';
 
-import { useContext } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { composerThreePanelGridClass, composerTwoPanelGridClass } from '@/lib/composer-viewport-classes';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
@@ -19,12 +19,14 @@ export function ComposerShell({
 export function ComposerTitleRow({
   title,
   subtitle,
+  titleLeading,
   status,
   actions,
   onRequestClose,
 }: {
   title: string;
   subtitle: string;
+  titleLeading?: ReactNode;
   status?: {
     label: string;
     tone?: 'draft' | 'live';
@@ -40,6 +42,7 @@ export function ComposerTitleRow({
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
+          {titleLeading}
           <h1 className="font-display text-lg md:text-xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
           {status ? (
             status.chipClassName ? (

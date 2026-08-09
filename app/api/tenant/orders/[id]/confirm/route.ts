@@ -5,6 +5,8 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 const ConfirmSchema = z.object({
   has_backorder: z.boolean().default(false),
@@ -106,6 +108,12 @@ export async function PATCH(
     if (updateError) {
       return NextResponse.json({ error: 'Failed to confirm sales order' }, { status: 500 });
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'sales_order_confirmed',
+      properties: { ...withTenantSellerIds(claims), order_id: id },
+    });
 
     return NextResponse.json({
       data: {

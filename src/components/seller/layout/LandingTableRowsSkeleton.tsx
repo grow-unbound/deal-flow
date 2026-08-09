@@ -26,7 +26,7 @@ export function LandingTableRowsSkeleton({
   }
 
   return (
-    <div className="hidden h-full min-h-[calc(100dvh-var(--topbar-h)-20rem)] overflow-x-auto md:block">
+    <div className="hidden min-w-0 max-w-full overflow-x-auto md:block">
         <div
           className="min-h-full overflow-hidden rounded-[14px] border border-cream-300 bg-white"
           style={tableMinWidth ? { minWidth: `${tableMinWidth}px` } : undefined}

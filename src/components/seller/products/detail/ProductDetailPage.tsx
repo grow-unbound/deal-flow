@@ -202,7 +202,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         )
       ) : null}
       {showPerformanceTab && activeTab === 'performance' ? (
-        data ? <ProductPerformanceTab performance={data.detail.performance} performanceCards={data.detail.performance_cards} /> : <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
+        data ? <ProductPerformanceTab performance={data.detail.performance} /> : <Skeleton className="mt-4 h-[28rem] rounded-[14px]" />
       ) : null}
       {activeTab === 'pricing' ? (
         data ? (

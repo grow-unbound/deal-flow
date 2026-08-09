@@ -224,7 +224,10 @@ export default function CartPage() {
       buyer_id: meData?.buyer_id ?? null,
       line_count: availableItems.length,
       item_count: availableItemCount,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax_amount,
       total,
+      line_items: buildAnalyticsLineItems(),
       error_reason: message,
     });
   }

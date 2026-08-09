@@ -132,43 +132,7 @@ export interface TenantCustomerDetailResponse {
     brand_affinity: Array<{ brand: string; spend: number }>;
     order_frequency: Array<{ label: string; orders: number }>;
   };
-  performance_v2: {
-    headline: {
-      spend_mtd: number;
-      growth_pct: number;
-      orders_mtd: number;
-      aov_mtd: number;
-    };
-    brand_mix: {
-      total_spend: number;
-      rows: Array<{
-        brand: string;
-        spend: number;
-        pct: number;
-      }>;
-    };
-    top_skus: Array<{
-      name: string;
-      sku: string;
-      revenue: number;
-      units: number;
-    }>;
-    credit_ops: {
-      last_order_days_ago: string;
-      last_order_value: number;
-      catalog_opens_mtd: number;
-      credit_used: number;
-      credit_limit: number;
-      credit_util_pct: number;
-      payment_behavior_summary: string;
-    };
-  };
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
   tab_badges: {
-    orders_90d: number;
-    estimates_90d: number;
-    invoices_90d: number;
     price_lists_assigned: number;
   };
   cohorts_summary: {
@@ -195,6 +159,8 @@ export interface CustomerDocumentRow {
   place_of_supply: string | null;
   source_kind: 'buyer_app' | 'converted' | 'direct' | 'seller';
   source_label: string | null;
+  source_detail?: string | null;
+  is_buyer_app: boolean;
   campaign_name: string | null;
   items_count: number;
   total_amount: number;

@@ -210,11 +210,12 @@ export interface CohortDetailResponse {
   header: CohortDetailHeader;
   meta_strip_4: CohortDetailMetaStrip4;
   details_rules: CohortDetailDetailsRules;
-  performance: CohortDetailPerformance;
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
-  buyers: CohortDetailBuyer[];
+  performance: CohortDetailPerformance | null;
   rules_summary: CohortRulesSummary;
+}
+
+export interface CohortMemberBuyersResponse {
+  buyers: CohortDetailBuyer[];
 }
 
 function cohortTypeLabel(brandCount: number): CohortType {
@@ -385,6 +386,23 @@ export function useCohortDetail(id: string, options?: { includePerformance?: boo
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCohortMemberBuyers(id: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['cohort-member-buyers', id],
+    queryFn: async (): Promise<CohortMemberBuyersResponse> => {
+      const res = await apiFetch(`/api/cohorts/${id}/member-buyers`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch cohort member buyers');
+      }
+      return res.json();
+    },
+    enabled: Boolean(id) && (options?.enabled ?? true),
     staleTime: REFERENCE_QUERY_STALE_TIME,
     gcTime: REFERENCE_QUERY_GC_TIME,
     refetchOnWindowFocus: false,

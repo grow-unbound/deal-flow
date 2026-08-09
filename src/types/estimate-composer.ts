@@ -106,6 +106,7 @@ export interface EstimateComposerDocument {
   voided_at: string | null;
   converted_to_order_id: string | null;
   linked_order_number: string | null;
+  is_buyer_app: boolean;
 }
 
 export interface EstimateComposerTotals {

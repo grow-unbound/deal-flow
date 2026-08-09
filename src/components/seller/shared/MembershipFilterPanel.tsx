@@ -18,18 +18,14 @@ import type {
   ProductMembershipRules,
 } from '@/lib/zod';
 
-const LAST_SALE_OPTIONS = [
-  { value: 'within_30_days', label: 'Last 30d' },
-  { value: 'within_90_days', label: 'Last 90d' },
-  { value: 'dormant_90_plus_days', label: 'Dormant 90d+' },
-  { value: 'never_ordered', label: 'Never ordered' },
+const DEMAND_THIS_QUARTER_OPTIONS = [
+  { value: 'has_demand', label: 'Has demand' },
+  { value: 'no_demand', label: 'No demand' },
 ];
 
-const SALES_90D_OPTIONS = [
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-  { value: 'none', label: 'None' },
+const INVOICE_THIS_QUARTER_OPTIONS = [
+  { value: 'purchased', label: 'Purchased' },
+  { value: 'not_purchased', label: 'Not purchased' },
 ];
 
 const BUYER_APP_STATUS_OPTIONS = [
@@ -43,6 +39,11 @@ const STOCK_STATUS_OPTIONS = [
   { value: 'in_stock', label: 'In stock' },
   { value: 'low_stock', label: 'Low stock' },
   { value: 'out_of_stock', label: 'Out of stock' },
+];
+
+const SALES_THIS_QUARTER_OPTIONS = [
+  { value: 'sold', label: 'Sold' },
+  { value: 'not_sold', label: 'Not sold' },
 ];
 
 const isBuyerEntity = (entityType: MembershipEntityType) => entityType === 'cohort' || entityType === 'campaign_buyers';
@@ -73,10 +74,10 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
 
     return (
       <div className="space-y-4">
-        <FilterRow label="Last sale">
+        <FilterRow label="Demand this quarter">
           <Select
-            value={buyerRules.last_sale_bucket ?? '__all__'}
-            onValueChange={(value) => setBuyerRule('last_sale_bucket', value === '__all__' ? undefined : value as BuyerMembershipRules['last_sale_bucket'])}
+            value={buyerRules.demand_status_this_quarter ?? '__all__'}
+            onValueChange={(value) => setBuyerRule('demand_status_this_quarter', value === '__all__' ? undefined : value as BuyerMembershipRules['demand_status_this_quarter'])}
             disabled={disabled}
           >
             <SelectTrigger>
@@ -84,24 +85,24 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All buyers</SelectItem>
-              {LAST_SALE_OPTIONS.map((option) => (
+              {DEMAND_THIS_QUARTER_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </FilterRow>
-        <FilterRow label="Sales (90d)">
+        <FilterRow label="Invoices this quarter">
           <Select
-            value={buyerRules.sales_90d_level ?? '__all__'}
-            onValueChange={(value) => setBuyerRule('sales_90d_level', value === '__all__' ? undefined : value as BuyerMembershipRules['sales_90d_level'])}
+            value={buyerRules.invoice_status_this_quarter ?? '__all__'}
+            onValueChange={(value) => setBuyerRule('invoice_status_this_quarter', value === '__all__' ? undefined : value as BuyerMembershipRules['invoice_status_this_quarter'])}
             disabled={disabled}
           >
             <SelectTrigger>
-              <SelectValue placeholder="All spend bands" />
+              <SelectValue placeholder="All invoice states" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">All spend bands</SelectItem>
-              {SALES_90D_OPTIONS.map((option) => (
+              <SelectItem value="__all__">All invoice states</SelectItem>
+              {INVOICE_THIS_QUARTER_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
@@ -124,7 +125,13 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
             </SelectContent>
           </Select>
         </FilterRow>
-        <LiveCount isLoading={preview.isLoading} count={preview.data?.count} sampleNames={preview.data?.sample_names} noun="buyers" />
+        <LiveCount
+          isLoading={preview.isLoading}
+          isRefreshing={preview.isRefreshingPreview}
+          count={preview.data?.count}
+          sampleNames={preview.data?.sample_names}
+          noun="buyers"
+        />
       </div>
     );
   }
@@ -138,12 +145,13 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
   const brandItems = useMemo(
     () => (brandData?.brands ?? []).map((brand) => ({
       id: brand.id,
+      value: brand.display_name_override ?? brand.master_brand?.name ?? 'Unnamed brand',
       title: brand.display_name_override ?? brand.master_brand?.name ?? 'Unnamed brand',
     })),
     [brandData],
   );
   const categoryItems = useMemo(
-    () => (categoryData?.categories ?? []).map((category) => ({ id: category.id, title: category.name })),
+    () => (categoryData?.categories ?? []).map((category) => ({ id: category.id, value: category.name, title: category.name })),
     [categoryData],
   );
 
@@ -188,7 +196,30 @@ export function MembershipFilterPanel({ entityType, rules, onRulesChange, disabl
           </SelectContent>
         </Select>
       </FilterRow>
-      <LiveCount isLoading={preview.isLoading} count={preview.data?.count} sampleNames={preview.data?.sample_names} noun="products" />
+      <FilterRow label="Sales this quarter">
+        <Select
+          value={productRules.sales_status_this_quarter ?? '__all__'}
+          onValueChange={(value) => setProductRule('sales_status_this_quarter', value === '__all__' ? undefined : value as ProductMembershipRules['sales_status_this_quarter'])}
+          disabled={disabled}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="All sales states" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All sales states</SelectItem>
+            {SALES_THIS_QUARTER_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FilterRow>
+      <LiveCount
+        isLoading={preview.isLoading}
+        isRefreshing={preview.isRefreshingPreview}
+        count={preview.data?.count}
+        sampleNames={preview.data?.sample_names}
+        noun="products"
+      />
     </div>
   );
 }
@@ -204,30 +235,53 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
 
 function LiveCount({
   isLoading,
+  isRefreshing,
   count,
   sampleNames,
   noun,
 }: {
   isLoading: boolean;
+  isRefreshing: boolean;
   count: number | undefined;
   sampleNames: string[] | undefined;
   noun: string;
 }) {
+  const showLoadingOnly = isLoading && count === undefined;
+
   return (
     <div className="rounded-[10px] border border-cream-300 bg-cream-100 px-3 py-2.5">
-      {isLoading && count === undefined ? (
-        <p className="text-sm text-cream-700">Counting matches…</p>
+      {showLoadingOnly ? (
+        <div className="flex items-center gap-2 text-sm text-cream-700" aria-live="polite">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-cream-300 border-t-teal-600" aria-hidden="true" />
+          <span>Counting matches…</span>
+        </div>
       ) : (count ?? 0) > 0 ? (
         <>
-          <p className="text-sm font-semibold text-cream-900">
-            {count} {noun} match{count === 1 ? '' : ''}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-cream-900">
+              {count} {noun} match{count === 1 ? '' : ''}
+            </p>
+            {isRefreshing ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700" aria-live="polite">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal-100 border-t-teal-600" aria-hidden="true" />
+                Updating
+              </span>
+            ) : null}
+          </div>
           {sampleNames && sampleNames.length > 0 ? (
             <p className="mt-0.5 truncate text-xs text-cream-700">{sampleNames.join(', ')}</p>
           ) : null}
         </>
       ) : (
-        <p className="text-sm text-cream-700">No {noun} match these filters yet.</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-cream-700">No {noun} match these filters yet.</p>
+          {isRefreshing ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700" aria-live="polite">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal-100 border-t-teal-600" aria-hidden="true" />
+              Updating
+            </span>
+          ) : null}
+        </div>
       )}
     </div>
   );

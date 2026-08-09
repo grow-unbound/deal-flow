@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatNumberValue } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
+import { useCohortDetail, useCohortMemberBuyers, useRefreshCohort } from '@/hooks/useCohorts';
 import type { BuyerMembershipRules } from '@/lib/zod';
 import { CohortBuyersTab } from './CohortBuyersTab';
 import { CustomerGroupFormSheet } from '../CustomerGroupFormSheet';
@@ -55,6 +55,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
   });
 
   const { data, isLoading, isError } = useCohortDetail(id, { includePerformance: false });
+  const memberBuyersQuery = useCohortMemberBuyers(id, { enabled: editOpen });
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -158,7 +159,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         )
       ) : null}
       {showPerformanceTab && tab === 'performance' ? (
-        data ? <CohortPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        data ? <CohortPerformanceTab /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
       {data ? (
         <CustomerGroupFormSheet
@@ -172,7 +173,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
             description: data.details_rules.description,
             allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
             membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
-            selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
+            selected_buyer_ids: (memberBuyersQuery.data?.buyers ?? []).map((buyer) => buyer.buyer_id),
             rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
           }}
         />

@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { CircleDollarSign, MailPlus, PencilIcon, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -16,11 +15,6 @@ import { CustomerOrdersTab } from '@/components/seller/customers/detail/Customer
 import { CustomerPriceListsTab } from '@/components/seller/customers/detail/CustomerPriceListsTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { toast } from 'sonner';
-
-const CustomerPerformanceTab = dynamic(
-  () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
-);
 import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
@@ -70,13 +64,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     () => [
       { id: 'details', label: 'Details' },
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-      ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates', badge: data?.tab_badges.estimates_90d ?? 0 }] : []),
-      ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders', badge: data?.tab_badges.orders_90d ?? 0 }] : []),
-      ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices', badge: data?.tab_badges.invoices_90d ?? 0 }] : []),
+      ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates' }] : []),
+      ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders' }] : []),
+      ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices' }] : []),
       { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
       ...(featureVisibility.priceLists ? [{ id: 'price-lists', label: 'Price Lists', badge: data?.tab_badges.price_lists_assigned ?? 0 }] : []),
     ],
-    [data?.cohorts_summary.rows.length, data?.tab_badges.estimates_90d, data?.tab_badges.invoices_90d, data?.tab_badges.orders_90d, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, showPerformanceTab],
+    [data?.cohorts_summary.rows.length, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, showPerformanceTab],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -214,17 +208,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === 'details' ? (
           data ? <CustomerDetailsTab id={id} details={data.details} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-        ) : null}
-        {showPerformanceTab && activeTab === 'performance' ? (
-          data ? (
-            <CustomerPerformanceTab
-              performance={data.performance}
-              performanceV2={data.performance_v2}
-              performanceCards={data.performance_cards}
-            />
-          ) : (
-            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-          )
         ) : null}
         {activeTab === 'estimates' ? (
           data ? (

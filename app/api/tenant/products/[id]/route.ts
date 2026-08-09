@@ -65,15 +65,19 @@ async function loadProductPricingRows(
     }
   }
 
-  const { data: aggregateData } = await db.schema('app').rpc('get_seller_price_list_landing_aggregates', {
-    p_tenant_id: tenantId,
-    p_page_ids: listIds,
-    p_include_summary: false,
-    p_now: new Date().toISOString(),
-  });
+  // metrics_price_lists_now_summary is refreshed periodically (not live like the RPC it
+  // replaces), but carries the identical price-list-wide avg_discount_pct/avg_margin_pct
+  // formula — same table app/api/price-lists/[id]/route.ts already reads for these figures.
+  const { data: priceListMetrics } = await db
+    .schema('app')
+    .from('metrics_price_lists_now_summary')
+    .select('price_list_id, avg_discount_pct, avg_margin_pct')
+    .eq('tenant_id', tenantId)
+    .in('price_list_id', listIds)
+    .is('deleted_at', null);
   const metricsById = new Map<string, { avg_discount_pct: number | string | null; avg_margin_pct: number | string | null }>(
-    ((aggregateData as { row_metrics?: Array<{ id: string; avg_discount_pct: number | string | null; avg_margin_pct: number | string | null }> } | null)?.row_metrics ?? []).map(
-      (metric) => [metric.id, metric],
+    ((priceListMetrics ?? []) as Array<{ price_list_id: string; avg_discount_pct: number | string | null; avg_margin_pct: number | string | null }>).map(
+      (metric) => [metric.price_list_id, metric],
     ),
   );
 
@@ -172,7 +176,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const includePerformance = req.nextUrl.searchParams.get('include_performance') !== 'false';
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
@@ -234,11 +237,7 @@ export async function GET(
     const monthStart = monthMeta.current_start.slice(0, 10);
     const quarterStart = quarterMeta.current_start.slice(0, 10);
 
-    const [detailV2Res, masterProductRes, tenantBrandRes, tenantCategoryRes, productPeriodRes, inventoryRes] = await Promise.all([
-      db.schema('app').rpc('get_seller_product_detail_v2', {
-        p_tenant_id: tenantId,
-        p_tenant_product_id: id,
-      }),
+    const [masterProductRes, tenantBrandRes, tenantCategoryRes, productPeriodRes, inventoryRes] = await Promise.all([
       product.master_product_id
         ? db.schema('catalog').from('products').select('id, name, master_sku, hsn_code, gst_rate, pack_size, categories(name), brands(name)').eq('id', product.master_product_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -260,11 +259,6 @@ export async function GET(
       db.schema('app').from('tenant_inventory').select('qty_available').eq('tenant_product_id', id).is('deleted_at', null),
     ]);
 
-    if (detailV2Res.error) {
-      console.error('[GET /api/tenant/products/[id]] get_seller_product_detail_v2 failed', detailV2Res.error);
-      return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
-    }
-
     if (productPeriodRes.error || inventoryRes.error) {
       console.error(
         '[GET /api/tenant/products/[id]] v4 metrics fetch failed',
@@ -273,8 +267,6 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
     }
 
-    const detailV2 = (detailV2Res.data ?? {}) as any;
-    const v2Header = detailV2.header ?? {};
     const displayName = product.name_override ?? masterProductRes.data?.name ?? product.internal_sku;
     const brandName = tenantBrandRes.data?.display_name_override ?? masterProductRes.data?.brands?.name ?? 'Unbranded';
 
@@ -310,7 +302,7 @@ export async function GET(
     const detailResponse = {
       header: {
         id: product.id,
-        name: v2Header.title ?? displayName,
+        name: displayName,
         brand: brandName,
         sku: product.internal_sku,
         pack: product.pack_size ? `${product.pack_size} ${product.default_uom ?? ''}`.trim() : product.default_uom ?? '—',
@@ -347,8 +339,6 @@ export async function GET(
         description: product.description ?? null,
         updated_at: product.updated_at,
       },
-      performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
-      detail_v2: includePerformance ? detailV2 : null,
       performance: {
         monthly_units_trend: [],
         inventory_ops: {

@@ -15,6 +15,8 @@ import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
 import { loadTenantSalesOrderDetail } from '@/lib/sales-orders/load-tenant-sales-order-detail';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 export const dynamic = 'force-dynamic';
 
 const SalesOrderSaveSchema = z.object({
@@ -252,6 +254,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (next === 'notfound' || next === 'forbidden') {
     return NextResponse.json({ error: 'Failed to reload order' }, { status: 500 });
   }
+
+  getPostHogClient()?.capture({
+    distinctId: claims.sub ?? claims.tenant_id,
+    event: 'sales_order_updated',
+    properties: {
+      ...withTenantSellerIds(claims),
+      order_id: id,
+      item_count: items.length,
+    },
+  });
 
   return NextResponse.json({ data: next });
 }

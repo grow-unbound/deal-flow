@@ -33,9 +33,9 @@ interface LandingTableProps {
    * table is rendered in the split-pane list column, which is narrow on desktop too.
    * Skips the wide `<table>` entirely rather than just CSS-hiding it. */
   forceCompact?: boolean;
-  /** When true, only horizontal overflow scrolls on this shell — vertical scroll stays on
-   * an ancestor (e.g. split-pane detail column). Avoids nested `overflow-auto` fighting
-   * trackpad/wheel horizontal gestures. */
+  /** When true, only horizontal overflow scrolls on this shell — vertical growth
+   * stays on the page (or split-pane ancestor). Drops the capped max-height so
+   * long lists are not clipped inside a short box. */
   horizontalScrollOnly?: boolean;
   /** Array index at which to interleave the infinite-scroll sentinel (mid-list, not
    * trailing) — forwarded to `SellerMobileList`. */
@@ -90,8 +90,10 @@ export function LandingTable({
           vertically, instead of the page's real scrolling ancestor. */}
       <div
         className={cn(
-          'h-full max-h-[calc(100dvh-var(--topbar-h)-18rem)] min-h-0 w-full rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
-          horizontalScrollOnly ? 'overflow-x-auto overflow-y-visible' : 'overflow-auto',
+          'min-h-0 w-full min-w-0 max-w-full rounded-b-[14px] border border-cream-300 border-t-0 bg-white',
+          horizontalScrollOnly
+            ? 'h-auto max-h-none overflow-x-auto overflow-y-visible'
+            : 'h-full max-h-[calc(100dvh-var(--topbar-h)-18rem)] overflow-auto',
           mobileRows && 'hidden md:block',
           className,
         )}

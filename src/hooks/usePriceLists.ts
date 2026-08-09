@@ -189,8 +189,6 @@ export interface PriceListDetail extends PriceList {
   items: PriceListItem[];
   assignments: PriceListAssignment[];
   activity?: PriceListActivity[];
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
   /** products_covered/avg_discount_pct/assigned_buyer_count/avg_margin_pct sourced from metrics_price_lists_now_summary. */
   stats?: {
     products_covered: number;

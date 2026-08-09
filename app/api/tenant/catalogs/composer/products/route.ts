@@ -21,6 +21,10 @@ function readMultiParam(params: URLSearchParams, key: string) {
   return params.getAll(key).flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean);
 }
 
+function readSelectedIds(params: URLSearchParams) {
+  return readMultiParam(params, 'selected_id').slice(0, PAGE_SIZE.MAX);
+}
+
 function parseOffsetCursor(value: string | null) {
   if (!value) return 0;
   const parsed = Number(value);
@@ -39,6 +43,7 @@ export async function GET(req: NextRequest) {
   const categoryLabels = readMultiParam(params, 'category');
   const brandIdsFromParams = readMultiParam(params, 'brand_id');
   const categoryIdsFromParams = readMultiParam(params, 'category_id');
+  const selectedIds = readSelectedIds(params);
   const availability = (params.get('availability') || 'show_everything') as CatalogComposerAvailability;
   const limit = parseRowsLimit(params.get('limit'), PAGE_SIZE.COMPOSER);
   const offset = parseOffsetCursor(params.get('cursor'));
@@ -62,25 +67,40 @@ export async function GET(req: NextRequest) {
   const brandIds = Array.from(new Set([...brandIdsFromParams, ...((brandLookupRes.data ?? []) as Array<{ id: string }>).map((row) => row.id)]));
   const categoryIds = Array.from(new Set([...categoryIdsFromParams, ...((categoryLookupRes.data ?? []) as Array<{ id: string }>).map((row) => row.id)]));
   let productsResult;
+  let selectedProductsResult;
   try {
-    productsResult = await searchScopedProducts({
-      db,
-      tenantId: claims.tenant_id,
-      query: search,
-      limit,
-      offset,
-      brandIds,
-      categoryIds,
-      availability: availability as ScopedProductAvailability,
-      sort: search ? 'relevance' : 'created_desc',
-    });
+    [productsResult, selectedProductsResult] = await Promise.all([
+      searchScopedProducts({
+        db,
+        tenantId: claims.tenant_id,
+        query: search,
+        limit,
+        offset,
+        brandIds,
+        categoryIds,
+        availability: availability as ScopedProductAvailability,
+        sort: search ? 'relevance' : 'created_desc',
+      }),
+      selectedIds.length > 0
+        ? searchScopedProducts({
+            db,
+            tenantId: claims.tenant_id,
+            ids: selectedIds,
+            limit: selectedIds.length,
+            offset: 0,
+            availability: 'show_everything',
+            sort: 'created_desc',
+          })
+        : Promise.resolve({ rows: [], total: 0 }),
+    ]);
   } catch (error) {
     console.error('[GET /api/tenant/catalogs/composer/products] products error:', error);
     return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
   }
 
   const matchedProducts = productsResult.rows;
-  const productIdsForHydration = matchedProducts.map((product) => product.tenant_product_id);
+  const selectedProducts = selectedProductsResult.rows;
+  const productIdsForHydration = Array.from(new Set([...matchedProducts, ...selectedProducts].map((product) => product.tenant_product_id)));
   const now = new Date();
   const recentSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
@@ -108,7 +128,7 @@ export async function GET(req: NextRequest) {
   const sevenDaysAgoTs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
   const daysElapsed = Math.max(1, Math.ceil((Date.now() - new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).getTime()) / (1000 * 60 * 60 * 24)));
 
-  const hydrated = matchedProducts.map((product) => {
+  const hydrateProduct = (product: typeof matchedProducts[number]) => {
     const inventory = inventoryByProductId.get(product.tenant_product_id);
     const qtyAvailable = Number(inventory?.qty_available ?? product.on_hand ?? 0);
     const reorderPoint = Number(inventory?.reorder_point ?? product.reorder_point ?? 0);
@@ -145,10 +165,13 @@ export async function GET(req: NextRequest) {
       stock_label: qtyAvailable <= 0 ? 'Out' : `${qtyAvailable}`,
       stock_tone: stockTone,
     };
-  });
+  };
+
+  const hydrated = matchedProducts.map(hydrateProduct);
+  const selectedHydrated = selectedProducts.map(hydrateProduct);
 
   const total = productsResult.total;
   const nextCursor = offset + hydrated.length < total ? String(offset + hydrated.length) : null;
 
-  return NextResponse.json({ products: hydrated, total, nextCursor }, { headers: SELLER_CACHE_PERSONAL });
+  return NextResponse.json({ products: hydrated, selected_products: selectedHydrated, total, nextCursor }, { headers: SELLER_CACHE_PERSONAL });
 }

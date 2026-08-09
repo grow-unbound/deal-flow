@@ -700,6 +700,7 @@ export async function POST(req: NextRequest) {
         event: 'brand_created',
         properties: {
           tenant_id: claims.tenant_id,
+          seller_id: claims.sub,
           brand_id: (created as { id?: string })?.id,
         },
       });

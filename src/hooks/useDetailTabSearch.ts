@@ -8,10 +8,11 @@ interface DetailPage<T> { rows: T[]; total: number; nextOffset: number | null }
 type DetailParamValue = string | string[] | null | undefined;
 interface DetailFilters { query: string; filter?: string | null; sort: string; params?: Record<string, DetailParamValue> }
 
-function useDetailRows<T>(key: string, url: string, filterKey: string, filters: DetailFilters) {
+function useDetailRows<T>(key: string, url: string, filterKey: string, filters: DetailFilters, enabled = true) {
   return useInfiniteQuery({
     queryKey: [key, url, filters.query.trim(), filters.filter ?? null, filters.sort, filters.params ?? {}],
     initialPageParam: 0,
+    enabled,
     placeholderData: keepPreviousData,
     queryFn: async ({ pageParam, signal }): Promise<DetailPage<T>> => {
       const params = new URLSearchParams({ limit: '50', offset: String(pageParam), sort: filters.sort });
@@ -35,14 +36,82 @@ function useDetailRows<T>(key: string, url: string, filterKey: string, filters: 
 }
 
 export interface BrandProductDetailRow {
-  tenant_product_id: string; product_name: string; sku: string; category_name: string;
-  mrp: number | null; base_selling_price: number | null; cost_price: number | null;
-  on_hand: number; days_cover: number; units_mtd: number; gmv_mtd: number; growth_pct: number;
+  tenant_product_id: string;
+  product_name: string;
+  sku: string;
+  category_name: string;
+  mrp: number | null;
+  base_selling_price: number | null;
+  cost_price: number | null;
+  on_hand: number;
+  days_cover: number;
+  units_qtd: number;
+  sales_qtd: number;
+  units_qtd_trend_pct: number | null;
+  sales_qtd_trend_pct: number | null;
   image_url: string | null;
+  low_stock: boolean;
+  out_of_stock: boolean;
+  is_idle?: boolean;
 }
 
-export function useBrandProductsDetail(id: string, filters: DetailFilters) {
-  return useDetailRows<BrandProductDetailRow>('brand-products-detail', `/api/tenant/brands/${id}/products`, 'stock', filters);
+export function useBrandProductsDetail(id: string, filters: DetailFilters, enabled = true) {
+  return useDetailRows<BrandProductDetailRow>('brand-products-detail', `/api/tenant/brands/${id}/products`, 'stock', filters, enabled);
+}
+
+export interface CategoryProductDetailRow {
+  id: string;
+  name: string;
+  sku_code: string | null;
+  brand_id: string;
+  brand_name: string;
+  brand_logo_url: string | null;
+  image_url: string | null;
+  on_hand: number;
+  days_cover: number | null;
+  units_qtd: number;
+  sales_qtd: number;
+  units_qtd_trend_pct: number | null;
+  sales_qtd_trend_pct: number | null;
+  is_active: boolean;
+  is_idle?: boolean;
+  low_stock?: boolean;
+  out_of_stock?: boolean;
+}
+
+export interface CategoryBrandDetailRow {
+  id: string;
+  name: string;
+  initials: string;
+  logo_url: string | null;
+  sku_count: number;
+  sales_qtd: number;
+  units_qtd: number;
+  sales_qtd_trend_pct: number | null;
+  units_qtd_trend_pct: number | null;
+  demand_qtd_value: number;
+  demand_qtd_units: number;
+  is_active: boolean;
+}
+
+export function useCategoryProductsDetail(categoryId: string, filters: DetailFilters, enabled = true) {
+  return useDetailRows<CategoryProductDetailRow>(
+    'category-products-detail',
+    `/api/tenant/categories/${categoryId}/products`,
+    'stock',
+    filters,
+    enabled,
+  );
+}
+
+export function useCategoryBrandsDetail(categoryId: string, filters: DetailFilters, enabled = true) {
+  return useDetailRows<CategoryBrandDetailRow>(
+    'category-brands-detail',
+    `/api/tenant/categories/${categoryId}/brands`,
+    'status',
+    filters,
+    enabled,
+  );
 }
 
 export interface BrandCatalogDetailRow {
