@@ -819,7 +819,7 @@ INSERT INTO app.whatsapp_templates (
 ),
 (
   NULL, 'buyer_app_enabled', 'Buyer app enabled', 'marketing', 'buyer_app', 'en',
-  E'Hi {{buyer_name}},\n\n{{seller_name}} has enabled the catalog app for you.\n\nYou can now explore their latest stock, check prices, and place orders anytime.',
+  E'Hi {{buyer_name}} 👋\n\n_Great news!_ {{seller_name}} has unlocked direct web-ordering access for your account.\n\n⚡ *No app download required—opens directly in your browser.*\n\nWhat you can do right now:\n•\tView your locked-in custom rates & real-time stock availability\n•\tEnjoy automatic volume discounts as your quantities grow\n•\tPlace orders 24/7 without waiting for quote replies\n•\tTrack past orders and bills instantly\n\n👇 Tap below to log in with 1-click WhatsApp verification:',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"seller_name","description":"Seller business name"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/home"}'::jsonb,
   '{"format":"text","text":"Catalog enabled for you"}'::jsonb, 'Powered by Yukti',
