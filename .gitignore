@@ -49,6 +49,7 @@ supabase/.temp/*
 
 # Claude 
 .claude/
+CLAUDE_OUTPUTS/
 
 #Playwright
 .playwright-mcp/
@@ -64,4 +65,4 @@ skills-lock.json
 #Sensitive files
 media/
 specs/
-CLAUDE_OUTPUTS/
+WineYard/

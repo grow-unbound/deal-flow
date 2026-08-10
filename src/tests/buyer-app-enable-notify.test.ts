@@ -8,9 +8,13 @@ import {
 describe('buyer-app-enable-notify', () => {
   it('builds the buyer_app_enabled preview message', () => {
     const message = buildBuyerAppEnabledPreviewMessage('Asha', 'WineYard');
-    expect(message).toContain('Hi Asha,');
-    expect(message).toContain('WineYard has enabled the catalog app for you.');
-    expect(message).toContain('place orders anytime.');
+    expect(message).toContain('Hi Asha 👋');
+    expect(message).toContain(
+      '_Great news!_ WineYard has unlocked direct web-ordering access for your account.',
+    );
+    expect(message).toContain('No app download required—opens directly in your browser.');
+    expect(message).toContain('⚡ *No app download required—opens directly in your browser.*');
+    expect(message).toContain('👇 Tap below to log in with 1-click WhatsApp verification:');
   });
 
   it('prefers contact name for buyer display name', () => {
