@@ -84,6 +84,9 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
   const addProduct = useAddCatalogProduct(catalogId);
   const removeProduct = useRemoveCatalogProduct(catalogId);
   const productMembershipMode = composer?.product_membership_mode ?? 'manual';
+  const canEditMembership = productMembershipMode === 'manual';
+  const automaticMembershipTooltip =
+    'This campaign gets automatic membership based on the above filter criteria. Update filters to manage membership';
 
   // Automatic-mode rule editing (requirement 5). Reconstructs the full simple-form payload
   // from the current composer snapshot since the PATCH route validates the whole form, not
@@ -259,7 +262,19 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
+                  <td className="px-3 py-3">
+                    <MemberToggle
+                      checked={row.is_member}
+                      label={`${row.product_name} membership`}
+                      disabled={!canEditMembership}
+                      disabledReason={!canEditMembership ? automaticMembershipTooltip : undefined}
+                      isPending={addProduct.isPending || removeProduct.isPending}
+                      onChange={(next) => {
+                        if (next) addProduct.mutate({ tenant_product_id: row.tenant_product_id });
+                        else removeProduct.mutate({ tenant_product_id: row.tenant_product_id });
+                      }}
+                    />
+                  </td>
                   <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
                   <td className="group px-3 py-3 text-right font-mono text-base text-cream-900">
                     {isEditing ? (

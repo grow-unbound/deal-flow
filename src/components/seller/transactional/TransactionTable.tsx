@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { LandingTable, LANDING_TABLE_CELL_CLASS, StatusTag } from '@/components/seller/layout';
+import { TransactionOriginMark } from '@/components/seller/transactional/TransactionOriginMark';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
 import { prefetchEstimateComposer } from '@/hooks/useEstimates';
@@ -21,6 +22,7 @@ export interface TransactionTableRow {
   id: string;
   href: string;
   document_number: string;
+  is_buyer_app: boolean;
   source_kind: TransactionSourceKind;
   source_label: string | null;
   source_detail?: string | null;
@@ -51,6 +53,8 @@ export interface TransactionTableProps {
   tableMinWidth?: number | string;
   rowClassName?: string;
   onRowClick?: (row: TransactionTableRow) => void;
+  /** When true, vertical scroll stays on the page — only horizontal overflow scrolls in the table shell. */
+  horizontalScrollOnly?: boolean;
   /** Forwarded to `LandingTable` — forces the compact card list when this table
    * renders in the split-pane list column. */
   forceCompact?: boolean;
@@ -71,11 +75,16 @@ function deriveInitials(name: string) {
     .toUpperCase();
 }
 
-function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_label' | 'source_kind'>): string {
+function convertedSourceLabel(row: Pick<TransactionTableRow, 'source_label' | 'source_kind'>): string | null {
+  if (row.source_kind !== 'converted') return null;
   const label = row.source_label?.trim();
-  if (label) return label;
-  if (row.source_kind === 'buyer_app') return 'BUYER APP';
-  return '';
+  return label || null;
+}
+
+function transactionTypeFromKind(kind: TransactionTableKind): 'estimate' | 'order' | 'invoice' {
+  if (kind === 'order') return 'order';
+  if (kind === 'invoice') return 'invoice';
+  return 'estimate';
 }
 
 function buildTransactionListSupportingText(kind: TransactionTableKind, row: TransactionTableRow): string {
@@ -150,6 +159,23 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   ];
 }
 
+export function transactionTableColumnCount(kind: TransactionTableKind, showCampaignColumn: boolean): number {
+  if (kind === 'estimate') return showCampaignColumn ? 9 : 8;
+  if (kind === 'order') return showCampaignColumn ? 8 : 7;
+  return showCampaignColumn ? 9 : 8;
+}
+
+export function transactionTableMinWidth(kind: TransactionTableKind, showCampaignColumn: boolean): number {
+  if (showCampaignColumn) {
+    if (kind === 'invoice') return 1480;
+    if (kind === 'estimate') return 1450;
+    return 1380;
+  }
+  if (kind === 'invoice') return 1260;
+  if (kind === 'estimate') return 1230;
+  return 1180;
+}
+
 export function TransactionTable({
   kind,
   rows,
@@ -159,6 +185,7 @@ export function TransactionTable({
   tableMinWidth,
   rowClassName,
   onRowClick,
+  horizontalScrollOnly,
   forceCompact,
   selectedId,
   sentinelIndex,
@@ -180,15 +207,28 @@ export function TransactionTable({
       className={className}
       tableClassName={cn('v2-table', tableClassName)}
       tableMinWidth={tableMinWidth}
+      horizontalScrollOnly={horizontalScrollOnly}
       forceCompact={forceCompact}
       sentinelIndex={sentinelIndex}
       sentinelRef={sentinelRef}
-      mobileRows={rows.map((row) => ({
+      mobileRows={rows.map((row) => {
+        const convertedLabel = convertedSourceLabel(row);
+        const listSupporting = buildTransactionListSupportingText(kind, row);
+        const supporting = [convertedLabel, listSupporting].filter(Boolean).join(' · ');
+
+        return {
         id: row.id,
         href: row.href,
+        leading: (
+          <TransactionOriginMark
+            isBuyerApp={row.is_buyer_app}
+            transactionType={transactionTypeFromKind(kind)}
+            size={22}
+          />
+        ),
         eyebrow: row.document_number,
         primary: row.buyer_name,
-        supporting: buildTransactionListSupportingText(kind, row),
+        supporting,
         trailing: formatNumberValue(row.total_amount, 'CURRENCY_THRESHOLD'),
         status: {
           label: row.status_label,
@@ -199,7 +239,8 @@ export function TransactionTable({
         onClick: () => {
           onRowClick?.(row);
         },
-      }))}
+      };
+      })}
     >
       {rows.map((row, index) => {
         const initials = row.buyer_initials ?? deriveInitials(row.buyer_name);
@@ -232,14 +273,16 @@ export function TransactionTable({
             <td className={LANDING_TABLE_CELL_CLASS}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+                  <TransactionOriginMark
+                    isBuyerApp={row.is_buyer_app}
+                    transactionType={transactionTypeFromKind(kind)}
+                    size={22}
+                  />
                   <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
                   {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
                 </div>
-                {sourceDisplayLabel(row) ? (
-                  <p className="mt-0.5 truncate text-xs text-cream-600">{sourceDisplayLabel(row)}</p>
-                ) : null}
-                {row.source_detail ? (
-                  <p className="mt-0.5 truncate text-xs font-medium uppercase tracking-[0.08em] text-cream-500">{row.source_detail}</p>
+                {convertedSourceLabel(row) ? (
+                  <p className="mt-0.5 truncate pl-[30px] text-xs text-cream-600">{convertedSourceLabel(row)}</p>
                 ) : null}
               </div>
             </td>

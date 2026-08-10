@@ -4,6 +4,8 @@ import { FEATURE_FLAGS, ROLES } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 import { CancelSalesOrderBodySchema } from '@/types/tenant-sales-orders';
 
 export const dynamic = 'force-dynamic';
@@ -107,6 +109,12 @@ export async function PATCH(
     if (auditError) {
       console.error('[PATCH cancel] audit', auditError);
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'sales_order_cancelled',
+      properties: { ...withTenantSellerIds(claims), order_id: id, reason: reasonLabel },
+    });
 
     return NextResponse.json({ data: { id, status: 'cancelled' } });
   } catch (error) {

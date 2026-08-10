@@ -68,7 +68,7 @@ describe('price-list-detail-page', () => {
             },
           ],
           assignments: [],
-          stats: { products_covered: 1, brands_covered: 1, assignments_count: 0, avg_discount_pct: -20, days_left: 1 },
+          stats: { products_covered: 1, brands_covered: 1, assignments_count: 0, assigned_buyer_count: 0, assigned_cohort_count: 0, avg_discount_pct: -20, avg_margin_pct: 15, days_left: 1 },
         },
       },
     });

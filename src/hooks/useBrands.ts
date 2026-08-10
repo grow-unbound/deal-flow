@@ -116,12 +116,10 @@ export type TenantBrandsLandingSort = 'invoice_value_desc' | 'invoice_value_asc'
 
 export interface BrandsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -171,23 +169,17 @@ export interface BrandDetailHeader {
   logo_url?: string | null;
 }
 
+/** Quarter-to-date KPI strip, sourced from metrics_brand_period_summary + metrics_brand_now_summary. */
 export interface BrandDetailMetaStrip {
-  gmv_mtd: number;
-  /** Product count supporting invoiced sales (doc: "Invoiced sales - amount + product count"). */
-  product_count: number;
-  /** Units sold in the last 90 days, from get_seller_brand_detail_v2's kpi_grid. */
-  units_90d: number;
-  /**
-   * Not returned by get_seller_brand_detail_v2 — brand_detail has no buyer-count or
-   * stock-risk read model (doc lines 759-760 flagged NEEDS BACKEND). Always null;
-   * render as an unavailable state, not a fake 0.
-   */
-  active_buyers: number | null;
-  total_buyers: number | null;
-  low_stock_skus: number | null;
+  member_product_count: number;
+  selling_product_count_qtd: number;
+  selling_units_qtd: number;
+  sales_qtd_value: number;
+  sales_qtd_count: number;
+  selling_product_out_of_stock_count: number;
+  low_stock_product_count: number;
   days_since_catalog: number | null;
   last_sent_date: string | null;
-  latest_catalog_name: string | null;
 }
 
 export interface BrandDetailRow {
@@ -279,9 +271,9 @@ export interface BrandDetailResponse {
       buyer_reach: string;
     };
   };
-  buyers_total: number;
-  buyers: BrandDetailBuyer[];
-  catalogs: BrandDetailCatalog[];
+  buyers_total?: number;
+  buyers?: BrandDetailBuyer[];
+  catalogs?: BrandDetailCatalog[];
   activity: BrandDetailActivity[];
   performance_cards?: unknown[];
   detail_v2?: unknown;

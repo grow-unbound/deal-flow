@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { InsightStrip4 } from '@/components/seller/layout';
@@ -19,11 +18,6 @@ import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-const CategoryPerformanceTab = dynamic(
-  () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
-);
-
 type TabId = 'performance' | 'products' | 'brands';
 
 interface CategoryDetailPageProps {
@@ -37,7 +31,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     scopeKey: id,
     initialState: 'products',
   });
-  const { data, isLoading, isError } = useCategoryDetail(id, { includePerformance: false });
+  const { data, isLoading, isError } = useCategoryDetail(id);
   const { isSellerAdmin } = useRole();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -47,27 +41,24 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
-        // get_seller_category_detail_v2 has no prior-period comparison, so this used
-        // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
-        // supporting value (product count) instead — see doc line 962.
-        label: 'Invoiced sales 90D',
-        value: formatNumberValue(m.gmv_mtd, 'CURRENCY_THRESHOLD'),
-        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
+        label: 'Sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Units sold',
-        value: formatNumberValue(m.units_90d, 'COUNT'),
-        sub: `${m.sold_sku_count} products that sold`,
+        label: 'Selling products',
+        value: formatNumberValue(m.selling_product_count_qtd, 'COUNT'),
+        sub: `of ${m.total_product_count} products`,
       },
       {
-        label: 'Recent sellers low/out of stock',
-        value: formatNumberValue(m.oos_sku_count, 'COUNT'),
-        sub: `${m.low_stock_sku_count} more low-stock`,
+        label: 'Purchasing customers',
+        value: formatNumberValue(m.purchasing_customers_qtd, 'COUNT'),
+        sub: 'this quarter',
       },
       {
-        label: 'Products in category',
-        value: formatNumberValue(m.active_sku_count, 'COUNT'),
-        sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
+        label: 'Brands',
+        value: formatNumberValue(m.brand_count, 'COUNT'),
+        sub: `${m.total_product_count} products in category`,
       },
     ];
   }, [data]);
@@ -151,14 +142,10 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       <DetailTabs tabs={tabs as unknown as Array<{ id: string; label: string; badge?: number }>} active={activeTab} onChange={(value) => setTab(value as TabId)} />
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        data ? <CategoryPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
-      {activeTab === 'products' ? (
-        data ? <CategoryProductsTab products={data.products} categoryId={id} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-      ) : null}
-      {activeTab === 'brands' ? (
-        data ? <CategoryBrandsTab brands={data.brands} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-      ) : null}
+      {activeTab === 'products' ? <CategoryProductsTab categoryId={id} /> : null}
+      {activeTab === 'brands' ? <CategoryBrandsTab categoryId={id} /> : null}
 
       <CategoryFormSheet
         open={editOpen}

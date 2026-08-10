@@ -30,18 +30,9 @@ export function patchCustomerDetailAfterPayment(
     meta_strip_4: {
       ...prev.meta_strip_4,
       ...creditFields,
-    },
-    performance_v2: {
-      ...prev.performance_v2,
-      credit_ops: {
-        ...prev.performance_v2.credit_ops,
-        credit_used: creditFields.credit_used,
-        credit_util_pct: creditFields.credit_used_pct,
-        payment_behavior_summary:
-          creditFields.credit_used > 0
-            ? 'Payment behavior - current receivables present'
-            : 'Payment behavior - current',
-      },
+      // receivable_amount tracks the same underlying balance as credit_used —
+      // keep both in sync after an optimistic payment patch.
+      receivable_amount: creditFields.credit_used,
     },
   };
 }

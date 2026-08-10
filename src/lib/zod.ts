@@ -213,8 +213,12 @@ export const CohortSchema = z.object({
 export const CohortRuleFieldSchema = z.enum([
   'geography.city',
   'brand_focus',
+  // Legacy composer fields are still accepted for old saved cohort drafts; new automatic
+  // membership uses BuyerMembershipRulesSchema below.
   'last_order_bucket',
   'gmv_90d_bucket',
+  'demand_status_this_quarter',
+  'invoice_status_this_quarter',
   'buyer_id',
 ]);
 
@@ -222,20 +226,13 @@ export const CohortRuleOperatorSchema = z.enum(['eq', 'in', 'not_in']);
 
 export const CohortLastOrderBucketSchema = z.enum([
   'anytime',
-  'within_30_days',
-  'within_90_days',
-  'dormant_90_plus_days',
+  'has_demand_this_quarter',
+  'no_demand_this_quarter',
 ]);
 export type CohortLastOrderBucket = z.infer<typeof CohortLastOrderBucketSchema>;
 
-export const CohortGmv90dBucketSchema = z.enum([
-  'gmv_0',
-  'gmv_1_50000',
-  'gmv_50001_200000',
-  'gmv_200001_500000',
-  'gmv_500001_plus',
-]);
-export type CohortGmv90dBucket = z.infer<typeof CohortGmv90dBucketSchema>;
+export const CohortInvoiceThisQuarterStatusSchema = z.enum(['purchased', 'not_purchased']);
+export type CohortInvoiceThisQuarterStatus = z.infer<typeof CohortInvoiceThisQuarterStatusSchema>;
 
 export const CohortRuleFilterSchema = z.object({
   field: CohortRuleFieldSchema,
@@ -264,23 +261,18 @@ export type CohortRuleFilter = z.infer<typeof CohortRuleFilterSchema>;
 export type CohortRules = z.infer<typeof CohortRulesSchema>;
 
 // Unified Manual/Automatic membership model (Customer Groups, Pricelists, Campaigns).
-// Fixed single-value bucket filters -- not an open-ended rule builder.
+// Fixed current-quarter filters -- not an open-ended rule builder.
 export const MembershipModeSchema = z.enum(['manual', 'automatic']);
 export type MembershipMode = z.infer<typeof MembershipModeSchema>;
 
 export const CampaignBuyerTargetModeSchema = z.enum(['manual', 'automatic', 'customer_group']);
 export type CampaignBuyerTargetMode = z.infer<typeof CampaignBuyerTargetModeSchema>;
 
-export const LastSaleBucketSchema = z.enum([
-  'within_30_days',
-  'within_90_days',
-  'dormant_90_plus_days',
-  'never_ordered',
-]);
-export type LastSaleBucket = z.infer<typeof LastSaleBucketSchema>;
+export const DemandThisQuarterStatusSchema = z.enum(['has_demand', 'no_demand']);
+export type DemandThisQuarterStatus = z.infer<typeof DemandThisQuarterStatusSchema>;
 
-export const Sales90dLevelSchema = z.enum(['none', 'low', 'medium', 'high']);
-export type Sales90dLevel = z.infer<typeof Sales90dLevelSchema>;
+export const InvoiceThisQuarterStatusSchema = z.enum(['purchased', 'not_purchased']);
+export type InvoiceThisQuarterStatus = z.infer<typeof InvoiceThisQuarterStatusSchema>;
 
 export const BuyerAppStatusSchema = z.enum(['enabled', 'not_enabled', 'inactive']);
 export type BuyerAppStatus = z.infer<typeof BuyerAppStatusSchema>;
@@ -288,19 +280,23 @@ export type BuyerAppStatus = z.infer<typeof BuyerAppStatusSchema>;
 export const StockStatusSchema = z.enum(['new_stock', 'in_stock', 'low_stock', 'out_of_stock']);
 export type StockStatus = z.infer<typeof StockStatusSchema>;
 
+export const SalesThisQuarterStatusSchema = z.enum(['sold', 'not_sold']);
+export type SalesThisQuarterStatus = z.infer<typeof SalesThisQuarterStatusSchema>;
+
 // Buyer-side automatic rules: Customer Groups, Campaign -> Buyers (when defined locally).
 export const BuyerMembershipRulesSchema = z.object({
-  last_sale_bucket: LastSaleBucketSchema.optional(),
-  sales_90d_level: Sales90dLevelSchema.optional(),
   buyer_app_status: BuyerAppStatusSchema.optional(),
+  demand_status_this_quarter: DemandThisQuarterStatusSchema.optional(),
+  invoice_status_this_quarter: InvoiceThisQuarterStatusSchema.optional(),
 });
 export type BuyerMembershipRules = z.infer<typeof BuyerMembershipRulesSchema>;
 
 // Product-side automatic rules: Pricelists, Campaign -> Products.
 export const ProductMembershipRulesSchema = z.object({
-  brand_names: z.array(z.string()).default([]),
-  category_names: z.array(z.string()).default([]),
+  brand_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
+  category_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
   stock_status: StockStatusSchema.optional(),
+  sales_status_this_quarter: SalesThisQuarterStatusSchema.optional(),
 });
 export type ProductMembershipRules = z.infer<typeof ProductMembershipRulesSchema>;
 
@@ -365,18 +361,12 @@ export const PriceListPricingStrategySchema = z.enum([
 ]);
 export type PriceListPricingStrategy = z.infer<typeof PriceListPricingStrategySchema>;
 
-export const ProductLastOrderBucketSchema = CohortLastOrderBucketSchema;
-export type ProductLastOrderBucket = z.infer<typeof ProductLastOrderBucketSchema>;
-
-export const ProductGmv90dBucketSchema = CohortGmv90dBucketSchema;
-export type ProductGmv90dBucket = z.infer<typeof ProductGmv90dBucketSchema>;
-
 export const PriceListFilterStateSchema = z.object({
-  brand_names: z.array(z.string()).default([]),
-  category_names: z.array(z.string()).default([]),
+  brand_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
+  category_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
   availability: z.enum(['in_stock', 'low_stock', 'out_of_stock', 'show_all']).default('show_all'),
-  last_ordered_bucket: ProductLastOrderBucketSchema.optional(),
-  gmv_90d_bucket: ProductGmv90dBucketSchema.optional(),
+  stock_status: StockStatusSchema.optional(),
+  sales_status_this_quarter: SalesThisQuarterStatusSchema.optional(),
 });
 export type PriceListFilterState = z.infer<typeof PriceListFilterStateSchema>;
 
@@ -517,11 +507,11 @@ export const CatalogComposerPricingStrategySchema = z.object({
 export type CatalogComposerPricingStrategy = z.infer<typeof CatalogComposerPricingStrategySchema>;
 
 export const CatalogComposerFilterStateSchema = z.object({
-  brand_names: z.array(z.string()).default([]),
-  category_names: z.array(z.string()).default([]),
+  brand_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
+  category_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
   availability: CatalogComposerAvailabilitySchema.default('show_everything'),
-  last_ordered_bucket: ProductLastOrderBucketSchema.optional(),
-  gmv_90d_bucket: ProductGmv90dBucketSchema.optional(),
+  stock_status: StockStatusSchema.optional(),
+  sales_status_this_quarter: SalesThisQuarterStatusSchema.optional(),
 });
 export type CatalogComposerFilterState = z.infer<typeof CatalogComposerFilterStateSchema>;
 

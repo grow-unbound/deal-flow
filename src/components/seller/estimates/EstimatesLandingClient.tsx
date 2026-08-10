@@ -33,10 +33,12 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { formatNumberValue } from '@/lib/utils';
+import { ESTIMATES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -129,6 +131,8 @@ function EstimatesLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/estimates');
   const searchParams = useSearchParams();
@@ -252,9 +256,9 @@ function EstimatesLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: EstimatesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(ESTIMATES_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} estimates`,
+    sub: kpiSupportingText(ESTIMATES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;
@@ -300,7 +304,10 @@ function EstimatesLandingContent({
               horizon={horizonLabel}
               showHorizonControl={false}
               primary={createEstimates ? 'Add an estimate' : undefined}
-              onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
+              onPrimaryClick={createEstimates ? () => {
+                captureCta('add_estimate');
+                router.push('/estimates/new');
+              } : undefined}
               compact={isPaneOpen}
             />
             <SellerMobileTransactionTabs active="estimates" />
@@ -390,9 +397,10 @@ function EstimatesLandingContent({
                   id: row.id,
                   href: `/estimates/${row.id}`,
                   document_number: row.estimate_number,
+                  is_buyer_app: row.source_kind === 'buyer_app',
                   realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
                   source_kind: row.source_kind,
-                  source_label: estimateSourceDisplayLabel(row),
+                  source_label: null,
                   buyer_name: row.buyer_name,
                   buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
                   buyer_initials: row.buyer_initials,

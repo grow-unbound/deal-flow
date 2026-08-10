@@ -360,7 +360,7 @@ describe('CatalogComposer', () => {
 
   it('hydrates persisted percent-off strategy even when the visible table is only partially loaded', async () => {
     useCatalogComposerProductsMock.mockReturnValue({
-      data: { pages: [{ products: [bootstrap.products[0]], total: bootstrap.products.length, nextCursor: null }] },
+      data: { pages: [{ products: [bootstrap.products[0]], selected_products: [], total: bootstrap.products.length, nextCursor: null }] },
       isLoading: false,
       isError: false,
       hasNextPage: false,

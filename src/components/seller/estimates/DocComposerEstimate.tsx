@@ -105,6 +105,7 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     voided_at: null,
     converted_to_order_id: null,
     linked_order_number: null,
+    is_buyer_app: false,
   };
 }
 

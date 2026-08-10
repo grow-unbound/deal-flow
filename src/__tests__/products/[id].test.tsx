@@ -57,11 +57,15 @@ describe('product detail page', () => {
             status_tone: 'success',
           },
           meta_strip_4: {
-            units_mtd: 120,
-            growth_pct: 12,
+            sales_qtd_value: 340000,
+            sales_qtd_count: 12,
+            purchased_buyers_qtd: 8,
+            units_qtd: 120,
+            demand_qtd_value: 60000,
+            demand_qtd_units: 20,
+            demand_qtd_count: 5,
+            total_stock: 96,
             days_cover: 14,
-            on_hand: 96,
-            sell_through_pct: 34,
           },
           details: {
             id: 'p1',
@@ -88,10 +92,10 @@ describe('product detail page', () => {
 
     render(<ProductDetailPage id="p1" />);
 
-    expect(screen.getByText('Units · MTD')).toBeInTheDocument();
-    expect(screen.getByText('Days of cover')).toBeInTheDocument();
-    expect(screen.getByText('On hand')).toBeInTheDocument();
-    expect(screen.getByText('Sell-through')).toBeInTheDocument();
+    expect(screen.getByText('Sales · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Purchased buyers · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Demand · QTD')).toBeInTheDocument();
+    expect(screen.getByText('Stock on hand')).toBeInTheDocument();
     expect(screen.queryByText('Revenue')).not.toBeInTheDocument();
   });
 
@@ -111,11 +115,15 @@ describe('product detail page', () => {
             status_tone: 'success',
           },
           meta_strip_4: {
-            units_mtd: 120,
-            growth_pct: 12,
+            sales_qtd_value: 340000,
+            sales_qtd_count: 12,
+            purchased_buyers_qtd: 8,
+            units_qtd: 120,
+            demand_qtd_value: 60000,
+            demand_qtd_units: 20,
+            demand_qtd_count: 5,
+            total_stock: 0,
             days_cover: 0,
-            on_hand: 0,
-            sell_through_pct: 34,
           },
           details: {
             id: 'p1',
@@ -143,7 +151,7 @@ describe('product detail page', () => {
     render(<ProductDetailPage id="p1" />);
 
     expect(screen.queryByRole('button', { name: 'Stock' })).not.toBeInTheDocument();
-    expect(screen.getByText('0 d')).toHaveClass('text-danger-700');
+    expect(screen.getByText('0d cover')).toHaveClass('text-danger-700');
   });
 
   it('hides Performance tab for seller assistants', () => {
@@ -163,11 +171,15 @@ describe('product detail page', () => {
             status_tone: 'success',
           },
           meta_strip_4: {
-            units_mtd: 120,
-            growth_pct: 12,
+            sales_qtd_value: 340000,
+            sales_qtd_count: 12,
+            purchased_buyers_qtd: 8,
+            units_qtd: 120,
+            demand_qtd_value: 60000,
+            demand_qtd_units: 20,
+            demand_qtd_count: 5,
+            total_stock: 96,
             days_cover: 14,
-            on_hand: 96,
-            sell_through_pct: 34,
           },
           details: {
             id: 'p1',
@@ -216,10 +228,15 @@ describe('product detail page', () => {
             status_tone: 'success',
           },
           meta_strip_4: {
-            units_mtd: 120,
+            sales_qtd_value: 340000,
+            sales_qtd_count: 12,
+            purchased_buyers_qtd: 8,
+            units_qtd: 120,
+            demand_qtd_value: 60000,
+            demand_qtd_units: 20,
+            demand_qtd_count: 5,
+            total_stock: 96,
             days_cover: 14,
-            on_hand: 96,
-            sell_through_pct: 34,
           },
           details: {
             id: 'p1',

@@ -37,7 +37,9 @@ import {
 } from '@/hooks/useOrders';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { formatNumberValue } from '@/lib/utils';
+import { ORDERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -115,6 +117,8 @@ function SalesOrdersLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/sales-orders');
   const searchParams = useSearchParams();
@@ -230,9 +234,9 @@ function SalesOrdersLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: OrdersLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(ORDERS_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} orders`,
+    sub: kpiSupportingText(ORDERS_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
 
@@ -279,7 +283,10 @@ function SalesOrdersLandingContent({
             horizon={horizonLabel}
             showHorizonControl={false}
             primary={createSalesOrders ? 'Add a sales order' : undefined}
-            onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
+            onPrimaryClick={createSalesOrders ? () => {
+              captureCta('add_sales_order');
+              router.push('/sales-orders/new');
+            } : undefined}
             compact={isPaneOpen}
           />
           <SellerMobileTransactionTabs active="orders" />
@@ -369,9 +376,10 @@ function SalesOrdersLandingContent({
                   id: row.id,
                   href: `/sales-orders/${row.id}`,
                   document_number: row.order_id,
+                  is_buyer_app: row.source_kind === 'buyer_app' || row.source_detail === 'BUYER_APP',
                   realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
                   source_kind: row.source_kind,
-                  source_label: row.source_label,
+                  source_label: row.source_kind === 'converted' ? row.source_label : null,
                   buyer_name: row.buyer_name,
                   buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
                   buyer_initials: row.buyer_initials,

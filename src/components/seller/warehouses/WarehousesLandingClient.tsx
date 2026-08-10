@@ -22,6 +22,7 @@ import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding, useWarehousesLandingMetrics } from '@/hooks/useWarehouses';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { WAREHOUSES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -33,6 +34,7 @@ import type {
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { WarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Sales (high → low)' | 'Sold units (high → low)' | 'Sold SKUs (high → low)' | 'Sellable units (high → low)' | 'Name (A → Z)';
@@ -89,6 +91,8 @@ export function WarehousesLandingClient({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/warehouses');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
   const period: SellerLandingPeriod = 'quarter';
@@ -168,9 +172,9 @@ export function WarehousesLandingClient({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: WarehousesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(WAREHOUSES_KPI_COPY, card),
     value: formatCardValue(card),
-    sub: card.supporting_text ?? card.time_basis ?? '',
+    sub: kpiSupportingText(WAREHOUSES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? {
@@ -219,7 +223,10 @@ export function WarehousesLandingClient({
             : `${totalRows} warehouses · sales and stock posture for ${horizonLabel.toLowerCase()}.`}
           horizon={horizonLabel}
           primary="Add warehouse"
-          onPrimaryClick={() => setSheetOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_warehouse');
+            setSheetOpen(true);
+          }}
           compact={isPaneOpen}
         />
 

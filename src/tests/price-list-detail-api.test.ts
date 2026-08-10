@@ -118,7 +118,6 @@ describe('price list detail api', () => {
     };
     dbResponses['app.price_list_assignments'] = { data: [] };
     dbResponses['app.audit_log'] = { data: [] };
-    dbResponses['app.rpc.get_seller_pricelist_detail_v2'] = { data: { performance_cards: [{ id: 'discount-bands-and-price-checks' }] } };
     dbResponses['catalog.products'] = { data: [{ id: 'mp-1', name: 'Cabernet' }] };
     dbResponses['catalog.brands'] = { data: [{ id: 'mb-1', name: 'WineYard' }] };
   });
@@ -161,19 +160,14 @@ describe('price list detail api', () => {
     expect(body.items[0].tenant_product.cost_price).toBe(550);
   });
 
-  it('keeps the detail page available when the metrics rpc is unavailable', async () => {
-    dbResponses['app.rpc.get_seller_pricelist_detail_v2'] = {
-      data: null,
-      error: { code: 'PGRST202', message: 'Function not found' },
-    };
-
+  it('does not surface v2 performance_cards or detail_v2 fields', async () => {
     const request = new NextRequest('http://localhost:3000/api/price-lists/pl-1');
     const response = await getPriceListDetail(request, { params: Promise.resolve({ id: 'pl-1' }) });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.performance_cards).toEqual([]);
-    expect(body.detail_v2).toBeNull();
+    expect(body.performance_cards).toBeUndefined();
+    expect(body.detail_v2).toBeUndefined();
     expect(body.price_list.items).toHaveLength(1);
   });
 });

@@ -8,6 +8,11 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   useParams: () => ({}),
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/categories/cat-1',
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: { access_token: 'test' } }),
 }));
 
 vi.mock('@/hooks/useCategories', () => ({
@@ -16,6 +21,27 @@ vi.mock('@/hooks/useCategories', () => ({
 
 vi.mock('@/hooks/useRouteSnapshot', () => ({
   useRouteSnapshot: () => ({ state: 'products', setState: vi.fn() }),
+}));
+
+vi.mock('@/hooks/useDetailTabSearch', () => ({
+  useCategoryProductsDetail: () => ({
+    data: { pages: [{ rows: [], total: 0, nextOffset: null }] },
+    isPending: false,
+    isFetching: false,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+  }),
+  useCategoryBrandsDetail: () => ({
+    data: { pages: [{ rows: [], total: 0, nextOffset: null }] },
+    isPending: false,
+    isFetching: false,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+  }),
+  flattenDetailRows: () => [],
+  detailRowsTotal: () => 0,
 }));
 
 vi.mock('@/hooks/useRole', () => ({
@@ -61,33 +87,24 @@ describe('category detail page', () => {
           brand_count: 4,
         },
         meta_strip_4: {
-          gmv_mtd: 100000,
-          growth_pct: 10,
-          active_buyer_count: 20,
+          sales_qtd_value: 100000,
+          sales_qtd_count: 18,
+          selling_product_count_qtd: 9,
+          total_product_count: 12,
+          purchasing_customers_qtd: 20,
+          brand_count: 4,
+          sold_sku_count: 9,
           oos_sku_count: 2,
           low_stock_sku_count: 3,
           active_sku_count: 12,
         },
-        overview: {
-          trend_weekly: [],
-          stock_health: {
-            active_sku_count: 12,
-            oos_sku_count: 2,
-            low_stock_sku_count: 3,
-            uncovered_sku_count: 1,
-          },
-          top_brands: [],
-        },
-        products: [],
-        brands: [],
-        activity: [],
       },
     });
 
     render(<CategoryDetailPage id="cat-1" />);
 
     expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /^Products/i })).toHaveClass('border-ember-500');
+    expect(screen.getByRole('tab', { name: /^Products/i }).className).toMatch(/border-ember-500/);
     expect(screen.getByRole('tab', { name: /^Brands/i })).toBeInTheDocument();
   });
 });

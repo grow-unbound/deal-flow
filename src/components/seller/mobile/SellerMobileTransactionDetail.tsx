@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { MapPin, Package } from 'lucide-react';
 import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
 import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
@@ -25,6 +26,7 @@ interface SellerMobileTransactionTotal {
 interface SellerMobileTransactionDetailProps {
   eyebrow: string;
   documentNumber: string;
+  originMark?: ReactNode;
   statusLabel: string;
   statusTone: StatusTone;
   buyerName?: string | null;
@@ -60,6 +62,7 @@ function formatDateText(value: string | null | undefined) {
 export function SellerMobileTransactionDetail({
   eyebrow,
   documentNumber,
+  originMark,
   statusLabel,
   statusTone,
   buyerName,
@@ -86,12 +89,15 @@ export function SellerMobileTransactionDetail({
             {formatItemSummary(lines)}
           </p>
           <div className="mt-1 flex items-start justify-between gap-3">
-            <h1
-              className="min-w-0 flex-1 font-mono font-semibold leading-tight text-[var(--cream-900)]"
-              style={{ fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.02em' }}
-            >
-              {documentNumber}
-            </h1>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {originMark}
+              <h1
+                className="min-w-0 flex-1 font-mono font-semibold leading-tight text-[var(--cream-900)]"
+                style={{ fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.02em' }}
+              >
+                {documentNumber}
+              </h1>
+            </div>
             <StatusPill label={statusLabel} tone={statusTone} className="shrink-0" />
           </div>
           <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">

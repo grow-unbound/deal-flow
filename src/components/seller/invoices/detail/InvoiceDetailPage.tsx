@@ -41,6 +41,7 @@ import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, Es
 import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
+import { TransactionOriginMark } from '@/components/seller/transactional/TransactionOriginMark';
 
 const noop = () => {};
 
@@ -224,6 +225,13 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       <SellerMobileTransactionDetail
         eyebrow="Invoice"
         documentNumber={data.doc_number}
+        originMark={(
+          <TransactionOriginMark
+            isBuyerApp={data.is_buyer_app}
+            transactionType="invoice"
+            size={28}
+          />
+        )}
         statusLabel={INVOICE_CHIP_LABEL[invoiceBandStatus]}
         statusTone={mobileStatusTone}
         buyerName={data.buyer.name}
@@ -256,6 +264,13 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           kind="invoice"
           title={data.doc_number}
+          titleLeading={(
+            <TransactionOriginMark
+              isBuyerApp={data.is_buyer_app}
+              transactionType="invoice"
+              size={28}
+            />
+          )}
           subtitle={buyerContext
             ? `${data.invoice_date || '—'} · due ${data.due_date || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer on this invoice.'}

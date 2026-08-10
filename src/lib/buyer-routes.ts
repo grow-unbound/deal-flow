@@ -25,7 +25,7 @@ export const BUYER_DEEP_PREFIXES = [
 ] as const;
 
 /** Exact deep roots (and optional deeper paths under them). */
-export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/checkout', '/buy/order-placed', '/buy/estimate-placed', '/buy/promotions'] as const;
+export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/order-placed', '/buy/estimate-placed', '/buy/promotions'] as const;
 
 /** Seller preview gates — hide tab bar / cart chrome until setup completes. */
 export const BUYER_PREVIEW_SETUP_PREFIX = '/buy/preview/' as const;

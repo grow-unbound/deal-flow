@@ -26,6 +26,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
@@ -72,6 +73,8 @@ function PriceListsLandingContent({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/price-lists');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [formOpen, setFormOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string>('products-with-custom-prices');
   const { isSellerAssistant } = useRole();
@@ -221,7 +224,10 @@ function PriceListsLandingContent({
             horizon="Now"
             {...(isSellerAssistant ? {} : {
               primary: 'Add a price list',
-              onPrimaryClick: () => setFormOpen(true),
+              onPrimaryClick: () => {
+                captureCta('add_price_list');
+                setFormOpen(true);
+              },
             })}
             compact={isPaneOpen}
           />

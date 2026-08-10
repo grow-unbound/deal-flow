@@ -161,13 +161,17 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
   const buyerPickerQuery = useCatalogComposerBuyerPicker({
     query: buyerSearch,
     selectedIds: selectedBuyerIds,
-    enabled: buyerPickerOpen && buyerTargetMode === 'manual',
+    enabled: buyerTargetMode === 'manual' && (buyerPickerOpen || selectedBuyerIds.length > 0),
   });
   const buyerRows = useMemo(
     () => buyerPickerQuery.data?.pages.flatMap((page) => page.buyers) ?? [],
     [buyerPickerQuery.data?.pages],
   );
-  const buyerMap = useMemo(() => new Map(buyerRows.map((buyer) => [buyer.id, buyer])), [buyerRows]);
+  const selectedBuyerRows = useMemo(
+    () => buyerPickerQuery.data?.pages.flatMap((page) => page.selected_buyers ?? []) ?? [],
+    [buyerPickerQuery.data?.pages],
+  );
+  const buyerMap = useMemo(() => new Map([...selectedBuyerRows, ...buyerRows].map((buyer) => [buyer.id, buyer])), [buyerRows, selectedBuyerRows]);
   const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
   const selectedBuyerSummary = useMemo(() => {
     if (selectedBuyerIds.length === 0) return 'Select buyers';
@@ -176,14 +180,19 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
   }, [buyerMap, selectedBuyerIds]);
   const productQuery = useCatalogComposerProducts({
     query: productSearch,
+    selectedIds: selectedProductIds,
     limit: 30,
-    enabled: productPickerOpen && productMembershipMode === 'manual',
+    enabled: productMembershipMode === 'manual' && (productPickerOpen || selectedProductIds.length > 0),
   });
   const productRows = useMemo(
     () => productQuery.data?.pages.flatMap((page) => page.products) ?? [],
     [productQuery.data?.pages],
   );
-  const productMap = useMemo(() => new Map(productRows.map((product) => [product.id, product])), [productRows]);
+  const selectedProductRows = useMemo(
+    () => productQuery.data?.pages.flatMap((page) => page.selected_products ?? []) ?? [],
+    [productQuery.data?.pages],
+  );
+  const productMap = useMemo(() => new Map([...selectedProductRows, ...productRows].map((product) => [product.id, product])), [productRows, selectedProductRows]);
   const selectedProductSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
   const selectedProductSummary = useMemo(() => {
     if (selectedProductIds.length === 0) return 'Select products';

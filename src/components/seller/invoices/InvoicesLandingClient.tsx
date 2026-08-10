@@ -32,10 +32,12 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatAsOfLabel, formatNumberValue } from '@/lib/utils';
+import { INVOICES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -104,6 +106,8 @@ function InvoicesLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/invoices');
   const searchParams = useSearchParams();
@@ -232,9 +236,9 @@ function InvoicesLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: InvoicesLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(INVOICES_KPI_COPY, card),
     value: formatNumberValue(Number(card.value ?? 0), 'CURRENCY_THRESHOLD'),
-    sub: card.supporting_text ?? `${card.document_count ?? card.entity_count ?? 0} invoices`,
+    sub: kpiSupportingText(INVOICES_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = selectedKpiKey ? kpiOptions.find((option) => option.id === selectedKpiKey) ?? null : null;
@@ -279,7 +283,10 @@ function InvoicesLandingContent({
           horizon={horizonLabel}
           showHorizonControl={false}
           primary={createInvoices ? 'Add an invoice' : undefined}
-          onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
+          onPrimaryClick={createInvoices ? () => {
+            captureCta('add_invoice');
+            router.push('/invoices/new');
+          } : undefined}
           compact={isPaneOpen}
         />
         <SellerMobileTransactionTabs active="invoices" />
@@ -369,8 +376,9 @@ function InvoicesLandingContent({
                 id: row.id,
                 href: `/invoices/${row.id}`,
                 document_number: row.invoice_number,
+                is_buyer_app: row.source_kind === 'buyer_app' || row.source_detail === 'BUYER_APP',
                 source_kind: row.source_kind,
-                source_label: row.source_label,
+                source_label: row.source_kind === 'converted' ? row.source_label : null,
                 buyer_name: row.buyer_name,
                 buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
                 buyer_initials: row.buyer_initials,

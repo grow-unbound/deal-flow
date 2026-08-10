@@ -5,9 +5,15 @@ import { FileText, Package, Receipt } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { FilterBar, type FilterBarGroup } from '@/components/seller/layout';
-import { TransactionTable, type TransactionTableKind, type TransactionTableRow } from '@/components/seller/transactional';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import {
+  TransactionTable,
+  transactionTableColumnCount,
+  transactionTableMinWidth,
+  type TransactionTableKind,
+  type TransactionTableRow,
+} from '@/components/seller/transactional';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCustomerDocuments } from '@/hooks/useCustomersLanding';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -127,10 +133,6 @@ function sortOptions(kind: TransactionTableKind) {
   return ORDER_SORT_OPTIONS;
 }
 
-function sourceDetailLabel(row: CustomerDocumentRow) {
-  return row.source_label ?? null;
-}
-
 function matchesSearch(kind: TransactionTableKind, buyerName: string, row: CustomerDocumentRow, query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
@@ -152,9 +154,9 @@ function toMappedRow(kind: TransactionTableKind, buyerName: string, routeBase: s
     id: row.id,
     href: `${routeBase}/${row.id}`,
     document_number: row.number ?? row.id.slice(0, 8),
+    is_buyer_app: row.is_buyer_app,
     source_kind: row.source_kind,
-    source_label: sourceLabel(kind, row),
-    source_detail: sourceDetailLabel(row),
+    source_label: row.source_kind === 'converted' ? row.source_label : null,
     buyer_name: buyerName,
     buyer_place_of_supply: row.place_of_supply ?? null,
     location_name: row.location_name ?? null,
@@ -382,10 +384,12 @@ export function CustomerOrdersTab({
     [rows, kind, buyerName, routeBase],
   );
 
-  const loading = documentsQuery.isLoading && !documentsQuery.data;
+  const tableMinWidth = transactionTableMinWidth(kind, showCampaignColumn);
+  const tableColumnCount = transactionTableColumnCount(kind, showCampaignColumn);
+  const showTableSkeleton = documentsQuery.isPending && tableRows.length === 0;
 
   return (
-    <section className="mt-5">
+    <section className="mt-5 min-w-0 max-w-full">
       <FilterBar
         count={`Showing ${tableRows.length} of ${documentsQuery.data?.total ?? 0}${(documentsQuery.isFetching || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder={searchPlaceholder(kind)}
@@ -400,33 +404,24 @@ export function CustomerOrdersTab({
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
-      <div className="overflow-x-auto">
-        {loading ? (
-          <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-            <div className="h-[420px] animate-pulse bg-cream-50" />
-          </div>
-        ) : tableRows.length === 0 ? (
-          <EmptyState
-            icon={kind === 'estimate' ? <FileText size={28} strokeWidth={1.5} /> : kind === 'invoice' ? <Receipt size={28} strokeWidth={1.5} /> : <Package size={28} strokeWidth={1.5} />}
-            heading={`No matching ${kind === 'order' ? 'sales orders' : `${kind}s`}`}
-            description="Try a different search or filter combination."
-          />
-        ) : (
-          <TransactionTable
-            kind={kind}
-            showCampaignColumn={showCampaignColumn}
-            tableMinWidth={showCampaignColumn ? (kind === 'invoice' ? 1480 : kind === 'estimate' ? 1450 : 1380) : kind === 'invoice' ? 1260 : kind === 'estimate' ? 1230 : 1180}
-            rows={tableRows}
-            onRowClick={(row) => router.push(row.href)}
-          />
-        )}
-      </div>
-
-      {documentsQuery.isFetching && documentsQuery.data ? (
-        <div className="mt-4 flex justify-center">
-          <Skeleton className="h-8 w-40 rounded-full" />
-        </div>
-      ) : null}
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={tableColumnCount} tableMinWidth={tableMinWidth} />
+      ) : tableRows.length === 0 ? (
+        <EmptyState
+          icon={kind === 'estimate' ? <FileText size={28} strokeWidth={1.5} /> : kind === 'invoice' ? <Receipt size={28} strokeWidth={1.5} /> : <Package size={28} strokeWidth={1.5} />}
+          heading={`No matching ${kind === 'order' ? 'sales orders' : `${kind}s`}`}
+          description="Try a different search or filter combination."
+        />
+      ) : (
+        <TransactionTable
+          kind={kind}
+          showCampaignColumn={showCampaignColumn}
+          horizontalScrollOnly
+          tableMinWidth={tableMinWidth}
+          rows={tableRows}
+          onRowClick={(row) => router.push(row.href)}
+        />
+      )}
     </section>
   );
 }

@@ -13,7 +13,9 @@ import {
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { BUYER_APP_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import {
   useBuyerAppLanding,
   useBuyerAppMetrics,
@@ -70,6 +72,8 @@ function BuyerAppLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const period = initialPeriod;
   const horizonLabel = 'Trailing 90 days';
   const metricSuffix = '90D';
@@ -111,8 +115,8 @@ function BuyerAppLandingContent({
   const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
   const metricCards = metricsData?.cards ?? [];
   const formatMetricValue = (card: NonNullable<typeof metricCards>[number]) => {
-    const idLabel = `${card.id} ${card.label}`.toLowerCase();
-    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel.includes('gmv')) {
+    const idLabel = card.id.toLowerCase();
+    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel.includes('gmv') || idLabel === 'app_sourced_demand') {
       return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
     }
     if (idLabel.includes('rate') || idLabel.includes('share') || idLabel.includes('pct')) {
@@ -129,14 +133,17 @@ function BuyerAppLandingContent({
         subtitle={`${kpis.enabled_buyers} customers can self-serve · track business submitted through Buyer App.`}
         horizon={horizonLabel}
         primary="Manage Access"
-        onPrimaryClick={() => router.push('/buyer-app/access')}
+        onPrimaryClick={() => {
+          captureCta('manage_buyer_app_access');
+          router.push('/buyer-app/access');
+        }}
       />
 
       <InsightStrip4
         tiles={metricCards.slice(0, 4).map((card, index) => ({
-          label: card.time_basis ? `${card.label} · ${card.time_basis}` : card.label,
+          label: card.time_basis ? `${kpiLabel(BUYER_APP_KPI_COPY, card)} · ${card.time_basis}` : kpiLabel(BUYER_APP_KPI_COPY, card),
           value: formatMetricValue(card),
-          sub: card.supporting_text ?? '',
+          sub: kpiSupportingText(BUYER_APP_KPI_COPY, card),
           tone: index === 1 ? 'accent' : undefined,
         }))}
       />

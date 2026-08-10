@@ -4,6 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import {
+  NAVIGATION_QUERY_GC_TIME,
+  NAVIGATION_QUERY_STALE_TIME,
+  REFERENCE_QUERY_GC_TIME,
+  REFERENCE_QUERY_STALE_TIME,
+} from '@/lib/query-navigation';
 import type { TenantWarehouse, WarehouseAddress, WarehouseAssociatedUser } from '@/types/tenant-warehouses';
 
 export interface InventoryRow {
@@ -64,6 +70,8 @@ export function useWarehouses() {
       if (!res.ok) throw new Error('Failed to fetch warehouses');
       return parseWarehousesPayload(await res.json());
     },
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
   });
 }
 
@@ -76,6 +84,8 @@ export function useInventoryByProduct(productId: string) {
       return res.json() as Promise<{ inventory: InventoryRow[] }>;
     },
     enabled: !!productId,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 

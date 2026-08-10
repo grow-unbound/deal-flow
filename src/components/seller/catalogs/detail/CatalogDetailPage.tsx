@@ -70,25 +70,27 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    const m = data.meta_strip_4;
     return [
       {
-        label: 'Campaign-linked demand value',
-        value: formatNumberValue(data.meta_strip_4.gmv, 'CURRENCY_THRESHOLD'),
+        label: 'View rate · QTD',
+        value: `${m.view_rate_pct}%`,
+        sub: `${m.viewed_buyer_count}/${m.target_buyer_count} customers · ${m.view_count} views`,
       },
       {
-        label: 'Customers with demand',
-        value: `${data.meta_strip_4.demand_customers ?? data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
-        sub: `${data.meta_strip_4.conversion_rate}% open-to-demand`,
+        label: 'Enquiry rate · QTD',
+        value: `${m.enquiry_rate_pct}%`,
+        sub: `${m.demand_buyer_count} customers · ${formatNumberValue(m.demand_value, 'CURRENCY_THRESHOLD')} (${m.demand_count})`,
       },
       {
-        label: 'Customers who opened',
-        value: `${data.meta_strip_4.unique_viewers}/${data.meta_strip_4.cohort_members}`,
-        sub: 'opened in Buyer App',
+        label: 'Billing rate · QTD',
+        value: `${m.billing_rate_pct}%`,
+        sub: `${m.revenue_buyer_count} customers · ${formatNumberValue(m.invoice_value, 'CURRENCY_THRESHOLD')} (${m.invoice_count})`,
       },
       {
-        label: 'Days left',
-        value: `${data.meta_strip_4.days_left} d`,
-        sub: `valid until ${data.meta_strip_4.valid_until_label}`,
+        label: 'Expiring in',
+        value: `${m.days_left} d`,
+        sub: `valid until ${m.valid_until_label}`,
       },
     ];
   }, [data]);
@@ -151,6 +153,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     || data.header.status_value === 'published_dirty'
     || data.header.status_value === 'scheduled'
     || data.header.status_value === 'expired';
+  const editValidTo = data.composer?.valid_to ?? data.header.valid_until_iso ?? null;
   const activeMutationPending =
     publishMutation.isPending
     || publishUpdatesMutation.isPending
@@ -158,7 +161,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
   const tabs = [
     { id: 'products', label: 'Products', badge: data.header.products_count },
     ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-    { id: 'buyers', label: 'Buyers', badge: data.meta_strip_4.cohort_members },
+    { id: 'buyers', label: 'Buyers', badge: data.meta_strip_4.target_buyer_count },
   ] as const;
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
 
@@ -344,7 +347,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       ) : null}
 
       {showPerformanceTab && activeTab === 'performance' ? (
-        <CatalogPerformanceTab performanceCards={data.performance_cards} />
+        <CatalogPerformanceTab />
       ) : null}
       {activeTab === 'buyers' ? (
         <CatalogBuyersTab
@@ -367,9 +370,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
           name: data.header.name,
           description: data.composer?.description ?? '',
           valid_from: new Date(data.composer?.valid_from ?? new Date().toISOString()),
-          valid_to: data.composer?.valid_to ? new Date(data.composer.valid_to) : undefined,
+          valid_to: editValidTo ? new Date(editValidTo) : undefined,
           buyer_note: data.composer?.message ?? '',
-          hero_image_url: '',
+          hero_image_url: data.header.hero_image_url ?? '',
           target_mode: data.composer?.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
           target_cohort_id: data.composer?.scope_type === 'cohort' ? (data.composer.cohort_id ?? null) : null,
           pricing_mode: data.composer?.price_source === 'price_list' ? 'pricelist' : 'individual_prices',

@@ -5,18 +5,24 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import {
+  mapEstimateDocumentSource,
+  mapInvoiceDocumentSource,
+  mapOrderDocumentSource,
+  resolveInvoiceLinkedLabel,
+} from '@/lib/server/tenant-document-source';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 const KindSchema = z.enum(['order', 'estimate', 'invoice']);
 const SortSchema = z.enum(['newest', 'oldest', 'amount_desc', 'amount_asc', 'status_asc', 'items_desc', 'expiry_asc', 'outstanding_desc']).catch('newest');
-type LinkedOrderRow = { id: string; campaign_id: string | null; source: string | null };
+type LinkedOrderRow = { id: string; campaign_id: string | null; order_number: string | null };
 const MAX_ITEMS_PER_DOCUMENT = 250;
 
 const CONFIG = {
-  order: { table: 'orders', number: 'order_number', date: 'order_date', amount: 'total_amount', items: 'order_items', parent: 'order_id', extra: 'campaign_id, source, is_buyer_app_order, buyer_id' },
+  order: { table: 'orders', number: 'order_number', date: 'order_date', amount: 'total_amount', items: 'order_items', parent: 'order_id', extra: 'campaign_id, source, is_buyer_app_order, estimate_id, buyer_id' },
   estimate: { table: 'estimates', number: 'estimate_number', date: 'estimate_date', amount: 'total_amount', items: 'estimate_items', parent: 'estimate_id', extra: 'campaign_id, source, expires_at, is_buyer_app_estimate, buyer_id' },
-  invoice: { table: 'invoices', number: 'invoice_number', date: 'invoice_date', amount: 'total_amount', items: 'invoice_items', parent: 'invoice_id', extra: 'due_date, outstanding_balance, order_id, is_buyer_app_invoice, buyer_id' },
+  invoice: { table: 'invoices', number: 'invoice_number', date: 'invoice_date', amount: 'total_amount', items: 'invoice_items', parent: 'invoice_id', extra: 'due_date, outstanding_balance, order_id, estimate_id, is_buyer_app_invoice, buyer_id' },
 } as const;
 
 function buildDocumentPeriodFilter(dateColumn: string, currentStart: string, currentEndExclusive: string) {
@@ -82,13 +88,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const itemRowLimit = Math.max(ids.length * MAX_ITEMS_PER_DOCUMENT, 1);
 
   const buyerIds = Array.from(new Set(rows.map((row: any) => row.buyer_id).filter(Boolean)));
-  const linkedOrdersResult = parsedKind.data === 'invoice' && rows.some((row: any) => row.order_id)
-    ? await db.schema('app').from('orders').select('id, campaign_id, source').eq('tenant_id', claims.tenant_id)
-      .in('id', rows.map((row: any) => row.order_id).filter(Boolean)).is('deleted_at', null)
-      .limit(supplementalRowLimit)
-    : { data: [] };
+  const orderEstimateIds = parsedKind.data === 'order'
+    ? rows.map((row: any) => row.estimate_id).filter(Boolean)
+    : [];
+  const invoiceOrderIds = parsedKind.data === 'invoice'
+    ? rows.map((row: any) => row.order_id).filter(Boolean)
+    : [];
+  const invoiceEstimateIds = parsedKind.data === 'invoice'
+    ? rows.map((row: any) => row.estimate_id).filter(Boolean)
+    : [];
+
+  const [linkedOrdersResult, linkedEstimatesForOrdersResult, linkedEstimatesForInvoicesResult] = await Promise.all([
+    parsedKind.data === 'invoice' && invoiceOrderIds.length > 0
+      ? db.schema('app').from('orders').select('id, campaign_id, order_number').eq('tenant_id', claims.tenant_id)
+        .in('id', invoiceOrderIds).is('deleted_at', null).limit(supplementalRowLimit)
+      : Promise.resolve({ data: [] }),
+    parsedKind.data === 'order' && orderEstimateIds.length > 0
+      ? db.schema('app').from('estimates').select('id, estimate_number').eq('tenant_id', claims.tenant_id)
+        .in('id', orderEstimateIds).is('deleted_at', null).limit(supplementalRowLimit)
+      : Promise.resolve({ data: [] }),
+    parsedKind.data === 'invoice' && invoiceEstimateIds.length > 0
+      ? db.schema('app').from('estimates').select('id, estimate_number').eq('tenant_id', claims.tenant_id)
+        .in('id', invoiceEstimateIds).is('deleted_at', null).limit(supplementalRowLimit)
+      : Promise.resolve({ data: [] }),
+  ]);
+
   const linkedOrders = new Map<string, LinkedOrderRow>(
     ((linkedOrdersResult.data ?? []) as LinkedOrderRow[]).map((row) => [row.id, row]),
+  );
+  const estimateNumberById = new Map<string, string>(
+    ((linkedEstimatesForOrdersResult.data ?? []) as Array<{ id: string; estimate_number: string | null }>)
+      .map((row) => [row.id, row.estimate_number ?? '']),
+  );
+  const invoiceOrderNumberById = new Map<string, string>(
+    Array.from(linkedOrders.values()).map((row) => [row.id, row.order_number ?? '']),
+  );
+  const invoiceEstimateNumberById = new Map<string, string>(
+    ((linkedEstimatesForInvoicesResult.data ?? []) as Array<{ id: string; estimate_number: string | null }>)
+      .map((row) => [row.id, row.estimate_number ?? '']),
   );
   const campaignIds = rows
     .map((row: any) => row.campaign_id ?? linkedOrders.get(String(row.order_id))?.campaign_id)
@@ -111,6 +148,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     rows: rows.map((row: any) => {
       const linkedOrder = row.order_id ? linkedOrders.get(String(row.order_id)) : null;
       const campaignId = row.campaign_id ?? linkedOrder?.campaign_id;
+      const sourceFields =
+        parsedKind.data === 'estimate'
+          ? mapEstimateDocumentSource(row)
+          : parsedKind.data === 'order'
+            ? mapOrderDocumentSource(row, row.estimate_id ? estimateNumberById.get(String(row.estimate_id)) : null)
+            : mapInvoiceDocumentSource(
+                row,
+                resolveInvoiceLinkedLabel(row, invoiceOrderNumberById, invoiceEstimateNumberById),
+              );
+
       return {
         id: row.id,
         number: row[config.number] ?? null,
@@ -120,8 +167,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         due_date: row.due_date ?? null,
         buyer_name: row.buyer_id ? (buyerNames.get(String(row.buyer_id)) ?? null) : null,
         place_of_supply: row.place_of_supply ?? null,
-        source_kind: parsedKind.data === 'estimate' ? (row.is_buyer_app_estimate ? 'buyer_app' : 'seller') : row[`is_buyer_app_${parsedKind.data}`] ? 'buyer_app' : row.order_id ? 'converted' : 'direct',
-        source_label: row.source ?? linkedOrder?.source ?? null,
+        source_kind: sourceFields.source_kind,
+        source_label: sourceFields.source_label,
+        source_detail: sourceFields.source_detail,
+        is_buyer_app: sourceFields.is_buyer_app,
         campaign_name: campaignId ? campaignNames.get(campaignId) ?? null : null,
         items_count: itemCounts.get(row.id) ?? 0,
         total_amount: Number(row[config.amount] ?? 0),

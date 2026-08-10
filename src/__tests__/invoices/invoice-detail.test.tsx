@@ -182,6 +182,7 @@ function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDet
       due_status: 'due in 5 days',
       preview_message: 'Hi Acme Stores,\n\nThis is a payment reminder from Yukti Seller on 1 invoices.',
     },
+    is_buyer_app: false,
     ...overrides,
   };
 }
@@ -207,6 +208,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
   it('draft shows title chip and primary actions', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
+    expect(screen.getByLabelText('Store Invoice')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^send invoice$/i })).toBeInTheDocument();
     openMoreActions();
     expect(screen.getByText(/edit before send/i)).toBeInTheDocument();

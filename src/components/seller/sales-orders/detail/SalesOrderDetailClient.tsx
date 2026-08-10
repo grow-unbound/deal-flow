@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Edit2, Loader2, PackageCheck, Send, Truck, X } from 'lucide-react';
 
@@ -52,6 +52,7 @@ import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
+import { TransactionOriginMark } from '@/components/seller/transactional/TransactionOriginMark';
 
 import { ModalCancelOrder } from './ModalCancelOrder';
 import { ModalDispatch } from './ModalDispatch';
@@ -144,32 +145,16 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   }, [data]);
 
   const orderMeta = useMemo(() => {
-    if (!data) return null;
-    const d = data;
-    const units = d.lines.reduce((s, l) => s + l.qty, 0);
-    const nodes: ReactNode[] = [
-      <span key="placed">Placed {formatPlacedAt(d.placed_at)}</span>,
-      <span key="via">
-        via <span className="font-semibold text-cream-900">{d.catalog_name ?? '—'}</span>
-      </span>,
-      <span key="ch">{d.source === 'buyer_app' ? 'Buyer app' : d.source === 'cockpit_manual' ? 'Seller cockpit' : d.source === 'csv_import' ? 'CSV import' : '—'}</span>,
-      <span key="lines">
-        {d.lines.length} lines · {units} units
-      </span>,
-    ];
-    if (d.estimate) {
-      const label = formatEstimateChipLabel(d.estimate.estimate_number);
-      nodes.push(
-        <Link
-          key="est"
-          href={`/estimates/${d.estimate.id}`}
-          className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-sm font-medium text-teal-800 hover:bg-cream-100"
-        >
-          From: {label}
-        </Link>,
-      );
-    }
-    return <span className="flex flex-wrap items-center gap-x-2 gap-y-1">{nodes}</span>;
+    if (!data?.estimate) return null;
+    const label = formatEstimateChipLabel(data.estimate.estimate_number);
+    return (
+      <Link
+        href={`/estimates/${data.estimate.id}`}
+        className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-sm font-medium text-teal-800 hover:bg-cream-100"
+      >
+        From: {label}
+      </Link>
+    );
   }, [data]);
 
   if (orderManagement === false || salesOrdersFlag === false) {
@@ -232,6 +217,13 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
       <SellerMobileTransactionDetail
         eyebrow="Sales order"
         documentNumber={data.order_number}
+        originMark={(
+          <TransactionOriginMark
+            isBuyerApp={data.is_buyer_app}
+            transactionType="order"
+            size={28}
+          />
+        )}
         statusLabel={statusLabel}
         statusTone={mobileStatusTone}
         buyerName={buyer?.business_name}
@@ -263,6 +255,13 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           kind="so"
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.order_number}
+          titleLeading={(
+            <TransactionOriginMark
+              isBuyerApp={data.is_buyer_app}
+              transactionType="order"
+              size={28}
+            />
+          )}
           subtitle={buyer
             ? `${formatPlacedAt(data.placed_at)} · expected ${data.expected_delivery || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer assigned.'}

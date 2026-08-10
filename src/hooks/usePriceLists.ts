@@ -189,13 +189,15 @@ export interface PriceListDetail extends PriceList {
   items: PriceListItem[];
   assignments: PriceListAssignment[];
   activity?: PriceListActivity[];
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
+  /** products_covered/avg_discount_pct/assigned_buyer_count/avg_margin_pct sourced from metrics_price_lists_now_summary. */
   stats?: {
     products_covered: number;
     brands_covered: number;
     assignments_count: number;
+    assigned_buyer_count: number;
+    assigned_cohort_count: number;
     avg_discount_pct: number;
+    avg_margin_pct: number;
     days_left: number;
   };
 }
@@ -337,7 +339,7 @@ export function useSaveSimplePriceList(priceListId?: string) {
       const optimisticTone: PriceListLandingStatusTone = optimisticStatus === 'active' ? 'success' : 'neutral';
 
       if (priceListId) {
-        queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) =>
+        queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) =>
           old
             ? {
                 ...old,
@@ -348,6 +350,10 @@ export function useSaveSimplePriceList(priceListId?: string) {
                   valid_from: payload.valid_from.toISOString(),
                   valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
                   priority: payload.priority,
+                  membership_mode: payload.membership_mode,
+                  filters: payload.membership_mode === 'automatic'
+                    ? (payload.rules as unknown as PriceListFilterState)
+                    : old.price_list.filters,
                 },
               }
             : old,
@@ -589,7 +595,7 @@ export function useUpdatePriceListItem(priceListId: string) {
     },
     onMutate: async ({ itemId, price }) => {
       const snapshots = await takeSnapshots(queryClient, [['price-list', priceListId], ['price-list-items', priceListId]]);
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {
@@ -617,6 +623,119 @@ export function useUpdatePriceListItem(priceListId: string) {
   });
 }
 
+type PriceListProductMembershipRows = InfiniteData<{
+  rows: Array<{ tenant_product_id: string; item_id: string | null; is_member: boolean; list_price: number | null }>;
+  total: number;
+  nextOffset: number | null;
+}, number>;
+
+function refreshMembershipFilterQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[],
+) {
+  queryClient.removeQueries({ queryKey, type: 'inactive' });
+}
+
+function memberFilterKeepsRow(memberFilter: unknown, isMember: boolean) {
+  if (memberFilter === 'yes') return isMember;
+  if (memberFilter === 'no') return !isMember;
+  return true;
+}
+
+function detailRowsMemberFilter(queryKey: readonly unknown[]) {
+  const params = queryKey[5];
+  return params && typeof params === 'object' && 'member' in params
+    ? (params as { member?: unknown }).member
+    : undefined;
+}
+
+function patchPriceListProductMembershipCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  priceListId: string,
+  tenantProductIds: string[],
+  isMember: boolean,
+) {
+  const idSet = new Set(tenantProductIds);
+  const delta = isMember ? 1 : -1;
+
+  queryClient.getQueriesData<PriceListProductMembershipRows>({ queryKey: ['price-list-products-detail'] }).forEach(([queryKey, old]) => {
+    if (!old) return;
+    const memberFilter = detailRowsMemberFilter(queryKey);
+    queryClient.setQueryData<PriceListProductMembershipRows>(queryKey, {
+      ...old,
+      pages: old.pages.map((page) => {
+        let removed = 0;
+        const rows = page.rows
+          .map((row) =>
+            idSet.has(row.tenant_product_id)
+              ? { ...row, is_member: isMember, item_id: isMember ? row.item_id : null }
+              : row,
+          )
+          .filter((row) => {
+            const keep = !idSet.has(row.tenant_product_id) || memberFilterKeepsRow(memberFilter, row.is_member);
+            if (!keep) removed += 1;
+            return keep;
+          });
+
+        return {
+          ...page,
+          rows,
+          total: Math.max(0, page.total - removed),
+        };
+      }),
+    });
+  });
+
+  queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
+    if (!old?.price_list) return old;
+    return {
+      price_list: {
+        ...old.price_list,
+        stats: old.price_list.stats
+          ? {
+              ...old.price_list.stats,
+              products_covered: Math.max(0, old.price_list.stats.products_covered + delta * tenantProductIds.length),
+            }
+          : old.price_list.stats,
+      },
+    };
+  });
+
+  queryClient.setQueriesData<InfiniteData<PriceListsLandingResponse, number>>(
+    { queryKey: ['price-lists-landing'] },
+    (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          price_lists: page.price_lists.map((priceList) =>
+            priceList.id === priceListId
+              ? { ...priceList, product_count: Math.max(0, priceList.product_count + delta * tenantProductIds.length) }
+              : priceList,
+          ),
+        })),
+      };
+    },
+  );
+}
+
+function findPriceListProductIdsForItemIds(
+  queryClient: ReturnType<typeof useQueryClient>,
+  itemIds: string[],
+) {
+  const itemIdSet = new Set(itemIds);
+  const productIds = new Set<string>();
+  queryClient.getQueriesData<PriceListProductMembershipRows>({ queryKey: ['price-list-products-detail'] }).forEach(([, data]) => {
+    data?.pages.forEach((page) => {
+      page.rows.forEach((row) => {
+        if (row.item_id && itemIdSet.has(row.item_id)) productIds.add(row.tenant_product_id);
+      });
+    });
+  });
+  return Array.from(productIds);
+}
+
 export function useAddPriceListItems(priceListId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -637,13 +756,27 @@ export function useAddPriceListItems(priceListId: string) {
       }
       return { ok: true };
     },
-    onSuccess: () => {
+    onMutate: async (rows) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list', priceListId],
+        ['price-lists-landing'],
+      ]);
+      patchPriceListProductMembershipCaches(queryClient, priceListId, rows.map((row) => row.tenant_product_id), true);
+      return { snapshots };
+    },
+    onSuccess: (_result, rows) => {
+      patchPriceListProductMembershipCaches(queryClient, priceListId, rows.map((row) => row.tenant_product_id), true);
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
-      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      refreshMembershipFilterQueries(queryClient, ['price-list-products-detail']);
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('Products added to price list');
     },
-    onError: (error) => {
+    onError: (error, _rows, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.error(error instanceof Error ? error.message : 'Could not add products');
     },
   });
@@ -663,13 +796,30 @@ export function useRemovePriceListItems(priceListId: string) {
       }
       return { ok: true };
     },
-    onSuccess: () => {
+    onMutate: async (itemIds) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list', priceListId],
+        ['price-lists-landing'],
+      ]);
+      const tenantProductIds = findPriceListProductIdsForItemIds(queryClient, itemIds);
+      patchPriceListProductMembershipCaches(queryClient, priceListId, tenantProductIds, false);
+      return { snapshots, tenantProductIds };
+    },
+    onSuccess: (_result, _itemIds, ctx) => {
+      if (ctx?.tenantProductIds) {
+        patchPriceListProductMembershipCaches(queryClient, priceListId, ctx.tenantProductIds, false);
+      }
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
-      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      refreshMembershipFilterQueries(queryClient, ['price-list-products-detail']);
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('Products removed from price list');
     },
-    onError: (error) => {
+    onError: (error, _itemIds, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.error(error instanceof Error ? error.message : 'Could not remove products');
     },
   });
@@ -752,7 +902,7 @@ export function useAddPriceListItem(priceListId: string) {
       queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
         items: [optimisticItem, ...(old?.items ?? [])],
       }));
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {
@@ -800,7 +950,7 @@ export function useDeletePriceListItem(priceListId: string) {
       queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
         items: (old?.items ?? []).filter((item) => item.id !== itemId),
       }));
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {
@@ -871,7 +1021,7 @@ export function useAddAssignment(priceListId: string) {
       queryClient.setQueryData<{ assignments: PriceListAssignment[] }>(['price-list-assignments', priceListId], (old) => ({
         assignments: [optimisticAssignment, ...(old?.assignments ?? [])],
       }));
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {
@@ -938,7 +1088,7 @@ export function useTogglePriceListActive() {
           priceList.id === id ? { ...priceList, is_active } : priceList,
         ),
       }));
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', id], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', id] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {
@@ -985,7 +1135,7 @@ export function useDeleteAssignment(priceListId: string) {
       queryClient.setQueryData<{ assignments: PriceListAssignment[] }>(['price-list-assignments', priceListId], (old) => ({
         assignments: (old?.assignments ?? []).filter((assignment) => assignment.id !== assignmentId),
       }));
-      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
         if (!old?.price_list) return old;
         return {
           price_list: {

@@ -24,8 +24,9 @@ export function useMembershipPreviewCount(
 ) {
   const { enabled = true, debounceMs = 500 } = options;
   const debouncedRules = useDebounce(rules, debounceMs);
+  const isDebouncing = JSON.stringify(rules) !== JSON.stringify(debouncedRules);
 
-  return useQuery<MembershipPreviewResult>({
+  const query = useQuery<MembershipPreviewResult>({
     queryKey: ['membership-preview', entityType, debouncedRules],
     queryFn: async () => {
       const response = await apiPost('/api/membership/preview', { entity_type: entityType, rules: debouncedRules });
@@ -39,4 +40,9 @@ export function useMembershipPreviewCount(
     gcTime: 60_000,
     placeholderData: (previous) => previous,
   });
+
+  return {
+    ...query,
+    isRefreshingPreview: enabled && (isDebouncing || query.isFetching),
+  };
 }

@@ -2,14 +2,18 @@ import { cache } from 'react';
 import { headers } from 'next/headers';
 
 // React's cache() dedupes only within a single request/render pass — a fresh cache
-// instance is created per request in Server Components, so this cannot leak data
-// across requests or tenants. It exists purely to collapse duplicate calls to the
-// same bootstrap path within one page render (e.g. layout + page both requesting
-// the same data). It intentionally does NOT persist across navigations — doing that
-// via Next's shared fetch cache would require the cache key to explicitly encode
-// tenant_id/user_id (it currently doesn't, since tenant scoping happens via the
-// forwarded `cookie` header inside the handler, not the URL), so cross-navigation
-// caching is deferred until that's threaded through explicitly.
+// instance is created per request in Server Components, so THIS part cannot leak
+// data across requests or tenants.
+//
+// The outbound self-fetch below is a different story. Despite `cache: 'no-store'`,
+// Next's dev server (Turbopack) was observed serving a PREVIOUS request's response
+// for these self-fetches — confirmed by switching tenants (via /login/select-context)
+// and seeing the KPI tiles render the prior tenant's numbers one navigation behind,
+// while a plain client-side fetch to the same API route and a direct DB query both
+// returned correct, fresh, tenant-scoped data immediately. `cache: 'no-store'` stops
+// Next's Data Cache from persisting a response, but did not stop this same-URL
+// request from being coalesced with an in-flight/recent one. A cache-busting query
+// param forces every self-fetch to be a genuinely distinct request, which fixed it.
 export const fetchSellerPageBootstrap = cache(async function fetchSellerPageBootstrap<T>(
   path: string,
 ): Promise<{ data: T | null; status: number | null }> {
@@ -21,9 +25,11 @@ export const fetchSellerPageBootstrap = cache(async function fetchSellerPageBoot
 
   const proto = h.get('x-forwarded-proto') ?? (host.includes('localhost') ? 'http' : 'https');
   const cookie = h.get('cookie') ?? '';
+  const separator = path.includes('?') ? '&' : '?';
+  const url = `${proto}://${host}${path}${separator}_cb=${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   try {
-    const response = await fetch(`${proto}://${host}${path}`, {
+    const response = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
       headers: {

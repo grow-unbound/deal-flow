@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
@@ -83,6 +84,7 @@ function resolveUserPhone(user: Session['user']): string | undefined {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [tenantProfile, setTenantProfile] = useState<TenantProfile | null>(null);
@@ -314,6 +316,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setError(null);
           identifyForAnalytics(newSession, claims);
           if (event === 'SIGNED_IN' || previousClaimsKey !== nextClaimsKey || shouldHydrateWorkspace(claims)) {
+            // A different identity/tenant/role is now active — any cached query data
+            // was fetched under the PREVIOUS claims and would render as stale/wrong
+            // content until a hard refresh. Ordinary TOKEN_REFRESHED events for the
+            // same claims never reach here, so this doesn't cause refetch churn during
+            // normal background token refresh.
+            queryClient.clear();
             maybeHydrateWorkspace(newSession, claims);
           }
         }
@@ -344,6 +352,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     manualSignOutRef.current = true;
+    queryClient.clear();
     const { error } = await supabase.auth.signOut();
     if (error) {
       // GoTrue rejected the token (e.g. already expired) — clear local cookies only.

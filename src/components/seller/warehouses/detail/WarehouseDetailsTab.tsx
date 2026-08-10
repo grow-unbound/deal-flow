@@ -48,7 +48,6 @@ export function WarehouseDetailsTab({ data }: { data: WarehouseDetailResponse })
         <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
           <Row label="Created" value={formatDate(data.created_at)} mono />
           <Row label="Updated" value={formatDate(data.updated_at)} mono />
-          <Row label="Last inventory update" value={data.details.last_inventory_update ? formatDate(data.details.last_inventory_update) : '—'} mono />
           <Row label="Mapped location" value={mappedLocationName} />
         </div>
       </article>

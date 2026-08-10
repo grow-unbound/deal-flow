@@ -550,6 +550,7 @@ export async function POST(request: NextRequest) {
     event: 'customer_group_created',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: cohort.id,
       membership_mode: membershipMode,
       is_static: Boolean(cohort.is_static),

@@ -46,6 +46,7 @@ import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatNumberValue } from '@/lib/utils';
 import { SellerMobileTransactionDetail } from '@/components/seller/mobile';
+import { TransactionOriginMark } from '@/components/seller/transactional/TransactionOriginMark';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -228,6 +229,13 @@ export function EstimateDetailPage({ id }: { id: string }) {
       <SellerMobileTransactionDetail
         eyebrow="Estimate"
         documentNumber={data.estimate_number}
+        originMark={(
+          <TransactionOriginMark
+            isBuyerApp={data.is_buyer_app}
+            transactionType="estimate"
+            size={28}
+          />
+        )}
         statusLabel={data.status_label}
         statusTone={mobileStatusTone}
         buyerName={buyer?.business_name}
@@ -259,6 +267,13 @@ export function EstimateDetailPage({ id }: { id: string }) {
           kind="estimate"
           containerClassName="max-w-none px-4 py-4 md:px-6 md:py-4"
           title={data.estimate_number}
+          titleLeading={(
+            <TransactionOriginMark
+              isBuyerApp={data.is_buyer_app}
+              transactionType="estimate"
+              size={28}
+            />
+          )}
           subtitle={buyer
             ? `${data.estimate_date || '—'} · valid until ${data.valid_until || '—'} · Branch: ${data.location_name || '—'}`
             : 'No buyer assigned.'}

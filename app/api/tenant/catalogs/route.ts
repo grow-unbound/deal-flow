@@ -29,6 +29,7 @@ interface CatalogRow {
   valid_to: string | null;
   status: CatalogStatus;
   created_at: string;
+  hero_image_url: string | null;
 }
 
 interface CatalogItemRow {
@@ -225,7 +226,7 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   let campaignQuery = db
     .schema('app')
     .from('campaigns')
-    .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
+    .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at, hero_image_url')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -351,6 +352,7 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
     const invoiceCount = toNumber(metric.invoice_count);
     return {
       id: catalog.id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
+      hero_image_url: catalog.hero_image_url ?? null,
       status: { value: workflowStatus.value, raw_value: catalog.status, label: workflowStatus.label, tone: workflowStatus.tone },
       cohort_name: audienceCount != null ? 'Campaign audience' : 'Audience rules',
       audience_count: audienceCount,
@@ -550,10 +552,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tenantProductIds = payload.items.map((item: any) => item.tenant_product_id);
-    const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
-    if (validProductIds.size !== tenantProductIds.length) {
-      return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+    if (!payload.is_dynamic) {
+      const tenantProductIds = payload.items.map((item: any) => item.tenant_product_id);
+      const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+      if (validProductIds.size !== tenantProductIds.length) {
+        return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+      }
     }
   }
 
@@ -675,7 +679,7 @@ export async function POST(request: NextRequest) {
     await Promise.all(refreshCalls);
   }
 
-  if (!isSimpleForm && payload.items.length > 0) {
+  if (!isSimpleForm && !payload.is_dynamic && payload.items.length > 0) {
     const { error: itemsError } = await db
       .schema('app')
       .from('campaign_items')
@@ -751,6 +755,7 @@ export async function POST(request: NextRequest) {
       event: isPublishing ? 'catalog_published' : 'catalog_draft_saved',
       properties: {
         tenant_id: claims.tenant_id,
+        seller_id: claims.sub,
         campaign_id: insertedCatalog.id,
         status: insertedCatalog.status,
         scope_type: isSimpleForm
@@ -760,7 +765,11 @@ export async function POST(request: NextRequest) {
         product_membership_mode: productMembershipMode,
         pricing_source: pricingSource,
         has_price_list: Boolean(campaignPriceListId),
-        product_count: isSimpleForm ? payload.selected_product_ids.length : payload.items.length,
+        product_count: isSimpleForm
+          ? payload.selected_product_ids.length
+          : productMembershipMode === 'automatic'
+            ? null
+            : payload.items.length,
         notify_whatsapp: Boolean(isPublishing && composerPayload?.notify_whatsapp),
         whatsapp_recipient_count: whatsappNotify?.recipient_count ?? null,
         whatsapp_scheduled: whatsappNotify?.scheduled ?? false,

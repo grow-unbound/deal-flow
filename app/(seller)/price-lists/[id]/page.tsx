@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PriceListProductsTab } from '@/components/seller/price-lists/detail/PriceListProductsTab';
-import { getDiscountBandCounts } from '@/lib/price-list-pricing-checks';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
@@ -64,12 +63,12 @@ export default function PriceListDetailPage() {
   const priceList = data?.price_list;
 
   const tabs = useMemo(() => {
-    const itemsCount = priceList?.items?.length ?? 0;
+    const itemsCount = priceList?.stats?.products_covered ?? 0;
     return [
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
     ];
-  }, [isSellerAdmin, priceList?.items?.length, showPerformanceTab]);
+  }, [isSellerAdmin, priceList?.stats?.products_covered, showPerformanceTab]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -79,14 +78,9 @@ export default function PriceListDetailPage() {
 
   const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'products';
 
-  const discountBands = useMemo(
-    () => (priceList ? getDiscountBandCounts(priceList) : { discounted: 0, atBase: 0, aboveBase: 0, total: 0 }),
-    [priceList],
-  );
-
   const subtitle = priceList
     ? [
-        `${priceList.items.length} products`,
+        `${priceList.stats?.products_covered ?? 0} products`,
         `Valid ${formatDate(priceList.valid_from)} → ${formatDate(priceList.valid_to)}`,
       ]
     : ['—', '—'];
@@ -139,14 +133,14 @@ export default function PriceListDetailPage() {
               showSupportingText
               tiles={[
                 {
-                  label: 'Products priced',
-                  value: priceList.stats?.products_covered ?? priceList.items.length,
+                  label: 'Custom priced products',
+                  value: priceList.stats?.products_covered ?? 0,
                   sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                 },
                 {
                   label: 'Customers assigned',
-                  value: priceList.stats?.assignments_count ?? priceList.assignments.length,
-                  sub: 'customers',
+                  value: priceList.stats?.assigned_buyer_count ?? 0,
+                  sub: `${priceList.stats?.assigned_cohort_count ?? 0} customer groups`,
                 },
                 {
                   label: 'Average discount',
@@ -154,9 +148,9 @@ export default function PriceListDetailPage() {
                   sub: 'from base selling price',
                 },
                 {
-                  label: 'Discounted products',
-                  value: `${formatNumberValue(discountBands.discounted, 'COUNT')}`,
-                  sub: 'priced below base selling price',
+                  label: 'Average margin',
+                  value: `${formatNumberValue(priceList.stats?.avg_margin_pct ?? 0, 'PERCENTAGE')}`,
+                  sub: 'over cost price',
                 },
               ]}
             />
@@ -171,14 +165,14 @@ export default function PriceListDetailPage() {
           <DetailTabs tabs={tabs} active={tabActive} onChange={setActiveTab} />
 
           {showPerformanceTab && tabActive === 'performance' ? (
-            priceList ? <PriceListPerformanceTab priceList={priceList} performanceCards={priceList.performance_cards} /> : <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
+            priceList ? <PriceListPerformanceTab priceList={priceList} /> : <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
           ) : null}
           {tabActive === 'products' ? (
             priceList ? (
               <PriceListProductsTab
                 priceListId={priceListId}
                 filters={priceList.filters}
-                items={priceList.items}
+                productsCovered={priceList.stats?.products_covered ?? 0}
                 brandsCovered={priceList.stats?.brands_covered ?? 0}
                 canViewFinancials={isSellerAdmin}
                 pricingStrategy={priceList.pricing_strategy}

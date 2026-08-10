@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import {
   useTenantBrands,
   useTenantBrandsMetrics,
@@ -33,6 +34,7 @@ import {
 } from '@/hooks/useBrands';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { BRANDS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -176,6 +178,8 @@ function BrandLandingContent({
     pathnameOverride: '/brands',
     ready: !isLoading,
   });
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
@@ -217,9 +221,9 @@ function BrandLandingContent({
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && visibleRows.length === 0;
   const selectedOption = selectedCard
     ? {
-        label: selectedCard.label,
+        label: kpiLabel(BRANDS_KPI_COPY, selectedCard),
         value: formatCardValue(selectedCard),
-        sub: selectedCard.supporting_text ?? selectedCard.time_basis ?? '',
+        sub: kpiSupportingText(BRANDS_KPI_COPY, selectedCard),
       }
     : {
         label: 'Brands',
@@ -264,16 +268,19 @@ function BrandLandingContent({
             : `${landingData?.total ?? visibleRows.length} brands · This month invoice performance.`}
           horizon={horizonLabel}
           primary="Add a brand"
-          onPrimaryClick={() => setAddBrandOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_brand');
+            setAddBrandOpen(true);
+          }}
           compact={isPaneOpen}
         />
 
         {isPaneOpen ? null : (
           <InsightStrip4
             tiles={kpiCards.map((option): InsightTile => ({
-              label: option.label,
+              label: kpiLabel(BRANDS_KPI_COPY, option),
               value: formatCardValue(option),
-              sub: option.supporting_text ?? option.time_basis ?? '',
+              sub: kpiSupportingText(BRANDS_KPI_COPY, option),
               onClick: () => {
                 setSelectedKpiKey(option.id);
                 setRouteState((current) => ({

@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AUTH_CONTEXTS_STORAGE_KEY } from '@/lib/auth-session';
 
@@ -151,10 +152,13 @@ describe('AuthProvider', () => {
     window.sessionStorage.setItem('yukti_draft_customers', '{"field":"value"}');
     window.localStorage.setItem('yukti_draft_products', '{"field":"value"}');
 
+    const queryClient = new QueryClient();
     render(
-      <AuthProvider>
-        <AuthProbe />
-      </AuthProvider>,
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AuthProbe />
+        </AuthProvider>
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {

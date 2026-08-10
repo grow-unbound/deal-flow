@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
-import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { buyerOtpStore, writeVerifiedCandidatesRecord, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 
 const MAX_ATTEMPTS = 5;
@@ -11,11 +11,15 @@ const MAX_ATTEMPTS = 5;
  * POST /api/auth/phone-otp/verify
  * Body: { ref_id: string; otp: string }
  * Returns:
- *   success → { success: true; redirect: string; session }
- *   error   → { error: string } with appropriate status
+ *   single match    → { success: true; redirect: string; session }
+ *   multiple matches → { success: true; contexts: LoginOtpContext[]; ref_id: string }
+ *   error            → { error: string } with appropriate status
  *
  * Seller accounts are always preferred over buyer accounts for the same phone number.
- * The first effective candidate is auto-minted — no context selection screen is shown.
+ * When more than one account remains after that preference, the client is
+ * handed a short-lived `verified` OTP record's ref_id and shows
+ * a context-selection screen (see /login/select-context and
+ * /api/auth/phone-otp/select-context) instead of guessing.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -85,9 +89,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Seller wins: if any seller candidates exist, prefer them over buyer candidates.
-    // Always auto-mint the first effective candidate — no context selection screen.
     const sellerCandidates = record.candidates.filter((c) => c.kind === 'seller');
     const effectiveCandidates = sellerCandidates.length > 0 ? sellerCandidates : record.candidates;
+
+    if (effectiveCandidates.length > 1) {
+      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates);
+      if (!verifiedRefId) {
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, contexts: effectiveCandidates, ref_id: verifiedRefId });
+    }
+
     const candidate = effectiveCandidates[0];
     const { session, redirect } = await mintCandidateSession(request, candidate);
     return NextResponse.json({ success: true, redirect, session });

@@ -7,6 +7,7 @@ import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontal
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { RecoCarousel } from '@/components/buyer/catalog/RecoCarousel';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
+import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import { BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
 import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ export function RecoSection({
   scrollClassName = 'gap-3 px-4',
 }: RecoSectionProps): React.ReactNode {
   const posthog = usePostHog();
+  const analyticsIds = useBuyerAnalyticsIds();
   const firedKey = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -49,11 +51,12 @@ export function RecoSection({
     if (isLoading || items.length === 0 || firedKey.current === impressionKey) return;
     firedKey.current = impressionKey;
     posthog?.capture('reco_widget_shown', {
+      ...analyticsIds,
       widget,
       product_id: sourceProductId,
       result_count: items.length,
     });
-  }, [posthog, widget, sourceProductId, items.length, isLoading]);
+  }, [posthog, analyticsIds, widget, sourceProductId, items.length, isLoading]);
 
   // Hide after settle when empty (home bestsellers pattern). Loading keeps title + skeleton.
   if (!isLoading && items.length === 0) return null;

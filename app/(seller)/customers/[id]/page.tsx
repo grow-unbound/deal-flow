@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { CircleDollarSign, MailPlus, PencilIcon, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -16,11 +15,6 @@ import { CustomerOrdersTab } from '@/components/seller/customers/detail/Customer
 import { CustomerPriceListsTab } from '@/components/seller/customers/detail/CustomerPriceListsTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { toast } from 'sonner';
-
-const CustomerPerformanceTab = dynamic(
-  () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
-);
 import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
@@ -70,13 +64,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     () => [
       { id: 'details', label: 'Details' },
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
-      ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates', badge: data?.tab_badges.estimates_90d ?? 0 }] : []),
-      ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders', badge: data?.tab_badges.orders_90d ?? 0 }] : []),
-      ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices', badge: data?.tab_badges.invoices_90d ?? 0 }] : []),
+      ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates' }] : []),
+      ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders' }] : []),
+      ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices' }] : []),
       { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
       ...(featureVisibility.priceLists ? [{ id: 'price-lists', label: 'Price Lists', badge: data?.tab_badges.price_lists_assigned ?? 0 }] : []),
     ],
-    [data?.cohorts_summary.rows.length, data?.tab_badges.estimates_90d, data?.tab_badges.invoices_90d, data?.tab_badges.orders_90d, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, showPerformanceTab],
+    [data?.cohorts_summary.rows.length, data?.tab_badges.price_lists_assigned, featureVisibility.estimates, featureVisibility.invoices, featureVisibility.priceLists, featureVisibility.salesOrders, showPerformanceTab],
   );
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
 
@@ -88,32 +82,35 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   const tiles = useMemo(() => {
     if (!data) return [];
-    const demandCount = data.meta_strip_4.primary_demand_kind === 'orders'
-      ? data.meta_strip_4.demand_order_count_90d
-      : data.meta_strip_4.primary_demand_kind === 'estimates'
-        ? data.meta_strip_4.demand_estimate_count_90d
-        : 0;
-    const demandLabel = data.meta_strip_4.primary_demand_kind === 'estimates' ? 'estimate' : 'order';
+    const strip = data.meta_strip_4;
+    const demandLabel = strip.primary_demand_kind === 'estimates' ? 'estimate' : 'order';
+    const trend = (pct: number | null): { delta: string; deltaTone: 'up' | 'down' } | undefined => {
+      if (pct == null || pct === 0) return undefined;
+      return { delta: `${pct > 0 ? '+' : ''}${pct}%`, deltaTone: pct > 0 ? 'up' : 'down' };
+    };
     return [
       {
-        label: 'Invoiced sales · 90D',
-        value: formatNumberValue(data.meta_strip_4.invoiced_sales_90d, 'CURRENCY_THRESHOLD'),
-        sub: `${data.meta_strip_4.invoice_count_90d} invoices`,
+        label: 'Sales · QTD',
+        value: formatNumberValue(strip.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${strip.sales_qtd_count} invoices`,
+        ...trend(strip.sales_qtd_trend_pct),
       },
       {
-        label: 'Demand · 90D',
-        value: formatNumberValue(data.meta_strip_4.demand_90d, 'CURRENCY_THRESHOLD'),
-        sub: demandCount > 0 ? `${demandCount} ${demandLabel}${demandCount === 1 ? '' : 's'}` : 'No recent primary demand',
+        label: 'Outstanding dues',
+        value: formatNumberValue(strip.receivable_amount, 'CURRENCY_THRESHOLD'),
+        sub: `${strip.receivable_invoice_count} invoices · ${formatNumberValue(strip.overdue_amount, 'CURRENCY_THRESHOLD')} overdue (${strip.overdue_invoice_count})`,
+        tone: strip.overdue_amount > 0 ? ('warn' as const) : undefined,
       },
       {
-        label: 'Credit used / available',
-        value: `${formatNumberValue(data.meta_strip_4.credit_used, 'CURRENCY_THRESHOLD')} / ${formatNumberValue(data.meta_strip_4.credit_available, 'CURRENCY_THRESHOLD')}`,
-        sub: `${data.meta_strip_4.credit_used_pct}% of ${formatNumberValue(data.meta_strip_4.credit_limit, 'CURRENCY_THRESHOLD')}`,
+        label: 'Demand · QTD',
+        value: formatNumberValue(strip.demand_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: strip.demand_qtd_count > 0 ? `${strip.demand_qtd_count} ${demandLabel}${strip.demand_qtd_count === 1 ? '' : 's'}` : 'No demand this quarter',
+        ...trend(strip.demand_qtd_trend_pct),
       },
       {
-        label: 'Last sale',
-        value: data.meta_strip_4.last_invoice_value > 0 ? formatNumberValue(data.meta_strip_4.last_invoice_value, 'CURRENCY_THRESHOLD') : '—',
-        sub: data.meta_strip_4.last_invoice_date ? `Invoiced on ${new Date(data.meta_strip_4.last_invoice_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'No invoice yet',
+        label: 'App engagement',
+        value: formatNumberValue(strip.app_engagement_value, 'CURRENCY_THRESHOLD'),
+        sub: `${strip.app_engagement_count} buyer app demand doc${strip.app_engagement_count === 1 ? '' : 's'}`,
       },
     ];
   }, [data]);
@@ -211,17 +208,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === 'details' ? (
           data ? <CustomerDetailsTab id={id} details={data.details} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-        ) : null}
-        {showPerformanceTab && activeTab === 'performance' ? (
-          data ? (
-            <CustomerPerformanceTab
-              performance={data.performance}
-              performanceV2={data.performance_v2}
-              performanceCards={data.performance_cards}
-            />
-          ) : (
-            <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
-          )
         ) : null}
         {activeTab === 'estimates' ? (
           data ? (

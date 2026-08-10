@@ -4,6 +4,8 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 import { DeliverSalesOrderBodySchema } from '@/types/tenant-sales-orders';
 
 export const dynamic = 'force-dynamic';
@@ -95,6 +97,12 @@ export async function PATCH(
     if (auditError) {
       console.error('[PATCH deliver] audit', auditError);
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'sales_order_delivered',
+      properties: { ...withTenantSellerIds(claims), order_id: id },
+    });
 
     return NextResponse.json({ data: { id, status: 'delivered' } });
   } catch (error) {

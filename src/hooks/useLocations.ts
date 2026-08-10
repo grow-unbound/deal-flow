@@ -19,6 +19,8 @@ export interface LocationDocumentRow {
   place_of_supply: string | null;
   source_kind: 'buyer_app' | 'converted' | 'direct' | 'seller';
   source_label: string | null;
+  source_detail?: string | null;
+  is_buyer_app: boolean;
   campaign_name: string | null;
   items_count: number;
   total_amount: number;
@@ -62,12 +64,10 @@ export interface LocationsLandingKpis {
 
 export interface LocationsLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -191,54 +191,6 @@ export interface LocationDetailTopBuyer {
   outstanding_dues: number;
 }
 
-export interface LocationDetailOrder {
-  order_id: string;
-  order_number: string;
-  placed_at: string;
-  buyer_name: string;
-  place_of_supply: string | null;
-  location_name: string | null;
-  source_kind: 'buyer_app' | 'converted' | 'direct';
-  source_label: string | null;
-  campaign_name: string | null;
-  items_count: number;
-  total_amount: number;
-  status: string;
-}
-
-export interface LocationDetailEstimate {
-  estimate_id: string;
-  estimate_number: string;
-  issued_at: string;
-  buyer_name: string;
-  place_of_supply: string | null;
-  location_name: string | null;
-  source_kind: 'buyer_app' | 'seller';
-  source_label: string | null;
-  campaign_name: string | null;
-  items_count: number;
-  total_amount: number;
-  expires_at: string | null;
-  status: string;
-}
-
-export interface LocationDetailInvoice {
-  invoice_id: string;
-  invoice_number: string;
-  issued_at: string;
-  buyer_name: string;
-  place_of_supply: string | null;
-  location_name: string | null;
-  source_kind: 'buyer_app' | 'converted' | 'direct';
-  source_label: string | null;
-  campaign_name: string | null;
-  items_count: number;
-  total_amount: number;
-  outstanding_amount: number;
-  due_date: string | null;
-  status: string;
-}
-
 export interface LocationDetailActivityItem {
   id: string;
   action: string;
@@ -257,16 +209,21 @@ export interface LocationDetailResponse {
   initials: string;
   is_active: boolean;
   associated_users: Array<{ email: string; user_name: string | null; user_id: string | null }>;
+  /** Quarter-to-date KPI strip, sourced from metrics_location_period_summary + metrics_location_now_summary. */
   meta_strip: {
-    gmv_mtd: number;
-    outstanding_dues: number;
+    sales_qtd_value: number;
+    sales_qtd_count: number;
+    sales_qtd_buyer_count: number;
+    demand_qtd_value: number;
+    demand_qtd_count: number;
+    demand_qtd_buyer_count: number;
     overdue_amount: number;
+    overdue_invoice_count: number;
     invoice_count: number;
     unpaid_invoice_count: number;
     total_invoice_count: number;
     open_estimate_count: number;
     total_estimate_count: number;
-    purchasing_customers_90d: number;
     open_primary_demand_kind: PrimaryDemandKind;
     open_primary_demand_value: number;
     open_primary_demand_count: number;
@@ -276,17 +233,7 @@ export interface LocationDetailResponse {
     inventory_health: LocationDetailInventoryHealth;
     top_buyers: LocationDetailTopBuyer[];
   };
-  orders: LocationDetailOrder[];
-  estimates: LocationDetailEstimate[];
-  invoices: LocationDetailInvoice[];
   activity: LocationDetailActivityItem[];
-  tab_badges: {
-    orders_mtd: number;
-    estimates_mtd: number;
-    invoices_mtd: number;
-  };
-  performance_cards?: unknown[];
-  detail_v2?: unknown;
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────

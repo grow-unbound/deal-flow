@@ -22,6 +22,8 @@ import { FEATURE_FLAGS } from '@/constants';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 const CreateSalesOrderDraftSchema = z.object({
   from_estimate_id: z.string().uuid().optional(),
@@ -713,6 +715,19 @@ export async function POST(request: NextRequest) {
     if (composer === 'notfound' || composer === 'forbidden') {
       return NextResponse.json({ error: 'Failed to load draft' }, { status: 500 });
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'sales_order_created',
+      properties: {
+        ...withTenantSellerIds(claims),
+        order_id: order.id,
+        order_number: orderNumber,
+        source: fromEstimateId ? 'estimate_conversion' : 'cockpit_manual',
+        item_count: estimateRows.length,
+        total_amount: totalAmount,
+      },
+    });
 
     return NextResponse.json({
       data: composer,

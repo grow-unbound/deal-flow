@@ -131,6 +131,7 @@ export type Database = {
           whatsapp_plan_allowance_reset_at: string | null;
           whatsapp_purchased_credits_balance: number;
           whatsapp_credits_purchased: number;
+          onboarding_banner_dismissed_at: string | null;
           created_at: string;
           updated_at: string;
           created_by: string;
@@ -145,6 +146,7 @@ export type Database = {
           | 'whatsapp_plan_allowance_reset_at'
           | 'whatsapp_purchased_credits_balance'
           | 'whatsapp_credits_purchased'
+          | 'onboarding_banner_dismissed_at'
         > &
           Partial<
             Pick<
@@ -153,6 +155,7 @@ export type Database = {
               | 'whatsapp_plan_allowance_reset_at'
               | 'whatsapp_purchased_credits_balance'
               | 'whatsapp_credits_purchased'
+              | 'onboarding_banner_dismissed_at'
             >
           >;
         Update: Partial<Database['app']['Tables']['tenants']['Insert']>;

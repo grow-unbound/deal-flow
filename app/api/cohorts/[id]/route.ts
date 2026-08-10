@@ -3,11 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { CohortUpdateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
-import { buildCohortMemberBuyerRows, resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import {
   aggregateCampaignViewsByCampaign,
   computeCampaignViewMetrics,
@@ -124,19 +125,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const { data: detailV2, error: detailV2Error } = includePerformance
-    ? await db.schema('app').rpc('get_seller_cohort_detail_v2', {
-        p_tenant_id: claims.tenant_id,
-        p_cohort_id: id,
-      })
-    : { data: null, error: null };
+  const cohortQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const cohortQuarterStart = cohortQuarterMeta.current_start.slice(0, 10);
 
-  if (detailV2Error) {
-    console.error('[GET /api/cohorts/[id]] get_seller_cohort_detail_v2 failed', detailV2Error);
-    return NextResponse.json({ error: 'Failed to fetch cohort detail' }, { status: 500 });
-  }
-
-  const [{ data: buyers }, { data: members }] = await Promise.all([
+  const [{ data: buyers }, { data: members }, cohortPeriodRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -149,7 +141,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('cohort_members_active')
       .select('cohort_id, buyer_id')
       .eq('cohort_id', id),
+    db
+      .schema('app')
+      .from('metrics_cohort_period_summary')
+      .select('member_count, active_member_count, demand_count, demand_value, invoice_count, invoice_value')
+      .eq('cohort_id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .eq('grain', 'quarter')
+      .eq('period_start', cohortQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
+
+  if (cohortPeriodRes.error) {
+    console.error('[GET /api/cohorts/[id]] metrics_cohort_period_summary fetch failed', cohortPeriodRes.error);
+    return NextResponse.json({ error: 'Failed to fetch cohort detail' }, { status: 500 });
+  }
+  const cohortQuarter = (cohortPeriodRes.data ?? null) as {
+    member_count: number;
+    active_member_count: number;
+    demand_count: number;
+    demand_value: number;
+    invoice_count: number;
+    invoice_value: number;
+  } | null;
 
   const buyerRows = (buyers ?? []) as BuyerRow[];
   const memberRows = members ?? [];
@@ -164,98 +179,258 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .map((b) => ({ id: b.id, name: b.business_name, city: b.geography?.city ?? b.geography?.state ?? '—', tier: b.tier ?? '—' }));
 
   const memberBuyerIdsList = Array.from(memberBuyerIds);
-  const { data: scopedCatalogRowsData, error: scopedCatalogRowsError } = await db
-    .schema('app')
-    .from('campaigns')
-    .select('id, scope_type, scope_value, status, name, valid_from, created_at, updated_at')
-    .eq('tenant_id', claims.tenant_id)
-    .eq('scope_type', 'cohort')
-    .contains('scope_value', { cohort_id: id })
-    .is('deleted_at', null);
 
-  if (scopedCatalogRowsError) {
-    return NextResponse.json({ error: 'Failed to fetch cohort catalogs' }, { status: 500 });
-  }
+  // Brand-name lookup for details_rules/rules_summary (always needed) — scoped to just the
+  // cohort's allowed brands. When include_performance is on, this list is widened below to
+  // also cover brands actually carried by scoped-catalog products (brands_carried figure).
+  let tenantBrandIdsToLoad = Array.from(new Set(allowedTenantBrandIds ?? []));
 
-  const scopedCatalogs = (scopedCatalogRowsData ?? []) as CatalogRow[];
-  const scopedCatalogIds = scopedCatalogs.map((catalog) => catalog.id);
-  const { currentStartDate, nextStartDate } = getIstMonthWindow();
+  let performance: {
+    summary: { gmv_mtd: number; aov: number };
+    engagement: {
+      active_members: number;
+      total_members: number;
+      dormant_members: number;
+      conversion_pct: number;
+      brands_sold: number;
+      brands_carried: number;
+    };
+    top_members: Array<{
+      buyer_id: string;
+      buyer_name: string;
+      city: string;
+      initials: string;
+      spend_mtd: number;
+      order_count_mtd: number;
+    }>;
+    catalogs: Array<{
+      campaign_id: string;
+      catalog_name: string;
+      sent_at: string;
+      opens: number;
+      orders: number;
+      gmv: number;
+    }>;
+  } | null = null;
 
-  const [memberOrdersRes, scopedCatalogOrdersRes, campaignViewsRes, catalogItemsRes] = await Promise.all([
-    memberBuyerIdsList.length > 0
-      ? db
+  if (includePerformance) {
+    const { data: scopedCatalogRowsData, error: scopedCatalogRowsError } = await db
+      .schema('app')
+      .from('campaigns')
+      .select('id, scope_type, scope_value, status, name, valid_from, created_at, updated_at')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('scope_type', 'cohort')
+      .contains('scope_value', { cohort_id: id })
+      .is('deleted_at', null);
+
+    if (scopedCatalogRowsError) {
+      return NextResponse.json({ error: 'Failed to fetch cohort catalogs' }, { status: 500 });
+    }
+
+    const scopedCatalogs = (scopedCatalogRowsData ?? []) as CatalogRow[];
+    const scopedCatalogIds = scopedCatalogs.map((catalog) => catalog.id);
+    const { currentStartDate, nextStartDate } = getIstMonthWindow();
+
+    const [memberOrdersRes, scopedCatalogOrdersRes, campaignViewsRes, catalogItemsRes] = await Promise.all([
+      memberBuyerIdsList.length > 0
+        ? db
+            .schema('app')
+            .from('orders')
+            .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
+            .eq('tenant_id', claims.tenant_id)
+            .in('buyer_id', memberBuyerIdsList)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      scopedCatalogIds.length > 0
+        ? db
+            .schema('app')
+            .from('orders')
+            .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
+            .eq('tenant_id', claims.tenant_id)
+            .in('campaign_id', scopedCatalogIds)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      scopedCatalogIds.length > 0
+        ? db
+            .schema('app')
+            .from('campaign_views')
+            .select('buyer_id, campaign_id, viewed_at, view_date')
+            .eq('tenant_id', claims.tenant_id)
+            .in('campaign_id', scopedCatalogIds)
+            .gte('view_date', currentStartDate)
+            .lt('view_date', nextStartDate)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      scopedCatalogIds.length > 0
+        ? db
+            .schema('app')
+            .from('campaign_items')
+            .select('campaign_id, tenant_product_id')
+            .in('campaign_id', scopedCatalogIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (memberOrdersRes.error || scopedCatalogOrdersRes.error || campaignViewsRes.error || catalogItemsRes.error) {
+      return NextResponse.json({ error: 'Failed to fetch cohort detail metrics' }, { status: 500 });
+    }
+
+    const orderRows = (memberOrdersRes.data ?? []) as OrderRow[];
+    const scopedCatalogOrders = (scopedCatalogOrdersRes.data ?? []) as OrderRow[];
+    const campaignViewRows = (campaignViewsRes.data ?? []) as CampaignViewRow[];
+    const catalogItemRows = (catalogItemsRes.data ?? []) as CatalogItemRow[];
+    const catalogProductIds = Array.from(new Set(catalogItemRows.map((row) => row.tenant_product_id)));
+
+    const { data: tenantProductsData, error: tenantProductsError } = catalogProductIds.length > 0
+      ? await db
           .schema('app')
-          .from('orders')
-          .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
+          .from('tenant_products')
+          .select('id, tenant_brand_id')
           .eq('tenant_id', claims.tenant_id)
-          .in('buyer_id', memberBuyerIdsList)
-          .neq('status', 'cancelled')
+          .in('id', catalogProductIds)
           .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    scopedCatalogIds.length > 0
-      ? db
-          .schema('app')
-          .from('orders')
-          .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
-          .eq('tenant_id', claims.tenant_id)
-          .in('campaign_id', scopedCatalogIds)
-          .neq('status', 'cancelled')
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    scopedCatalogIds.length > 0
-      ? db
-          .schema('app')
-          .from('campaign_views')
-          .select('buyer_id, campaign_id, viewed_at, view_date')
-          .eq('tenant_id', claims.tenant_id)
-          .in('campaign_id', scopedCatalogIds)
-          .gte('view_date', currentStartDate)
-          .lt('view_date', nextStartDate)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    scopedCatalogIds.length > 0
-      ? db
-          .schema('app')
-          .from('campaign_items')
-          .select('campaign_id, tenant_product_id')
-          .in('campaign_id', scopedCatalogIds)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+      : { data: [], error: null };
 
-  if (memberOrdersRes.error || scopedCatalogOrdersRes.error || campaignViewsRes.error || catalogItemsRes.error) {
-    return NextResponse.json({ error: 'Failed to fetch cohort detail metrics' }, { status: 500 });
+    if (tenantProductsError) {
+      return NextResponse.json({ error: 'Failed to fetch catalog products' }, { status: 500 });
+    }
+
+    const tenantProductRows = (tenantProductsData ?? []) as TenantProductRow[];
+    const carriedBrandIds = Array.from(
+      new Set(
+        tenantProductRows
+          .map((row) => row.tenant_brand_id)
+          .filter((brandId): brandId is string => Boolean(brandId)),
+      ),
+    );
+    tenantBrandIdsToLoad = Array.from(new Set([...tenantBrandIdsToLoad, ...carriedBrandIds]));
+
+    let gmvMtd = 0;
+    let ordersMtd = 0;
+    const activeMembersSet = new Set<string>();
+
+    for (const order of orderRows) {
+      if (!memberBuyerIds.has(order.buyer_id)) continue;
+      const amount = Number(order.total_amount ?? 0);
+      const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+      if (!metricDay) continue;
+
+      if (metricDay >= currentStartDate && metricDay < nextStartDate) {
+        gmvMtd += amount;
+        ordersMtd += 1;
+        activeMembersSet.add(order.buyer_id);
+      }
+    }
+
+    const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
+
+    const scopedCatalogIdSet = new Set(scopedCatalogIds);
+
+    const catalogOrdersMtd = scopedCatalogOrders.filter((order) => {
+      if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
+      const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+      return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
+    }).length;
+
+    const uniqueCatalogViews = computeCampaignViewMetrics(campaignViewRows).uniqueViewers;
+    const conversionPct = uniqueCatalogViews > 0 ? Number(((catalogOrdersMtd / uniqueCatalogViews) * 100).toFixed(1)) : 0;
+
+    const mtdSpendByBuyer = new Map<string, number>();
+    for (const order of orderRows) {
+      const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+      if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
+      if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
+      mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
+    }
+
+    const ordersByBuyerMtd = new Map<string, number>();
+    for (const order of orderRows) {
+      const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+      if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
+      if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
+      ordersByBuyerMtd.set(order.buyer_id, (ordersByBuyerMtd.get(order.buyer_id) ?? 0) + 1);
+    }
+
+    const topMembers = currentMembers
+      .map((member) => ({
+        buyer_id: member.id,
+        buyer_name: member.business_name,
+        city: member.geography?.city ?? member.geography?.state ?? '—',
+        initials: initialsFromName(member.business_name),
+        spend_mtd: Number((mtdSpendByBuyer.get(member.id) ?? 0).toFixed(2)),
+        order_count_mtd: ordersByBuyerMtd.get(member.id) ?? 0,
+      }))
+      .sort((a, b) => b.spend_mtd - a.spend_mtd);
+
+    const dormantMembers = Math.max(0, totalMembers - activeMembersSet.size);
+
+    const scopedCatalogOrdersMtd = scopedCatalogOrders.filter((order) => {
+      if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
+      const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+      return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
+    });
+
+    const tenantProductToBrand = new Map<string, string | null>(tenantProductRows.map((row) => [row.id, row.tenant_brand_id]));
+    const brandIdsCarried = new Set<string>();
+    const catalogProductIdsByCatalog = new Map<string, string[]>();
+    for (const row of catalogItemRows) {
+      if (!scopedCatalogIdSet.has(row.campaign_id)) continue;
+      if (!catalogProductIdsByCatalog.has(row.campaign_id)) catalogProductIdsByCatalog.set(row.campaign_id, []);
+      catalogProductIdsByCatalog.get(row.campaign_id)?.push(row.tenant_product_id);
+      const brandId = tenantProductToBrand.get(row.tenant_product_id);
+      if (brandId) brandIdsCarried.add(brandId);
+    }
+
+    const brandIdsSold = new Set<string>();
+    for (const order of scopedCatalogOrdersMtd) {
+      if (!order.campaign_id) continue;
+      const productIds = catalogProductIdsByCatalog.get(order.campaign_id) ?? [];
+      for (const productId of productIds) {
+        const brandId = tenantProductToBrand.get(productId);
+        if (brandId) brandIdsSold.add(brandId);
+      }
+    }
+
+    const opensByCatalog = aggregateCampaignViewsByCampaign(campaignViewRows);
+    const ordersByCatalogMtd = new Map<string, { orders: number; gmv: number }>();
+    for (const order of scopedCatalogOrdersMtd) {
+      if (!order.campaign_id) continue;
+      const current = ordersByCatalogMtd.get(order.campaign_id) ?? { orders: 0, gmv: 0 };
+      current.orders += 1;
+      current.gmv += Number(order.total_amount ?? 0);
+      ordersByCatalogMtd.set(order.campaign_id, current);
+    }
+
+    const catalogs = scopedCatalogs
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .map((catalog) => {
+        const stats = ordersByCatalogMtd.get(catalog.id) ?? { orders: 0, gmv: 0 };
+        return {
+          campaign_id: catalog.id,
+          catalog_name: catalog.name,
+          sent_at: catalog.valid_from ?? catalog.updated_at ?? catalog.created_at,
+          opens: opensByCatalog.get(catalog.id)?.uniqueViewers ?? 0,
+          orders: stats.orders,
+          gmv: Number(stats.gmv.toFixed(2)),
+        };
+      });
+
+    performance = {
+      summary: { gmv_mtd: gmvMtd, aov },
+      engagement: {
+        active_members: activeMembersSet.size,
+        total_members: totalMembers,
+        dormant_members: dormantMembers,
+        conversion_pct: conversionPct,
+        brands_sold: brandIdsSold.size,
+        brands_carried: brandIdsCarried.size,
+      },
+      top_members: topMembers,
+      catalogs,
+    };
   }
-
-  const orderRows = (memberOrdersRes.data ?? []) as OrderRow[];
-  const scopedCatalogOrders = (scopedCatalogOrdersRes.data ?? []) as OrderRow[];
-  const campaignViewRows = (campaignViewsRes.data ?? []) as CampaignViewRow[];
-  const catalogItemRows = (catalogItemsRes.data ?? []) as CatalogItemRow[];
-  const catalogProductIds = Array.from(new Set(catalogItemRows.map((row) => row.tenant_product_id)));
-
-  const { data: tenantProductsData, error: tenantProductsError } = catalogProductIds.length > 0
-    ? await db
-        .schema('app')
-        .from('tenant_products')
-        .select('id, tenant_brand_id')
-        .eq('tenant_id', claims.tenant_id)
-        .in('id', catalogProductIds)
-        .is('deleted_at', null)
-    : { data: [], error: null };
-
-  if (tenantProductsError) {
-    return NextResponse.json({ error: 'Failed to fetch catalog products' }, { status: 500 });
-  }
-
-  const tenantProductRows = (tenantProductsData ?? []) as TenantProductRow[];
-  const carriedBrandIds = Array.from(
-    new Set(
-      tenantProductRows
-        .map((row) => row.tenant_brand_id)
-        .filter((brandId): brandId is string => Boolean(brandId)),
-    ),
-  );
-  const tenantBrandIdsToLoad = Array.from(new Set([...(allowedTenantBrandIds ?? []), ...carriedBrandIds]));
 
   const { data: tenantBrandsData, error: tenantBrandsError } = tenantBrandIdsToLoad.length > 0
     ? await db
@@ -285,116 +460,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   );
   const allowedBrandNames = allowedTenantBrandIds?.map((brandId) => tenantBrandNameMap.get(brandId) ?? 'Unnamed brand') ?? [];
 
-  let gmvMtd = 0;
-  let ordersMtd = 0;
-  const activeMembersSet = new Set<string>();
-
-  for (const order of orderRows) {
-    if (!memberBuyerIds.has(order.buyer_id)) continue;
-    const amount = Number(order.total_amount ?? 0);
-    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
-    if (!metricDay) continue;
-
-    if (metricDay >= currentStartDate && metricDay < nextStartDate) {
-      gmvMtd += amount;
-      ordersMtd += 1;
-      activeMembersSet.add(order.buyer_id);
-    }
-  }
-
-  const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
-
-  const scopedCatalogIdSet = new Set(scopedCatalogIds);
-
-  const catalogOrdersMtd = scopedCatalogOrders.filter((order) => {
-    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
-    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
-    return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
-  }).length;
-
-  const uniqueCatalogViews = computeCampaignViewMetrics(campaignViewRows).uniqueViewers;
-  const conversionPct = uniqueCatalogViews > 0 ? Number(((catalogOrdersMtd / uniqueCatalogViews) * 100).toFixed(1)) : 0;
-
-  const mtdSpendByBuyer = new Map<string, number>();
-  for (const order of orderRows) {
-    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
-    if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
-    if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
-    mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
-  }
-
-  const ordersByBuyerMtd = new Map<string, number>();
-  for (const order of orderRows) {
-    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
-    if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
-    if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
-    ordersByBuyerMtd.set(order.buyer_id, (ordersByBuyerMtd.get(order.buyer_id) ?? 0) + 1);
-  }
-
-  const topMembers = currentMembers
-    .map((member) => ({
-      buyer_id: member.id,
-      buyer_name: member.business_name,
-      city: member.geography?.city ?? member.geography?.state ?? '—',
-      initials: initialsFromName(member.business_name),
-      spend_mtd: Number((mtdSpendByBuyer.get(member.id) ?? 0).toFixed(2)),
-      order_count_mtd: ordersByBuyerMtd.get(member.id) ?? 0,
-    }))
-    .sort((a, b) => b.spend_mtd - a.spend_mtd);
-
-  const dormantMembers = Math.max(0, totalMembers - activeMembersSet.size);
-
-  const scopedCatalogOrdersMtd = scopedCatalogOrders.filter((order) => {
-    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
-    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
-    return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
-  });
-
-  const tenantProductToBrand = new Map<string, string | null>(tenantProductRows.map((row) => [row.id, row.tenant_brand_id]));
-  const brandIdsCarried = new Set<string>();
-  const catalogProductIdsByCatalog = new Map<string, string[]>();
-  for (const row of catalogItemRows) {
-    if (!scopedCatalogIdSet.has(row.campaign_id)) continue;
-    if (!catalogProductIdsByCatalog.has(row.campaign_id)) catalogProductIdsByCatalog.set(row.campaign_id, []);
-    catalogProductIdsByCatalog.get(row.campaign_id)?.push(row.tenant_product_id);
-    const brandId = tenantProductToBrand.get(row.tenant_product_id);
-    if (brandId) brandIdsCarried.add(brandId);
-  }
-
-  const brandIdsSold = new Set<string>();
-  for (const order of scopedCatalogOrdersMtd) {
-    if (!order.campaign_id) continue;
-    const productIds = catalogProductIdsByCatalog.get(order.campaign_id) ?? [];
-    for (const productId of productIds) {
-      const brandId = tenantProductToBrand.get(productId);
-      if (brandId) brandIdsSold.add(brandId);
-    }
-  }
-
-  const opensByCatalog = aggregateCampaignViewsByCampaign(campaignViewRows);
-  const ordersByCatalogMtd = new Map<string, { orders: number; gmv: number }>();
-  for (const order of scopedCatalogOrdersMtd) {
-    if (!order.campaign_id) continue;
-    const current = ordersByCatalogMtd.get(order.campaign_id) ?? { orders: 0, gmv: 0 };
-    current.orders += 1;
-    current.gmv += Number(order.total_amount ?? 0);
-    ordersByCatalogMtd.set(order.campaign_id, current);
-  }
-
-  const catalogs = scopedCatalogs
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .map((catalog) => {
-      const stats = ordersByCatalogMtd.get(catalog.id) ?? { orders: 0, gmv: 0 };
-      return {
-        campaign_id: catalog.id,
-        catalog_name: catalog.name,
-        sent_at: catalog.valid_from ?? catalog.updated_at ?? catalog.created_at,
-        opens: opensByCatalog.get(catalog.id)?.uniqueViewers ?? 0,
-        orders: stats.orders,
-        gmv: Number(stats.gmv.toFixed(2)),
-      };
-    });
-
   const createdByUserMap = await getAuthUserEmailMap(cohort.created_by ? [cohort.created_by] : []);
   const createdByLabel = cohort.created_by ? createdByUserMap.get(cohort.created_by) ?? 'Team member' : 'System';
   const createdBy = `Created by ${createdByLabel}`;
@@ -407,43 +472,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     total_tenant_buyers: buyerRows.length,
     allowed_brand_names: allowedBrandNames,
   });
-
-  let buyersPayload: Array<{
-    buyer_id: string;
-    business_name: string;
-    contact_name: string | null;
-    external_ref: string | null;
-    geography_label: string;
-    tier: 'A' | 'B' | 'C' | null;
-    mtd_spend: number;
-    orders_mtd: number;
-    aov: number;
-    credit_used: number;
-    last_order_at: string | null;
-    initials: string;
-    hue: 'teal' | 'ember' | 'cream';
-  }> = [];
-
-  try {
-    const memberRowsDetail = await buildCohortMemberBuyerRows(db, claims.tenant_id, Array.from(memberBuyerIds));
-    buyersPayload = memberRowsDetail.map((row) => ({
-      buyer_id: row.id,
-      business_name: row.business_name,
-      contact_name: row.contact_name,
-      external_ref: row.external_ref,
-      geography_label: row.geography_label,
-      tier: row.tier,
-      mtd_spend: row.mtd_spend,
-      orders_mtd: row.orders_mtd,
-      aov: row.orders_mtd > 0 ? Number((row.mtd_spend / row.orders_mtd).toFixed(2)) : 0,
-      credit_used: row.credit_used,
-      last_order_at: row.last_order_at,
-      initials: row.initials,
-      hue: row.hue,
-    }));
-  } catch (e) {
-    console.error('[GET /api/cohorts/[id]] buildCohortMemberBuyerRows', (e as Error)?.message);
-  }
 
   return NextResponse.json({
     header: {
@@ -460,11 +488,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     },
     meta_strip_4: {
-      gmv_mtd: gmvMtd,
-      active_members: activeMembersSet.size,
-      total_members: totalMembers,
-      aov,
-      conversion_pct: conversionPct,
+      active_member_count: cohortQuarter?.active_member_count ?? memberBuyerIds.size,
+      member_count: cohortQuarter?.member_count ?? totalMembers,
+      sales_qtd_value: cohortQuarter?.invoice_value ?? 0,
+      sales_qtd_count: cohortQuarter?.invoice_count ?? 0,
+      demand_qtd_value: cohortQuarter?.demand_value ?? 0,
+      demand_qtd_count: cohortQuarter?.demand_count ?? 0,
+      brands_count: allowedTenantBrandIds && allowedTenantBrandIds.length > 0 ? allowedTenantBrandIds.length : null,
     },
     details_rules: {
       id: cohort.id,
@@ -479,25 +509,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       updated_at: cohort.updated_at,
       last_refreshed_at: (cohort as any).last_refreshed_at ?? null,
     },
-    performance: {
-      summary: {
-        gmv_mtd: gmvMtd,
-        aov,
-      },
-      engagement: {
-        active_members: activeMembersSet.size,
-        total_members: totalMembers,
-        dormant_members: dormantMembers,
-        conversion_pct: conversionPct,
-        brands_sold: brandIdsSold.size,
-        brands_carried: brandIdsCarried.size,
-      },
-      top_members: topMembers,
-      catalogs,
-    },
-    performance_cards: includePerformance ? ((detailV2 as any)?.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
-    buyers: buyersPayload,
+    performance,
     rules_summary,
   }, { headers: SELLER_CACHE_PERSONAL });
 }
@@ -714,6 +726,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     event: 'customer_group_updated',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: id,
       membership_mode: isSimpleForm ? simpleMembershipMode : (cohort as any).membership_mode ?? null,
       is_static: Boolean((cohort as any).is_static),
@@ -789,6 +802,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     event: 'customer_group_deleted',
     properties: {
       tenant_id: claims.tenant_id,
+      seller_id: claims.sub,
       cohort_id: id,
       active_catalog_count: activeCatalogs?.length ?? 0,
       role: claims.role,

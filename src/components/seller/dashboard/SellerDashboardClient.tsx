@@ -18,6 +18,7 @@ import {
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
+import { DASHBOARD_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type {
   SellerDashboardBusinessFlowMeta,
@@ -34,7 +35,7 @@ type SalesMixDimension = 'brand' | 'category' | 'location';
 const DASHBOARD_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
 function formatDashboardMetricCard(card: SellerDashboardMetricsV4['cards'][number]) {
-  const idLabel = `${card.id} ${card.label}`.toLowerCase();
+  const idLabel = card.id.toLowerCase();
   if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
     return `${card.value ?? 0}%`;
   }
@@ -262,9 +263,9 @@ function AdminSection({
     <>
       <InsightStrip4
         tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
-          label: metric.time_basis ? `${metric.label} · ${metric.time_basis}` : metric.label,
+          label: metric.time_basis ? `${kpiLabel(DASHBOARD_KPI_COPY, metric)} · ${metric.time_basis}` : kpiLabel(DASHBOARD_KPI_COPY, metric),
           value: formatDashboardMetricCard(metric),
-          sub: metric.supporting_text ?? '',
+          sub: kpiSupportingText(DASHBOARD_KPI_COPY, metric),
         }))}
       />
       {asOfLabel ? (
@@ -477,9 +478,9 @@ function AssistantSection({
     <>
       <InsightStrip4
         tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
-          label: metric.time_basis ? `${metric.label} · ${metric.time_basis}` : metric.label,
+          label: metric.time_basis ? `${kpiLabel(DASHBOARD_KPI_COPY, metric)} · ${metric.time_basis}` : kpiLabel(DASHBOARD_KPI_COPY, metric),
           value: formatDashboardMetricCard(metric),
-          sub: metric.supporting_text ?? '',
+          sub: kpiSupportingText(DASHBOARD_KPI_COPY, metric),
         }))}
       />
       {asOfLabel ? (

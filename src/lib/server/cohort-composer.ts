@@ -1,5 +1,6 @@
 import type { CohortRules } from '@/lib/zod';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type DbClient = {
   schema: (name: 'app' | 'catalog') => {
@@ -310,10 +311,12 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   const { currentStartIso, nextStartIso } = getIstMonthBounds();
   const currentMonthDate = currentStartIso.slice(0, 10);
   const nextMonthDate = nextStartIso.slice(0, 10);
+  const quarterMeta = getSellerLandingPeriodMeta('quarter');
+  const currentQuarterStart = quarterMeta.current_start.slice(0, 10);
 
   // Phase 1: all queries in parallel.
-  // buyers: display list (100 rows). V2 buyer snapshots: full-dataset facets.
-  const [buyersRes, brandsRes, buyerMetricsRes, setupSnapshotRes, geoRes] = await Promise.all([
+  // buyers: display list (100 rows). V4 buyer now/period summaries: full-dataset facets.
+  const [buyersRes, brandsRes, buyerNowRes, buyerPeriodRes, tenantNowRes, geoRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -332,22 +335,33 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .is('deleted_at', null)
       .eq('is_active', true)
       .order('created_at', { ascending: true }),
-    // Metrics V2 buyer snapshot: one row per buyer for last activity, receivables, and 90-day demand.
+    // metrics_buyer_now_summary (v4): one row per buyer for receivables + last invoice date.
     db
       .schema('app')
-      .from('metrics_buyer_snapshot')
-      .select('buyer_id, last_order_at, receivable_amount, order_value_90d')
+      .from('metrics_buyer_now_summary')
+      .select('buyer_id, receivable_amount, last_invoice_date')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
-    // Metrics V2 setup snapshot: accurate active buyer total for facets.
+    // metrics_buyer_period_summary (v4, grain=quarter): quarter-to-date invoice value stands
+    // in for the old v2 "order_value_90d" figure — not a true rolling 90-day window anymore,
+    // matches how every other v4-migrated page defines "demand" (quarter-to-date).
     db
       .schema('app')
-      .from('metrics_tenant_setup_snapshot')
+      .from('metrics_buyer_period_summary')
+      .select('buyer_id, invoice_value')
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'quarter')
+      .eq('period_start', currentQuarterStart)
+      .is('deleted_at', null),
+    // metrics_tenant_now_summary (v4): accurate active buyer total for facets.
+    db
+      .schema('app')
+      .from('metrics_tenant_now_summary')
       .select('active_buyer_count')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .maybeSingle(),
-    // All active buyer geographies for geo facet (live — no snapshot covers this)
+    // All active buyer geographies for geo facet (live — no summary table covers this)
     db
       .schema('app')
       .from('buyers')
@@ -398,16 +412,18 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     label: brand.display_name_override ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id) ?? 'Unnamed brand' : 'Unnamed brand'),
   }));
 
-  // Build V2 metric lookup maps.
-  type BuyerMetricRow = { buyer_id: string; last_order_at: string | null; receivable_amount: number | null; order_value_90d: number | null };
-  const metricRows = (buyerMetricsRes.data ?? []) as BuyerMetricRow[];
-  const metricsByBuyer = new Map(metricRows.map((row) => [row.buyer_id, row]));
+  // Build v4 metric lookup maps.
+  if (buyerNowRes.error) throw buyerNowRes.error;
+  if (buyerPeriodRes.error) throw buyerPeriodRes.error;
+  type BuyerNowRow = { buyer_id: string; receivable_amount: number | null; last_invoice_date: string | null };
+  const nowRows = (buyerNowRes.data ?? []) as BuyerNowRow[];
+  const metricsByBuyer = new Map(nowRows.map((row) => [row.buyer_id, row]));
 
   const gmv90dByBuyer = new Map<string, number>();
   const mtdSpendByBuyer = new Map<string, number>();
   const ordersMtdByBuyer = new Map<string, number>();
-  for (const row of metricRows) {
-    gmv90dByBuyer.set(row.buyer_id, Number(row.order_value_90d ?? 0));
+  for (const row of (buyerPeriodRes.data ?? []) as Array<{ buyer_id: string; invoice_value: number | null }>) {
+    gmv90dByBuyer.set(row.buyer_id, Number(row.invoice_value ?? 0));
   }
   for (const row of (mtdOrdersRes.data ?? []) as Array<{ buyer_id: string; total_amount: number | null; status: string | null }>) {
     if (row.status === 'cancelled' || row.status === 'rejected' || row.status === 'archived') continue;
@@ -429,7 +445,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       city,
       state,
       tier: buyer.tier,
-      last_order_at: metrics?.last_order_at ?? null,
+      last_order_at: metrics?.last_invoice_date ?? null,
       mtd_spend: Number((mtdSpendByBuyer.get(buyer.id) ?? 0).toFixed(2)),
       orders_mtd: ordersMtdByBuyer.get(buyer.id) ?? 0,
       credit_used: Number((metrics?.receivable_amount ?? 0).toFixed(2)),
@@ -440,21 +456,22 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     } satisfies CohortComposerBuyerRow;
   });
 
-  // Accurate facet counts from full dataset (V2 snapshot rows, no 100-buyer cap)
-  const setupSnapshot = setupSnapshotRes.data as { active_buyer_count: number | null } | null;
-  const totalBuyerCount = Number(setupSnapshot?.active_buyer_count ?? metricRows.length);
+  // Accurate facet counts from full dataset (v4 now-summary rows, no 100-buyer cap)
+  if (tenantNowRes.error) throw tenantNowRes.error;
+  const tenantNow = tenantNowRes.data as { active_buyer_count: number | null } | null;
+  const totalBuyerCount = Number(tenantNow?.active_buyer_count ?? nowRows.length);
 
-  // last_order_bucket counts: from V2 buyer snapshots.
+  // last_order_bucket counts: now sourced from metrics_buyer_now_summary.last_invoice_date.
   const lastOrderBuckets = COHORT_LAST_ORDER_BUCKETS.map((bucket) => ({
     value: bucket.id,
     label: bucket.label,
     count:
       bucket.id === 'anytime'
         ? totalBuyerCount
-        : metricRows.filter((row) => matchesLastOrderBucket(row.last_order_at, bucket.id)).length,
+        : nowRows.filter((row) => matchesLastOrderBucket(row.last_invoice_date, bucket.id)).length,
   }));
 
-  // gmv_90d_bucket counts: V2 buyer snapshot order value, buyers not in set = gmv_0
+  // gmv_90d_bucket counts: buyers not in set = gmv_0
   const buyersWithAnyGmv = new Set(gmv90dByBuyer.keys());
   const gmvBuckets = COHORT_GMV_BUCKETS.map((bucket) => {
     if (bucket.id === 'gmv_0') {
@@ -606,8 +623,9 @@ export async function resolveAllBuyerIdsForRules(
   const needsLastOrder = !!lastOrderBucket;
   const needsGeo = selectedCities.size > 0;
 
-  // Fetch all active buyer IDs + geography and V2 buyer metrics in parallel.
-  const [allBuyersRes, metricRes] = await Promise.all([
+  // Fetch all active buyer IDs + geography and v4 buyer metrics in parallel.
+  const currentQuarterStart = getSellerLandingPeriodMeta('quarter').current_start.slice(0, 10);
+  const [allBuyersRes, buyerNowRes, buyerPeriodRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -615,29 +633,40 @@ export async function resolveAllBuyerIdsForRules(
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .is('deleted_at', null),
-    needsLastOrder || needsGmv
+    needsLastOrder
       ? db
           .schema('app')
-          .from('metrics_buyer_snapshot')
-          .select('buyer_id, last_order_at, order_value_90d')
+          .from('metrics_buyer_now_summary')
+          .select('buyer_id, last_invoice_date')
           .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    needsGmv
+      ? db
+          .schema('app')
+          .from('metrics_buyer_period_summary')
+          .select('buyer_id, invoice_value')
+          .eq('tenant_id', tenantId)
+          .eq('grain', 'quarter')
+          .eq('period_start', currentQuarterStart)
           .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (allBuyersRes.error) throw allBuyersRes.error;
-  if (metricRes.error) throw metricRes.error;
+  if (buyerNowRes.error) throw buyerNowRes.error;
+  if (buyerPeriodRes.error) throw buyerPeriodRes.error;
 
   const allBuyers = (allBuyersRes.data ?? []) as Array<{ id: string; geography?: { city?: string } | null }>;
 
   const lastOrderByBuyer = new Map<string, string | null>();
-  for (const row of (metricRes.data ?? []) as Array<{ buyer_id: string; last_order_at: string | null }>) {
-    lastOrderByBuyer.set(row.buyer_id, row.last_order_at);
+  for (const row of (buyerNowRes.data ?? []) as Array<{ buyer_id: string; last_invoice_date: string | null }>) {
+    lastOrderByBuyer.set(row.buyer_id, row.last_invoice_date);
   }
 
   const gmv90dByBuyer = new Map<string, number>();
-  for (const row of (metricRes.data ?? []) as Array<{ buyer_id: string; order_value_90d: number | null }>) {
-    gmv90dByBuyer.set(row.buyer_id, Number(row.order_value_90d ?? 0));
+  for (const row of (buyerPeriodRes.data ?? []) as Array<{ buyer_id: string; invoice_value: number | null }>) {
+    gmv90dByBuyer.set(row.buyer_id, Number(row.invoice_value ?? 0));
   }
 
   return allBuyers

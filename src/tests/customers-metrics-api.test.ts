@@ -48,9 +48,8 @@ describe('customers landing metrics api', () => {
         cards: [
           {
             id: 'active_customers',
-            label: 'Active Customers',
             value: 10,
-            supporting_text: 'purchased at least once',
+            entity_count: 10,
             filter_preset: { purchased_gte: 1, period: 'this_quarter' },
           },
         ],

@@ -674,6 +674,7 @@ export async function POST(req: NextRequest) {
         event: 'product_created',
         properties: {
           tenant_id: tenantId,
+          seller_id: claims.sub,
           tenant_product_id: inserted.id,
           tenant_brand_id: resolvedTenantBrandId,
           tenant_category_id: resolvedTenantCategoryId,

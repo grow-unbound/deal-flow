@@ -312,8 +312,10 @@ export default function HomePage() {
     posthog?.capture('reco_widget_shown', {
       widget: 'bestsellers',
       result_count: bestsellers.length,
+      tenant_id: buyerMe?.tenant.id ?? null,
+      buyer_id: buyerMe?.buyer_id ?? null,
     });
-  }, [bestsellers.length, posthog, showRecoSkeleton]);
+  }, [bestsellers.length, posthog, showRecoSkeleton, buyerMe?.tenant.id, buyerMe?.buyer_id]);
 
   if (metricsError) {
     return (

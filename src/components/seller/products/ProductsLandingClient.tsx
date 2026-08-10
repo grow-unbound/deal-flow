@@ -28,6 +28,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRole } from '@/hooks/useRole';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import {
   useTenantProductsInfinite,
   useTenantProductsLandingMetrics,
@@ -37,6 +38,7 @@ import {
   type TenantProduct,
 } from '@/hooks/useProducts';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { PRODUCTS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
@@ -149,6 +151,8 @@ function ProductsLandingContent({
   const sortBy = routeState.sortBy;
   const filterPreset = routeState.filterPreset ?? null;
   const filters: ProductLandingFilters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
@@ -221,9 +225,9 @@ function ProductsLandingContent({
 
   const kpiOptions = (metricsData?.cards ?? []).map((card: ProductsLandingKpiCardV4) => ({
     id: card.id,
-    label: card.label,
+    label: kpiLabel(PRODUCTS_KPI_COPY, card),
     value: formatNumberValue(card.value ?? card.entity_count ?? 0, 'COUNT'),
-    sub: card.supporting_text ?? card.time_basis ?? '',
+    sub: kpiSupportingText(PRODUCTS_KPI_COPY, card),
     filterPreset: card.filter_preset ?? null,
   }));
   const selectedOption = kpiOptions.find((option) => option.id === selectedKpiKey) ?? kpiOptions[0] ?? {
@@ -253,11 +257,17 @@ function ProductsLandingContent({
         secondary={{
           label: 'Bulk import',
           icon: <Upload size={13} />,
-          onClick: () => router.push('/products/import'),
+          onClick: () => {
+            captureCta('bulk_import_products');
+            router.push('/products/import');
+          },
         }}
         {...(isSellerAssistant ? {} : {
           primary: 'Add a product',
-          onPrimaryClick: () => setAddProductOpen(true),
+          onPrimaryClick: () => {
+            captureCta('add_product');
+            setAddProductOpen(true);
+          },
         })}
         compact={isPaneOpen}
       />

@@ -264,6 +264,7 @@ export async function POST(request: NextRequest) {
       event: 'customer_created',
       properties: {
         tenant_id: claims.tenant_id,
+        seller_id: claims.sub,
         buyer_id: buyer?.id,
         has_credit_limit: (data.credit_limit ?? 0) > 0,
         has_cohort: Boolean(data.default_cohort_id),

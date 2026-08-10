@@ -5,14 +5,7 @@ import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import type {
-  LocationDetailResponse,
-  LocationDetailGmvWeek,
-  LocationDetailInventoryHealth,
-  LocationDetailTopBuyer,
-  LocationDetailOrder,
-  LocationDetailActivityItem,
-} from '@/hooks/useLocations';
+import type { LocationDetailResponse } from '@/hooks/useLocations';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,29 +26,10 @@ function getCity(address: unknown): string {
   return '';
 }
 
-function sumNumberField(rows: Array<Record<string, unknown>>, field: string): number {
-  return rows.reduce((sum, row) => sum + Number(row[field] ?? 0), 0);
-}
-
-/** Statuses mirroring app.estimate_status_is_open / app.order_status_is_open (SQL, prod_bootstrap migration). */
-const OPEN_ESTIMATE_STATUSES = ['draft', 'sent'];
-const OPEN_ORDER_STATUSES = [
-  'draft',
-  'open',
-  'accepted',
-  'received',
-  'confirmed',
-  'partially_dispatched',
-  'dispatched',
-  'partially_invoiced',
-  'overdue',
-];
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
@@ -89,11 +63,10 @@ export async function GET(
     return timedJson({ error: 'Not found' }, { status: 404 });
   }
 
-  const [detailV2Res, ordersRes, estimatesRes, invoicesRes, activityRes, demandKindRes] = await Promise.all([
-    db.schema('app').rpc('get_seller_location_detail_v2', {
-      p_tenant_id: tenantId,
-      p_location_id: id,
-    }),
+  const locationQuarterMeta = getSellerLandingPeriodMeta('quarter');
+  const locationQuarterStart = locationQuarterMeta.current_start.slice(0, 10);
+
+  const [ordersRes, estimatesRes, invoicesRes, activityRes, locationPeriodRes, locationNowRes, locationMonthlyRes] = await Promise.all([
     db
       .schema('app')
       .from('orders')
@@ -131,87 +104,95 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(20),
-    // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
-    // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
-    db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId }),
+    db
+      .schema('app')
+      .from('metrics_location_period_summary')
+      .select('invoice_value, invoice_count, invoice_buyer_count, primary_demand_kind, primary_demand_value, primary_demand_count, primary_demand_buyer_count')
+      .eq('location_id', id)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'quarter')
+      .eq('period_start', locationQuarterStart)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('metrics_location_now_summary')
+      .select('overdue_amount, overdue_invoice_count, open_estimate_count, open_estimate_value, open_order_count, open_order_value')
+      .eq('location_id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    // Last 12 monthly-grain rows for the gmv_trend chart (LocationPerformanceTab, currently
+    // unmounted — showPerformanceTab=false). Rows are populated per dirty-day reconciliation,
+    // not a fixed rolling window, so a tenant with no historical backfill may see fewer than
+    // 12 points; that's expected, not a bug.
+    db
+      .schema('app')
+      .from('metrics_location_period_summary')
+      .select('period_start, invoice_value')
+      .eq('location_id', id)
+      .eq('tenant_id', tenantId)
+      .eq('grain', 'month')
+      .is('deleted_at', null)
+      .order('period_start', { ascending: true })
+      .limit(12),
   ]);
 
   const firstError =
-    detailV2Res.error ?? ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error ?? demandKindRes.error;
+    ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error
+    ?? locationPeriodRes.error ?? locationNowRes.error ?? locationMonthlyRes.error;
   if (firstError) {
     console.error('[GET /api/tenant/locations/[id]/detail]', firstError.code, firstError.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
   }
 
-  const detailV2 = (detailV2Res.data ?? {}) as any;
-  const kpiByLabel = new Map<string, any>((detailV2.kpi_grid ?? []).map((item: any) => [String(item.label), item.value]));
-  const trendCard = (detailV2.performance_cards ?? []).find((card: any) => card.id === 'sales-over-time');
-  const trendPoints = trendCard?.body?.points ?? [];
-  const gmv_mtd = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
-  const overdue_amount = Number(kpiByLabel.get('Overdue') ?? 0);
-  const purchasingCustomers = Number(kpiByLabel.get('Purchasing customers 90D') ?? 0);
+  const locationQuarter = (locationPeriodRes.data ?? null) as {
+    invoice_value: number;
+    invoice_count: number;
+    invoice_buyer_count: number;
+    primary_demand_kind: 'orders' | 'estimates' | 'none' | null;
+    primary_demand_value: number;
+    primary_demand_count: number;
+    primary_demand_buyer_count: number;
+  } | null;
+  const locationNow = (locationNowRes.data ?? null) as {
+    overdue_amount: number;
+    overdue_invoice_count: number;
+    open_estimate_count: number;
+    open_estimate_value: number;
+    open_order_count: number;
+    open_order_value: number;
+  } | null;
+
   const invoices = invoicesRes.data ?? [];
   const estimates = estimatesRes.data ?? [];
   const orders = ordersRes.data ?? [];
 
-  const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
-    | 'orders'
-    | 'estimates'
-    | 'none';
+  const primaryDemandKind = locationQuarter?.primary_demand_kind ?? 'none';
 
-  // "Open primary demand value" (doc line 830): open estimate value for Estimate-primary tenants,
-  // open order value for Order-primary tenants, scoped to this location. Reuses app.estimates/
-  // app.orders directly with the exact open-status sets from app.estimate_status_is_open /
-  // app.order_status_is_open (supabase/migrations/20260709000001_prod_bootstrap.sql).
-  let openPrimaryDemandValue = 0;
-  let openPrimaryDemandCount = 0;
-  if (primaryDemandKind === 'estimates') {
-    const { data, error } = await db
-      .schema('app')
-      .from('estimates')
-      .select('total_amount')
-      .eq('tenant_id', tenantId)
-      .eq('location_id', id)
-      .is('deleted_at', null)
-      .in('status', OPEN_ESTIMATE_STATUSES)
-      .limit(2000);
-    if (error) {
-      console.error('[GET /api/tenant/locations/[id]/detail] open estimate value', error.code, error.message);
-      return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
-    }
-    const rows = (data ?? []) as Array<{ total_amount: number | string | null }>;
-    openPrimaryDemandCount = rows.length;
-    openPrimaryDemandValue = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-  } else if (primaryDemandKind === 'orders') {
-    const { data, error } = await db
-      .schema('app')
-      .from('orders')
-      .select('total_amount')
-      .eq('tenant_id', tenantId)
-      .eq('location_id', id)
-      .is('deleted_at', null)
-      .in('status', OPEN_ORDER_STATUSES)
-      .limit(2000);
-    if (error) {
-      console.error('[GET /api/tenant/locations/[id]/detail] open order value', error.code, error.message);
-      return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
-    }
-    const rows = (data ?? []) as Array<{ total_amount: number | string | null }>;
-    openPrimaryDemandCount = rows.length;
-    openPrimaryDemandValue = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-  }
+  const monthlyRows = (locationMonthlyRes.data ?? []) as Array<{ period_start: string; invoice_value: number }>;
+  const gmvTrend = monthlyRows.map((row) => ({
+    week_label: new Date(`${row.period_start}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' }),
+    week_start: row.period_start,
+    gmv: Number(row.invoice_value ?? 0),
+    orders_count: 0,
+  }));
 
-  const buyerIds = Array.from(new Set([
-    ...orders.map((row: any) => row.buyer_id).filter(Boolean),
-    ...estimates.map((row: any) => row.buyer_id).filter(Boolean),
-    ...invoices.map((row: any) => row.buyer_id).filter(Boolean),
-  ]));
-  const { data: buyers } = buyerIds.length
-    ? await db.schema('app').from('buyers').select('id, business_name, geography').eq('tenant_id', tenantId).in('id', buyerIds)
-    : { data: [] };
-  const buyerById = new Map<string, any>((buyers ?? []).map((buyer: any) => [buyer.id, buyer]));
+  // Open primary demand: open estimate value/count for Estimate-primary tenants, open
+  // order value/count for Order-primary tenants — now read directly from
+  // metrics_location_now_summary instead of re-querying app.estimates/app.orders.
+  const openPrimaryDemandValue = primaryDemandKind === 'estimates'
+    ? Number(locationNow?.open_estimate_value ?? 0)
+    : primaryDemandKind === 'orders'
+      ? Number(locationNow?.open_order_value ?? 0)
+      : 0;
+  const openPrimaryDemandCount = primaryDemandKind === 'estimates'
+    ? Number(locationNow?.open_estimate_count ?? 0)
+    : primaryDemandKind === 'orders'
+      ? Number(locationNow?.open_order_count ?? 0)
+      : 0;
 
-  const response: LocationDetailResponse & { performance_cards: any[]; detail_v2: any } = {
+  const response: LocationDetailResponse = {
     id: baseLocation.id,
     name: baseLocation.name,
     city: getCity(baseLocation.address),
@@ -221,95 +202,40 @@ export async function GET(
     is_active: baseLocation.status !== 'inactive',
     associated_users: normalizeLocationAssociatedUsers(baseLocation.associated_users),
     meta_strip: {
-      gmv_mtd,
-      outstanding_dues: overdue_amount,
-      overdue_amount,
+      sales_qtd_value: locationQuarter?.invoice_value ?? 0,
+      sales_qtd_count: locationQuarter?.invoice_count ?? 0,
+      sales_qtd_buyer_count: locationQuarter?.invoice_buyer_count ?? 0,
+      demand_qtd_value: locationQuarter?.primary_demand_value ?? 0,
+      demand_qtd_count: locationQuarter?.primary_demand_count ?? 0,
+      demand_qtd_buyer_count: locationQuarter?.primary_demand_buyer_count ?? 0,
+      overdue_amount: locationNow?.overdue_amount ?? 0,
+      overdue_invoice_count: locationNow?.overdue_invoice_count ?? 0,
       invoice_count: invoices.length,
       unpaid_invoice_count: invoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) > 0).length,
       total_invoice_count: invoices.length,
       open_estimate_count: estimates.filter((estimate: any) => !['converted', 'expired', 'void'].includes(String(estimate.status))).length,
       total_estimate_count: estimates.length,
-      purchasing_customers_90d: purchasingCustomers,
       open_primary_demand_kind: primaryDemandKind,
       open_primary_demand_value: openPrimaryDemandValue,
       open_primary_demand_count: openPrimaryDemandCount,
     },
     overview: {
-      gmv_trend: trendPoints.map((point: any) => ({
-        week_label: String(point.month ?? point.label ?? 'Period'),
-        week_start: String(point.month ?? point.label ?? ''),
-        gmv: Number(point.value ?? 0),
-        orders_count: 0,
-      })),
+      gmv_trend: gmvTrend,
       inventory_health: {
         active_skus: 0,
         oos_skus: 0,
         low_stock_skus: 0,
         avg_days_cover: null,
       },
-      top_buyers: purchasingCustomers > 0 ? [{
+      top_buyers: (locationQuarter?.invoice_buyer_count ?? 0) > 0 ? [{
         buyer_id: 'aggregate',
         business_name: 'Purchasing customers',
         city: getCity(baseLocation.address),
         initials: 'PC',
-        spend_mtd: gmv_mtd,
-        outstanding_dues: overdue_amount,
+        spend_mtd: locationQuarter?.invoice_value ?? 0,
+        outstanding_dues: locationNow?.overdue_amount ?? 0,
       }] : [],
     },
-    orders: orders.map((order: any) => {
-      const buyer = buyerById.get(order.buyer_id);
-      return {
-        order_id: order.id,
-        order_number: order.order_number,
-        placed_at: order.placed_at ?? order.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: order.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: order.is_buyer_app_order ? 'buyer_app' : order.estimate_id ? 'converted' : 'direct',
-        source_label: order.source,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(order.total_amount ?? 0),
-        status: order.status,
-      };
-    }),
-    estimates: estimates.map((estimate: any) => {
-      const buyer = buyerById.get(estimate.buyer_id);
-      return {
-        estimate_id: estimate.id,
-        estimate_number: estimate.estimate_number,
-        issued_at: estimate.estimate_date ?? estimate.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: estimate.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: estimate.is_buyer_app_estimate ? 'buyer_app' : 'seller',
-        source_label: estimate.source,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(estimate.total_amount ?? 0),
-        expires_at: estimate.expires_at,
-        status: estimate.status,
-      };
-    }),
-    invoices: invoices.map((invoice: any) => {
-      const buyer = buyerById.get(invoice.buyer_id);
-      return {
-        invoice_id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        issued_at: invoice.invoice_date ?? invoice.created_at,
-        buyer_name: buyer?.business_name ?? 'Buyer',
-        place_of_supply: invoice.place_of_supply,
-        location_name: baseLocation.name,
-        source_kind: invoice.is_buyer_app_invoice ? 'buyer_app' : invoice.estimate_id ? 'converted' : 'direct',
-        source_label: null,
-        campaign_name: null,
-        items_count: 0,
-        total_amount: Number(invoice.total_amount ?? 0),
-        outstanding_amount: Number(invoice.outstanding_balance ?? 0),
-        due_date: invoice.due_date,
-        status: invoice.status,
-      };
-    }),
     activity: (activityRes.data ?? []).map((row: any) => ({
       id: row.id,
       action: row.action,
@@ -318,13 +244,6 @@ export async function GET(
       ts: row.ts,
       actor_name: row.actor_user_id,
     })),
-    tab_badges: {
-      orders_mtd: orders.length,
-      estimates_mtd: estimates.length,
-      invoices_mtd: invoices.length,
-    },
-    performance_cards: includePerformance ? (detailV2.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
   };
 
   return timedJson(response);

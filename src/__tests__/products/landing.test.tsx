@@ -137,10 +137,9 @@ describe('products landing page', () => {
       data: {
         cards: [
           {
-            id: 'recently-oos',
-            label: 'Recently sold, now out of stock',
+            id: 'recently_sold_oos',
             value: 3,
-            supporting_text: '21% of all products',
+            entity_count: 3,
             filter_preset: { sold_period: 'this_quarter', stock: 'out' },
           },
         ],

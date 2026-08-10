@@ -107,12 +107,10 @@ export interface TenantInvoicesResponse {
 
 export interface InvoicesLandingKpiCardV4 {
   id: string;
-  label: string;
   value: number;
   entity_count?: number;
   document_count?: number | null;
   secondary_value?: number | null;
-  supporting_text?: string;
   time_basis?: string;
   filter_preset?: Record<string, unknown>;
 }
@@ -318,6 +316,7 @@ export interface InvoiceDetailResponse {
   payments: InvoicePaymentRecordDto[];
   whatsapp_send: WhatsAppDocumentSendState;
   whatsapp_reminder: WhatsAppInvoiceReminderState;
+  is_buyer_app: boolean;
 }
 
 export interface InvoiceDetailPayload {

@@ -38,6 +38,7 @@ import {
   useCohortComposerBuyers,
   useCohortComposerData,
   useCohortDetail,
+  useCohortMemberBuyers,
   useCohortMembers,
   useSaveCohortComposer,
 } from '@/hooks/useCohorts';
@@ -200,8 +201,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const router = useRouter();
   const saveMutation = useSaveCohortComposer(cohortId);
   const composerQuery = useCohortComposerData();
-  const detailQuery = useCohortDetail(cohortId ?? '');
+  const detailQuery = useCohortDetail(cohortId ?? '', { includePerformance: false });
   const membersQuery = useCohortMembers(cohortId ?? '');
+  const memberBuyersQuery = useCohortMemberBuyers(cohortId ?? '', { enabled: mode === 'edit' });
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -235,8 +237,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   );
   const resultTotal = buyerResultPages[0]?.total ?? composerQuery.data?.total_buyer_count ?? resultRows.length;
 
-  const isLoading = composerQuery.isLoading || buyerResultsQuery.isLoading || (mode === 'edit' && (detailQuery.isLoading || membersQuery.isLoading));
-  const isError = composerQuery.isError || buyerResultsQuery.isError || (mode === 'edit' && (detailQuery.isError || membersQuery.isError));
+  const isLoading = composerQuery.isLoading || buyerResultsQuery.isLoading || (mode === 'edit' && (detailQuery.isLoading || membersQuery.isLoading || memberBuyersQuery.isLoading));
+  const isError = composerQuery.isError || buyerResultsQuery.isError || (mode === 'edit' && (detailQuery.isError || membersQuery.isError || memberBuyersQuery.isError));
 
   useEffect(() => {
     if (didInit || !composerQuery.data) return;
@@ -265,8 +267,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   }, [composerQuery.data, detailQuery.data, didInit, membersQuery.data, mode]);
 
   const editModeBuyers = useMemo(
-    () => (mode === 'edit' && detailQuery.data?.buyers ? detailQuery.data.buyers.map(detailBuyerToComposerBuyer) : []),
-    [detailQuery.data?.buyers, mode],
+    () => (mode === 'edit' && memberBuyersQuery.data?.buyers ? memberBuyersQuery.data.buyers.map(detailBuyerToComposerBuyer) : []),
+    [memberBuyersQuery.data?.buyers, mode],
   );
 
   const buyerMap = useMemo(
@@ -322,8 +324,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       if (citiesFromRows.length > 0) {
         return new Set(citiesFromRows).size;
       }
-      if (mode === 'edit' && detailQuery.data?.buyers && members > 0) {
-        const cities = detailQuery.data.buyers
+      if (mode === 'edit' && memberBuyersQuery.data?.buyers && members > 0) {
+        const cities = memberBuyersQuery.data.buyers
           .filter((buyer) =>
             selectionMode === 'manual-selection'
               ? selectedBuyerIds.includes(buyer.buyer_id)
@@ -341,7 +343,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     const active30d = selectedRows.filter((buyer) => deriveLastOrderBucket(buyer.last_order_at) === 'within_30_days').length;
     return { members, areasCovered, mtdSpend, avgAov, active30d };
   }, [
-    detailQuery.data?.buyers,
+    memberBuyersQuery.data?.buyers,
     excludedBuyerIds,
     mode,
     selectedBuyerIds,

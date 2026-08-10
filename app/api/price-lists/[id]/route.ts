@@ -85,7 +85,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const includePerformance = request.nextUrl.searchParams.get('include_performance') !== 'false';
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
@@ -131,13 +130,7 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [detailV2Res, itemsRes, assignmentsRes, activityRes] = await Promise.all([
-    includePerformance
-      ? db.schema('app').rpc('get_seller_pricelist_detail_v2', {
-          p_tenant_id: claims.tenant_id,
-          p_price_list_id: id,
-        })
-      : Promise.resolve({ data: null, error: null }),
+  const [itemsRes, assignmentsRes, activityRes, priceListNowRes] = await Promise.all([
     db
       .schema('app')
       .from('price_list_items')
@@ -167,22 +160,30 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(100),
+    db
+      .schema('app')
+      .from('metrics_price_lists_now_summary')
+      .select('member_product_count, assigned_cohort_count, assigned_buyer_count, avg_discount_pct, avg_margin_pct')
+      .eq('price_list_id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
-  if (itemsRes.error || assignmentsRes.error || activityRes.error) {
+  if (itemsRes.error || assignmentsRes.error || activityRes.error || priceListNowRes.error) {
     console.error(
       '[GET /api/price-lists/[id]] related fetch error:',
-      itemsRes.error || assignmentsRes.error || activityRes.error,
+      itemsRes.error || assignmentsRes.error || activityRes.error || priceListNowRes.error,
     );
     return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
   }
-
-  if (detailV2Res.error) {
-    console.warn(
-      '[GET /api/price-lists/[id]] get_seller_pricelist_detail_v2 unavailable; serving base detail only',
-      detailV2Res.error,
-    );
-  }
+  const priceListNow = (priceListNowRes.data ?? null) as {
+    member_product_count: number;
+    assigned_cohort_count: number;
+    assigned_buyer_count: number;
+    avg_discount_pct: number;
+    avg_margin_pct: number;
+  } | null;
 
   const items = itemsRes.data ?? [];
   const assignments = assignmentsRes.data ?? [];
@@ -358,11 +359,8 @@ export async function GET(
 
   const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : 0;
   const daysLeft = priceList.valid_to ? Math.max(0, Math.ceil((new Date(priceList.valid_to).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
-  const detailV2 = detailV2Res.error ? null : detailV2Res.data as any;
 
   return NextResponse.json({
-    performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
-    detail_v2: includePerformance ? detailV2 : null,
     price_list: {
       ...priceList,
       status,
@@ -392,13 +390,14 @@ export async function GET(
         };
       }),
       activity: events,
-      performance_cards: includePerformance ? (detailV2?.performance_cards ?? []) : [],
-      detail_v2: includePerformance ? detailV2 : null,
       stats: {
-        products_covered: enrichedItems.length,
+        products_covered: priceListNow?.member_product_count ?? enrichedItems.length,
         brands_covered: brandSet.size,
         assignments_count: assignments.length,
-        avg_discount_pct: avgDiscountPct,
+        assigned_buyer_count: priceListNow?.assigned_buyer_count ?? 0,
+        assigned_cohort_count: priceListNow?.assigned_cohort_count ?? 0,
+        avg_discount_pct: priceListNow?.avg_discount_pct ?? avgDiscountPct,
+        avg_margin_pct: priceListNow?.avg_margin_pct ?? 0,
         days_left: daysLeft,
       },
     },

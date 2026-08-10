@@ -20,6 +20,8 @@ import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
 type DbClient = any;
 import type {
@@ -585,6 +587,13 @@ export async function POST(request: NextRequest) {
     if (!result || result === 'forbidden') {
       return NextResponse.json({ error: 'Draft created but could not be loaded' }, { status: 500 });
     }
+
+    getPostHogClient()?.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'invoice_created',
+      properties: { ...withTenantSellerIds(claims), invoice_id: inserted.id, invoice_number },
+    });
+
     return NextResponse.json({ data: result.composerPayload });
   } catch (error) {
     console.error('[POST /api/tenant/invoices]', error);

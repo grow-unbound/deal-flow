@@ -5,58 +5,72 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { X, Sparkles } from 'lucide-react';
 import { useCaptureEvent } from '@/hooks/useFeatureFlag';
-import {
-  shouldShowTenantOnboardingBanner,
-  tenantFirstRunStorageKey,
-} from '@/lib/seller-onboarding-banner';
+import { useSellerAnalyticsIds } from '@/lib/analytics-identity';
+import { shouldShowTenantOnboardingBanner } from '@/lib/seller-onboarding-banner';
 
 interface DashboardOnboardingBannerProps {
   tenantId: string | null;
   isTenantCreator: boolean;
+  dismissedAt: string | null;
 }
 
 export function DashboardOnboardingBanner({
   tenantId,
   isTenantCreator,
+  dismissedAt,
 }: DashboardOnboardingBannerProps) {
   const searchParams = useSearchParams();
   const captureEvent = useCaptureEvent();
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  useEffect(() => {
-    if (!tenantId) {
-      setShowOnboarding(false);
-      return;
-    }
-
-    const storageKey = tenantFirstRunStorageKey(tenantId);
-    const seen = localStorage.getItem(storageKey) === 'seen';
-    const visible = shouldShowTenantOnboardingBanner({
+  const { seller_id } = useSellerAnalyticsIds();
+  const [showOnboarding, setShowOnboarding] = useState(() =>
+    shouldShowTenantOnboardingBanner({
       isTenantCreator,
       tenantId,
-      firstRunParam: searchParams.get('first_run'),
-      storageSeen: seen,
-    });
-    setShowOnboarding(visible);
-
-    if (searchParams.get('first_run') === '1') {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('first_run');
-      window.history.replaceState({}, '', `${url.pathname}${url.search}`);
-    }
-  }, [searchParams, isTenantCreator, tenantId]);
+      dismissedAt,
+    }),
+  );
+  const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
-    captureEvent('dashboard_viewed', { tenant_id: tenantId });
-  }, [captureEvent, tenantId]);
+    setShowOnboarding(
+      shouldShowTenantOnboardingBanner({
+        isTenantCreator,
+        tenantId,
+        dismissedAt,
+      }),
+    );
+  }, [dismissedAt, isTenantCreator, tenantId]);
+
+  // Legacy signup/login still appends ?first_run=1 — strip it so the URL stays clean.
+  useEffect(() => {
+    if (searchParams.get('first_run') !== '1') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('first_run');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showOnboarding || !tenantId) return;
+    captureEvent('onboarding_banner_shown', { tenant_id: tenantId, seller_id });
+  }, [captureEvent, showOnboarding, tenantId, seller_id]);
 
   if (!showOnboarding || !tenantId) return null;
 
-  const storageKey = tenantFirstRunStorageKey(tenantId);
-
-  function dismissBanner(): void {
-    localStorage.setItem(storageKey, 'seen');
+  async function dismissBanner(): Promise<void> {
+    if (dismissing) return;
+    setDismissing(true);
     setShowOnboarding(false);
+
+    try {
+      const res = await fetch('/api/tenant/onboarding-banner/dismiss', { method: 'POST' });
+      if (!res.ok) {
+        setShowOnboarding(true);
+      }
+    } catch {
+      setShowOnboarding(true);
+    } finally {
+      setDismissing(false);
+    }
   }
 
   return (
@@ -72,16 +86,21 @@ export function DashboardOnboardingBanner({
       </p>
       <Link
         href="/settings"
-        onClick={dismissBanner}
+        onClick={() => {
+          void dismissBanner();
+        }}
         className="shrink-0 font-sans text-body-sm font-semibold text-[var(--fg-inverse)] underline underline-offset-2 transition-opacity hover:opacity-80"
       >
         Set up now
       </Link>
       <button
         type="button"
-        onClick={dismissBanner}
+        onClick={() => {
+          void dismissBanner();
+        }}
+        disabled={dismissing}
         aria-label="Dismiss welcome banner"
-        className="ml-2 shrink-0 rounded p-1 text-[var(--fg-inverse)] transition-colors hover:bg-white/10"
+        className="ml-2 shrink-0 rounded p-1 text-[var(--fg-inverse)] transition-colors hover:bg-white/10 disabled:opacity-60"
       >
         <X className="h-4 w-4" />
       </button>

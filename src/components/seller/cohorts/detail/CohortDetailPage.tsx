@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatNumberValue } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
+import { useCohortDetail, useCohortMemberBuyers, useRefreshCohort } from '@/hooks/useCohorts';
 import type { BuyerMembershipRules } from '@/lib/zod';
 import { CohortBuyersTab } from './CohortBuyersTab';
 import { CustomerGroupFormSheet } from '../CustomerGroupFormSheet';
@@ -55,29 +55,31 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
   });
 
   const { data, isLoading, isError } = useCohortDetail(id, { includePerformance: false });
+  const memberBuyersQuery = useCohortMemberBuyers(id, { enabled: editOpen });
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    const m = data.meta_strip_4;
 
     return [
       {
-        label: 'Invoiced sales 90D',
-        value: formatNumberValue(data.meta_strip_4.gmv_mtd, 'CURRENCY_THRESHOLD'),
+        label: 'Active members',
+        value: `${m.active_member_count}/${m.member_count}`,
+        sub: 'purchased this quarter',
       },
       {
-        label: 'Members who purchased',
-        value: `${data.meta_strip_4.active_members}/${data.meta_strip_4.total_members}`,
-        sub: 'current members in the last 90 days',
+        label: 'Group sales · QTD',
+        value: formatNumberValue(m.sales_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.sales_qtd_count} invoices`,
       },
       {
-        label: 'Avg invoice value',
-        value: formatNumberValue(data.meta_strip_4.aov, 'CURRENCY_THRESHOLD'),
-        sub: 'across current members',
+        label: 'Group demand · QTD',
+        value: formatNumberValue(m.demand_qtd_value, 'CURRENCY_THRESHOLD'),
+        sub: `${m.demand_qtd_count} docs`,
       },
       {
-        label: 'Response rate',
-        value: `${formatNumberValue(data.meta_strip_4.conversion_pct, 'PERCENTAGE')}`,
-        sub: 'campaign to submitted demand',
+        label: 'Brands',
+        value: m.brands_count == null ? 'All brands' : `${m.brands_count} brands`,
       },
     ];
   }, [data]);
@@ -149,7 +151,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           <CohortBuyersTab
             cohortId={id}
             rules_summary={data.rules_summary}
-            activeMembersMtd={data.meta_strip_4.active_members}
+            activeMembersMtd={data.meta_strip_4.active_member_count}
             details_rules={data.details_rules}
           />
         ) : (
@@ -157,7 +159,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         )
       ) : null}
       {showPerformanceTab && tab === 'performance' ? (
-        data ? <CohortPerformanceTab performanceCards={data.performance_cards} /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
+        data ? <CohortPerformanceTab /> : <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
       ) : null}
       {data ? (
         <CustomerGroupFormSheet
@@ -171,7 +173,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
             description: data.details_rules.description,
             allowed_tenant_brand_ids: data.details_rules.allowed_tenant_brand_ids ?? [],
             membership_mode: data.details_rules.is_static ? 'manual' : 'automatic',
-            selected_buyer_ids: data.buyers.map((buyer) => buyer.buyer_id),
+            selected_buyer_ids: (memberBuyersQuery.data?.buyers ?? []).map((buyer) => buyer.buyer_id),
             rules: data.details_rules.is_static ? undefined : (data.details_rules.rules as unknown as BuyerMembershipRules),
           }}
         />

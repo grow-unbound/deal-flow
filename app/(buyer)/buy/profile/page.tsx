@@ -2,10 +2,11 @@
 
 import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Wallet } from 'lucide-react';
+import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Repeat, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiFetch, apiPatch } from '@/lib/api-fetch';
+import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { formatWhatsappDestination } from '@/lib/phone';
 import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
 import { useBuyerSession } from '@/hooks/useBuyerSession';
@@ -15,6 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 ;
+
+const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
 interface BuyerInvoice {
   id: string;
@@ -390,6 +393,7 @@ function CreditLimitSheet({
 
 export default function ProfilePage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { data, isLoading, isError } = useBuyerMe();
   const { effectiveBuyerRole } = useBuyerSession();
   const { signOut } = useAuth();
@@ -397,6 +401,7 @@ export default function ProfilePage() {
   const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
   const [creditSheetOpen, setCreditSheetOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
+  const [switchPending, setSwitchPending] = useState(false);
 
   const canEditBusiness = effectiveBuyerRole === 'buyer_admin';
   const sellerPreview = data?.seller_preview === true;
@@ -477,6 +482,24 @@ export default function ProfilePage() {
       toast.error('Failed to log out. Please try again.');
     } finally {
       setLogoutPending(false);
+    }
+  };
+
+  const handleSwitchAccount = async () => {
+    setSwitchPending(true);
+    try {
+      const res = await apiPost('/api/auth/switch-context', {});
+      const body = await res.json();
+      if (!res.ok || !body.contexts || !body.ref_id) {
+        toast.error(body.error ?? 'No other accounts linked to this number.');
+        return;
+      }
+      sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(body.contexts));
+      router.push(`/login/select-context?ref_id=${encodeURIComponent(body.ref_id)}`);
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setSwitchPending(false);
     }
   };
 
@@ -564,6 +587,16 @@ export default function ProfilePage() {
             subtitle="Chat with us on WhatsApp"
             onClick={handleHelpSupport}
             action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+          />
+        </div>
+
+        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
+          <AccountRow
+            icon={<Repeat className="h-5 w-5" />}
+            title="Switch Account"
+            subtitle="Use another account linked to this number"
+            onClick={() => { void handleSwitchAccount(); }}
+            action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
           />
         </div>
 

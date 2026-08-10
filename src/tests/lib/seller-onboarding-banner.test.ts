@@ -1,44 +1,34 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  shouldShowTenantOnboardingBanner,
-  tenantFirstRunStorageKey,
-} from '@/lib/seller-onboarding-banner';
+import { shouldShowTenantOnboardingBanner } from '@/lib/seller-onboarding-banner';
 
 describe('seller-onboarding-banner', () => {
-  it('scopes localStorage key per tenant', () => {
-    expect(tenantFirstRunStorageKey('tenant-a')).toBe('df_first_run:tenant-a');
-  });
-
   it('hides for non-creators', () => {
     expect(
       shouldShowTenantOnboardingBanner({
         isTenantCreator: false,
         tenantId: 'tenant-a',
-        firstRunParam: '1',
-        storageSeen: false,
+        dismissedAt: null,
       }),
     ).toBe(false);
   });
 
-  it('shows for creator on first_run', () => {
+  it('hides without tenantId', () => {
     expect(
       shouldShowTenantOnboardingBanner({
         isTenantCreator: true,
-        tenantId: 'tenant-a',
-        firstRunParam: '1',
-        storageSeen: true,
+        tenantId: null,
+        dismissedAt: null,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('shows for creator until tenant storage is marked seen', () => {
+  it('shows for creator until dismissed in DB', () => {
     expect(
       shouldShowTenantOnboardingBanner({
         isTenantCreator: true,
         tenantId: 'tenant-a',
-        firstRunParam: null,
-        storageSeen: false,
+        dismissedAt: null,
       }),
     ).toBe(true);
 
@@ -46,8 +36,7 @@ describe('seller-onboarding-banner', () => {
       shouldShowTenantOnboardingBanner({
         isTenantCreator: true,
         tenantId: 'tenant-a',
-        firstRunParam: null,
-        storageSeen: true,
+        dismissedAt: '2026-08-07T00:00:00.000Z',
       }),
     ).toBe(false);
   });
