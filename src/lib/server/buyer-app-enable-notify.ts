@@ -42,11 +42,19 @@ export function buildBuyerAppEnabledPreviewMessage(
   sellerName: string,
 ): string {
   return [
-    `Hi ${buyerName},`,
+    `Hi ${buyerName} 👋`,
     '',
-    `${sellerName} has enabled the catalog app for you.`,
+    `_Great news!_ ${sellerName} has unlocked direct web-ordering access for your account.`,
     '',
-    'You can now explore their latest stock, check prices, and place orders anytime.',
+    '⚡ *No app download required—opens directly in your browser.*',
+    '',
+    'What you can do right now:',
+    '•\tView your locked-in custom rates & real-time stock availability',
+    '•\tEnjoy automatic volume discounts as your quantities grow',
+    '•\tPlace orders 24/7 without waiting for quote replies',
+    '•\tTrack past orders and bills instantly',
+    '',
+    '👇 Tap below to log in with 1-click WhatsApp verification:',
   ].join('\n');
 }
 

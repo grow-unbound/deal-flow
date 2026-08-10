@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DialogBody } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WhatsAppFormattedText } from '@/components/seller/shared/WhatsAppFormattedText';
 import type { BuyerAppEnablePreviewResponse } from '@/types/buyer-app-enable';
 
 export type BuyerAppAccessConfirmMode = 'enable' | 'disable';
@@ -58,11 +59,19 @@ function affectedBuyersLabel(selectedCount: number, singleBuyerLabel: string | n
 
 /** Matches `buildBuyerAppEnabledPreviewMessage` line count for stable dialog height while loading. */
 const ENABLE_WHATSAPP_PREVIEW_FOOTPRINT = [
-  'Hi Buyer,',
+  'Hi Buyer 👋',
   '',
-  'Your distributor has enabled the catalog app for you.',
+  '_Great news!_ Your distributor has unlocked direct web-ordering access for your account.',
   '',
-  'You can now explore their latest stock, check prices, and place orders anytime.',
+  '⚡ *No app download required—opens directly in your browser.*',
+  '',
+  'What you can do right now:',
+  '•\tView your locked-in custom rates & real-time stock availability',
+  '•\tEnjoy automatic volume discounts as your quantities grow',
+  '•\tPlace orders 24/7 without waiting for quote replies',
+  '•\tTrack past orders and bills instantly',
+  '',
+  '👇 Tap below to log in with 1-click WhatsApp verification:',
 ].join('\n');
 
 const ENABLE_PREVIEW_PANEL_CLASS =
@@ -80,7 +89,7 @@ function EnablePreviewPanel({
   const isLoading = previewLoading || !preview;
 
   return (
-    <div className={cn(ENABLE_PREVIEW_PANEL_CLASS, 'min-h-[13.5rem]')}>
+    <div className={cn(ENABLE_PREVIEW_PANEL_CLASS, 'min-h-[28rem]')}>
       <div className="mb-3 min-h-[1.25rem]">
         {isLoading ? (
           <Skeleton className="h-3 w-52" />
@@ -101,27 +110,33 @@ function EnablePreviewPanel({
 
       <p className="mb-2 text-cream-600">Template preview</p>
 
-      <div className="relative min-h-[6.5em]">
+      <div className="relative min-h-[18em]">
         {isLoading ? (
           <>
-            <pre
-              className="pointer-events-none invisible whitespace-pre-wrap font-sans text-body-sm"
+            <WhatsAppFormattedText
+              text={ENABLE_WHATSAPP_PREVIEW_FOOTPRINT}
+              className="pointer-events-none invisible text-body-sm"
               aria-hidden
-            >
-              {ENABLE_WHATSAPP_PREVIEW_FOOTPRINT}
-            </pre>
+            />
             <div className="absolute inset-0 space-y-2">
               <Skeleton className="h-3 w-full" />
               <Skeleton className="h-3 w-[92%]" />
               <Skeleton className="h-3 w-full" />
               <Skeleton className="h-3 w-[88%]" />
               <Skeleton className="h-3 w-[95%]" />
+              <Skeleton className="h-3 w-[70%]" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-[90%]" />
+              <Skeleton className="h-3 w-[85%]" />
+              <Skeleton className="h-3 w-[93%]" />
+              <Skeleton className="h-3 w-[80%]" />
             </div>
           </>
         ) : (
-          <pre className="whitespace-pre-wrap font-sans text-body-sm text-cream-800">
-            {preview.preview_message}
-          </pre>
+          <WhatsAppFormattedText
+            text={preview.preview_message}
+            className="text-body-sm text-cream-800"
+          />
         )}
       </div>
     </div>
