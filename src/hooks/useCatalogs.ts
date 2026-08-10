@@ -670,7 +670,7 @@ export function useSaveSimpleCatalog(catalogId?: string) {
       const optimisticCreatedAt = new Date().toISOString();
 
       if (catalogId) {
-        queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', catalogId], (old) =>
+        queryClient.setQueriesData<CatalogDetailResponse>({ queryKey: ['tenant-catalog-detail', catalogId] }, (old) =>
           old
             ? {
                 ...old,
@@ -678,6 +678,8 @@ export function useSaveSimpleCatalog(catalogId?: string) {
                   ...old.header,
                   name: payload.name,
                   scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
+                  valid_until_iso: payload.valid_to ? payload.valid_to.toISOString() : null,
+                  hero_image_url: payload.hero_image_url?.trim() || null,
                 },
                 composer: old.composer
                   ? {
@@ -687,10 +689,22 @@ export function useSaveSimpleCatalog(catalogId?: string) {
                       valid_from: payload.valid_from.toISOString(),
                       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
                       message: payload.buyer_note ?? '',
+                      buyer_target_mode: payload.buyer_target_mode ?? old.composer.buyer_target_mode,
+                      buyer_rules: payload.buyer_rules ?? old.composer.buyer_rules,
+                      product_membership_mode: payload.product_membership_mode ?? old.composer.product_membership_mode,
+                      product_rules: payload.product_rules ?? old.composer.product_rules,
                       scope_type: payload.target_mode === 'customer_group' ? 'cohort' : 'buyer',
                       cohort_id: payload.target_mode === 'customer_group' ? payload.target_cohort_id ?? null : null,
+                      buyer_ids: payload.buyer_target_mode === 'manual' ? payload.buyer_ids : [],
                       price_source: payload.pricing_mode === 'pricelist' ? 'price_list' : 'manual',
                       price_list_id: payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null,
+                      items: payload.product_membership_mode === 'manual'
+                        ? payload.selected_product_ids.map((tenantProductId, index) => ({
+                            tenant_product_id: tenantProductId,
+                            display_order: index,
+                            price_override: null,
+                          }))
+                        : [],
                     }
                   : old.composer,
               }
@@ -1230,15 +1244,24 @@ export function useAddCatalogProduct(id: string) {
 
       return res.json() as Promise<{ ok: true }>;
     },
-    onMutate: async () => {
+    onMutate: async (payload) => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id]]);
+      patchCatalogProductMembershipCaches(queryClient, id, [payload.tenant_product_id], true);
       return { snapshots };
     },
     onError: (_err, _payload, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-products-detail'] });
+    },
+    onSuccess: (_result, payload) => {
+      patchCatalogProductMembershipCaches(queryClient, id, [payload.tenant_product_id], true);
+      refreshMembershipFilterQueries(queryClient, ['catalog-products-detail']);
+      toast.success('Product added to campaign');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
     },
   });
 }
@@ -1264,16 +1287,162 @@ export function useRemoveCatalogProduct(id: string) {
 
       return res.json() as Promise<{ ok: true }>;
     },
-    onMutate: async () => {
+    onMutate: async (payload) => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id]]);
+      patchCatalogProductMembershipCaches(queryClient, id, [payload.tenant_product_id], false);
       return { snapshots };
     },
     onError: (_err, _payload, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-products-detail'] });
+    },
+    onSuccess: (_result, payload) => {
+      patchCatalogProductMembershipCaches(queryClient, id, [payload.tenant_product_id], false);
+      refreshMembershipFilterQueries(queryClient, ['catalog-products-detail']);
+      toast.success('Product removed from campaign');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
     },
+  });
+}
+
+function refreshMembershipFilterQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[],
+) {
+  queryClient.removeQueries({ queryKey, type: 'inactive' });
+}
+
+function memberFilterKeepsRow(memberFilter: unknown, isMember: boolean) {
+  if (memberFilter === 'yes') return isMember;
+  if (memberFilter === 'no') return !isMember;
+  return true;
+}
+
+function detailRowsMemberFilter(queryKey: readonly unknown[]) {
+  const params = queryKey[5];
+  return params && typeof params === 'object' && 'member' in params
+    ? (params as { member?: unknown }).member
+    : undefined;
+}
+
+function catalogBuyersMemberFilter(queryKey: readonly unknown[]) {
+  const filters = queryKey[2];
+  return filters && typeof filters === 'object' && 'member' in filters
+    ? (filters as { member?: unknown }).member
+    : undefined;
+}
+
+type CatalogProductMembershipRows = InfiniteData<{
+  rows: Array<{ tenant_product_id: string; is_member: boolean; item_id: string | null }>;
+  total: number;
+  nextOffset: number | null;
+}, number>;
+
+type CatalogBuyerMembershipRows = {
+  rows: Array<{ buyer_id: string; is_member?: boolean }>;
+  total: number;
+  totals: { opens: number; converted: number; gmv: number };
+  limit: number;
+  offset: number;
+};
+
+function patchCatalogProductMembershipCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  catalogId: string,
+  tenantProductIds: string[],
+  isMember: boolean,
+) {
+  const idSet = new Set(tenantProductIds);
+  const delta = isMember ? 1 : -1;
+  queryClient.getQueriesData<CatalogProductMembershipRows>({ queryKey: ['catalog-products-detail'] }).forEach(([queryKey, old]) => {
+    if (!old) return;
+    const memberFilter = detailRowsMemberFilter(queryKey);
+    queryClient.setQueryData<CatalogProductMembershipRows>(queryKey, {
+      ...old,
+      pages: old.pages.map((page) => {
+        let removed = 0;
+        const rows = page.rows
+          .map((row) =>
+            idSet.has(row.tenant_product_id)
+              ? { ...row, is_member: isMember, item_id: isMember ? row.item_id : null }
+              : row,
+          )
+          .filter((row) => {
+            const keep = !idSet.has(row.tenant_product_id) || memberFilterKeepsRow(memberFilter, row.is_member);
+            if (!keep) removed += 1;
+            return keep;
+          });
+
+        return {
+          ...page,
+          rows,
+          total: Math.max(0, page.total - removed),
+        };
+      }),
+    });
+  });
+  queryClient.setQueriesData<CatalogDetailResponse>({ queryKey: ['tenant-catalog-detail', catalogId] }, (old) => {
+    if (!old) return old;
+    return {
+      ...old,
+      header: {
+        ...old.header,
+        products_count: Math.max(0, old.header.products_count + delta * tenantProductIds.length),
+      },
+      products_summary: {
+        ...old.products_summary,
+        included_count: Math.max(0, old.products_summary.included_count + delta * tenantProductIds.length),
+      },
+    };
+  });
+}
+
+function patchCatalogBuyerMembershipCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  catalogId: string,
+  buyerIds: string[],
+  isMember: boolean,
+) {
+  const idSet = new Set(buyerIds);
+  const delta = isMember ? 1 : -1;
+  queryClient.getQueriesData<CatalogBuyerMembershipRows>({ queryKey: ['tenant-catalog-buyers', catalogId] }).forEach(([queryKey, old]) => {
+    if (!old) return;
+    const memberFilter = catalogBuyersMemberFilter(queryKey);
+    let removed = 0;
+    const rows = old.rows
+      .map((row) => (idSet.has(row.buyer_id) ? { ...row, is_member: isMember } : row))
+      .filter((row) => {
+        const keep = !idSet.has(row.buyer_id) || memberFilterKeepsRow(memberFilter, Boolean(row.is_member));
+        if (!keep) removed += 1;
+        return keep;
+      });
+
+    queryClient.setQueryData<CatalogBuyerMembershipRows>(queryKey, {
+      ...old,
+      rows,
+      total: Math.max(0, old.total - removed),
+    });
+  });
+  queryClient.setQueriesData<CatalogDetailResponse>({ queryKey: ['tenant-catalog-detail', catalogId] }, (old) => {
+    if (!old) return old;
+    return {
+      ...old,
+      header: {
+        ...old.header,
+        selected_cohort: {
+          ...old.header.selected_cohort,
+          member_count: Math.max(0, old.header.selected_cohort.member_count + delta * buyerIds.length),
+        },
+      },
+      meta_strip_4: {
+        ...old.meta_strip_4,
+        target_buyer_count: Math.max(0, old.meta_strip_4.target_buyer_count + delta * buyerIds.length),
+      },
+    };
   });
 }
 
@@ -1293,11 +1462,22 @@ export function useAddCampaignBuyers(catalogId: string) {
       }
       return res.json() as Promise<{ ok: true; count: number }>;
     },
-    onSuccess: () => {
+    onMutate: async (buyerIds) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', catalogId]]);
+      patchCatalogBuyerMembershipCaches(queryClient, catalogId, buyerIds, true);
+      return { snapshots };
+    },
+    onSuccess: (_result, buyerIds) => {
+      patchCatalogBuyerMembershipCaches(queryClient, catalogId, buyerIds, true);
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      refreshMembershipFilterQueries(queryClient, ['tenant-catalog-buyers', catalogId]);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       toast.success('Buyers added to campaign');
     },
-    onError: (error) => {
+    onError: (error, _buyerIds, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-buyers', catalogId] });
       toast.error(error instanceof Error ? error.message : 'Could not add buyers');
     },
   });
@@ -1320,11 +1500,22 @@ export function useRemoveCampaignBuyers(catalogId: string) {
       }
       return { ok: true };
     },
-    onSuccess: () => {
+    onMutate: async (buyerIds) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', catalogId]]);
+      patchCatalogBuyerMembershipCaches(queryClient, catalogId, buyerIds, false);
+      return { snapshots };
+    },
+    onSuccess: (_result, buyerIds) => {
+      patchCatalogBuyerMembershipCaches(queryClient, catalogId, buyerIds, false);
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      refreshMembershipFilterQueries(queryClient, ['tenant-catalog-buyers', catalogId]);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       toast.success('Buyers removed from campaign');
     },
-    onError: (error) => {
+    onError: (error, _buyerIds, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-buyers', catalogId] });
       toast.error(error instanceof Error ? error.message : 'Could not remove buyers');
     },
   });

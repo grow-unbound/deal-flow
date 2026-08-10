@@ -32,6 +32,7 @@ import {
   type CohortsLandingResponse,
 } from '@/hooks/useCohorts';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { CUSTOMER_GROUPS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
@@ -56,6 +57,8 @@ function CohortsLandingContent({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/customer-groups');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [formOpen, setFormOpen] = useState(false);
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
@@ -240,7 +243,10 @@ function CohortsLandingContent({
             : `${kpis?.total_cohorts ?? 0} customer groups · ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} active customers assigned.`}
           horizon={horizonLabel}
           primary="Add a customer group"
-          onPrimaryClick={() => setFormOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_customer_group');
+            setFormOpen(true);
+          }}
           compact={isPaneOpen}
         />
 

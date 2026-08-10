@@ -37,6 +37,7 @@ import {
 } from '@/hooks/useOrders';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { formatNumberValue } from '@/lib/utils';
 import { ORDERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
@@ -116,6 +117,8 @@ function SalesOrdersLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/sales-orders');
   const searchParams = useSearchParams();
@@ -280,7 +283,10 @@ function SalesOrdersLandingContent({
             horizon={horizonLabel}
             showHorizonControl={false}
             primary={createSalesOrders ? 'Add a sales order' : undefined}
-            onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
+            onPrimaryClick={createSalesOrders ? () => {
+              captureCta('add_sales_order');
+              router.push('/sales-orders/new');
+            } : undefined}
             compact={isPaneOpen}
           />
           <SellerMobileTransactionTabs active="orders" />

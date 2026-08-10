@@ -28,6 +28,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRole } from '@/hooks/useRole';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import {
   useTenantProductsInfinite,
   useTenantProductsLandingMetrics,
@@ -150,6 +151,8 @@ function ProductsLandingContent({
   const sortBy = routeState.sortBy;
   const filterPreset = routeState.filterPreset ?? null;
   const filters: ProductLandingFilters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
@@ -254,11 +257,17 @@ function ProductsLandingContent({
         secondary={{
           label: 'Bulk import',
           icon: <Upload size={13} />,
-          onClick: () => router.push('/products/import'),
+          onClick: () => {
+            captureCta('bulk_import_products');
+            router.push('/products/import');
+          },
         }}
         {...(isSellerAssistant ? {} : {
           primary: 'Add a product',
-          onPrimaryClick: () => setAddProductOpen(true),
+          onPrimaryClick: () => {
+            captureCta('add_product');
+            setAddProductOpen(true);
+          },
         })}
         compact={isPaneOpen}
       />

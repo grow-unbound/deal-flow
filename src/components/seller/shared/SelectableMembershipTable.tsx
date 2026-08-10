@@ -109,13 +109,27 @@ export function MembershipBulkActionBar({
 export function MemberToggle({
   checked,
   label,
+  disabled = true,
+  disabledReason,
+  isPending,
+  onChange,
 }: {
   checked: boolean;
   label?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+  isPending?: boolean;
+  onChange?: (checked: boolean) => void;
 }) {
+  const switchLabel = label ?? (checked ? 'Member yes' : 'Member no');
   return (
-    <div className="flex items-center gap-2.5">
-      <Switch checked={checked} disabled aria-label={label ?? (checked ? 'Member yes' : 'Member no')} />
+    <div className="flex items-center gap-2.5" title={disabled ? disabledReason : undefined}>
+      <Switch
+        checked={checked}
+        disabled={disabled || isPending}
+        aria-label={switchLabel}
+        onCheckedChange={onChange}
+      />
       <span className="text-sm font-medium text-cream-700">{checked ? 'Yes' : 'No'}</span>
     </div>
   );

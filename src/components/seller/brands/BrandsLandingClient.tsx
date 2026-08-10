@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import {
   useTenantBrands,
   useTenantBrandsMetrics,
@@ -177,6 +178,8 @@ function BrandLandingContent({
     pathnameOverride: '/brands',
     ready: !isLoading,
   });
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
 
@@ -265,7 +268,10 @@ function BrandLandingContent({
             : `${landingData?.total ?? visibleRows.length} brands · This month invoice performance.`}
           horizon={horizonLabel}
           primary="Add a brand"
-          onPrimaryClick={() => setAddBrandOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_brand');
+            setAddBrandOpen(true);
+          }}
           compact={isPaneOpen}
         />
 

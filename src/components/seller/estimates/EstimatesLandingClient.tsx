@@ -33,6 +33,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,8 @@ function EstimatesLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/estimates');
   const searchParams = useSearchParams();
@@ -301,7 +304,10 @@ function EstimatesLandingContent({
               horizon={horizonLabel}
               showHorizonControl={false}
               primary={createEstimates ? 'Add an estimate' : undefined}
-              onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
+              onPrimaryClick={createEstimates ? () => {
+                captureCta('add_estimate');
+                router.push('/estimates/new');
+              } : undefined}
               compact={isPaneOpen}
             />
             <SellerMobileTransactionTabs active="estimates" />

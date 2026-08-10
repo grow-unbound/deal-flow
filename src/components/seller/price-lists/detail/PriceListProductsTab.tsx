@@ -104,6 +104,9 @@ export function PriceListProductsTab({
   const updateItem = useUpdatePriceListItem(priceListId);
   const addItems = useAddPriceListItems(priceListId);
   const removeItems = useRemovePriceListItems(priceListId);
+  const canEditMembership = membershipMode === 'manual';
+  const automaticMembershipTooltip =
+    'This pricelist gets automatic membership based on the above filter criteria. Update filters to manage membership';
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
   const { sentinelIndex, sentinelRef } = useDetailTableInfiniteScroll({
@@ -301,7 +304,24 @@ export function PriceListProductsTab({
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3"><MemberToggle checked={row.is_member} label={`${row.product_name} membership`} /></td>
+                  <td className="px-3 py-3">
+                    <MemberToggle
+                      checked={row.is_member}
+                      label={`${row.product_name} membership`}
+                      disabled={!canEditMembership}
+                      disabledReason={!canEditMembership ? automaticMembershipTooltip : undefined}
+                      isPending={addItems.isPending || removeItems.isPending}
+                      onChange={(next) => {
+                        if (next) {
+                          const price = Number(row.list_price ?? row.base_price ?? 0);
+                          if (price <= 0) return;
+                          addItems.mutate([{ tenant_product_id: row.tenant_product_id, price }]);
+                          return;
+                        }
+                        if (row.item_id) removeItems.mutate([row.item_id]);
+                      }}
+                    />
+                  </td>
                   <td className="px-3 py-3 text-right font-mono text-sm text-cream-900">{row.mrp != null ? formatNumberValue(row.mrp, 'CURRENCY_EXACT') : '—'}</td>
                   <td className="group px-3 py-3 text-right font-mono font-semibold text-cream-950">
                     {isEditing ? (

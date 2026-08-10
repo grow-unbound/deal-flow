@@ -58,4 +58,24 @@ describe('membership v4 cleanup', () => {
     expect(composer).toContain('items: isDynamic');
     expect(composer).toContain('!payload.is_dynamic && payload.items.length === 0');
   });
+
+  it('keeps campaign product refresh independent of a non-existent campaign item conflict key', () => {
+    const migration = read('supabase/migrations/20260810014545_add_campaign_items_membership_unique_key.sql');
+    const editRoute = read('app/api/tenant/catalogs/[id]/route.ts');
+
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION app.evaluate_product_for_campaigns_v2');
+    expect(migration).not.toContain('ON CONFLICT (campaign_id, tenant_product_id)');
+    expect(editRoute).not.toContain("onConflict: 'campaign_id,tenant_product_id'");
+  });
+
+  it('keeps campaign target dirty trigger off generic membership_mode reads', () => {
+    const migration = read('supabase/migrations/20260810015317_fix_campaign_membership_target_dirty_trigger.sql');
+    const campaignsBranch = migration.match(/ELSIF TG_TABLE_NAME = 'campaigns' THEN[\s\S]*?END IF;\n\n  IF TG_OP = 'DELETE'/)?.[0] ?? '';
+
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION app.trg_membership_target_dirty');
+    expect(campaignsBranch).toContain("v_row ->> 'buyer_target_mode'");
+    expect(campaignsBranch).toContain("v_row ->> 'product_membership_mode'");
+    expect(campaignsBranch).not.toContain('v_row.membership_mode');
+    expect(campaignsBranch).not.toContain("v_row ->> 'membership_mode'");
+  });
 });

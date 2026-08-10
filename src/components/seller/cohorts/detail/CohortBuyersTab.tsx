@@ -108,6 +108,8 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
   const addMembers = useAddCohortMembers(cohortId);
   const removeMembers = useRemoveCohortMembers(cohortId);
   const canEditMembership = rules_summary.is_static;
+  const automaticMembershipTooltip =
+    'This customer-group gets automatic membership based on the above filter criteria. Update filters to manage membership';
 
   // Automatic-mode rule editing lives here (requirement 5); mode switching itself stays
   // Edit-overlay-only (requirement 6). The `rules` column holds the new fixed-bucket
@@ -262,7 +264,19 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
                     <p className="truncate text-base font-medium text-cream-950">{buyer.business_name}</p>
                     <p className="mt-0.5 truncate text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
                   </td>
-                  <td className="px-3 py-3"><MemberToggle checked={buyer.is_member} label={`${buyer.business_name} membership`} /></td>
+                  <td className="px-3 py-3">
+                    <MemberToggle
+                      checked={buyer.is_member}
+                      label={`${buyer.business_name} membership`}
+                      disabled={!canEditMembership}
+                      disabledReason={!canEditMembership ? automaticMembershipTooltip : undefined}
+                      isPending={addMembers.isPending || removeMembers.isPending}
+                      onChange={(next) => {
+                        if (next) addMembers.mutate([buyer.buyer_id]);
+                        else removeMembers.mutate([buyer.buyer_id]);
+                      }}
+                    />
+                  </td>
                   <td className="px-3 py-3 text-base text-cream-900">{buyer.geography_label}</td>
                   <td className="px-3 py-3 text-right">
                     <p className="font-display text-md text-cream-950">{formatNumberValue(buyer.spend_90d, 'CURRENCY_EXACT')}</p>

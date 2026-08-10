@@ -34,6 +34,7 @@ import type {
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { WarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Sales (high → low)' | 'Sold units (high → low)' | 'Sold SKUs (high → low)' | 'Sellable units (high → low)' | 'Name (A → Z)';
@@ -90,6 +91,8 @@ export function WarehousesLandingClient({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/warehouses');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
   const period: SellerLandingPeriod = 'quarter';
@@ -220,7 +223,10 @@ export function WarehousesLandingClient({
             : `${totalRows} warehouses · sales and stock posture for ${horizonLabel.toLowerCase()}.`}
           horizon={horizonLabel}
           primary="Add warehouse"
-          onPrimaryClick={() => setSheetOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_warehouse');
+            setSheetOpen(true);
+          }}
           compact={isPaneOpen}
         />
 

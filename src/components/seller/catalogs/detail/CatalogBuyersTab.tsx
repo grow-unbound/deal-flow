@@ -164,6 +164,8 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   const removeBuyers = useRemoveCampaignBuyers(catalogId);
   const buyerTargetMode = composer?.buyer_target_mode ?? 'manual';
   const canEditMembership = buyerTargetMode === 'manual';
+  const automaticMembershipTooltip =
+    'This campaign gets automatic membership based on the above filter criteria. Update filters to manage membership';
 
   // Automatic-mode rule editing (requirement 5); "customer_group" targeting has no rules to
   // edit here -- that's a cohort pick, changed via Edit only.
@@ -325,7 +327,19 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
                     <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
                     <p className="mt-0.5 text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
                   </td>
-                  <td className="px-3 py-3"><MemberToggle checked={Boolean(buyer.is_member)} label={`${buyer.buyer_name} campaign membership`} /></td>
+                  <td className="px-3 py-3">
+                    <MemberToggle
+                      checked={Boolean(buyer.is_member)}
+                      label={`${buyer.buyer_name} campaign membership`}
+                      disabled={!canEditMembership}
+                      disabledReason={!canEditMembership ? automaticMembershipTooltip : undefined}
+                      isPending={addBuyers.isPending || removeBuyers.isPending}
+                      onChange={(next) => {
+                        if (next) addBuyers.mutate([buyer.buyer_id]);
+                        else removeBuyers.mutate([buyer.buyer_id]);
+                      }}
+                    />
+                  </td>
                   <td className="px-3 py-3 text-base text-cream-900">{buyer.geography_label ?? buyer.city ?? '—'}</td>
                   <td className="px-3 py-3"><StatusTag label={normalizedStatus} tone={statusTone(buyer.opened_status)} /></td>
                   <td className="px-3 py-3 text-right">

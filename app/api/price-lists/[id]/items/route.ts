@@ -240,6 +240,60 @@ export async function POST(
     return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   }
 
+  const { data: existingItem, error: existingItemError } = await db
+    .schema('app')
+    .from('price_list_items')
+    .select('id, deleted_at')
+    .eq('price_list_id', id)
+    .eq('tenant_product_id', data.tenant_product_id)
+    .eq('min_qty', data.min_qty)
+    .maybeSingle();
+
+  if (existingItemError) {
+    console.error(
+      '[POST /api/price-lists/[id]/items] existing item lookup error:',
+      existingItemError.code,
+      existingItemError.message,
+    );
+    return NextResponse.json({ error: 'Failed to add item' }, { status: 500 });
+  }
+
+  if (existingItem && !existingItem.deleted_at) {
+    return NextResponse.json(
+      {
+        error:
+          'A price entry already exists for this product at that minimum quantity.',
+      },
+      { status: 409 },
+    );
+  }
+
+  if (existingItem?.deleted_at) {
+    const { data: item, error: reactivateError } = await db
+      .schema('app')
+      .from('price_list_items')
+      .update({
+        price: data.price,
+        max_qty: data.max_qty ?? null,
+        deleted_at: null,
+        updated_by: claims.sub,
+      })
+      .eq('id', existingItem.id)
+      .select()
+      .single();
+
+    if (reactivateError) {
+      console.error(
+        '[POST /api/price-lists/[id]/items] reactivate item error:',
+        reactivateError.code,
+        reactivateError.message,
+      );
+      return NextResponse.json({ error: 'Failed to add item' }, { status: 500 });
+    }
+
+    return NextResponse.json({ item }, { status: 201 });
+  }
+
   const { data: item, error: insertError } = await db
     .schema('app')
     .from('price_list_items')
@@ -256,16 +310,6 @@ export async function POST(
     .single();
 
   if (insertError) {
-    // Unique constraint: (price_list_id, tenant_product_id, min_qty)
-    if (insertError.code === '23505') {
-      return NextResponse.json(
-        {
-          error:
-            'A price entry already exists for this product at that minimum quantity.',
-        },
-        { status: 409 },
-      );
-    }
     console.error(
       '[POST /api/price-lists/[id]/items] DB error:',
       insertError.code,

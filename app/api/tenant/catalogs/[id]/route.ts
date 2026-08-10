@@ -73,6 +73,20 @@ type CatalogDraftSnapshot = {
   }>;
 };
 
+function logCatalogPatchDbError(
+  branch: string,
+  context: Record<string, unknown>,
+  error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined,
+) {
+  console.error(`[PATCH /api/tenant/catalogs/:id] ${branch} failed`, {
+    ...context,
+    code: error?.code,
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+  });
+}
+
 const PatchSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('extend_validity'),
@@ -733,7 +747,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
     .from('campaigns')
-    .select('id, tenant_id, name, status, share_token, scope_type, scope_value, valid_from, valid_to, message, hero_image_url')
+    .select('id, tenant_id, name, status, share_token, scope_type, scope_value, valid_from, valid_to, message, hero_image_url, product_membership_mode')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -943,17 +957,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const { error: insertItemsError } = await db
         .schema('app')
         .from('campaign_items')
-        .upsert(
+        .insert(
           globalComposerDraft.items.map((item) => ({
             campaign_id: id,
             tenant_product_id: item.tenant_product_id,
             display_order: item.display_order,
             price_override: item.price_override ?? null,
-            deleted_at: null,
             created_by: claims.sub,
             updated_by: claims.sub,
           })),
-          { onConflict: 'campaign_id,tenant_product_id' },
         );
 
       if (insertItemsError) {
@@ -1038,7 +1050,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   if (actionParsed.success && actionParsed.data.action === 'add_product') {
-    if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
+    if (globalCatalog.product_membership_mode === 'automatic') {
+      return NextResponse.json({ error: 'Update filters to manage automatic product membership' }, { status: 400 });
+    }
     const { error } = await db
       .schema('app')
       .from('campaign_items')
@@ -1056,7 +1070,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   if (actionParsed.success && actionParsed.data.action === 'remove_product') {
-    if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
+    if (globalCatalog.product_membership_mode === 'automatic') {
+      return NextResponse.json({ error: 'Update filters to manage automatic product membership' }, { status: 400 });
+    }
     const { error } = await db
       .schema('app')
       .from('campaign_items')
@@ -1163,6 +1179,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .single();
 
     if (updateCatalogError || !updatedCatalog) {
+      logCatalogPatchDbError('simple campaign update', {
+        campaignId: id,
+        tenantId: claims.tenant_id,
+        buyerTargetMode,
+        productMembershipMode,
+      }, updateCatalogError);
       return NextResponse.json({ error: 'Failed to update catalog' }, { status: 500 });
     }
 
@@ -1184,6 +1206,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .eq('campaign_id', id);
 
       if (existingItemsError) {
+        logCatalogPatchDbError('load existing simple campaign items', {
+          campaignId: id,
+          tenantId: claims.tenant_id,
+          selectedProductCount: payload.selected_product_ids.length,
+        }, existingItemsError);
         return NextResponse.json({ error: 'Failed to sync selected products' }, { status: 500 });
       }
 
@@ -1202,6 +1229,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub })
           .in('id', idsToSoftDelete);
         if (deleteItemsError) {
+          logCatalogPatchDbError('soft-delete unselected simple campaign items', {
+            campaignId: id,
+            tenantId: claims.tenant_id,
+            deleteCount: idsToSoftDelete.length,
+          }, deleteItemsError);
           return NextResponse.json({ error: 'Failed to remove unselected products' }, { status: 500 });
         }
       }
@@ -1220,6 +1252,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             })
             .eq('id', existingItem.id);
           if (updateItemError) {
+            logCatalogPatchDbError('reactivate simple campaign item', {
+              campaignId: id,
+              tenantId: claims.tenant_id,
+              campaignItemId: existingItem.id,
+              tenantProductId,
+            }, updateItemError);
             return NextResponse.json({ error: 'Failed to update selected products' }, { status: 500 });
           }
           continue;
@@ -1238,6 +1276,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             deleted_at: null,
           });
         if (insertItemError) {
+          logCatalogPatchDbError('insert simple campaign item', {
+            campaignId: id,
+            tenantId: claims.tenant_id,
+            tenantProductId,
+          }, insertItemError);
           return NextResponse.json({ error: 'Failed to add selected products' }, { status: 500 });
         }
       }
@@ -1405,6 +1448,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .single();
 
   if (updateCatalogError || !updatedCatalog) {
+    logCatalogPatchDbError('composer campaign update', {
+      campaignId: id,
+      tenantId: claims.tenant_id,
+      saveMode: payload.save_mode,
+      isDynamic: payload.is_dynamic,
+      itemCount: payload.items.length,
+    }, updateCatalogError);
     return NextResponse.json({ error: 'Failed to update catalog' }, { status: 500 });
   }
 
@@ -1417,6 +1467,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .is('deleted_at', null);
 
   if (deleteItemsError) {
+    logCatalogPatchDbError('soft-delete composer campaign items', {
+      campaignId: id,
+      tenantId: claims.tenant_id,
+    }, deleteItemsError);
     return NextResponse.json({ error: 'Failed to refresh catalog items' }, { status: 500 });
   }
 
@@ -1424,20 +1478,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { error: insertItemsError } = await db
       .schema('app')
       .from('campaign_items')
-      .upsert(
+      .insert(
         payload.items.map((item) => ({
           campaign_id: id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
           price_override: item.price_override ?? null,
-          deleted_at: null,
           created_by: claims.sub,
           updated_by: claims.sub,
         })),
-        { onConflict: 'campaign_id,tenant_product_id' },
       );
 
     if (insertItemsError) {
+      logCatalogPatchDbError('insert composer campaign items', {
+        campaignId: id,
+        tenantId: claims.tenant_id,
+        itemCount: payload.items.length,
+      }, insertItemsError);
       return NextResponse.json({ error: 'Failed to save catalog items' }, { status: 500 });
     }
   }

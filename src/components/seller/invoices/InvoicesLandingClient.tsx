@@ -32,6 +32,7 @@ import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from 
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -105,6 +106,8 @@ function InvoicesLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/invoices');
   const searchParams = useSearchParams();
@@ -280,7 +283,10 @@ function InvoicesLandingContent({
           horizon={horizonLabel}
           showHorizonControl={false}
           primary={createInvoices ? 'Add an invoice' : undefined}
-          onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
+          onPrimaryClick={createInvoices ? () => {
+            captureCta('add_invoice');
+            router.push('/invoices/new');
+          } : undefined}
           compact={isPaneOpen}
         />
         <SellerMobileTransactionTabs active="invoices" />

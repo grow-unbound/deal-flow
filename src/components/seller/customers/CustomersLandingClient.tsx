@@ -40,6 +40,7 @@ import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteSc
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import type { CustomersLandingKpiCardV4 } from '@/lib/customers-landing-v4-types';
 import {
   buildCustomersFilterPreset,
@@ -186,6 +187,8 @@ function CustomersLandingContent({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/customers');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
   const estimatesFlag = useFlagState('ESTIMATES');
@@ -471,7 +474,10 @@ function CustomersLandingContent({
                 : undefined
             }
             primary="Add a Buyer"
-            onPrimaryClick={() => setAddBuyerOpen(true)}
+            onPrimaryClick={() => {
+              captureCta('add_buyer');
+              setAddBuyerOpen(true);
+            }}
             compact={isPaneOpen}
           />
 

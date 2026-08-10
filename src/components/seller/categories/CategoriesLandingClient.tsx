@@ -35,6 +35,7 @@ import { cn, formatNumberValue } from '@/lib/utils';
 import { CATEGORIES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
@@ -73,6 +74,8 @@ function CategoriesLandingContent({
   const isPaneOpen = useSplitPaneOpen('/categories');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
   const period: SellerLandingPeriod = 'quarter';
@@ -196,7 +199,10 @@ function CategoriesLandingContent({
             : `${totalRows} categories in ${horizonLabel.toLowerCase()}.`}
           horizon={horizonLabel}
           primary="Add category"
-          onPrimaryClick={() => setAddSheetOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_category');
+            setAddSheetOpen(true);
+          }}
           compact={isPaneOpen}
         />
 

@@ -476,6 +476,103 @@ export function useCohortMembers(id: string) {
   });
 }
 
+type CohortBuyerMembershipRows = InfiniteData<{
+  rows: Array<{ buyer_id: string; is_member: boolean }>;
+  total: number;
+  nextOffset: number | null;
+}, number>;
+
+function refreshMembershipFilterQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[],
+) {
+  queryClient.removeQueries({ queryKey, type: 'inactive' });
+}
+
+function memberFilterKeepsRow(memberFilter: unknown, isMember: boolean) {
+  if (memberFilter === 'yes') return isMember;
+  if (memberFilter === 'no') return !isMember;
+  return true;
+}
+
+function detailRowsMemberFilter(queryKey: readonly unknown[]) {
+  const params = queryKey[5];
+  return params && typeof params === 'object' && 'member' in params
+    ? (params as { member?: unknown }).member
+    : undefined;
+}
+
+function patchCohortMemberCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  cohortId: string,
+  buyerIds: string[],
+  isMember: boolean,
+) {
+  const idSet = new Set(buyerIds);
+  const delta = isMember ? 1 : -1;
+
+  queryClient.getQueriesData<CohortBuyerMembershipRows>({ queryKey: ['cohort-buyers-detail'] }).forEach(([queryKey, old]) => {
+    if (!old) return;
+    const memberFilter = detailRowsMemberFilter(queryKey);
+    queryClient.setQueryData<CohortBuyerMembershipRows>(queryKey, {
+      ...old,
+      pages: old.pages.map((page) => {
+        let removed = 0;
+        const rows = page.rows
+          .map((row) => (idSet.has(row.buyer_id) ? { ...row, is_member: isMember } : row))
+          .filter((row) => {
+            const keep = !idSet.has(row.buyer_id) || memberFilterKeepsRow(memberFilter, row.is_member);
+            if (!keep) removed += 1;
+            return keep;
+          });
+
+        return {
+          ...page,
+          rows,
+          total: Math.max(0, page.total - removed),
+        };
+      }),
+    });
+  });
+
+  queryClient.setQueriesData<CohortDetailResponse>(
+    { queryKey: ['cohort-detail', cohortId] },
+    (old) => {
+      if (!old) return old;
+      const nextCount = Math.max(0, old.rules_summary.member_count + delta * buyerIds.length);
+      return {
+        ...old,
+        meta_strip_4: {
+          ...old.meta_strip_4,
+          member_count: nextCount,
+        },
+        rules_summary: {
+          ...old.rules_summary,
+          member_count: nextCount,
+        },
+      };
+    },
+  );
+
+  queryClient.setQueriesData<InfiniteData<CohortsLandingResponse, number>>(
+    { queryKey: ['cohorts-landing'] },
+    (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          cohorts: page.cohorts.map((cohort) =>
+            cohort.id === cohortId
+              ? { ...cohort, total_members: Math.max(0, cohort.total_members + delta * buyerIds.length) }
+              : cohort,
+          ),
+        })),
+      };
+    },
+  );
+}
+
 export function useSaveCohortComposer(cohortId?: string) {
   const queryClient = useQueryClient();
 
@@ -580,7 +677,7 @@ export function useSaveSimpleCustomerGroup(cohortId?: string) {
       const selectedBrandIds = payload.allowed_tenant_brand_ids ?? [];
 
       if (cohortId) {
-        queryClient.setQueryData<CohortDetailResponse>(['cohort-detail', cohortId], (old) =>
+        queryClient.setQueriesData<CohortDetailResponse>({ queryKey: ['cohort-detail', cohortId] }, (old) =>
           old
             ? {
                 ...old,
@@ -707,7 +804,7 @@ export function useUpdateCohortDetail(id: string) {
     onMutate: async (payload) => {
       const snapshots = await takeSnapshots(queryClient, [['cohort-detail', id], ['cohorts-landing']]);
 
-      queryClient.setQueryData<CohortDetailResponse>(['cohort-detail', id], (old) => {
+      queryClient.setQueriesData<CohortDetailResponse>({ queryKey: ['cohort-detail', id] }, (old) => {
         if (!old) return old;
         return {
           ...old,
@@ -858,12 +955,26 @@ export function useAddCohortMembers(cohortId: string) {
       }
       return res.json() as Promise<{ ok: boolean; count: number }>;
     },
-    onSuccess: () => {
+    onMutate: async (buyerIds) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['cohort-detail', cohortId],
+        ['cohorts-landing'],
+      ]);
+      patchCohortMemberCaches(queryClient, cohortId, buyerIds, true);
+      return { snapshots };
+    },
+    onSuccess: (_result, buyerIds) => {
+      patchCohortMemberCaches(queryClient, cohortId, buyerIds, true);
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
-      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      refreshMembershipFilterQueries(queryClient, ['cohort-buyers-detail']);
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
       toast.success('Buyers added to customer group');
     },
-    onError: (error) => {
+    onError: (error, _buyerIds, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
       toast.error(error instanceof Error ? error.message : 'Could not add buyers');
     },
   });
@@ -886,12 +997,26 @@ export function useRemoveCohortMembers(cohortId: string) {
       }
       return { ok: true };
     },
-    onSuccess: () => {
+    onMutate: async (buyerIds) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['cohort-detail', cohortId],
+        ['cohorts-landing'],
+      ]);
+      patchCohortMemberCaches(queryClient, cohortId, buyerIds, false);
+      return { snapshots };
+    },
+    onSuccess: (_result, buyerIds) => {
+      patchCohortMemberCaches(queryClient, cohortId, buyerIds, false);
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
-      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      refreshMembershipFilterQueries(queryClient, ['cohort-buyers-detail']);
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
       toast.success('Buyers removed from customer group');
     },
-    onError: (error) => {
+    onError: (error, _buyerIds, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
       toast.error(error instanceof Error ? error.message : 'Could not remove buyers');
     },
   });

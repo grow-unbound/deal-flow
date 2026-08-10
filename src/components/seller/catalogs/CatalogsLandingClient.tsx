@@ -25,6 +25,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import {
   useTenantCatalogs,
@@ -79,6 +80,8 @@ function CatalogsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/campaigns');
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [campaignFormOpen, setCampaignFormOpen] = useState(false);
   const period: SellerLandingPeriod = 'last90';
   const horizonLabel = 'Trailing 90 days';
@@ -252,7 +255,10 @@ function CatalogsLandingContent({
             horizon={horizonLabel}
             showHorizonControl={!isPaneOpen}
             primary="Add a campaign"
-            onPrimaryClick={() => setCampaignFormOpen(true)}
+            onPrimaryClick={() => {
+              captureCta('add_campaign');
+              setCampaignFormOpen(true);
+            }}
             compact={isPaneOpen}
           />
 

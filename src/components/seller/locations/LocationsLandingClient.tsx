@@ -31,6 +31,7 @@ import {
   type LocationsLandingSort,
 } from '@/hooks/useLocations';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { LOCATIONS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
@@ -78,6 +79,8 @@ function LocationsLandingContent({
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/locations');
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
+  useSellerPageView();
+  const captureCta = useSellerCtaCapture();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedKpiKey, setSelectedKpiKey] = useState<string | null>(null);
   const period: SellerLandingPeriod = 'month';
@@ -197,7 +200,10 @@ function LocationsLandingContent({
             : `${totalLocations} location${totalLocations === 1 ? '' : 's'} · This month activity.`}
           horizon={horizonLabel}
           primary="Add location"
-          onPrimaryClick={() => setSheetOpen(true)}
+          onPrimaryClick={() => {
+            captureCta('add_location');
+            setSheetOpen(true);
+          }}
           compact={isPaneOpen}
         />
 
