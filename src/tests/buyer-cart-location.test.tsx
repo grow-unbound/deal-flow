@@ -303,6 +303,68 @@ describe('buyer cart location details', () => {
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledWith('/buy/location?returnTo=%2Fbuy%2Fcart');
     });
+
+    expect(screen.getByText('Choose an outlet to continue with your quote or order.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /get whatsapp quote/i })).toBeDisabled();
+  });
+
+  it('warns and disables CTAs when the selected address has no routed outlet', async () => {
+    useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() });
+    useCartMock.mockReturnValue({
+      items: [
+        {
+          tenant_product_id: 'tp-1',
+          name: 'Camera',
+          quantity: 1,
+          line_total: 5000,
+          unit_price: 5000,
+          stock_status: 'available',
+        },
+      ],
+      itemCount: 1,
+      subtotal: 5000,
+      removeItem: vi.fn(),
+      updateQty: vi.fn(),
+      clearCart: vi.fn(),
+      replaceItems: vi.fn(),
+    });
+    useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
+    useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
+      selected: {
+        place_id: 'place-1',
+        label: 'Remote Area',
+        formatted_address: 'Remote Area, Mumbai, Maharashtra',
+        city: 'Mumbai',
+        pincode: '400058',
+        lat: 19.12,
+        lng: 72.84,
+        selection_source: 'maps',
+        place_of_supply: 'Remote Area',
+        nearest_warehouse_id: null,
+        routed_location_id: null,
+        routed_location_name: null,
+        nearest_warehouse_name: null,
+        nearest_warehouse_distance_km: null,
+        nearest_warehouse_fallback: false,
+      },
+    });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
+        business_policy: { gst_inclusive: false, gst_rate: 18 },
+        order_features: { create_sales_orders: true, create_enquiries: true },
+      },
+    });
+    useBuyerResolvedProductsMock.mockReturnValue({ data: null, isLoading: false, isError: false });
+
+    const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
+    renderWithQueryClient(<CartPage />);
+
+    expect(screen.getByText('Choose an outlet that can be routed to a warehouse before you continue.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /get whatsapp quote/i })).toBeDisabled();
   });
 
   it('shows campaign price in cart rows after product reconciliation', async () => {

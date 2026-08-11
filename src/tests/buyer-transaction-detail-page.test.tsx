@@ -69,6 +69,7 @@ describe('buyer transaction detail page GST presentation', () => {
               product_name: 'Camera',
               internal_sku: 'SKU-1',
               unit: 'pc',
+              image_url: 'https://cdn.example.com/camera.webp',
               qty: 1,
               unit_price: 1000,
               tax_rate: 18,
@@ -114,6 +115,7 @@ describe('buyer transaction detail page GST presentation', () => {
     expect(screen.getByText('Included in Prices')).toBeInTheDocument();
     expect(screen.getByText('Camera')).toBeInTheDocument();
     expect(screen.getByText('1 pc × ₹1,000')).toBeInTheDocument();
+    expect(screen.getByAltText('Camera')).toHaveAttribute('src');
     expect(screen.getAllByText('₹1,000')).toHaveLength(3);
     expect(screen.queryByText('₹1,180')).not.toBeInTheDocument();
   });
@@ -142,6 +144,7 @@ describe('buyer transaction detail page GST presentation', () => {
               product_name: 'Camera',
               internal_sku: 'SKU-1',
               unit: 'pc',
+              image_url: null,
               qty: 1,
               unit_price: 1000,
               tax_rate: 18,

@@ -187,6 +187,14 @@ export default function CartPage() {
   const isBusy = submissionPhase !== 'idle';
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
+  const missingOutletSelection = !selectedDelivery;
+  const missingRoutedLocation = Boolean(selectedDelivery && !selectedDelivery.routed_location_id);
+  const ctaBlockedByLocation = missingOutletSelection || missingRoutedLocation;
+  const cartLocationWarning = missingOutletSelection
+    ? 'Choose an outlet to continue with your quote or order.'
+    : missingRoutedLocation
+      ? 'Choose an outlet that can be routed to a warehouse before you continue.'
+      : null;
 
   function openOutletSelector(): void {
     markBuyerNavigationForward();
@@ -655,7 +663,10 @@ export default function CartPage() {
         <button
           onClick={openOutletSelector}
           className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
-          style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
+          style={{
+            border: `1px solid ${cartLocationWarning ? 'var(--danger-200, #fecaca)' : 'var(--border-1)'}`,
+            background: cartLocationWarning ? 'var(--danger-50, #fef2f2)' : 'var(--bg-surface, #fff)',
+          }}
         >
           <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>
             <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--ember-400)' }} />
@@ -689,6 +700,17 @@ export default function CartPage() {
             <ChevronRight className="w-3 h-3" style={{ color: 'var(--teal-500)' }} />
           </div>
         </button>
+
+        {cartLocationWarning ? (
+          <div
+            className="rounded-[12px] px-4 py-3"
+            style={{ background: 'var(--danger-50, #fef2f2)', border: '1px solid var(--danger-200, #fecaca)' }}
+          >
+            <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-600, #dc2626)', lineHeight: '1.45' }}>
+              {cartLocationWarning}
+            </p>
+          </div>
+        ) : null}
 
         {/* Manual-location pickup note */}
         {delivery?.selected?.selection_source === 'maps' && delivery.selected.routed_location_name ? (
@@ -755,7 +777,7 @@ export default function CartPage() {
           {allowRequestQuote && (
             <button
               onClick={handleRequestQuote}
-              disabled={isBusy || items.length === 0}
+              disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
@@ -766,7 +788,7 @@ export default function CartPage() {
           {allowPlaceOrder && (
             <button
               onClick={handlePlaceOrder}
-              disabled={isBusy || items.length === 0}
+              disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
             >

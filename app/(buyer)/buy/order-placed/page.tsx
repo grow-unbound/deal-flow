@@ -11,7 +11,7 @@ export default function OrderPlacedPage() {
         title="Order created"
         detailEndpoint="/api/buyer/orders"
         successHeading="Order created successfully"
-        successCopy="Your order is in the queue. We’ll keep the canonical number in sync once Zoho confirms it."
+        successCopy="Your order is in the queue."
         documentLabel="Order"
       />
     </Suspense>
