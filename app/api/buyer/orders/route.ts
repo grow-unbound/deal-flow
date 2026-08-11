@@ -86,6 +86,18 @@ async function loadBuyerBusinessPolicy(db: any, tenantId: string) {
   };
 }
 
+async function loadBuyerStockEnforcement(db: any, tenantId: string): Promise<boolean> {
+  const { data } = await db
+    .schema('app')
+    .from('tenant_settings')
+    .select('settings')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  const rawSettings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+  const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
+  return rawBuyerApp.stock_visibility_enabled === true && rawBuyerApp.block_order_on_oos === true;
+}
+
 export interface BuyerOrder {
   id: string;
   order_number: string;
@@ -176,10 +188,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
     const inventoryWarehouseId = await resolveBuyerInventoryWarehouseId(db as any, request, profile);
+    const enforceStock = await loadBuyerStockEnforcement(db as any, tenant_id);
     const stockValidation = await validateBuyerCartStock(db as any, {
       tenantId: tenant_id,
       warehouseId: inventoryWarehouseId,
       items,
+      enforceStock,
     });
     if (!stockValidation.ok) {
       return NextResponse.json(

@@ -8,6 +8,7 @@ import { usePostHog } from 'posthog-js/react';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
@@ -25,6 +26,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const posthog = usePostHog();
   const analyticsIds = useBuyerAnalyticsIds();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
+  const { data: meData } = useBuyerMe();
+  const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const {
     item,
     recos,
@@ -129,7 +132,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     ? item.brand_logo_url
     : null;
   const activeImage = productImage ?? categoryImage ?? brandLogo;
-  const showStockOverlay = item?.stock_status === 'limited' || item?.stock_status === 'out_of_stock';
+  const showStockOverlay = stockVisible && (item?.stock_status === 'limited' || item?.stock_status === 'out_of_stock');
   const categoryRecoTitle = item?.category_name
     ? `More in ${item.category_name}`
     : 'More in this category';
@@ -257,8 +260,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   <SpecRow label="SKU" value={item.internal_sku} mono />
                   {item.brand_name ? <SpecRow label="Brand" value={item.brand_name} /> : null}
                   {item.category_name ? <SpecRow label="Category" value={item.category_name} /> : null}
-                  <SpecRow label="Tax" value={taxLabel} />
-                  <SpecRow label="Stock" value={stockLabel} isLast />
+                  <SpecRow label="Tax" value={taxLabel} isLast={!stockVisible} />
+                  {stockVisible ? <SpecRow label="Stock" value={stockLabel} isLast /> : null}
                 </>
               )}
             </div>
@@ -351,13 +354,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
               ) : (
                 <button
                   type="button"
-                  disabled={item.stock_status === 'out_of_stock'}
                   onClick={handleAddToCart}
-                  className={cn(
-                    'flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white',
-                    item.stock_status === 'out_of_stock' ? 'cursor-not-allowed opacity-50' : '',
-                  )}
-                  style={{ background: item.stock_status === 'out_of_stock' ? 'var(--fg-3)' : 'var(--teal-500)' }}
+                  className="flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white"
+                  style={{ background: 'var(--teal-500)' }}
                 >
                   <Plus className="h-4 w-4" aria-hidden />
                   Add

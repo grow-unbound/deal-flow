@@ -50,6 +50,10 @@ interface BuyerMeResponse {
     gst_inclusive: boolean;
     gst_rate: number;
   };
+  stock_visibility: {
+    enabled: boolean;
+    block_order_on_oos: boolean;
+  };
   // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
   // the explicit consent checkbox — the buyer-side client redirects to /consent
   // until this clears. Always false for seller preview (no real buyer row).
@@ -135,6 +139,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
     const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
     const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
+    const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
 
     const orderFeatures = {
       enquiries: rawFeatures.enquiries === true,
@@ -147,6 +152,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       credit_enabled: rawPolicy.credit_enabled !== false,
       gst_inclusive: rawPolicy.gst_inclusive === true,
       gst_rate: typeof rawPolicy.gst_rate === 'number' ? rawPolicy.gst_rate : 18,
+    };
+    const stockVisibility = {
+      enabled: rawBuyerApp.stock_visibility_enabled === true,
+      block_order_on_oos: rawBuyerApp.block_order_on_oos === true,
     };
 
     // Pure seller preview (no linked buyer account)
@@ -177,6 +186,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         greeting_name: 'Preview',
         order_features: orderFeatures,
         business_policy: businessPolicy,
+        stock_visibility: stockVisibility,
         whatsapp_consent_required: false,
       };
 
@@ -299,6 +309,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       greeting_name: profile.greeting_name,
       order_features: orderFeatures,
       business_policy: businessPolicy,
+      stock_visibility: stockVisibility,
       whatsapp_consent_required: !buyer.whatsapp_consent_at,
     };
 

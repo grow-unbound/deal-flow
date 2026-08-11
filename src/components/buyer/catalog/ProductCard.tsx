@@ -14,6 +14,7 @@ import {
   hasBuyerCampaignPrice,
 } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
@@ -76,6 +77,8 @@ export function ProductCard({
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const { items, addItem, updateQty } = useCart();
+  const { data: meData } = useBuyerMe();
+  const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
@@ -97,7 +100,6 @@ export function ProductCard({
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
-    if (isOos) return;
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
@@ -157,7 +159,7 @@ export function ProductCard({
       <div
         className={cn(
           'relative flex aspect-square items-center justify-center overflow-hidden bg-[var(--bg-surface)]',
-          isOos && 'opacity-80 saturate-[0.85]',
+          stockVisible && isOos && 'opacity-80 saturate-[0.85]',
         )}
       >
         <Pressable asChild haptic>
@@ -176,7 +178,7 @@ export function ProductCard({
             ) : showPromotionBadge && showCampaignPrice ? (
               <ProductPromotionBadge />
             ) : null}
-            {item.stock_status === 'limited' || item.stock_status === 'out_of_stock' ? (
+            {stockVisible && (item.stock_status === 'limited' || item.stock_status === 'out_of_stock') ? (
               <ProductStockCornerBadge status={item.stock_status} />
             ) : null}
             {activeImg ? (
@@ -260,11 +262,10 @@ export function ProductCard({
         ) : (
           <button
             type="button"
-            disabled={isOos}
             onClick={handleQuickAdd}
             className={cn(
               'absolute z-[2] flex items-center justify-center rounded-md bg-[#1C1C1E] text-white shadow-md',
-              'active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
+              'active:scale-95',
               isCompact ? 'bottom-1.5 right-1.5 h-6 w-6' : 'bottom-2 right-2 h-8 w-8',
             )}
             aria-label="Add to cart"

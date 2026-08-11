@@ -262,7 +262,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         buyer_id: String(row.id),
         role: 'buyer_admin',
         principal_type: 'buyer',
-        user_id: null,
+        user_id: row.user_id,
         buyer_user_id: null,
         phone: normalizedPhone,
         business_name: String(row.business_name ?? ''),
@@ -308,41 +308,21 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
   }));
 }
 
+// The owner logs in as app.buyers directly — never via app.buyer_users, which
+// is reserved for real staff (assistants/managers) under a buyer. The auth
+// link lives on buyers.user_id, filled in lazily on first login.
 async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promise<{ user: User; email: string }> {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
   }
 
-  const db = supabaseAdmin;
-  const { data: existingRows, error: existingError } = await db
-    .schema('app')
-    .from('buyer_users')
-    .select('id, user_id, role, phone, email')
-    .eq('buyer_id', candidate.buyer_id)
-    .eq('role', 'buyer_admin')
-    .eq('phone', candidate.phone)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .limit(1);
+  const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
 
-  if (existingError) {
-    throw new Error(`Failed to load buyer owner principal: ${existingError.message}`);
-  }
-
-  const existing = (existingRows ?? [])[0] as { id: string; user_id: string; email: string | null } | undefined;
-  if (existing?.user_id) {
-    // email is persisted on buyer_users at creation time below — no Auth Admin API
-    // round-trip needed for a returning login. Rows created before this existed
-    // (pre-fix) fall back to the deterministic synthetic email.
-    const email = existing.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
-    return {
-      user: { id: existing.user_id } as User,
-      email,
-    };
+  if (candidate.user_id) {
+    return { user: { id: candidate.user_id } as User, email };
   }
 
   const password = randomPassword();
-  const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
   const fullName = candidate.contact_name?.trim() || candidate.business_name;
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -365,22 +345,14 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
     throw new Error(createError?.message ?? 'Failed to create buyer auth user');
   }
 
-  const { error: insertError } = await db
+  const { error: updateError } = await supabaseAdmin
     .schema('app')
-    .from('buyer_users')
-    .insert({
-      buyer_id: candidate.buyer_id,
-      user_id: created.user.id,
-      role: 'buyer_admin',
-      phone: candidate.phone,
-      email,
-      is_active: true,
-      created_by: created.user.id,
-      updated_by: created.user.id,
-    });
+    .from('buyers')
+    .update({ user_id: created.user.id, updated_by: created.user.id })
+    .eq('id', candidate.buyer_id);
 
-  if (insertError) {
-    throw new Error(`Failed to link buyer auth user: ${insertError.message}`);
+  if (updateError) {
+    throw new Error(`Failed to link buyer auth user: ${updateError.message}`);
   }
 
   return { user: created.user, email };
@@ -414,7 +386,7 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
       throw new Error(error?.message ?? 'Buyer delegate auth user not found');
     }
 
-    const email = data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
+    const email = data.user.email ?? syntheticBuyerEmail(candidate.phone, candidate.buyer_user_id ?? candidate.buyer_id);
     if (candidate.buyer_user_id) {
       await supabaseAdmin
         .schema('app')
@@ -437,7 +409,12 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
   }
 
   const password = randomPassword();
-  const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_id);
+  // Keyed off buyer_user_id, not buyer_id — a delegate's phone can legitimately
+  // equal the buyer owner's own phone (same person added twice, or shared office
+  // line), and the owner's synthetic email is keyed off buyer_id alone. Keying
+  // both off the same (phone, buyer_id) pair collides them onto one email,
+  // which auth.admin.createUser then rejects as a duplicate.
+  const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_user_id);
   const fullName = candidate.contact_name?.trim() || candidate.business_name;
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,

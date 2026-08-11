@@ -25,9 +25,10 @@ export async function validateBuyerCartStock(
     tenantId: string;
     warehouseId: string | null;
     items: BuyerCartStockLine[];
+    enforceStock: boolean;
   },
 ): Promise<{ ok: true; items: BuyerCartStockLine[] } | { ok: false; status: number; error: string }> {
-  const { tenantId, warehouseId, items } = params;
+  const { tenantId, warehouseId, items, enforceStock } = params;
   if (!warehouseId) {
     return { ok: false, status: 400, error: 'Select a delivery location that can be routed to a warehouse.' };
   }
@@ -51,6 +52,10 @@ export async function validateBuyerCartStock(
   const validIds = Array.from(productMap.keys());
   if (validIds.length === 0) {
     return { ok: false, status: 400, error: 'Cart items are no longer available.' };
+  }
+
+  if (!enforceStock) {
+    return { ok: true, items };
   }
 
   const { data: inventoryData, error: inventoryError } = await db
