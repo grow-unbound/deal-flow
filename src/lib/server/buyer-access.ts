@@ -730,6 +730,7 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     role: string;
     location_ids: string[] | null;
     email: string | null;
+    full_name: string | null;
   }>).map((row) => ({
     kind: 'seller' as const,
     tenant_id: row.tenant_id,
@@ -744,7 +745,7 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     buyer_user_id: null,
     phone: normalizedPhone,
     business_name: '',
-    contact_name: null,
+    contact_name: row.full_name,
     email: row.email,
   }));
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
@@ -26,10 +26,11 @@ export default function WhatsappConsentPage() {
   const [error, setError] = useState('');
 
   // Already consented (or nothing to gate, e.g. seller preview) — skip straight through.
-  if (!isLoading && me && !me.whatsapp_consent_required) {
-    router.replace('/buy/home');
-    return null;
-  }
+  const shouldSkip = !isLoading && !!me && !me.whatsapp_consent_required;
+  useEffect(() => {
+    if (shouldSkip) router.replace('/buy/home');
+  }, [shouldSkip, router]);
+  if (shouldSkip) return null;
 
   const sellerName = me?.tenant?.name ?? 'your distributor';
 

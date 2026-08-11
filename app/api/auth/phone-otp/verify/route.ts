@@ -88,9 +88,11 @@ export async function POST(request: NextRequest) {
       // non-blocking
     }
 
-    // Seller wins: if any seller candidates exist, prefer them over buyer candidates.
-    const sellerCandidates = record.candidates.filter((c) => c.kind === 'seller');
-    const effectiveCandidates = sellerCandidates.length > 0 ? sellerCandidates : record.candidates;
+    // Show every distinct account linked to this phone — findAllLoginCandidates
+    // already dedups true same-account collisions (a buyer row whose user_id
+    // matches an existing seller). No kind-level priority beyond that: a seller
+    // at one tenant and a buyer at an unrelated tenant should both be offered.
+    const effectiveCandidates = record.candidates;
 
     if (effectiveCandidates.length > 1) {
       const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates);

@@ -196,7 +196,7 @@ export function SellerGlobalHeader({ tenantBrandingPromise, tenantBrandingOverri
                   haptic
                 >
                   <Repeat size={16} strokeWidth={2} />
-                  Switch Seller
+                  Switch account
                 </Button>
                 <Button
                   variant="ghost"

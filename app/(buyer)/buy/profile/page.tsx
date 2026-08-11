@@ -593,7 +593,7 @@ export default function ProfilePage() {
         <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
           <AccountRow
             icon={<Repeat className="h-5 w-5" />}
-            title="Switch Account"
+            title="Switch account"
             subtitle="Use another account linked to this number"
             onClick={() => { void handleSwitchAccount(); }}
             action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
