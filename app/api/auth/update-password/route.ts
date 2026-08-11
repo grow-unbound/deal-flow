@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import type { Database } from '@/types/database';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
 export async function PATCH(request: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient<Database>({
-    cookies: async () => cookieStore,
-  });
+  const supabase = await getRequestSupabaseClient();
 
   const {
     data: { user },

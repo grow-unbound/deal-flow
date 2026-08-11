@@ -37,6 +37,8 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     share_link_expiry_days: 90,
     credit_limit_visible: true,
     show_out_of_stock: true,
+    stock_visibility_enabled: false,
+    block_order_on_oos: false,
   },
   catalog: {
     price_lists_enabled: false,

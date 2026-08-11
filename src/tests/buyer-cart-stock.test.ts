@@ -36,6 +36,7 @@ describe('buyer cart stock validation', () => {
       tenantId: 'tenant-1',
       warehouseId: 'wh-1',
       items: [{ tenant_product_id: 'tp-1', qty: 1, unit_price: 1000, product_name: 'Camera' }],
+      enforceStock: true,
     });
 
     expect(result.ok).toBe(false);
@@ -43,5 +44,30 @@ describe('buyer cart stock validation', () => {
       expect(result.status).toBe(409);
       expect(result.error).toContain('Camera');
     }
+  });
+
+  it('allows out-of-stock items through when enforcement is off', async () => {
+    const db = {
+      schema: () => ({
+        from: (table: string) => {
+          if (table === 'tenant_products') {
+            return chain({
+              data: [{ id: 'tp-1', name_override: 'Camera', internal_sku: 'SKU-1' }],
+              error: null,
+            });
+          }
+          throw new Error(`Unexpected table ${table}`);
+        },
+      }),
+    };
+
+    const result = await validateBuyerCartStock(db as any, {
+      tenantId: 'tenant-1',
+      warehouseId: 'wh-1',
+      items: [{ tenant_product_id: 'tp-1', qty: 1, unit_price: 1000, product_name: 'Camera' }],
+      enforceStock: false,
+    });
+
+    expect(result.ok).toBe(true);
   });
 });

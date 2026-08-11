@@ -121,6 +121,8 @@ export default function SettingsPage() {
         enabled: finalDraft.buyer_app.enabled,
         whatsapp_number: finalDraft.buyer_app.whatsapp_number,
         whatsapp_display_name: finalDraft.buyer_app.whatsapp_display_name,
+        stock_visibility_enabled: finalDraft.buyer_app.stock_visibility_enabled,
+        block_order_on_oos: finalDraft.buyer_app.block_order_on_oos,
       },
       catalog: {
         price_lists_enabled: finalDraft.catalog.price_lists_enabled,

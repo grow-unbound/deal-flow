@@ -2,6 +2,6 @@
 
 import { LocationOrdersTab } from './LocationOrdersTab';
 
-export function LocationEstimatesTab({ locationId }: { locationId: string }) {
-  return <LocationOrdersTab locationId={locationId} kind="estimate" routeBase="/estimates" />;
+export function LocationEstimatesTab({ locationId, locationName }: { locationId: string; locationName?: string | null }) {
+  return <LocationOrdersTab locationId={locationId} locationName={locationName} kind="estimate" routeBase="/estimates" />;
 }

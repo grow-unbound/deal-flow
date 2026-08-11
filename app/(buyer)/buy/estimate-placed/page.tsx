@@ -11,7 +11,7 @@ export default function EstimatePlacedPage() {
         title="Estimate created"
         detailEndpoint="/api/buyer/estimates"
         successHeading="Estimate created successfully"
-        successCopy="Your estimate is ready. We’ll keep the canonical number in sync once Zoho confirms it."
+        successCopy="Your estimate is ready."
         documentLabel="Estimate"
       />
     </Suspense>

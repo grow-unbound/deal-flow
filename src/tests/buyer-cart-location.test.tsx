@@ -1,5 +1,5 @@
 import React, { type ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -126,7 +126,7 @@ describe('buyer cart location details', () => {
     expect(apiFetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/buyer/nearest-location'));
   });
 
-  it('highlights out-of-stock cart lines and excludes them from totals', async () => {
+  it('includes out-of-stock lines in totals and ordering when stock visibility is off', async () => {
     useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() });
     useCartMock.mockReturnValue({
       items: [
@@ -178,6 +178,7 @@ describe('buyer cart location details', () => {
         tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
         business_policy: { gst_inclusive: true, gst_rate: 18 },
         order_features: { create_sales_orders: true, create_enquiries: true },
+        stock_visibility: { enabled: false, block_order_on_oos: false },
       },
     });
     useBuyerResolvedProductsMock.mockReturnValue({ data: null, isLoading: false, isError: false });
@@ -185,11 +186,83 @@ describe('buyer cart location details', () => {
     const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
     renderWithQueryClient(<CartPage />);
 
-    expect(screen.getByText('Out of stock for selected location')).toBeInTheDocument();
-    expect(screen.getByText('Excluded')).toBeInTheDocument();
+    expect(screen.queryByText('Out of stock for selected location')).not.toBeInTheDocument();
+    expect(screen.queryByText('Excluded')).not.toBeInTheDocument();
     expect(screen.getByText('Included in Prices')).toBeInTheDocument();
-    expect(screen.getAllByText('₹5,000').length).toBeGreaterThan(0);
-    expect(screen.queryByText('₹12,000')).not.toBeInTheDocument();
+    expect(screen.getAllByText('₹12,000').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /place order/i })).not.toBeDisabled();
+  });
+
+  it('grays out out-of-stock lines and confirms the order/enquiry split when block_order_on_oos is on', async () => {
+    useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() });
+    useCartMock.mockReturnValue({
+      items: [
+        {
+          tenant_product_id: 'tp-1',
+          name: 'Available Camera',
+          quantity: 1,
+          line_total: 5000,
+          unit_price: 5000,
+          stock_status: 'available',
+        },
+        {
+          tenant_product_id: 'tp-2',
+          name: 'Unavailable Camera',
+          quantity: 1,
+          line_total: 7000,
+          unit_price: 7000,
+          stock_status: 'out_of_stock',
+        },
+      ],
+      itemCount: 2,
+      subtotal: 12000,
+      removeItem: vi.fn(),
+      removeItems: vi.fn(),
+      updateQty: vi.fn(),
+      clearCart: vi.fn(),
+      replaceItems: vi.fn(),
+    });
+    useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
+    useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
+      selected: {
+        place_id: 'place-1',
+        label: 'Andheri West',
+        formatted_address: 'Andheri West, Mumbai, Maharashtra',
+        city: 'Mumbai',
+        pincode: '400058',
+        lat: 19.12,
+        lng: 72.84,
+        place_of_supply: 'Andheri West',
+        nearest_warehouse_id: 'wh-1',
+        routed_location_id: 'loc-1',
+        nearest_warehouse_name: 'Mumbai Warehouse',
+        nearest_warehouse_distance_km: 4,
+        nearest_warehouse_fallback: false,
+      },
+    });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
+        business_policy: { gst_inclusive: true, gst_rate: 18 },
+        order_features: { create_sales_orders: true, create_enquiries: true },
+        stock_visibility: { enabled: true, block_order_on_oos: true },
+      },
+    });
+    useBuyerResolvedProductsMock.mockReturnValue({ data: null, isLoading: false, isError: false });
+
+    const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
+    renderWithQueryClient(<CartPage />);
+
+    expect(screen.getByText('Out of stock')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /place order/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /get whatsapp quote/i })).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /place order/i }));
+
+    expect(await screen.findByText('Some items are out of stock')).toBeInTheDocument();
+    expect(screen.getByText(/will be submitted as an Enquiry/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit order & enquiry/i })).toBeInTheDocument();
   });
 
   it('redirects first-time cart visits to outlet selection when nothing is selected', async () => {
@@ -230,6 +303,68 @@ describe('buyer cart location details', () => {
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledWith('/buy/location?returnTo=%2Fbuy%2Fcart');
     });
+
+    expect(screen.getByText('Choose an outlet to continue with your quote or order.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /get whatsapp quote/i })).toBeDisabled();
+  });
+
+  it('warns and disables CTAs when the selected address has no routed outlet', async () => {
+    useRouterMock.mockReturnValue({ back: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() });
+    useCartMock.mockReturnValue({
+      items: [
+        {
+          tenant_product_id: 'tp-1',
+          name: 'Camera',
+          quantity: 1,
+          line_total: 5000,
+          unit_price: 5000,
+          stock_status: 'available',
+        },
+      ],
+      itemCount: 1,
+      subtotal: 5000,
+      removeItem: vi.fn(),
+      updateQty: vi.fn(),
+      clearCart: vi.fn(),
+      replaceItems: vi.fn(),
+    });
+    useCartBundlesMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
+    useBuyerDeliveryOptionalMock.mockReturnValue({
+      hydrated: true,
+      selected: {
+        place_id: 'place-1',
+        label: 'Remote Area',
+        formatted_address: 'Remote Area, Mumbai, Maharashtra',
+        city: 'Mumbai',
+        pincode: '400058',
+        lat: 19.12,
+        lng: 72.84,
+        selection_source: 'maps',
+        place_of_supply: 'Remote Area',
+        nearest_warehouse_id: null,
+        routed_location_id: null,
+        routed_location_name: null,
+        nearest_warehouse_name: null,
+        nearest_warehouse_distance_km: null,
+        nearest_warehouse_fallback: false,
+      },
+    });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant', outlets: [] },
+        business_policy: { gst_inclusive: false, gst_rate: 18 },
+        order_features: { create_sales_orders: true, create_enquiries: true },
+      },
+    });
+    useBuyerResolvedProductsMock.mockReturnValue({ data: null, isLoading: false, isError: false });
+
+    const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
+    renderWithQueryClient(<CartPage />);
+
+    expect(screen.getByText('Choose an outlet that can be routed to a warehouse before you continue.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /get whatsapp quote/i })).toBeDisabled();
   });
 
   it('shows campaign price in cart rows after product reconciliation', async () => {

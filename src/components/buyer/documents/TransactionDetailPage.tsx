@@ -2,6 +2,7 @@
 
 import { formatNumberValue } from '@/lib/utils';
 import * as React from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { MapPin, Package, ShoppingCart } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
@@ -39,6 +40,7 @@ export interface TransactionLineItem {
   product_name: string;
   internal_sku: string | null;
   unit: string | null;
+  image_url?: string | null;
   qty: number;
   unit_price: number;
   tax_rate: number | null;
@@ -117,8 +119,19 @@ function formatDocSubtitle(doc: TransactionDoc, docType: DocType): string {
 function LineItemRow({ item }: { item: TransactionLineItem }) {
   return (
     <div className="flex items-start gap-3 py-3">
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[14px] border border-cream-200 bg-cream-100">
-        <Package className="h-5 w-5 text-[var(--cream-400)]" />
+      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100">
+        {item.image_url ? (
+          <Image
+            src={item.image_url}
+            alt={item.product_name}
+            fill
+            className="object-cover"
+            sizes="56px"
+            unoptimized
+          />
+        ) : (
+          <Package className="h-5 w-5 text-[var(--cream-400)]" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">

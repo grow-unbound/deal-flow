@@ -2,9 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Store, ShoppingBag } from 'lucide-react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
-import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
+import type { LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -24,8 +25,53 @@ function roleBadge(role: string) {
   return ROLE_LABELS[role] ?? role;
 }
 
-function contextKey(ctx: LoginOtpContext) {
-  return `${ctx.kind}:${ctx.tenant_id}:${ctx.buyer_id ?? 'no-buyer'}`;
+// Must be unique per distinct account: two accounts at the same buyer (an owner
+// row and a delegate row, or two delegates) can share kind+tenant_id+buyer_id
+// and even role — include the underlying user/delegate id so React never
+// collapses two real, different accounts onto the same key.
+function contextKey(ctx: LoginOtpCandidate) {
+  return `${ctx.kind}:${ctx.tenant_id}:${ctx.buyer_id ?? 'no-buyer'}:${ctx.role}:${ctx.user_id ?? ''}:${ctx.buyer_user_id ?? ''}`;
+}
+
+// Defensive: dedup exact-duplicate candidates (same account surfaced twice by
+// the backend) without ever dropping two genuinely distinct accounts.
+function dedupeContexts(contexts: LoginOtpCandidate[]) {
+  const seen = new Set<string>();
+  return contexts.filter((ctx) => {
+    const key = contextKey(ctx);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// Seller row: person's name (falls back to role if a legacy account has no
+// backfilled full_name). Buyer row: the buying business's name.
+function accountDisplayName(ctx: LoginOtpCandidate) {
+  if (ctx.kind === 'seller') return ctx.contact_name?.trim() || roleBadge(ctx.role);
+  return ctx.business_name?.trim() || roleBadge(ctx.role);
+}
+
+// Secondary line: seller's email, or the buyer contact/delegate person's name
+// (distinct from the business name shown as the primary line above).
+function accountSecondaryLine(ctx: LoginOtpCandidate) {
+  if (ctx.kind === 'seller') return ctx.email?.trim() || null;
+  return ctx.contact_name?.trim() || null;
+}
+
+function groupByTenant(contexts: LoginOtpCandidate[]) {
+  const order: string[] = [];
+  const groups = new Map<string, { tenantName: string; accounts: LoginOtpCandidate[] }>();
+  for (const ctx of contexts) {
+    const existing = groups.get(ctx.tenant_id);
+    if (existing) {
+      existing.accounts.push(ctx);
+    } else {
+      order.push(ctx.tenant_id);
+      groups.set(ctx.tenant_id, { tenantName: ctx.tenant_name, accounts: [ctx] });
+    }
+  }
+  return order.map((tenantId) => ({ tenantId, ...groups.get(tenantId)! }));
 }
 
 function SelectContextForm() {
@@ -33,7 +79,7 @@ function SelectContextForm() {
   const searchParams = useSearchParams();
   const ref_id = searchParams.get('ref_id') ?? '';
 
-  const [contexts, setContexts] = useState<LoginOtpContext[] | null>(null);
+  const [contexts, setContexts] = useState<LoginOtpCandidate[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,18 +96,18 @@ function SelectContextForm() {
         router.replace('/login');
         return;
       }
-      const parsed: LoginOtpContext[] = JSON.parse(raw);
+      const parsed: LoginOtpCandidate[] = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) {
         router.replace('/login');
         return;
       }
-      setContexts(parsed);
+      setContexts(dedupeContexts(parsed));
     } catch {
       router.replace('/login');
     }
   }, [ref_id, router]);
 
-  async function handleSelect(ctx: LoginOtpContext) {
+  async function handleSelect(ctx: LoginOtpCandidate) {
     setSelected(contextKey(ctx));
     setError('');
     setLoading(true);
@@ -146,46 +192,61 @@ function SelectContextForm() {
         Your number is linked to multiple accounts. Select one to continue.
       </p>
 
-      <div className="space-y-3">
-        {contexts.map((ctx) => {
-          const key = contextKey(ctx);
-          const isSelected = selected === key;
-          const isDisabled = loading;
+      <div className="space-y-5">
+        {groupByTenant(contexts).map((group) => (
+          <div key={group.tenantId}>
+            <p className="text-caption font-semibold uppercase tracking-wide text-cream-500 mb-2 truncate">
+              {group.tenantName}
+            </p>
+            <div className="space-y-2">
+              {group.accounts.map((ctx) => {
+                const key = contextKey(ctx);
+                const isSelected = selected === key;
+                const isDisabled = loading;
+                const Icon = ctx.kind === 'seller' ? Store : ShoppingBag;
 
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => !isDisabled && handleSelect(ctx)}
-              disabled={isDisabled}
-              className={[
-                'w-full text-left px-4 py-3.5 rounded-lg border transition-all duration-base',
-                'bg-[var(--bg-surface)] hover:bg-cream-50',
-                isSelected
-                  ? 'border-teal-500 ring-2 ring-teal-500/20 shadow-sm'
-                  : 'border-cream-300 hover:border-cream-400',
-                isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-              ].join(' ')}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-body-sm font-semibold text-cream-900 truncate">
-                    {ctx.tenant_name}
-                  </p>
-                  {ctx.email && (
-                    <p className="text-caption text-cream-600 mt-0.5 truncate">{ctx.email}</p>
-                  )}
-                </div>
-                <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
-                  {roleBadge(ctx.role)}
-                </span>
-              </div>
-              {isSelected && loading && (
-                <p className="text-caption text-teal-600 mt-1.5">Signing you in…</p>
-              )}
-            </button>
-          );
-        })}
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => !isDisabled && handleSelect(ctx)}
+                    disabled={isDisabled}
+                    className={[
+                      'w-full text-left px-4 py-3.5 rounded-lg border transition-all duration-base',
+                      'bg-[var(--bg-surface)] hover:bg-cream-50',
+                      isSelected
+                        ? 'border-teal-500 ring-2 ring-teal-500/20 shadow-sm'
+                        : 'border-cream-300 hover:border-cream-400',
+                      isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-cream-100 text-cream-700">
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-body-sm font-semibold text-cream-900 truncate">
+                            {accountDisplayName(ctx)}
+                          </p>
+                          {accountSecondaryLine(ctx) && (
+                            <p className="text-caption text-cream-600 mt-0.5 truncate">{accountSecondaryLine(ctx)}</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                        {roleBadge(ctx.role)}
+                      </span>
+                    </div>
+                    {isSelected && loading && (
+                      <p className="text-caption text-teal-600 mt-1.5">Signing you in…</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {error && (

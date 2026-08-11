@@ -40,6 +40,7 @@ type CartAnalyticsContext = {
 type CartAction =
   | { type: 'ADD_ITEM'; item: BuyerCartItem }
   | { type: 'REMOVE_ITEM'; tenant_product_id: string }
+  | { type: 'REMOVE_ITEMS'; tenant_product_ids: string[] }
   | { type: 'UPDATE_QTY'; tenant_product_id: string; quantity: number }
   | { type: 'CLEAR_CART' }
   | { type: 'REPLACE_ITEMS'; items: BuyerCartItem[] }
@@ -99,6 +100,9 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => i.tenant_product_id !== action.tenant_product_id) };
+
+    case 'REMOVE_ITEMS':
+      return { ...state, items: state.items.filter((i) => !action.tenant_product_ids.includes(i.tenant_product_id)) };
 
     case 'UPDATE_QTY': {
       if (action.quantity <= 0) {
@@ -179,6 +183,7 @@ export interface CartContextValue {
   setCampaignId: (campaignId: string | null) => void;
   addItem: (item: BuyerCartItem, campaignId?: string | null, analytics?: CartAnalyticsContext) => void;
   removeItem: (tenant_product_id: string) => void;
+  removeItems: (tenant_product_ids: string[]) => void;
   updateQty: (tenant_product_id: string, quantity: number) => void;
   clearCart: () => void;
   replaceItems: (items: BuyerCartItem[]) => void;
@@ -285,6 +290,23 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     }
   }, [posthog]);
 
+  const removeItems = useCallback((tenant_product_ids: string[]) => {
+    hasClientMutationRef.current = true;
+    if (tenant_product_ids.length === 0) return;
+    const currentState = stateRef.current;
+    const removedItems = currentState.items.filter((item) => tenant_product_ids.includes(item.tenant_product_id));
+    const nextItems = currentState.items.filter((i) => !tenant_product_ids.includes(i.tenant_product_id));
+    dispatch({ type: 'REMOVE_ITEMS', tenant_product_ids });
+    if (removedItems.length > 0) {
+      posthog?.capture('buyer_cart_items_removed', {
+        tenant_product_ids,
+        removed_count: removedItems.length,
+        source_surface: 'buyer_cart',
+        ...getCartAnalyticsSnapshot(nextItems, currentState.campaignId),
+      });
+    }
+  }, [posthog]);
+
   const updateQty = useCallback((tenant_product_id: string, quantity: number) => {
     hasClientMutationRef.current = true;
     const currentState = stateRef.current;
@@ -324,9 +346,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = state.items
-    .filter((item) => item.stock_status !== 'out_of_stock')
-    .reduce((sum, i) => sum + i.line_total, 0);
+  const subtotal = state.items.reduce((sum, i) => sum + i.line_total, 0);
   const resolvedCampaignId = resolveBuyerCartCampaignId(state.campaignId, state.items);
 
   const value = useMemo<CartContextValue>(() => ({
@@ -338,6 +358,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     setCampaignId,
     addItem,
     removeItem,
+    removeItems,
     updateQty,
     clearCart,
     replaceItems,
@@ -346,6 +367,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     clearCart,
     itemCount,
     removeItem,
+    removeItems,
     replaceItems,
     resolvedCampaignId,
     setCampaignId,

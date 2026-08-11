@@ -1,7 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/database';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { clearClientAuthSnapshot, getClientAccessToken, setClientAuthSnapshot } from '@/lib/auth-client-store';
 
 type CachedAuth = {
@@ -10,14 +9,6 @@ type CachedAuth = {
 };
 
 let authCache: CachedAuth | null = null;
-let browserClient: ReturnType<typeof createClientComponentClient<Database>> | null = null;
-
-function getBrowserClient() {
-  if (!browserClient) {
-    browserClient = createClientComponentClient<Database>();
-  }
-  return browserClient;
-}
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const now = Date.now();
@@ -34,8 +25,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     return { Authorization: `Bearer ${cachedToken}` };
   }
 
-  const supabase = getBrowserClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await supabaseBrowser.auth.getSession();
   if (!session?.access_token) {
     authCache = null;
     clearClientAuthSnapshot();

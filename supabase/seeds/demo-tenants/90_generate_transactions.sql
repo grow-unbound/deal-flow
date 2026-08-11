@@ -33,6 +33,8 @@ DECLARE
   v_tenant_abbr text;
   v_buyer_ids uuid[];
   v_buyer_count int;
+  v_location_ids uuid[];
+  v_location_count int;
 
   v_day date;
   v_order_count integer;
@@ -105,6 +107,13 @@ BEGIN
     RAISE EXCEPTION 'No buyers found for %.', p_tenant_slug;
   END IF;
 
+  SELECT array_agg(id ORDER BY is_default DESC, created_at) INTO v_location_ids
+  FROM app.locations WHERE tenant_id = v_tenant_id AND deleted_at IS NULL;
+  v_location_count := coalesce(array_length(v_location_ids, 1), 0);
+  IF v_location_count = 0 THEN
+    RAISE EXCEPTION 'No locations found for %.', p_tenant_slug;
+  END IF;
+
   v_tenant_abbr := upper(left(regexp_replace(p_tenant_slug, '-demo$', ''), 3));
 
   -- ── Standalone estimates (6, one per status) ────────────────────────────
@@ -115,15 +124,15 @@ BEGIN
     v_buy_pick := v_buyer_ids[1 + (se.idx % v_buyer_count)];
 
     INSERT INTO app.estimates (
-      tenant_id, buyer_id, estimate_number, status, campaign_id,
+      tenant_id, buyer_id, estimate_number, status, campaign_id, location_id, is_buyer_app_estimate,
       subtotal, tax_amount, total_amount, currency, notes, source,
       sent_at, accepted_at, expires_at, external_ref,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
       v_tenant_id, v_buy_pick,
       format('EST-%s-%s-%s', v_tenant_abbr, extract(year from now())::int, lpad(v_est_seq::text, 4, '0')),
-      se.st, v_campaign_id,
-      0, 0, 0, 'INR', 'Seed estimate', 'seller',
+      se.st, v_campaign_id, v_location_ids[1 + (se.idx % v_location_count)], (se.idx % 3 = 0),
+      0, 0, 0, 'INR', 'Seed estimate', CASE WHEN se.idx % 3 = 0 THEN 'buyer_app' ELSE 'seller' END,
       CASE WHEN se.st IN ('sent','accepted','declined') THEN now() - interval '4 days' ELSE NULL END,
       CASE WHEN se.st = 'accepted' THEN now() - interval '2 days' ELSE NULL END,
       CASE WHEN se.st = 'expired' THEN now() - interval '3 days' ELSE now() + interval '30 days' END,
@@ -167,15 +176,15 @@ BEGIN
     v_buy_pick := v_buyer_ids[1 + (v_conv_idx % v_buyer_count)];
 
     INSERT INTO app.estimates (
-      tenant_id, buyer_id, estimate_number, status, campaign_id,
+      tenant_id, buyer_id, estimate_number, status, campaign_id, location_id, is_buyer_app_estimate,
       subtotal, tax_amount, total_amount, currency, notes, source,
       sent_at, accepted_at, expires_at, external_ref,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
       v_tenant_id, v_buy_pick,
       format('EST-%s-%s-%s', v_tenant_abbr, extract(year from now())::int, lpad(v_est_seq::text, 4, '0')),
-      'accepted', v_campaign_id,
-      0, 0, 0, 'INR', 'Seed estimate converted to sales order', 'seller',
+      'accepted', v_campaign_id, v_location_ids[1 + (v_conv_idx % v_location_count)], (v_conv_idx = 1),
+      0, 0, 0, 'INR', 'Seed estimate converted to sales order', CASE WHEN v_conv_idx = 1 THEN 'buyer_app' ELSE 'seller' END,
       now() - interval '6 days', now() - interval '1 day', now() + interval '20 days',
       format('seed-est-conv-%s-%s', p_tenant_slug, lpad(v_conv_idx::text, 2, '0')),
       now(), now(), v_seller_user_id, v_seller_user_id
@@ -215,11 +224,13 @@ BEGIN
     v_order_number := format('%s-EST-%s', v_tenant_abbr, lpad(v_conv_idx::text, 3, '0'));
 
     INSERT INTO app.orders (
-      tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
+      tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id, location_id, is_buyer_app_order,
       subtotal, tax_amount, total_amount, currency, notes, placed_at, order_date, estimate_id,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
-      v_tenant_id, v_buy_pick, v_seller_user_id, v_order_number, 'delivered', 'cockpit_manual', v_campaign_id,
+      v_tenant_id, v_buy_pick, v_seller_user_id, v_order_number, 'delivered',
+      CASE WHEN v_conv_idx = 1 THEN 'buyer_app' ELSE 'cockpit_manual' END, v_campaign_id,
+      v_location_ids[1 + (v_conv_idx % v_location_count)], (v_conv_idx = 1),
       v_subtotal, v_tax_total, round(v_subtotal + v_tax_total, 2), 'INR', 'Converted from estimate (seed)',
       now() - interval '12 hours' * v_conv_idx, (now() - interval '12 hours' * v_conv_idx)::date, v_estimate_id,
       now(), now(), v_seller_user_id, v_seller_user_id
@@ -241,7 +252,7 @@ BEGIN
     FOR v_i IN 1..v_order_count LOOP
       v_order_number := format('%s-%s-%s', v_tenant_abbr, to_char(v_day, 'YYYYMMDD'), lpad(v_i::text, 3, '0'));
       v_buyer_id := v_buyer_ids[1 + (abs(hashtext(v_order_number)) % v_buyer_count)];
-      v_source := CASE v_i % 3 WHEN 0 THEN 'buyer_app' WHEN 1 THEN 'cockpit_manual' ELSE 'csv_import' END;
+      v_source := CASE abs(hashtext(v_order_number)) % 3 WHEN 0 THEN 'buyer_app' WHEN 1 THEN 'cockpit_manual' ELSE 'csv_import' END;
       v_status := CASE ((extract(day FROM v_day)::int + v_i) % 9)
         WHEN 0 THEN 'received' WHEN 1 THEN 'confirmed' WHEN 2 THEN 'partially_dispatched'
         WHEN 3 THEN 'dispatched' WHEN 4 THEN 'delivered' WHEN 5 THEN 'cancelled'
@@ -249,12 +260,13 @@ BEGIN
       END;
 
       INSERT INTO app.orders (
-        tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
+        tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id, location_id, is_buyer_app_order,
         subtotal, tax_amount, total_amount, currency, notes, placed_at, order_date,
         created_at, updated_at, created_by, updated_by
       ) VALUES (
         v_tenant_id, v_buyer_id, v_seller_user_id, v_order_number, v_status, v_source,
         CASE WHEN v_i % 2 = 0 THEN v_campaign_id ELSE NULL END,
+        v_location_ids[1 + (abs(hashtext(v_order_number || 'loc')) % v_location_count)], (v_source = 'buyer_app'),
         0, 0, 0, 'INR', 'Seed sales order',
         v_day::timestamptz + make_interval(hours => 10 + (v_i % 7), mins => (v_i * 9) % 60), v_day,
         now(), now(), v_seller_user_id, v_seller_user_id
@@ -302,14 +314,14 @@ BEGIN
   v_buy_pick := v_buyer_ids[v_buyer_count];
 
   INSERT INTO app.estimates (
-    tenant_id, buyer_id, estimate_number, status, campaign_id,
+    tenant_id, buyer_id, estimate_number, status, campaign_id, location_id,
     subtotal, tax_amount, total_amount, currency, notes, source,
     sent_at, accepted_at, expires_at, external_ref,
     created_at, updated_at, created_by, updated_by
   ) VALUES (
     v_tenant_id, v_buy_pick,
     format('EST-%s-%s-%s', v_tenant_abbr, extract(year from now())::int, lpad(v_est_seq::text, 4, '0')),
-    'accepted', v_campaign_id,
+    'accepted', v_campaign_id, v_location_ids[1],
     0, 0, 0, 'INR', 'Seed estimate invoiced directly', 'seller',
     now() - interval '8 days', now() - interval '3 days', now() + interval '14 days',
     format('seed-est-invoice-direct-%s', p_tenant_slug),
@@ -347,14 +359,14 @@ BEGIN
   WHERE id = v_direct_est_id;
 
   INSERT INTO app.invoices (
-    tenant_id, buyer_id, order_id, invoice_number, invoice_date, status,
+    tenant_id, buyer_id, order_id, invoice_number, invoice_date, status, location_id,
     subtotal, tax_amount, total_amount, outstanding_balance,
     estimate_id, due_date, paid_at, external_ref,
     created_at, updated_at, created_by, updated_by
   ) VALUES (
     v_tenant_id, v_buy_pick, NULL,
     format('INV-%s-%s-%s', v_tenant_abbr, extract(year from now())::int, lpad(v_inv_seq::text, 4, '0')),
-    now() - interval '2 days', 'sent',
+    now() - interval '2 days', 'sent', v_location_ids[1],
     v_subtotal, v_tax_total, round(v_subtotal + v_tax_total, 2), round(v_subtotal + v_tax_total, 2),
     v_direct_est_id, now() + interval '10 days', NULL, format('seed-inv-direct-est-%s', p_tenant_slug),
     now(), now(), v_seller_user_id, v_seller_user_id
@@ -372,7 +384,7 @@ BEGIN
 
   -- ── Invoices from qualifying orders + status mix, payments for 'paid' ───
   FOR r_order IN
-    SELECT o.id, o.buyer_id, o.order_number, o.status, o.placed_at, o.estimate_id
+    SELECT o.id, o.buyer_id, o.order_number, o.status, o.placed_at, o.estimate_id, o.location_id, o.is_buyer_app_order
     FROM app.orders o
     WHERE o.tenant_id = v_tenant_id AND o.deleted_at IS NULL
       AND o.status IN ('delivered', 'dispatched', 'partially_dispatched', 'confirmed')
@@ -393,6 +405,8 @@ BEGIN
     v_mod := v_inv_seq % 7;
     IF v_mod = 0 THEN
       v_inv_status := 'paid'; v_inv_due := now() - interval '5 days'; v_inv_paid_at := now() - interval '1 day'; v_inv_outstanding := 0;
+    ELSIF v_mod = 1 THEN
+      v_inv_status := 'sent'; v_inv_due := now() - interval '12 days'; v_inv_paid_at := NULL; v_inv_outstanding := NULL; -- overdue: sent + past due, still unpaid
     ELSIF v_mod = 3 THEN
       v_inv_status := 'draft'; v_inv_due := now() + interval '21 days'; v_inv_paid_at := NULL; v_inv_outstanding := NULL;
     ELSIF v_mod = 4 THEN
@@ -402,14 +416,14 @@ BEGIN
     END IF;
 
     INSERT INTO app.invoices (
-      tenant_id, buyer_id, order_id, invoice_number, invoice_date, status,
+      tenant_id, buyer_id, order_id, invoice_number, invoice_date, status, location_id, is_buyer_app_invoice,
       subtotal, tax_amount, total_amount, outstanding_balance,
       estimate_id, due_date, paid_at, external_ref,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
       v_tenant_id, r_order.buyer_id, r_order.id,
       format('INV-%s-%s-%s', v_tenant_abbr, extract(year from now())::int, lpad(v_inv_seq::text, 4, '0')),
-      coalesce(r_order.placed_at, now()) + interval '6 hours', v_inv_status,
+      coalesce(r_order.placed_at, now()) + interval '6 hours', v_inv_status, r_order.location_id, r_order.is_buyer_app_order,
       0, 0, 0, coalesce(v_inv_outstanding, 0), r_order.estimate_id, v_inv_due, v_inv_paid_at,
       format('seed-inv-order-%s-%s', p_tenant_slug, replace(r_order.order_number, '-', '_')),
       now(), now(), v_seller_user_id, v_seller_user_id
@@ -455,6 +469,37 @@ BEGIN
       updated_at = now(), updated_by = v_seller_user_id
     WHERE id = r_order.id;
   END LOOP;
+
+  -- ── Buyer-app engagement activity (funnel) + campaign views ─────────────
+  INSERT INTO app.buyer_app_activity (tenant_id, buyer_id, location_id, event_name, event_source, source_entity_id, occurred_at, occurred_day, qualifies_for_engagement, created_by, updated_by)
+  SELECT v_tenant_id, o.buyer_id, o.location_id, 'order_placed', 'order', o.id, o.placed_at, o.placed_at::date, true, v_seller_user_id, v_seller_user_id
+  FROM app.orders o
+  WHERE o.tenant_id = v_tenant_id AND o.is_buyer_app_order = true AND o.deleted_at IS NULL;
+
+  INSERT INTO app.buyer_app_activity (tenant_id, buyer_id, location_id, event_name, event_source, source_entity_id, occurred_at, occurred_day, qualifies_for_engagement, created_by, updated_by)
+  SELECT v_tenant_id, e.buyer_id, e.location_id, 'estimate_requested', 'estimate', e.id, coalesce(e.sent_at, e.created_at), coalesce(e.sent_at, e.created_at)::date, true, v_seller_user_id, v_seller_user_id
+  FROM app.estimates e
+  WHERE e.tenant_id = v_tenant_id AND e.is_buyer_app_estimate = true AND e.deleted_at IS NULL;
+
+  -- App-opened browsing sessions for every buyer-app-enabled buyer, spread over the last 30 days
+  INSERT INTO app.buyer_app_activity (tenant_id, buyer_id, location_id, event_name, event_source, occurred_at, occurred_day, qualifies_for_engagement, created_by, updated_by)
+  SELECT v_tenant_id, b.id, v_location_ids[1 + (abs(hashtext(b.id::text || d::text)) % v_location_count)],
+         'app_opened', 'route',
+         (current_date - d)::timestamptz + make_interval(hours => 9 + (abs(hashtext(b.id::text || d::text)) % 10)),
+         current_date - d, true, v_seller_user_id, v_seller_user_id
+  FROM app.buyers b
+  CROSS JOIN generate_series(0, 29, 4) AS d
+  WHERE b.tenant_id = v_tenant_id AND b.buyer_app_enabled = true AND b.deleted_at IS NULL;
+
+  IF v_campaign_id IS NOT NULL THEN
+    INSERT INTO app.campaign_views (tenant_id, buyer_id, campaign_id, viewed_at, source, view_date, created_by, updated_by)
+    SELECT v_tenant_id, b.id, v_campaign_id,
+           (current_date - d)::timestamptz + make_interval(hours => 10 + (abs(hashtext(b.id::text || 'cv' || d::text)) % 9)),
+           'buyer_app', current_date - d, v_seller_user_id, v_seller_user_id
+    FROM app.buyers b
+    CROSS JOIN generate_series(0, 25, 5) AS d
+    WHERE b.tenant_id = v_tenant_id AND b.buyer_app_enabled = true AND b.deleted_at IS NULL;
+  END IF;
 
   RAISE NOTICE '% — seeded % standalone estimates + 4 converted chains + bulk orders + direct invoice + order-linked invoices.', p_tenant_slug, 6;
 END;

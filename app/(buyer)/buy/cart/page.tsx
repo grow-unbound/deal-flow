@@ -7,6 +7,17 @@ import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { DialogBody } from '@/components/ui/dialog';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -92,6 +103,7 @@ export default function CartPage() {
   const allowRequestQuote = meData?.order_features.create_enquiries ?? false;
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
+  const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
 
   useEffect(() => {
     router.prefetch('/buy/order-placed');
@@ -142,16 +154,24 @@ export default function CartPage() {
     }
   }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
 
-  const availableItems = useMemo(
+  const stockVisible = meData?.stock_visibility?.enabled ?? false;
+  const blockOnOos = meData?.stock_visibility?.block_order_on_oos ?? false;
+  const blockingActive = stockVisible && blockOnOos;
+  const oosItems = useMemo(
+    () => items.filter((item) => item.stock_status === 'out_of_stock'),
+    [items],
+  );
+  const inStockItems = useMemo(
     () => items.filter((item) => item.stock_status !== 'out_of_stock'),
     [items],
   );
-  const availableItemCount = availableItems.reduce((sum, item) => sum + item.quantity, 0);
+  const hasOos = oosItems.length > 0;
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   const deliveryFee = 0;
   const totals = useMemo(
     () => computeBuyerCartTotals(
-      availableItems.map((item) => ({
+      items.map((item) => ({
         quantity: item.quantity,
         unit_price: item.unit_price,
         disc_pct: 0,
@@ -160,21 +180,29 @@ export default function CartPage() {
       gstInclusive,
       gstRate,
     ),
-    [availableItems, gstInclusive, gstRate],
+    [items, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
   const ctaCount = (allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0);
   const isBusy = submissionPhase !== 'idle';
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
+  const missingOutletSelection = !selectedDelivery;
+  const missingRoutedLocation = Boolean(selectedDelivery && !selectedDelivery.routed_location_id);
+  const ctaBlockedByLocation = missingOutletSelection || missingRoutedLocation;
+  const cartLocationWarning = missingOutletSelection
+    ? 'Choose an outlet to continue with your quote or order.'
+    : missingRoutedLocation
+      ? 'Choose an outlet that can be routed to a warehouse before you continue.'
+      : null;
 
   function openOutletSelector(): void {
     markBuyerNavigationForward();
     router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
   }
 
-  function buildLineItems(): CartLineItem[] {
-    return availableItems.map((i) => ({
+  function buildLineItems(sourceItems: BuyerCartItem[] = items): CartLineItem[] {
+    return sourceItems.map((i) => ({
       tenant_product_id: i.tenant_product_id,
       qty: i.quantity,
       unit_price: i.unit_price,
@@ -184,7 +212,7 @@ export default function CartPage() {
   }
 
   function buildAnalyticsLineItems() {
-    return availableItems.map((item) => ({
+    return items.map((item) => ({
       tenant_product_id: item.tenant_product_id,
       internal_sku: item.internal_sku ?? null,
       quantity: item.quantity,
@@ -201,15 +229,15 @@ export default function CartPage() {
       document_type: documentType,
       tenant_id: tenantId || null,
       buyer_id: meData?.buyer_id ?? null,
-      line_count: availableItems.length,
-      item_count: availableItemCount,
-      unavailable_line_count: items.length - availableItems.length,
+      line_count: items.length,
+      item_count: itemCount,
+      unavailable_line_count: oosItems.length,
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
       total,
       line_items: buildAnalyticsLineItems(),
       gst_inclusive: gstInclusive,
-      has_campaign_items: availableItems.some((item) => item.has_campaign_price === true),
+      has_campaign_items: items.some((item) => item.has_campaign_price === true),
       campaign_id: resolvedCampaignId ?? null,
       has_delivery_location: Boolean(selectedDelivery),
       routed_location_id: selectedDelivery?.routed_location_id ?? null,
@@ -222,8 +250,8 @@ export default function CartPage() {
       document_type: documentType,
       tenant_id: tenantId || null,
       buyer_id: meData?.buyer_id ?? null,
-      line_count: availableItems.length,
-      item_count: availableItemCount,
+      line_count: items.length,
+      item_count: itemCount,
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
       total,
@@ -349,8 +377,94 @@ export default function CartPage() {
     },
   });
 
+  const placeOrderWithSplitMutation = useMutation({
+    mutationFn: async (): Promise<string> => {
+      if (!selectedDelivery) {
+        throw new Error('Choose an outlet before placing an order.');
+      }
+      const { location_id, place_of_supply } = await resolveFulfillmentPayload();
+      if (!location_id) {
+        throw new Error('Choose an outlet that can be routed to a warehouse.');
+      }
+      const estRaw = await apiFetch('/api/buyer/estimates', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: buildLineItems(oosItems),
+          location_id,
+          place_of_supply,
+          campaign_id: resolvedCampaignId ?? undefined,
+        }),
+      });
+      const estRes: EstimateResponse = await estRaw.json();
+      if (!estRaw.ok || !estRes.success) {
+        throw new Error(estRes.error ?? 'Could not submit an enquiry for the out-of-stock items.');
+      }
+
+      const orderRaw = await apiFetch('/api/buyer/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: buildLineItems(inStockItems),
+          location_id,
+          place_of_supply,
+          campaign_id: resolvedCampaignId ?? undefined,
+        }),
+      });
+      const orderRes: OrderPlaceResponse = await orderRaw.json();
+      if (!orderRaw.ok || !orderRes.success) {
+        throw new Error(orderRes.error ?? 'Could not place order. Please try again.');
+      }
+
+      const inStockTotal = computeBuyerCartTotals(
+        inStockItems.map((item) => ({
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          disc_pct: 0,
+          gst_rate: item.gst_rate ?? gstRate,
+        })),
+        gstInclusive,
+        gstRate,
+      ).total;
+
+      const params = new URLSearchParams({
+        order_id: orderRes.order_id ?? '',
+        order_number: orderRes.order_number ?? '',
+        total: String(inStockTotal),
+      });
+      if (orderRes.document_url) {
+        params.set('document_url', orderRes.document_url);
+      }
+      if (orderRes.document_status_note) {
+        params.set('document_status_note', orderRes.document_status_note);
+      }
+      if (estRes.estimate_number) {
+        params.set('linked_estimate_number', estRes.estimate_number);
+      }
+      if (estRes.estimate_id) {
+        params.set('linked_estimate_id', estRes.estimate_id);
+      }
+      return `/buy/order-placed?${params.toString()}`;
+    },
+    onMutate: () => {
+      setError('');
+      setSubmissionPhase('placing_order');
+    },
+    onSuccess: (href) => {
+      setOosConfirmOpen(false);
+      router.replace(href);
+    },
+    onError: (mutationError) => {
+      const message = mutationError instanceof Error
+        ? mutationError.message
+        : 'Network error. Please check your connection and try again.';
+      captureCartSubmitFailed('order', message);
+      setSubmissionPhase('idle');
+      setOosConfirmOpen(false);
+      setError(message);
+    },
+  });
+
   function handlePlaceOrder() {
-    if (isBusy || availableItems.length === 0) return;
+    if (isBusy || items.length === 0) return;
     if (!selectedDelivery) {
       openOutletSelector();
       setError('Choose an outlet before placing an order.');
@@ -361,12 +475,22 @@ export default function CartPage() {
       setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
+    if (blockingActive && hasOos) {
+      setOosConfirmOpen(true);
+      return;
+    }
     captureCartSubmitIntent('order');
     placeOrderMutation.mutate();
   }
 
+  function handleConfirmPlaceOrderWithSplit() {
+    if (isBusy) return;
+    captureCartSubmitIntent('order');
+    placeOrderWithSplitMutation.mutate();
+  }
+
   function handleRequestQuote() {
-    if (isBusy || availableItems.length === 0) return;
+    if (isBusy || items.length === 0) return;
     if (!selectedDelivery) {
       openOutletSelector();
       setError('Choose an outlet before requesting a quote.');
@@ -380,6 +504,7 @@ export default function CartPage() {
     captureCartSubmitIntent('estimate');
     requestQuoteMutation.mutate();
   }
+
 
   if (items.length === 0) {
     return (
@@ -448,16 +573,17 @@ export default function CartPage() {
         {/* Inline page head */}
         <div className="pb-1">
           <p className="font-semibold uppercase mb-0.5" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
-            {availableItems.length} items · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
+            {items.length} items · {itemCount} {itemCount === 1 ? 'unit' : 'units'}
           </p>
           <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
             Review &amp; place
           </h2>
         </div>
 
-        {/* All items in one card, in cart order, separated by dividers. Out-of-stock
-            items grey out inline (CartPageItem's `unavailable` styling) instead of
-            popping a second conditional card in/out of the layout below. */}
+        {/* All items in one card, in cart order, separated by dividers. Qty/price stay
+            editable for every line — out-of-stock lines just gray out for visibility.
+            Manual removal is always available; blocking (when the tenant enforces it)
+            is handled at submit time via the confirmation dialog below. */}
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           {items.map((item, idx) => (
             <CartPageItem
@@ -466,7 +592,8 @@ export default function CartPage() {
               onQtyChange={updateQty}
               onRemove={removeItem}
               showDivider={idx > 0}
-              unavailable={item.stock_status === 'out_of_stock'}
+              stockBadgeVisible={stockVisible && item.stock_status !== 'available'}
+              grayedOut={stockVisible && item.stock_status === 'out_of_stock'}
             />
           ))}
         </div>
@@ -536,7 +663,10 @@ export default function CartPage() {
         <button
           onClick={openOutletSelector}
           className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
-          style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
+          style={{
+            border: `1px solid ${cartLocationWarning ? 'var(--danger-200, #fecaca)' : 'var(--border-1)'}`,
+            background: cartLocationWarning ? 'var(--danger-50, #fef2f2)' : 'var(--bg-surface, #fff)',
+          }}
         >
           <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>
             <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--ember-400)' }} />
@@ -570,6 +700,17 @@ export default function CartPage() {
             <ChevronRight className="w-3 h-3" style={{ color: 'var(--teal-500)' }} />
           </div>
         </button>
+
+        {cartLocationWarning ? (
+          <div
+            className="rounded-[12px] px-4 py-3"
+            style={{ background: 'var(--danger-50, #fef2f2)', border: '1px solid var(--danger-200, #fecaca)' }}
+          >
+            <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-600, #dc2626)', lineHeight: '1.45' }}>
+              {cartLocationWarning}
+            </p>
+          </div>
+        ) : null}
 
         {/* Manual-location pickup note */}
         {delivery?.selected?.selection_source === 'maps' && delivery.selected.routed_location_name ? (
@@ -636,7 +777,7 @@ export default function CartPage() {
           {allowRequestQuote && (
             <button
               onClick={handleRequestQuote}
-              disabled={isBusy || availableItems.length === 0}
+              disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
@@ -647,7 +788,7 @@ export default function CartPage() {
           {allowPlaceOrder && (
             <button
               onClick={handlePlaceOrder}
-              disabled={isBusy || availableItems.length === 0}
+              disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
             >
@@ -658,6 +799,34 @@ export default function CartPage() {
         </div>
       </BuyerFixedFooter>
 
+      <AlertDialog open={oosConfirmOpen} onOpenChange={(open) => !isBusy && setOosConfirmOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Some items are out of stock</AlertDialogTitle>
+            <AlertDialogDescription>
+              {oosItems.length} out-of-stock item{oosItems.length > 1 ? 's' : ''} will be submitted as an Enquiry.
+              Your Order will include only the {inStockItems.length} in-stock item{inStockItems.length === 1 ? '' : 's'}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogBody className="space-y-1">
+            {oosItems.map((item) => (
+              <p
+                key={item.tenant_product_id}
+                className="truncate"
+                style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}
+              >
+                {item.name}
+              </p>
+            ))}
+          </DialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPlaceOrderWithSplit} disabled={isBusy}>
+              {placingOrder ? 'Submitting…' : 'Submit order & enquiry'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -678,13 +847,15 @@ function CartPageItem({
   onQtyChange,
   onRemove,
   showDivider,
-  unavailable = false,
+  stockBadgeVisible = false,
+  grayedOut = false,
 }: {
   item: BuyerCartItem;
   onQtyChange: (tenant_product_id: string, qty: number) => void;
   onRemove: (tenant_product_id: string) => void;
   showDivider: boolean;
-  unavailable?: boolean;
+  stockBadgeVisible?: boolean;
+  grayedOut?: boolean;
 }) {
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
   const showCampaignPrice = Boolean(
@@ -692,11 +863,12 @@ function CartPageItem({
     && item.resolved_price != null
     && Math.abs(item.resolved_price - item.unit_price) > 0.004,
   );
+  const stockBadgeLabel = item.stock_status === 'out_of_stock' ? 'Out of stock' : 'Low stock';
 
   return (
     <>
       {showDivider && <div style={{ borderTop: '1px solid var(--border-1)' }} />}
-      <div className="flex gap-3 px-4 py-3.5" style={unavailable ? { opacity: 0.78 } : undefined}>
+      <div className="flex gap-3 px-4 py-3.5" style={grayedOut ? { opacity: 0.55 } : undefined}>
         {/* Thumbnail 56×56 */}
         <div
           className="relative rounded-lg flex items-center justify-center overflow-hidden shrink-0"
@@ -727,22 +899,20 @@ function CartPageItem({
                 {subline}
               </p>
             ) : null}
-            {!unavailable ? (
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
-                <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                  {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
-                  {item.unit ? ` / ${item.unit}` : ''}
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
+              <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
+                {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
+                {item.unit ? ` / ${item.unit}` : ''}
+              </span>
+              {showCampaignPrice ? (
+                <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
+                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                 </span>
-                {showCampaignPrice ? (
-                  <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
-                    {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-            {unavailable ? (
+              ) : null}
+            </div>
+            {stockBadgeVisible ? (
               <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
-                Out of stock for selected location
+                {stockBadgeLabel}
               </p>
             ) : null}
           </div>
@@ -759,10 +929,9 @@ function CartPageItem({
         {/* Right: qty stepper + item total */}
         <div className="flex flex-col items-end justify-between shrink-0 py-0.5">
           {/* Pill stepper — no input, just buttons */}
-          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: unavailable ? 'var(--cream-300)' : 'var(--teal-500)' }}>
+          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: 'var(--teal-500)' }}>
             <button
               onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
-              disabled={unavailable}
               className="flex items-center justify-center"
               style={{ width: 24, height: 24, color: '#fff' }}
               aria-label="Decrease"
@@ -777,7 +946,6 @@ function CartPageItem({
             </span>
             <button
               onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
-              disabled={unavailable}
               className="flex items-center justify-center"
               style={{ width: 24, height: 24, color: '#fff' }}
               aria-label="Increase"
@@ -786,18 +954,12 @@ function CartPageItem({
             </button>
           </div>
           {/* Item total */}
-          {unavailable ? (
-            <span className="font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
-              Excluded
-            </span>
-          ) : (
-            <span
-              className="tabular-nums font-semibold"
-              style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
-            >
-              {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
-            </span>
-          )}
+          <span
+            className="tabular-nums font-semibold"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
+          >
+            {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
+          </span>
         </div>
       </div>
     </>

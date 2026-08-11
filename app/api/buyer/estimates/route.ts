@@ -144,6 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       tenantId: tenant_id,
       warehouseId: inventoryWarehouseId,
       items,
+      enforceStock: false,
     });
     if (!stockValidation.ok) {
       return NextResponse.json(

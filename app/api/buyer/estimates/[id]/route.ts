@@ -10,6 +10,7 @@ export interface BuyerEstimateItem {
   product_name: string;
   internal_sku: string | null;
   unit: string | null;
+  image_url: string | null;
   qty: number;
   unit_price: number;
   tax_rate: number | null;

@@ -2,6 +2,7 @@
 
 import { formatNumberValue } from '@/lib/utils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from 'lucide-react';
 
@@ -77,6 +78,8 @@ export function BuyerTransactionPlacedPage({
   const initialStatusNote = params.get('document_status_note') ?? '';
   const total = Number(params.get('total') ?? '0');
   const initialDocumentUrl = params.get('document_url') ?? params.get(kind === 'estimate' ? 'estimate_url' : 'order_url') ?? '';
+  const linkedEstimateNumber = kind === 'order' ? params.get('linked_estimate_number') : null;
+  const linkedEstimateId = kind === 'order' ? params.get('linked_estimate_id') : null;
 
   const [documentNumber, setDocumentNumber] = useState(provisionalNumber);
   const [documentUrl, setDocumentUrl] = useState(initialDocumentUrl);
@@ -234,6 +237,28 @@ export function BuyerTransactionPlacedPage({
               ) : null}
             </div>
           </div>
+
+          {linkedEstimateNumber ? (
+            <div className="mt-3 w-full rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-3.5 text-left">
+              <p className="text-[var(--b-text-sub)] text-[var(--fg-3)]">
+                Out-of-stock items were submitted separately as an Enquiry.
+              </p>
+              <div className="mt-1.5 flex items-center justify-between gap-4">
+                <span className="text-[var(--b-text-label)] font-medium text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {linkedEstimateNumber}
+                </span>
+                {linkedEstimateId ? (
+                  <Link
+                    href={`/buy/estimates/${linkedEstimateId}`}
+                    className="inline-flex items-center gap-1 text-[var(--b-text-sub)] font-medium text-[var(--teal-600,#0d9488)]"
+                  >
+                    View Enquiry
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
             <Button type="button" variant="outline" className="h-12 gap-2" onClick={goToCatalog}>

@@ -1,8 +1,10 @@
-import type { ImgHTMLAttributes, ReactNode } from 'react';
+import type { ImgHTMLAttributes, ReactElement, ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useCartMock = vi.fn();
+const useBuyerMeMock = vi.fn();
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -18,14 +20,40 @@ vi.mock('@/contexts/BuyerCartContext', () => ({
   useCart: (...args: unknown[]) => useCartMock(...args),
 }));
 
+vi.mock('@/hooks/useBuyerMe', () => ({
+  useBuyerMe: (...args: unknown[]) => useBuyerMeMock(...args),
+}));
+
 vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   markBuyerNavigationForward: vi.fn(),
   navigateBuyerBack: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
+}));
+
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';
 
+function renderWithQueryClient(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 describe('buyer product card', () => {
+  beforeEach(() => {
+    useBuyerMeMock.mockReset();
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        buyer_id: 'buyer-1',
+        tenant: { id: 'tenant-1' },
+        stock_visibility: { enabled: false, block_order_on_oos: false },
+      },
+    });
+  });
+
   it('shows compact product identity and price treatment', () => {
     useCartMock.mockReset();
     useCartMock.mockReturnValue({
@@ -34,7 +62,7 @@ describe('buyer product card', () => {
       updateQty: vi.fn(),
     });
 
-    render(
+    renderWithQueryClient(
       <ProductCard
         item={{
           id: '1',
@@ -80,8 +108,15 @@ describe('buyer product card', () => {
       addItem: vi.fn(),
       updateQty: vi.fn(),
     });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        buyer_id: 'buyer-1',
+        tenant: { id: 'tenant-1' },
+        stock_visibility: { enabled: true, block_order_on_oos: false },
+      },
+    });
 
-    const { container } = render(
+    const { container } = renderWithQueryClient(
       <ProductCard
         item={{
           id: '2',
@@ -111,7 +146,7 @@ describe('buyer product card', () => {
 
     expect(screen.getByText('Out of stock')).toHaveClass('text-[var(--danger-500)]');
     expect(container.firstChild).not.toHaveClass('opacity-60');
-    expect(screen.getByRole('button', { name: /add to cart/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /add to cart/i })).not.toBeDisabled();
   });
 
   it('shows a promotion badge for campaign-priced products outside campaign detail views', () => {
@@ -122,7 +157,7 @@ describe('buyer product card', () => {
       updateQty: vi.fn(),
     });
 
-    render(
+    renderWithQueryClient(
       <ProductCard
         item={{
           id: 'promo-1',
@@ -160,7 +195,7 @@ describe('buyer product card', () => {
       updateQty: vi.fn(),
     });
 
-    render(
+    renderWithQueryClient(
       <ProductCard
         showPromotionBadge={false}
         item={{
@@ -199,7 +234,7 @@ describe('buyer product card', () => {
       updateQty: vi.fn(),
     });
 
-    render(
+    renderWithQueryClient(
       <ProductCard
         item={{
           id: '3',
@@ -240,7 +275,7 @@ describe('buyer product card', () => {
       updateQty: vi.fn(),
     });
 
-    render(
+    renderWithQueryClient(
       <ProductCard
         item={{
           id: '4',

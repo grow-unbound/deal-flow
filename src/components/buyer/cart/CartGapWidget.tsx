@@ -228,8 +228,7 @@ function CartGapListItem({
         <button
           type="button"
           onClick={handleAdd}
-          disabled={product.stock_status === 'out_of_stock'}
-          className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg disabled:opacity-40"
+          className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg"
           style={{ background: 'var(--teal-500)', color: '#fff' }}
           aria-label={`Add ${product.display_name} to cart`}
         >

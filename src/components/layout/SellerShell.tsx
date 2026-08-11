@@ -1,9 +1,9 @@
 'use client';
 
 import { ReactNode, Suspense } from 'react';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
 import { SellerMobileBottomTabs, SellerMobileTopbar } from './SellerMobileChrome';
@@ -37,11 +37,16 @@ function isMobileBottomTabRoute(pathname: string) {
   );
 }
 
+interface SellerShellMeta {
+  featureAvailability: SellerShellFeatureAvailability;
+  branding: { tenantName: string; tenantLogoUrl: string | null };
+}
+
 export function SellerShell({ children, featureAvailabilityPromise, tenantBrandingPromise }: SellerShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [isForcedCollapsed, setIsForcedCollapsed] = useState(false);
-  const router = useRouter();
+  const [shellMetaOverride, setShellMetaOverride] = useState<SellerShellMeta | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -62,21 +67,36 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
     };
   }, []);
 
+  const lastRevalidateRef = useRef(Date.now());
+  const revalidateShellMeta = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tenant/shell-meta', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as SellerShellMeta;
+      setShellMetaOverride(data);
+    } catch {
+      // Best-effort — the SSR-streamed values stay in place on failure.
+    }
+  }, []);
+
   useEffect(() => {
     // The shell's feature-availability/branding promises resolve once per layout
     // mount and don't refetch on client-side nav (layouts persist across routes).
     // Re-resolve on tab refocus so a toggle changed elsewhere (another tab, or by
-    // another teammate) shows up without requiring a manual hard reload.
-    let lastRevalidate = Date.now();
+    // another teammate) shows up — via a narrow JSON fetch of just this data,
+    // not router.refresh() (which used to re-render the whole route tree).
     function handleVisibility() {
-      if (document.visibilityState === 'visible' && Date.now() - lastRevalidate > SHELL_REVALIDATE_THROTTLE_MS) {
-        lastRevalidate = Date.now();
-        router.refresh();
+      if (
+        document.visibilityState === 'visible'
+        && Date.now() - lastRevalidateRef.current > SHELL_REVALIDATE_THROTTLE_MS
+      ) {
+        lastRevalidateRef.current = Date.now();
+        void revalidateShellMeta();
       }
     }
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [router]);
+  }, [revalidateShellMeta]);
 
   const layout = resolveSellerSidebarLayout({
     isUserCollapsed: isSidebarCollapsed,
@@ -99,6 +119,7 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
               canCollapse={layout.canCollapse}
               onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
               featureAvailabilityPromise={featureAvailabilityPromise}
+              featureAvailabilityOverride={shellMetaOverride?.featureAvailability}
             />
           </Suspense>
         </div>
@@ -110,13 +131,18 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
         >
           <div className="hidden md:block">
             <Suspense fallback={<SellerGlobalHeaderSkeleton />}>
-              <SellerGlobalHeader tenantBrandingPromise={tenantBrandingPromise} />
+              <SellerGlobalHeader
+                tenantBrandingPromise={tenantBrandingPromise}
+                tenantBrandingOverride={shellMetaOverride?.branding}
+              />
             </Suspense>
           </div>
           <Suspense fallback={null}>
             <SellerMobileTopbar
               tenantBrandingPromise={tenantBrandingPromise}
               featureAvailabilityPromise={featureAvailabilityPromise}
+              tenantBrandingOverride={shellMetaOverride?.branding}
+              featureAvailabilityOverride={shellMetaOverride?.featureAvailability}
             />
           </Suspense>
           {children}

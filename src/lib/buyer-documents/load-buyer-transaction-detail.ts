@@ -1,3 +1,4 @@
+import { firstStoredImageUrl } from '@/lib/r2-url';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 
 type DbClient = {
@@ -9,6 +10,7 @@ export interface BuyerDocumentLineItem {
   product_name: string;
   internal_sku: string | null;
   unit: string | null;
+  image_url: string | null;
   qty: number;
   unit_price: number;
   tax_rate: number | null;
@@ -30,6 +32,7 @@ interface TenantProductRow {
   name_override: string | null;
   master_product_id: string | null;
   default_uom: string | null;
+  image_urls?: unknown;
 }
 
 export async function loadBuyerDocumentLineItems(
@@ -70,7 +73,7 @@ export async function loadBuyerDocumentLineItems(
     ? await d
         .schema('app')
         .from('tenant_products')
-        .select('id, internal_sku, name_override, master_product_id, default_uom')
+        .select('id, internal_sku, name_override, master_product_id, default_uom, image_urls')
         .eq('tenant_id', tenantId)
         .in('id', productIds)
         .is('deleted_at', null)
@@ -93,7 +96,7 @@ export async function loadBuyerDocumentLineItems(
     ? await d
         .schema('catalog')
         .from('products')
-        .select('id, name')
+        .select('id, name, image_urls')
         .in('id', masterProductIds)
     : { data: [], error: null };
 
@@ -102,17 +105,21 @@ export async function loadBuyerDocumentLineItems(
   }
 
   const tenantProductMap = new Map(tenantProductRows.map((row) => [row.id, row]));
-  const masterProductMap = new Map(((masterProducts ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
+  const masterProductMap = new Map(
+    ((masterProducts ?? []) as Array<{ id: string; name: string; image_urls?: unknown }>).map((row) => [row.id, row]),
+  );
 
   return rawItems.map((row) => {
     const tenantProduct = tenantProductMap.get(row.tenant_product_id);
-    const masterName = tenantProduct?.master_product_id ? masterProductMap.get(tenantProduct.master_product_id) ?? null : null;
+    const masterProduct = tenantProduct?.master_product_id ? masterProductMap.get(tenantProduct.master_product_id) ?? null : null;
+    const masterName = masterProduct?.name ?? null;
 
     return {
       tenant_product_id: row.tenant_product_id,
       product_name: productDisplayName(tenantProduct?.name_override ?? null, masterName),
       internal_sku: tenantProduct?.internal_sku ?? null,
       unit: tenantProduct?.default_uom ?? null,
+      image_url: firstStoredImageUrl(tenantProduct?.image_urls) ?? firstStoredImageUrl(masterProduct?.image_urls),
       qty: Number(row.qty ?? 0),
       unit_price: Number(row.unit_price ?? 0),
       tax_rate: row.tax_rate != null ? Number(row.tax_rate) : null,

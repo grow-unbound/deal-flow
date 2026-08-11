@@ -148,11 +148,22 @@ function filterNavItems(
 interface SellerMobileTopbarProps {
   tenantBrandingPromise: Promise<{ tenantName: string; tenantLogoUrl: string | null }>;
   featureAvailabilityPromise: Promise<SellerShellFeatureAvailability>;
+  // Set once a tab-refocus revalidation (see SellerShell) resolves — takes
+  // priority over the SSR-streamed promise without re-suspending this subtree.
+  tenantBrandingOverride?: { tenantName: string; tenantLogoUrl: string | null };
+  featureAvailabilityOverride?: SellerShellFeatureAvailability;
 }
 
-export function SellerMobileTopbar({ tenantBrandingPromise, featureAvailabilityPromise }: SellerMobileTopbarProps) {
-  const tenantBranding = use(tenantBrandingPromise);
-  const featureAvailability = use(featureAvailabilityPromise);
+export function SellerMobileTopbar({
+  tenantBrandingPromise,
+  featureAvailabilityPromise,
+  tenantBrandingOverride,
+  featureAvailabilityOverride,
+}: SellerMobileTopbarProps) {
+  const streamedTenantBranding = use(tenantBrandingPromise);
+  const streamedFeatureAvailability = use(featureAvailabilityPromise);
+  const tenantBranding = tenantBrandingOverride ?? streamedTenantBranding;
+  const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();

@@ -47,6 +47,10 @@ export interface BuyerMeData {
     gst_inclusive: boolean;
     gst_rate: number;
   };
+  stock_visibility: {
+    enabled: boolean;
+    block_order_on_oos: boolean;
+  };
   whatsapp_consent_required: boolean;
 }
 

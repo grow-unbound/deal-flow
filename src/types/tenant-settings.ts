@@ -94,6 +94,8 @@ export const BuyerAppSettingsSchema = z.object({
   share_link_expiry_days: z.number().int().min(1).max(3650),
   credit_limit_visible: z.boolean(),
   show_out_of_stock: z.boolean(),
+  stock_visibility_enabled: z.boolean(),
+  block_order_on_oos: z.boolean(),
 });
 
 export const PriceVisibilitySchema = z.enum(['discounted_only', 'show_both', 'hidden']);
@@ -166,6 +168,8 @@ export const TenantSettingsPatchSchema = z.object({
       enabled: z.boolean().optional(),
       whatsapp_number: z.string().max(40).optional(),
       whatsapp_display_name: z.string().max(200).optional(),
+      stock_visibility_enabled: z.boolean().optional(),
+      block_order_on_oos: z.boolean().optional(),
     })
     .optional(),
   catalog: z
@@ -213,7 +217,10 @@ export interface ModuleSettingsView {
 export interface UnifiedSettingsView {
   business: TenantSettingsBusiness;
   business_policy: BusinessPolicy;
-  buyer_app: Pick<BuyerAppSettings, 'enabled' | 'whatsapp_number' | 'whatsapp_display_name'>;
+  buyer_app: Pick<
+    BuyerAppSettings,
+    'enabled' | 'whatsapp_number' | 'whatsapp_display_name' | 'stock_visibility_enabled' | 'block_order_on_oos'
+  >;
   notifications: TenantSettingsNotifications;
   orders: OrdersSettings;
   catalog: CatalogSettings;

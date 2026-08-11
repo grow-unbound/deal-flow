@@ -64,5 +64,8 @@ skills-lock.json
 
 #Sensitive files
 media/
+
+Specs files
 specs/
+CLAUDE_OUTPUTS/
 WineYard/

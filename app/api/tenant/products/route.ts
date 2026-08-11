@@ -102,15 +102,13 @@ type MasterProductRow = {
   name: string | null;
   master_sku: string | null;
   brand_id: string | null;
-  brand_name?: string | null;
-  brand_logo_url?: string | null;
+  category_id: string | null;
   gst_rate?: number | string | null;
   hsn_code?: string | null;
   default_uom?: string | null;
   pack_size?: number | string | null;
   description?: string | null;
   image_urls?: string[] | null;
-  category_name?: string | null;
 };
 type MasterBrandRow = { id: string; name: string | null; logo_url?: string | null };
 
@@ -277,7 +275,7 @@ async function fetchMasterProducts(db: DbClient, masterIds: string[]) {
   const { data, error } = await db
     .schema('catalog')
     .from('products')
-    .select('id, name, master_sku, brand_id, brand_name, brand_logo_url, gst_rate, hsn_code, default_uom, pack_size, description, image_urls, category_name')
+    .select('id, name, master_sku, brand_id, category_id, gst_rate, hsn_code, default_uom, pack_size, description, image_urls')
     .in('id', masterIds)
     .is('deleted_at', null)
     .limit(masterIds.length);
@@ -426,19 +424,19 @@ export async function GET(req: NextRequest) {
           name: masterProduct.name ?? displayName,
           master_sku: masterProduct.master_sku ?? row.internal_sku,
           brand_id: masterProduct.brand_id ?? '',
-          brand_name: brand?.name ?? masterProduct.brand_name ?? null,
-          brand_logo_url: brand?.logo_url ?? masterProduct.brand_logo_url ?? null,
+          brand_name: brand?.name ?? null,
+          brand_logo_url: brand?.logo_url ?? null,
           gst_rate: masterProduct.gst_rate == null ? null : toNumber(masterProduct.gst_rate),
           hsn_code: masterProduct.hsn_code ?? null,
           default_uom: masterProduct.default_uom ?? null,
           pack_size: masterProduct.pack_size == null ? null : toNumber(masterProduct.pack_size),
           description: masterProduct.description ?? null,
           image_urls: masterProduct.image_urls ?? null,
-          category_name: category?.name ?? masterProduct.category_name ?? null,
+          category_name: category?.name ?? null,
         } : null,
         display_name: displayName,
-        brand_name: brand?.name ?? masterProduct?.brand_name ?? null,
-        category_name: category?.name ?? masterProduct?.category_name ?? null,
+        brand_name: brand?.name ?? null,
+        category_name: category?.name ?? null,
         image_urls: row.image_urls?.length ? row.image_urls : masterProduct?.image_urls ?? null,
         on_hand: onHand,
         days_cover: daysCover,

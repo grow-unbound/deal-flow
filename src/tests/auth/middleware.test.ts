@@ -1,27 +1,21 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { decodeJWTPayloadMock, getSessionMock } = vi.hoisted(() => ({
-  decodeJWTPayloadMock: vi.fn(),
-  getSessionMock: vi.fn(),
+const { getClaimsMock } = vi.hoisted(() => ({
+  getClaimsMock: vi.fn(),
 }));
 
-vi.mock('@supabase/auth-helpers-nextjs', () => ({
-  createMiddlewareClient: vi.fn(() => ({
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: vi.fn(() => ({
     auth: {
-      getSession: getSessionMock,
+      getClaims: getClaimsMock,
     },
   })),
 }));
 
-vi.mock('@/lib/auth', () => ({
-  decodeJWTPayload: decodeJWTPayloadMock,
-}));
-
 describe('middleware auth redirects', () => {
   beforeEach(() => {
-    decodeJWTPayloadMock.mockReset();
-    getSessionMock.mockReset();
+    getClaimsMock.mockReset();
   });
 
   it('allows anonymous access to /activate without redirecting to /login', async () => {
@@ -33,8 +27,9 @@ describe('middleware auth redirects', () => {
   });
 
   it('redirects to /login when the session is missing', async () => {
-    getSessionMock.mockResolvedValue({
-      data: { session: null },
+    getClaimsMock.mockResolvedValue({
+      data: null,
+      error: { message: 'Auth session missing' },
     });
 
     const { middleware } = await import('../../../middleware');
@@ -44,39 +39,30 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fdashboard');
   });
 
-  it('redirects to /login when the session token is malformed or expired', async () => {
-    getSessionMock.mockResolvedValue({
-      data: {
-        session: {
-          access_token: 'bad-token',
-          user: { id: 'user-1' },
-        },
-      },
-    });
-    decodeJWTPayloadMock.mockImplementation(() => {
-      throw new Error('Malformed JWT');
+  it('redirects to /login when the JWT fails signature verification', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: null,
+      error: { message: 'invalid signature' },
     });
 
     const { middleware } = await import('../../../middleware');
     const response = await middleware(new NextRequest('http://localhost/buy/catalog'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/login');
+    expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fbuy%2Fcatalog');
   });
 
-  it('forwards verified location ids from the JWT payload', async () => {
-    getSessionMock.mockResolvedValue({
+  it('forwards verified location ids from the verified claims', async () => {
+    getClaimsMock.mockResolvedValue({
       data: {
-        session: {
-          access_token: 'good-token',
-          user: { id: 'seller-user-1' },
+        claims: {
+          sub: 'seller-user-1',
+          tenant_id: 'tenant-1',
+          user_role: 'seller_assistant',
+          location_ids: ['loc-1', 'loc-2'],
         },
       },
-    });
-    decodeJWTPayloadMock.mockReturnValue({
-      tenant_id: 'tenant-1',
-      user_role: 'seller_assistant',
-      location_ids: ['loc-1', 'loc-2'],
+      error: null,
     });
 
     const { middleware } = await import('../../../middleware');

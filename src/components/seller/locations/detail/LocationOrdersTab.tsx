@@ -24,6 +24,7 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 interface LocationOrdersTabProps {
   locationId: string;
+  locationName?: string | null;
   kind?: TransactionTableKind;
   routeBase?: string;
 }
@@ -119,7 +120,7 @@ function sortOptions(kind: TransactionTableKind) {
   return ORDER_SORT_OPTIONS;
 }
 
-function toMappedRow(kind: TransactionTableKind, routeBase: string, row: LocationDocumentRow): TransactionTableRow {
+function toMappedRow(kind: TransactionTableKind, routeBase: string, locationName: string | null | undefined, row: LocationDocumentRow): TransactionTableRow {
   return {
     id: row.id,
     href: `${routeBase}/${row.id}`,
@@ -129,7 +130,7 @@ function toMappedRow(kind: TransactionTableKind, routeBase: string, row: Locatio
     source_label: row.source_kind === 'converted' ? row.source_label : null,
     buyer_name: row.buyer_name ?? '—',
     buyer_place_of_supply: row.place_of_supply ?? null,
-    location_name: null,
+    location_name: locationName ?? null,
     campaign_name: row.campaign_name ?? null,
     items_count: row.items_count,
     total_amount: row.total_amount,
@@ -145,6 +146,7 @@ function toMappedRow(kind: TransactionTableKind, routeBase: string, row: Locatio
 
 export function LocationOrdersTab({
   locationId,
+  locationName,
   kind = 'order',
   routeBase = '/sales-orders',
 }: LocationOrdersTabProps) {
@@ -323,8 +325,8 @@ export function LocationOrdersTab({
   }, [allRows, filters.buyer_name, filters.due, filters.source, filters.status, kind, options, period, setPeriod, setRouteState]);
 
   const tableRows = useMemo(
-    () => rows.map((row) => toMappedRow(kind, routeBase, row)),
-    [rows, kind, routeBase],
+    () => rows.map((row) => toMappedRow(kind, routeBase, locationName, row)),
+    [rows, kind, routeBase, locationName],
   );
 
   const tableMinWidth = transactionTableMinWidth(kind, showCampaignColumn);
