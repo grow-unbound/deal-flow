@@ -143,6 +143,9 @@ interface SellerSidebarProps {
   onToggleCollapse?: () => void;
   canCollapse?: boolean;
   featureAvailabilityPromise: Promise<SellerShellFeatureAvailability>;
+  // Set once a tab-refocus revalidation (see SellerShell) resolves — takes
+  // priority over the SSR-streamed promise without re-suspending this subtree.
+  featureAvailabilityOverride?: SellerShellFeatureAvailability;
 }
 
 export function SellerSidebar({
@@ -150,9 +153,11 @@ export function SellerSidebar({
   onToggleCollapse = () => undefined,
   canCollapse = true,
   featureAvailabilityPromise,
+  featureAvailabilityOverride,
 }: SellerSidebarProps) {
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
-  const featureAvailability = use(featureAvailabilityPromise);
+  const streamedFeatureAvailability = use(featureAvailabilityPromise);
+  const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
   const pathname = usePathname();
   const { isSellerAssistant, role } = useRole();
   const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;

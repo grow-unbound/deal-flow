@@ -1,6 +1,5 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { decodeJWTPayload } from '@/lib/auth';
 import {
   TENANT_FLAGS_COOKIE,
   TENANT_FLAGS_HEADER,
@@ -55,7 +54,7 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   const subdomain = extractSubdomain(hostname);
   requestHeaders.set('x-tenant-subdomain', subdomain ?? '');
-  let res = NextResponse.next({ request: { headers: requestHeaders } });
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set('x-tenant-subdomain', subdomain ?? '');
 
   // When Supabase can't match the full redirectTo URL against its allowlist it strips
@@ -71,40 +70,56 @@ export async function middleware(request: NextRequest) {
     return res;
   }
 
-  // Validate session via Supabase (reads cookies, refreshes if needed)
-  const supabase = createMiddlewareClient<Database>({ req: request, res });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // Validate session via Supabase. getClaims() verifies the JWT signature locally
+  // against this project's cached JWKS (asymmetric ES256 signing keys) instead of
+  // making a network round-trip to the Auth API on every navigation like the old
+  // @supabase/auth-helpers-nextjs getSession() path did — that network call (and
+  // that deprecated package's cookie-sync bugs) was the source of the "Invalid
+  // Refresh Token: Refresh Token Not Found" / fetch-failed(ETIMEDOUT) error clusters
+  // seen in production, and the extra latency on every page load. getClaims() only
+  // hits the network when the access token is actually expired and needs refreshing.
+  //
+  // Every cookie-touching Supabase client in this app (browser client, route
+  // handlers, this middleware) must stay on @supabase/ssr consistently — mixing it
+  // with the deprecated auth-helpers-nextjs breaks session cookie parsing across
+  // the boundary (confirmed: caused a login-redirect-loop bug during development).
+  const refreshedAuthCookies: { name: string; value: string; options?: CookieOptions }[] = [];
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          for (const { name, value, options } of cookiesToSet) {
+            request.cookies.set(name, value);
+            refreshedAuthCookies.push({ name, value, options });
+          }
+        },
+      },
+    },
+  );
 
-  if (!session) {
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+
+  if (claimsError || !claimsData?.claims) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname + (request.nextUrl.search || ''));
     return NextResponse.redirect(loginUrl);
   }
 
-  // Decode JWT payload to extract custom claims set by custom_access_token_hook.
-  // getSession() already validated the token cryptographically via Supabase.
-  let tenantId: string | null = null;
-  let role: string | null = null;
-  let buyerId: string | null = null;
-  let locationIds: string[] | null = null;
-
-  try {
-    const payload = decodeJWTPayload(session.access_token);
-    tenantId = (payload.tenant_id as string) ?? null;
-    // Application role is stored under "user_role" post-migration.
-    // Fall back to "role" for sessions issued before the JWT hook was updated
-    // (fix_jwt_role_claim_collision migration); they auto-heal on token refresh.
-    role = (payload.user_role as string) ?? (payload.role as string) ?? null;
-    buyerId = (payload.buyer_id as string) ?? null;
-    locationIds = Array.isArray(payload.location_ids)
-      ? payload.location_ids.filter((value): value is string => typeof value === 'string')
-      : null;
-  } catch {
-    // Malformed token — treat as expired
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
+  // Custom claims set by custom_access_token_hook — getClaims() already verified
+  // these cryptographically, no separate decode/trust step needed.
+  const claims = claimsData.claims;
+  const tenantId = (claims.tenant_id as string) ?? null;
+  // Application role is stored under "user_role" post-migration.
+  // Fall back to "role" for sessions issued before the JWT hook was updated
+  // (fix_jwt_role_claim_collision migration); they auto-heal on token refresh.
+  const role = (claims.user_role as string) ?? (claims.role as string) ?? null;
+  const buyerId = (claims.buyer_id as string) ?? null;
+  const locationIds = Array.isArray(claims.location_ids)
+    ? claims.location_ids.filter((value): value is string => typeof value === 'string')
+    : null;
 
   // Forward verified claims as headers; server components read these instead
   // of trusting any client-supplied tenant_id values.
@@ -112,7 +127,7 @@ export async function middleware(request: NextRequest) {
   if (role) requestHeaders.set('x-verified-role', role);
   if (buyerId) requestHeaders.set('x-verified-buyer-id', buyerId);
   if (locationIds) requestHeaders.set('x-verified-location-ids', JSON.stringify(locationIds));
-  if (session.user?.id) requestHeaders.set('x-verified-user-id', session.user.id);
+  if (claims.sub) requestHeaders.set('x-verified-user-id', claims.sub);
 
   // Forward buyer preview cookie as a trusted server-side header.
   // Cookie is httpOnly and HMAC-signed — getBuyerAppContext verifies the signature.
@@ -139,17 +154,18 @@ export async function middleware(request: NextRequest) {
     if (!flagsData) {
       try {
         const proto = hostname.includes('localhost') ? 'http' : 'https';
-        const res = await fetch(`${proto}://${hostname}/api/tenant/flags-refresh`, {
+        const flagsRes = await fetch(`${proto}://${hostname}/api/tenant/flags-refresh`, {
           headers: {
-            authorization: `Bearer ${session.access_token}`,
             // Forward the request's own cookies — fetch() does not attach them
-            // automatically, and the route sits behind this same middleware, which
-            // requires a valid Supabase session cookie to avoid redirecting to /login.
+            // automatically. The route sits behind this same middleware, which
+            // re-validates via getClaims() from these forwarded cookies and
+            // populates x-verified-* headers for it directly, so no separate
+            // Authorization bearer is needed here.
             cookie: request.headers.get('cookie') ?? '',
           },
         });
-        if (res.ok) {
-          freshTenantFlags = (await res.json()) as { flags: Record<string, boolean>; createFlags: TenantCreateFlags };
+        if (flagsRes.ok) {
+          freshTenantFlags = (await flagsRes.json()) as { flags: Record<string, boolean>; createFlags: TenantCreateFlags };
           flagsData = freshTenantFlags;
         }
       } catch {
@@ -175,11 +191,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Recreate response so updated request headers propagate downstream, then
-  // re-attach any cookies that Supabase may have refreshed on the earlier response.
+  // re-attach any cookies Supabase refreshed (via getClaims()'s internal refresh)
+  // plus the tenant-flags cookie resolved above.
   const finalized = NextResponse.next({ request: { headers: requestHeaders } });
   finalized.headers.set('x-tenant-subdomain', subdomain ?? '');
-  for (const cookie of res.cookies.getAll()) {
-    finalized.cookies.set(cookie);
+  for (const cookie of refreshedAuthCookies) {
+    finalized.cookies.set(cookie.name, cookie.value, cookie.options);
   }
   if (freshTenantFlags && tenantId) {
     const token = await createTenantFlagsToken(tenantId, freshTenantFlags);
@@ -191,9 +208,8 @@ export async function middleware(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
     });
   }
-  res = finalized;
 
-  return res;
+  return finalized;
 }
 
 export const config = {

@@ -150,17 +150,6 @@ export async function enqueueWhatsAppMessage(
       enqueued: result.enqueued === true,
       skipped: result.skipped,
     };
-    console.info('[whatsapp-enqueue] enqueue result', {
-      triggerSource: input.triggerSource,
-      tenantId: input.tenantId,
-      buyerId: input.buyerId ?? null,
-      relatedEntityType: input.relatedEntityType ?? null,
-      relatedEntityId: input.relatedEntityId ?? null,
-      metaTemplateName: input.sendPayload.meta_template_name,
-      messageId: output.messageId,
-      enqueued: output.enqueued,
-      skipped: output.skipped ?? null,
-    });
     return output;
   } catch (err) {
     console.error('[whatsapp-enqueue] unexpected failure', {
@@ -220,10 +209,6 @@ export async function triggerWhatsAppDispatch(
     }
 
     const result = (text ? JSON.parse(text) : null) as WhatsAppDispatchResult | null;
-    console.info('[whatsapp-enqueue] dispatch result', {
-      messageIds: ids,
-      result,
-    });
     return result;
   } catch (err) {
     console.error('[whatsapp-enqueue] dispatch worker request failed', {

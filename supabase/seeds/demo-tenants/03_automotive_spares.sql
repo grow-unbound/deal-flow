@@ -80,8 +80,8 @@ BEGIN
   WHERE c.slug IN ('filters', 'brake-parts', 'batteries', 'auto-electricals', 'bearings', 'clutch-plates', 'body-parts')
     AND c.is_public = true;
 
-  INSERT INTO app.tenant_products (tenant_id, tenant_brand_id, master_product_id, internal_sku, mrp, base_selling_price, cost_price, is_active)
-  SELECT v_tenant_id, tb.id, p.id, p.master_sku, v.mrp, v.base_rate,
+  INSERT INTO app.tenant_products (tenant_id, tenant_brand_id, tenant_category_id, master_product_id, internal_sku, name_override, mrp, base_selling_price, cost_price, is_active)
+  SELECT v_tenant_id, tb.id, tc.id, p.id, p.master_sku, p.name, v.mrp, v.base_rate,
          round((v.base_rate * (1 - (0.05 + random() * 0.15)))::numeric, 2), true
   FROM (VALUES
     ('AUT-BSH-OILF-SWF',  280,  245),
@@ -101,7 +101,8 @@ BEGIN
     ('AUT-LOC-ENGMT',    1100,  950)
   ) AS v(master_sku, mrp, base_rate)
   JOIN catalog.products p ON p.master_sku = v.master_sku AND p.is_public = true
-  JOIN app.tenant_brands tb ON tb.master_brand_id = p.brand_id AND tb.tenant_id = v_tenant_id;
+  JOIN app.tenant_brands tb ON tb.master_brand_id = p.brand_id AND tb.tenant_id = v_tenant_id
+  LEFT JOIN app.tenant_categories tc ON tc.master_category_id = p.category_id AND tc.tenant_id = v_tenant_id;
 
   INSERT INTO app.tenant_inventory (tenant_product_id, warehouse_id, qty_available, qty_reserved, reorder_point)
   SELECT tp.id, v_wh_main, 20 + (abs(hashtext(tp.internal_sku)) % 40), 0, 8

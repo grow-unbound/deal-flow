@@ -184,6 +184,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         hideTrigger
         mode="edit"
         brand={data?.details ?? null}
+        resolvedBrandName={data?.header.brand_name ?? null}
       />
     </div>
   );

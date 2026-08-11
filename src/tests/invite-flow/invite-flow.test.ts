@@ -62,8 +62,8 @@ vi.mock('../../lib/server/seller-team-activation', () => ({
   sendSellerTeamActivationInvite: (...args: unknown[]) => mockSendSellerTeamActivationInvite(...args),
 }));
 
-vi.mock('@supabase/auth-helpers-nextjs', () => ({
-  createRouteHandlerClient: vi.fn(() => ({
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: vi.fn(() => ({
     auth: {
       getUser: mockGetRouteUser,
     },
@@ -71,7 +71,7 @@ vi.mock('@supabase/auth-helpers-nextjs', () => ({
 }));
 
 vi.mock('next/headers', () => ({
-  cookies: vi.fn(async () => ({})),
+  cookies: vi.fn(async () => ({ getAll: () => [], set: () => undefined })),
 }));
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}) {

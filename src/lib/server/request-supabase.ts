@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 
@@ -10,9 +10,23 @@ import type { Database } from '@/types/database';
  */
 export async function getRequestSupabaseClient() {
   const cookieStore = await cookies();
-  return createRouteHandlerClient<Database>({
-    // auth-helpers-nextjs reads the cookie store synchronously at runtime even
-    // though Next's current type surface still models cookies() as async here.
-    cookies: (() => cookieStore) as unknown as () => ReturnType<typeof cookies>,
-  });
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
+          } catch {
+            // Called from a Server Component context where cookies() is read-only —
+            // safe to ignore, session refresh retries on the next mutable request.
+          }
+        },
+      },
+    },
+  );
 }

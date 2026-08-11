@@ -50,15 +50,21 @@ function getInitials(value: string | null | undefined) {
   return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
 }
 
-interface SellerGlobalHeaderProps {
-  tenantBrandingPromise: Promise<{
-    tenantName: string;
-    tenantLogoUrl: string | null;
-  }>;
+interface SellerShellTenantBranding {
+  tenantName: string;
+  tenantLogoUrl: string | null;
 }
 
-export function SellerGlobalHeader({ tenantBrandingPromise }: SellerGlobalHeaderProps) {
-  const tenantBranding = use(tenantBrandingPromise);
+interface SellerGlobalHeaderProps {
+  tenantBrandingPromise: Promise<SellerShellTenantBranding>;
+  // Set once a tab-refocus revalidation (see SellerShell) resolves — takes
+  // priority over the SSR-streamed promise without re-suspending this subtree.
+  tenantBrandingOverride?: SellerShellTenantBranding;
+}
+
+export function SellerGlobalHeader({ tenantBrandingPromise, tenantBrandingOverride }: SellerGlobalHeaderProps) {
+  const streamedTenantBranding = use(tenantBrandingPromise);
+  const tenantBranding = tenantBrandingOverride ?? streamedTenantBranding;
   const posthog = usePostHog();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);

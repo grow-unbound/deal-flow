@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
@@ -1050,8 +1050,7 @@ export function useResolvePrice(tenantProductId: string, buyerId: string, qty: n
   return useQuery({
     queryKey: ['resolve-price', tenantProductId, buyerId, qty],
     queryFn: async (): Promise<{ price: number | null }> => {
-      const supabase = createClientComponentClient();
-      const { data, error } = await (supabase as ReturnType<typeof createClientComponentClient> & { schema: (s: string) => ReturnType<typeof createClientComponentClient> })
+      const { data, error } = await supabaseBrowser
         .schema('app')
         .rpc('resolve_price', {
           p_tenant_product_id: tenantProductId,

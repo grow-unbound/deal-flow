@@ -157,6 +157,8 @@ interface AddBrandCommandProps {
   hideTrigger?: boolean;
   mode?: 'create' | 'edit';
   brand?: BrandDetailRow | null;
+  /** Resolved display name (override or master catalog name) for prefilling edit mode when brand.display_name_override is unset. */
+  resolvedBrandName?: string | null;
 }
 
 export function AddBrandCommand({
@@ -165,6 +167,7 @@ export function AddBrandCommand({
   hideTrigger = false,
   mode = 'create',
   brand = null,
+  resolvedBrandName = null,
 }: AddBrandCommandProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [selectedMasterBrand, setSelectedMasterBrand] = useState<MasterBrand | null>(null);
@@ -260,12 +263,13 @@ export function AddBrandCommand({
   useEffect(() => {
     if (!open || !isEditMode || !brand) return;
 
+    const resolvedName = brand.display_name_override ?? resolvedBrandName ?? '';
     setSelectedMasterBrand(null);
-    setCustomBrandNameSelected(brand.display_name_override ?? '');
-    setInputValue(brand.display_name_override ?? '');
+    setCustomBrandNameSelected(resolvedName);
+    setInputValue(resolvedName);
     setIsNameManuallyEdited(true);
     form.reset({
-      name: brand.display_name_override ?? '',
+      name: resolvedName,
       slug: brand.slug ?? '',
       logo_url: brand.logo_url ?? '',
       description: brand.description ?? '',
@@ -281,7 +285,7 @@ export function AddBrandCommand({
       contact_phone: brand.contact_phone ?? '',
       default_cohort_id: brand.default_cohort_id ?? null,
     });
-  }, [brand, form, isEditMode, open]);
+  }, [brand, form, isEditMode, open, resolvedBrandName]);
 
   useEffect(() => {
     if (!open || !selectedMasterBrand) return;

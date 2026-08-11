@@ -843,17 +843,20 @@ export async function mintSellerSession(
 
   const sellerUser = { id: candidate.user_id } as User;
 
-  // Set app_metadata so the JWT hook embeds the correct tenant claim
-  await supabaseAdmin.auth.admin.updateUserById(candidate.user_id, {
-    app_metadata: {
-      current_tenant_id: candidate.tenant_id,
-      current_buyer_id: null,
-    },
-  });
-
-  // Generate a recovery link server-side — does NOT send any email
-  const { data: linkData, error: linkError } =
-    await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email });
+  // Set app_metadata (for the JWT hook) and generate the recovery link in parallel —
+  // neither depends on the other's result, only on `email` resolved above. The
+  // refreshSession() below still runs after verifyOtp() to pick up the metadata
+  // write, since that's a genuine dependency (needs a hook re-run after the write).
+  const [, { data: linkData, error: linkError }] = await Promise.all([
+    supabaseAdmin.auth.admin.updateUserById(candidate.user_id, {
+      app_metadata: {
+        current_tenant_id: candidate.tenant_id,
+        current_buyer_id: null,
+      },
+    }),
+    // Generate a recovery link server-side — does NOT send any email
+    supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email }),
+  ]);
 
   if (linkError || !linkData?.properties?.hashed_token) {
     throw new Error(linkError?.message ?? 'Failed to generate seller recovery link');

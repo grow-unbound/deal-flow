@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { formatWhatsappDestination } from '@/lib/phone';
 import { formatSellerPhoneDisplay } from '@/lib/server/whatsapp-seller-context';
 import {
@@ -521,11 +522,26 @@ async function sendOtpWhatsapp(phone: string, otp: string, productName: string):
     throw new Error('Failed to enqueue OTP WhatsApp message');
   }
 
+  // The enqueue above is the durable write — the message row exists and pg_cron's
+  // scheduled sweep will pick it up regardless. This immediate dispatch trigger is
+  // just a latency optimization (send now instead of waiting for the next cron
+  // tick), so it doesn't need to block the OTP response: the request was already
+  // blocking on an edge-function round trip that itself waits on Meta's API, which
+  // was the dominant cost on every "Send OTP" click. after() keeps it running on
+  // Vercel past the point the response is sent (a bare un-awaited call can get cut
+  // off). Failures are logged, not surfaced to the user — cron is the safety net.
   if (result.messageId) {
-    const dispatch = await triggerWhatsAppDispatch([result.messageId]);
-    if (!dispatch?.ok || dispatch.dispatched === 0) {
-      throw new Error('Failed to send OTP WhatsApp message');
-    }
+    const messageId = result.messageId;
+    after(async () => {
+      try {
+        const dispatch = await triggerWhatsAppDispatch([messageId]);
+        if (!dispatch?.ok || dispatch.dispatched === 0) {
+          console.error('[whatsapp] background OTP dispatch did not confirm send', { messageId, dispatch });
+        }
+      } catch (err) {
+        console.error('[whatsapp] background OTP dispatch threw', { messageId, err });
+      }
+    });
   }
 }
 

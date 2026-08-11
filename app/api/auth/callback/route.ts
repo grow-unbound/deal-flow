@@ -1,8 +1,6 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import type { Database } from '@/types/database';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
 // Idempotent — sets email_verified_at only if not already set.
 // Called when a signup confirmation link is clicked (link-based flow fallback).
@@ -32,10 +30,7 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get('type');
   const explicitNext = searchParams.get('next');
 
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient<Database>({
-    cookies: async () => cookieStore,
-  });
+  const supabase = await getRequestSupabaseClient();
 
   // Token-hash flow: modern Supabase email links use ?token_hash=&type= directly
   if (token_hash && type) {
