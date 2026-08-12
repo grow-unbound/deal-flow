@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_PRODUCT_GRID_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
 interface LoadingSkeletonProps {
@@ -8,7 +8,7 @@ interface LoadingSkeletonProps {
 
 export function LoadingSkeleton({ count = 6 }: LoadingSkeletonProps) {
   return (
-    <div className="grid grid-cols-2 gap-2 px-2 pb-3">
+    <div className={BUYER_PRODUCT_GRID_CLASS}>
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}

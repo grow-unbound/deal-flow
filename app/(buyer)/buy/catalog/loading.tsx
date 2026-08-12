@@ -1,3 +1,5 @@
+import { BUYER_DISCOVERY_GRID_CLASS } from '@/lib/buyer-ui';
+
 const SECTION_TITLE_STYLE = {
   fontFamily: 'var(--font-display)',
   fontSize: 'var(--b-text-section)',
@@ -27,7 +29,7 @@ function SectionHeader({ title, linkLabel }: { title: string; linkLabel?: string
   );
 }
 
-/** Mirrors CatalogDiscoveryLanding: real labels + chip carousel + campaigns → brands → categories. */
+/** Mirrors CatalogDiscoveryLanding: campaigns → brands → categories with no left rail on landing. */
 export default function CatalogLoading() {
   return (
     <div className="flex flex-col pb-8" role="status" aria-label="Loading catalog">
@@ -56,18 +58,10 @@ export default function CatalogLoading() {
         <div className="px-4 pb-2">
           <div className="h-10 w-full animate-pulse rounded-[12px] bg-cream-200" />
         </div>
-        {/* Filter-chip carousel — matches BuyerEntityChipNav footprint */}
-        <div className="border-t border-cream-200 pb-2 pt-2.5">
-          <div className="flex gap-2 overflow-hidden px-4 pb-1 pt-1.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-8 w-20 shrink-0 animate-pulse rounded-full bg-cream-200" />
-            ))}
-          </div>
-        </div>
       </div>
 
-      <div className="px-3">
-        <section className="pt-10">
+      <div className="px-5 pb-4 sm:px-4 lg:px-4 lg:pb-6">
+        <section className="pt-10 lg:pt-6">
           <SectionHeader title="Campaigns" linkLabel="See all" />
           <div className="flex gap-3 overflow-hidden px-1">
             {Array.from({ length: 2 }).map((_, i) => (
@@ -105,7 +99,7 @@ export default function CatalogLoading() {
 
         <section className="pt-10 pb-4">
           <SectionHeader title="Categories" />
-          <div className="grid grid-cols-3 gap-2">
+          <div className={BUYER_DISCOVERY_GRID_CLASS}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}

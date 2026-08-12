@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { SearchX } from 'lucide-react';
+import { BuyerCatalogDesktopLayout } from '@/components/buyer/catalog/BuyerCatalogDesktopLayout';
 import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
@@ -38,8 +39,18 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [search, setSearch] = React.useState('');
+  const [activeId, setActiveId] = React.useState(id);
+  const [resolvedGridId, setResolvedGridId] = React.useState(id);
+  const shellRef = React.useRef<HTMLDivElement>(null);
+  const headerRef = React.useRef<HTMLDivElement>(null);
+  const [splitHeight, setSplitHeight] = React.useState<number | null>(null);
   const debouncedSearch = useDebounce(search, 300);
   const searchEventKeyRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    setActiveId(id);
+    setResolvedGridId(id);
+  }, [id]);
 
   const {
     data: categories,
@@ -56,21 +67,50 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     data: categoryRecos,
     isLoading: categoryRecosLoading,
     refetch: refetchCategoryRecos,
-  } = useBuyerCategoryRecos(mode === 'category' ? id : '');
+  } = useBuyerCategoryRecos(mode === 'category' ? activeId : '');
   const {
     data: brandRecos,
     isLoading: brandRecosLoading,
     refetch: refetchBrandRecos,
-  } = useBuyerBrandRecos(mode === 'brand' ? id : '');
+  } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogList(mode, id, debouncedSearch);
+  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
   const pages = listQuery.data?.pages ?? [];
   const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
-  // Cold-cache only — keep rendered products during search/refetch.
-  const showProductsSkeleton = listQuery.isLoading && items.length === 0;
+  const isSwitchingEntity = mode !== 'list' && activeId !== resolvedGridId;
+  // Cold-cache only, plus detail-rail switches where we want the grid to show an explicit refresh state.
+  const showProductsSkeleton = (listQuery.isLoading && items.length === 0) || (isSwitchingEntity && listQuery.isFetching);
   const productsError = listQuery.isError && items.length === 0;
   const loadingMore = listQuery.isFetchingNextPage;
+
+  React.useEffect(() => {
+    if (listQuery.isFetching) return;
+    setResolvedGridId(activeId);
+  }, [activeId, listQuery.isFetching]);
+
+  React.useLayoutEffect(() => {
+    const shell = shellRef.current;
+    const header = headerRef.current;
+    if (!shell || !header || typeof window === 'undefined') return;
+
+    const update = () => {
+      const shellRect = shell.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      const next = Math.max(240, Math.floor(shellRect.height - headerRect.height - 1));
+      setSplitHeight(next);
+    };
+
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(shell);
+    resizeObserver.observe(header);
+    window.addEventListener('resize', update);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   const showCategoryRecosSkeleton = mode === 'category' && categoryRecosLoading && categoryRecos === undefined;
   const showBrandRecosSkeleton = mode === 'brand' && brandRecosLoading && brandRecos === undefined;
@@ -136,22 +176,22 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
   React.useEffect(() => {
     if (!posthog || debouncedSearch.length === 0 || listQuery.isFetching) return;
-    const key = `${mode}:${id}:${debouncedSearch}:${items.length}:${listQuery.isError ? 'error' : 'ok'}`;
+    const key = `${mode}:${activeId}:${debouncedSearch}:${items.length}:${listQuery.isError ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
     posthog.capture('buyer_catalog_search_results_viewed', {
       source_surface: 'catalog_filtered_browse',
       browse_mode: mode,
-      entity_id: id,
+      entity_id: activeId,
       query_length: debouncedSearch.length,
       result_count: items.length,
       has_more: hasMore,
       status: listQuery.isError ? 'error' : 'success',
     });
-  }, [debouncedSearch, hasMore, id, items.length, listQuery.isError, listQuery.isFetching, mode, posthog]);
+  }, [activeId, debouncedSearch, hasMore, items.length, listQuery.isError, listQuery.isFetching, mode, posthog]);
 
-  const selectedCategoryName = categories?.find((c) => c.id === id)?.name;
-  const selectedBrandName = brands?.find((b) => b.id === id)?.name;
+  const selectedCategoryName = categories?.find((c) => c.id === activeId)?.name;
+  const selectedBrandName = brands?.find((b) => b.id === activeId)?.name;
   const title =
     mode === 'category'
       ? (selectedCategoryName ?? 'Category')
@@ -159,44 +199,60 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
         ? (selectedBrandName ?? 'Brand')
         : campaignTitle;
 
-  const stickyToolbar =
-    mode === 'category' ? (
-      showChipsSkeleton ? (
-        <ChipCarouselSkeleton kind="category" />
-      ) : (categories?.length ?? 0) > 0 ? (
-        <BuyerEntityChipNav
-          kind="category"
-          categories={categories ?? []}
-          selectedId={id}
-          mode="detail"
-        />
-      ) : null
-    ) : mode === 'brand' ? (
-      showChipsSkeleton ? (
-        <ChipCarouselSkeleton kind="brand" />
-      ) : (brands?.length ?? 0) > 0 ? (
-        <BuyerEntityChipNav
-          kind="brand"
-          brands={brands ?? []}
-          selectedId={id}
-          mode="detail"
-        />
-      ) : null
-    ) : null;
-
   const searchPlaceholder =
     mode === 'brand'
       ? 'Search products in this brand'
       : mode === 'category'
         ? 'Search products in this category'
-        : 'Search products in this catalog';
+      : 'Search products in this catalog';
+
+  const handleRailSelect = React.useCallback((nextId: string) => {
+    setActiveId(nextId);
+    if (typeof window === 'undefined') return;
+
+    const nextPath =
+      mode === 'category'
+        ? `/buy/catalog/category/${nextId}`
+        : `/buy/catalog/brand/${nextId}`;
+    window.history.replaceState(window.history.state, '', nextPath);
+  }, [mode]);
+
+  const desktopRail =
+    mode === 'category' ? (
+      showChipsSkeleton ? (
+        <DesktopRailSkeleton />
+      ) : (categories?.length ?? 0) > 0 ? (
+        <BuyerEntityChipNav
+          kind="category"
+          categories={categories ?? []}
+          selectedId={activeId}
+          mode="detail"
+          variant="rail"
+          onSelectId={handleRailSelect}
+        />
+      ) : null
+    ) : mode === 'brand' ? (
+      showChipsSkeleton ? (
+        <DesktopRailSkeleton />
+      ) : (brands?.length ?? 0) > 0 ? (
+        <BuyerEntityChipNav
+          kind="brand"
+          brands={brands ?? []}
+          selectedId={activeId}
+          mode="detail"
+          variant="rail"
+          onSelectId={handleRailSelect}
+        />
+      ) : null
+    ) : null;
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-8">
+    <div ref={shellRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <BuyerDetailShell
         title={title}
         hideSearch
         backFallbackHref="/buy/catalog"
+        contentRef={headerRef}
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -204,101 +260,92 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             placeholder={searchPlaceholder}
           />
         }
-        stickyToolbar={stickyToolbar}
       >
-        {mode === 'list' ? (
-          <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
-        ) : null}
+        <BuyerCatalogDesktopLayout
+          rail={desktopRail}
+          splitScroll
+          style={splitHeight != null ? { height: `${splitHeight}px` } : undefined}
+        >
+          {mode === 'list' ? (
+            <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
+          ) : null}
 
-        {mode === 'category' && (showCategoryRecosSkeleton || (categoryRecos?.length ?? 0) > 0) ? (
-          <div className="pt-1">
-            <RecoSection
-              title="Trending in this category"
-              widget="w5_category_trending"
-              items={categoryRecos ?? []}
-              isLoading={showCategoryRecosSkeleton}
-            />
-          </div>
-        ) : null}
+          {mode === 'category' && (showCategoryRecosSkeleton || (categoryRecos?.length ?? 0) > 0) ? (
+            <div className="pt-1 lg:pt-6">
+              <RecoSection
+                title="Trending in this category"
+                widget="w5_category_trending"
+                items={categoryRecos ?? []}
+                isLoading={showCategoryRecosSkeleton}
+              />
+            </div>
+          ) : null}
 
-        {mode === 'brand' && (showBrandRecosSkeleton || (brandRecos?.length ?? 0) > 0) ? (
-          <div className="pt-1">
-            <RecoSection
-              title="Trending in this brand"
-              widget="w6_brand_trending"
-              items={brandRecos ?? []}
-              isLoading={showBrandRecosSkeleton}
-            />
-          </div>
-        ) : null}
+          {mode === 'brand' && (showBrandRecosSkeleton || (brandRecos?.length ?? 0) > 0) ? (
+            <div className="pt-1 lg:pt-6">
+              <RecoSection
+                title="Trending in this brand"
+                widget="w6_brand_trending"
+                items={brandRecos ?? []}
+                isLoading={showBrandRecosSkeleton}
+              />
+            </div>
+          ) : null}
 
-        {productsError ? (
-          <div className="p-4">
-            <ErrorState
-              heading="Couldn't load products"
-              description="Check your connection and try again."
-              onRetry={() => {
-                setRetryNonce((n) => n + 1);
-                void listQuery.refetch();
-              }}
-            />
-          </div>
-        ) : (
-          <>
-            {showProductsSkeleton || items.length > 0 ? (
-              <div className="px-4 pb-3 pt-4">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
-                      Browse
-                    </p>
-                    <h2
-                      className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
-                      style={{ fontFamily: 'var(--font-display)' }}
-                    >
-                      All Products
-                    </h2>
+          {productsError ? (
+            <div className="p-4">
+              <ErrorState
+                heading="Couldn't load products"
+                description="Check your connection and try again."
+                onRetry={() => {
+                  setRetryNonce((n) => n + 1);
+                  void listQuery.refetch();
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              {showProductsSkeleton || items.length > 0 ? (
+                <div className="px-4 pb-3 pt-4 lg:px-2">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
+                        Browse
+                      </p>
+                      <h2
+                        className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
+                        style={{ fontFamily: 'var(--font-display)' }}
+                      >
+                        All Products
+                      </h2>
+                    </div>
+                    {showProductsSkeleton ? (
+                      <div className="h-4 w-14 shrink-0 animate-pulse rounded bg-cream-200" />
+                    ) : (
+                      <p className="shrink-0 text-sm text-[var(--fg-3)]">
+                        {items.length} {items.length === 1 ? 'item' : 'items'}
+                      </p>
+                    )}
                   </div>
-                  {showProductsSkeleton ? (
-                    <div className="h-4 w-14 shrink-0 animate-pulse rounded bg-cream-200" />
-                  ) : (
-                    <p className="shrink-0 text-sm text-[var(--fg-3)]">
-                      {items.length} {items.length === 1 ? 'item' : 'items'}
-                    </p>
-                  )}
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            <ProductGrid
-              items={items}
-              loading={showProductsSkeleton}
-              loadingMore={loadingMore}
-              sentinelIndex={sentinelIndex}
-              sentinelRef={sentinelRef}
-              showPromotionBadge={mode !== 'list'}
-            />
+              <ProductGrid
+                items={items}
+                loading={showProductsSkeleton}
+                loadingMore={loadingMore}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
+                showPromotionBadge={mode !== 'list'}
+              />
 
-            {!showProductsSkeleton && items.length === 0 ? (
-              <NoProductsFoundState />
-            ) : null}
-          </>
-        )}
+              {!showProductsSkeleton && items.length === 0 ? (
+                <NoProductsFoundState />
+              ) : null}
+            </>
+          )}
+        </BuyerCatalogDesktopLayout>
       </BuyerDetailShell>
-    </div>
-  );
-}
-
-function ChipCarouselSkeleton({ kind }: { kind: 'category' | 'brand' }): React.ReactNode {
-  return (
-    <div
-      className="flex gap-2 overflow-x-hidden px-4 pb-1 pt-1.5"
-      role="status"
-      aria-label={kind === 'category' ? 'Loading category filters' : 'Loading brand filters'}
-    >
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-8 w-20 shrink-0 animate-pulse rounded-full bg-cream-200" />
-      ))}
     </div>
   );
 }
@@ -326,6 +373,26 @@ function NoProductsFoundState(): React.ReactNode {
           Browse Catalog
         </Link>
       </div>
+    </div>
+  );
+}
+
+function DesktopRailSkeleton(): React.ReactNode {
+  return (
+    <div className="flex flex-col" role="status" aria-label="Loading desktop filters">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex min-h-[88px] flex-col items-center justify-center gap-2 border-b border-cream-200 px-1 py-3 last:border-b-0 sm:min-h-[96px] sm:px-2 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1"
+        >
+          <div className="h-12 w-12 shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
+            <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="h-4 w-14 animate-pulse rounded bg-cream-200 lg:w-4/5" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

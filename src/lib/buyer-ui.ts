@@ -5,6 +5,14 @@ export const BUYER_CARD_RADIUS_CLASS = 'rounded-[12px]' as const;
 export const BUYER_TWO_LINE_TITLE_CLASS =
   'line-clamp-2 min-h-[2.4em] leading-[1.2]' as const;
 
+/** Shared responsive density for buyer catalog/product grids. */
+export const BUYER_PRODUCT_GRID_CLASS =
+  'grid grid-cols-2 gap-1.5 px-1.5 pb-3 md:grid-cols-3 md:gap-2 md:px-2 lg:grid-cols-4 min-[1240px]:grid-cols-5 min-[1380px]:grid-cols-6' as const;
+
+/** Shared responsive density for buyer discovery/category tiles. */
+export const BUYER_DISCOVERY_GRID_CLASS =
+  'grid grid-cols-3 gap-2 md:grid-cols-4 min-[1380px]:grid-cols-5' as const;
+
 /** Prefetch next page when the user scrolls past this fraction of the loaded list. */
 export const BUYER_INFINITE_SCROLL_RATIO = 0.7 as const;
 

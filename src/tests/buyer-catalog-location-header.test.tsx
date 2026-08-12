@@ -35,7 +35,6 @@ describe('buyer catalog landing header', () => {
   it('shows location link aligned with title and links to selector', () => {
     render(
       <BuyerCatalogLandingHeader
-        categoryChips={<div data-testid="category-chips">chips</div>}
         searchValue=""
         onSearchChange={vi.fn()}
       />,
@@ -44,7 +43,6 @@ describe('buyer catalog landing header', () => {
     const locationLink = screen.getByRole('link', { name: /selected location/i });
     expect(locationLink).toHaveAttribute('href', '/buy/location?returnTo=%2Fbuy%2Fcatalog');
     expect(screen.getByText('Andheri West')).toBeInTheDocument();
-    expect(screen.getByTestId('category-chips')).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: /search catalog/i })).toBeInTheDocument();
   });
 

@@ -20,12 +20,12 @@ export interface BuyerDetailShellProps {
   subtitle?: React.ReactNode;
   /** Optional full-width control row shown below the title row. */
   headerSearch?: React.ReactNode;
-  /** Sticky chip/filter row pinned below title row inside the header. */
-  stickyToolbar?: React.ReactNode;
   /** Hide the buyer location control for detail screens. */
   showLocationControl?: boolean;
   /** Hide the search icon in the header row. */
   hideSearch?: boolean;
+  /** Optional ref to the sticky header block for split-view height calculations. */
+  contentRef?: React.Ref<HTMLDivElement>;
   /**
    * Fallback when the tab has no stacked history (`history.state.idx` missing/0).
    * Catalog tree details should pass `/buy/catalog` — default is buyer home.
@@ -40,9 +40,9 @@ export function BuyerDetailShell({
   rightSlot,
   subtitle,
   headerSearch,
-  stickyToolbar,
   showLocationControl = false,
   hideSearch = false,
+  contentRef,
   backFallbackHref,
   children,
 }: BuyerDetailShellProps) {
@@ -54,8 +54,9 @@ export function BuyerDetailShell({
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <header
+        ref={contentRef}
         className={cn('sticky top-0 z-[15] transition-shadow', collapsed && 'shadow-sm')}
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
@@ -102,14 +103,9 @@ export function BuyerDetailShell({
             {headerSearch}
           </div>
         ) : null}
-        {stickyToolbar ? (
-          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-1">
-            {stickyToolbar}
-          </div>
-        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      <div className="pt-3">{children}</div>
-    </>
+      <div className="min-h-0 flex-1 overflow-hidden pt-3">{children}</div>
+    </div>
   );
 }

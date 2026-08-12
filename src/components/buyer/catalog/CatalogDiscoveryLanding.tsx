@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { SearchX } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
-import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
+import { BuyerCatalogDesktopLayout } from '@/components/buyer/catalog/BuyerCatalogDesktopLayout';
 import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { DiscoveryThumbTile } from '@/components/buyer/catalog/DiscoveryThumbTile';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
@@ -12,7 +12,12 @@ import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontal
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@/lib/buyer-lookbook';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
+import {
+  BUYER_CARD_RADIUS_CLASS,
+  BUYER_DISCOVERY_GRID_CLASS,
+  BUYER_INFINITE_SCROLL_RATIO,
+  BUYER_TWO_LINE_TITLE_CLASS,
+} from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -114,17 +119,6 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
 
   const isSearching = debouncedSearch.length > 0;
 
-  const categoryChips = showCategoriesSkeleton ? (
-    <CategoryChipCarouselSkeleton />
-  ) : categories.length > 0 ? (
-    <BuyerEntityChipNav
-      kind="category"
-      categories={categories}
-      selectedId={null}
-      mode="landing"
-    />
-  ) : null;
-
   const allSectionsFailed =
     catalogsError && brandsError && categoriesError
     && !showCampaignsSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton;
@@ -132,12 +126,11 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
   return (
     <div className="flex flex-col pb-8">
       <BuyerCatalogLandingHeader
-        categoryChips={categoryChips}
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
       />
 
-      <div className="space-y-0 px-3">
+      <BuyerCatalogDesktopLayout contentClassName="space-y-0 px-3">
         {isSearching ? (
           <CatalogSearchResults
             loading={searchLoading}
@@ -155,7 +148,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
         ) : (
           <>
             {showCampaignsSkeleton || catalogs.length > 0 ? (
-              <section className="pt-10">
+              <section className="pt-10 lg:pt-6">
                 <BuyerSectionRow title="Campaigns" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
                 {showCampaignsSkeleton ? (
                   <CampaignCarouselSkeleton />
@@ -209,7 +202,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                 {showCategoriesSkeleton ? (
                   <CategoryGridSkeleton />
                 ) : (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className={BUYER_DISCOVERY_GRID_CLASS}>
                     {categories.map((cat) => (
                       <DiscoveryThumbTile
                         key={cat.id}
@@ -227,7 +220,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
           </>
         )}
-      </div>
+      </BuyerCatalogDesktopLayout>
     </div>
   );
 }
@@ -295,21 +288,6 @@ function CatalogSearchResults({
   );
 }
 
-/** Matches BuyerEntityChipNav category chip row footprint. */
-function CategoryChipCarouselSkeleton(): React.ReactNode {
-  return (
-    <div
-      className="flex gap-2 overflow-x-hidden px-4 pb-1 pt-1.5"
-      role="status"
-      aria-label="Loading category filters"
-    >
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="h-8 w-20 shrink-0 animate-pulse rounded-full bg-cream-200" />
-      ))}
-    </div>
-  );
-}
-
 /** Matches CatalogLookbookCard carousel cards. */
 function CampaignCarouselSkeleton(): React.ReactNode {
   return (
@@ -357,7 +335,7 @@ function BrandScrollSkeleton(): React.ReactNode {
 /** Matches DiscoveryThumbTile category grid variant. */
 function CategoryGridSkeleton(): React.ReactNode {
   return (
-    <div className="grid grid-cols-3 gap-2" role="status" aria-label="Loading categories">
+    <div className={cn(BUYER_DISCOVERY_GRID_CLASS, 'lg:hidden')} role="status" aria-label="Loading categories">
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}

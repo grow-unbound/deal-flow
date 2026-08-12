@@ -152,7 +152,7 @@ export function ProductCard({
         'relative flex h-full flex-col overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)]',
         isCompact
           ? 'shadow-[0_1px_2px_rgba(34,30,26,0.05)]'
-          : 'shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)] transition-all hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(34,30,26,0.08),0_2px_6px_rgba(34,30,26,0.05)]',
+          : 'shadow-[0_1px_3px_rgba(34,30,26,0.06),0_3px_10px_rgba(34,30,26,0.05)] transition-all hover:-translate-y-px hover:shadow-[0_4px_14px_rgba(34,30,26,0.08),0_2px_6px_rgba(34,30,26,0.05)]',
         className,
       )}
     >
@@ -188,8 +188,8 @@ export function ProductCard({
                     src={productImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
-                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    sizes={isCompact ? '118px' : '(max-width: 639px) 41vw, (max-width: 1023px) 28vw, (max-width: 1379px) 18vw, 14vw'}
                     onError={() => setProductImgError(true)}
                     unoptimized
                   />
@@ -198,8 +198,8 @@ export function ProductCard({
                     src={categoryImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
-                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    sizes={isCompact ? '118px' : '(max-width: 639px) 41vw, (max-width: 1023px) 28vw, (max-width: 1379px) 18vw, 14vw'}
                     onError={() => setCategoryImgError(true)}
                     unoptimized
                   />
@@ -208,8 +208,8 @@ export function ProductCard({
                     src={brandImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-3.5')}
-                    sizes={isCompact ? '118px' : '(max-width: 640px) 50vw, 200px'}
+                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    sizes={isCompact ? '118px' : '(max-width: 639px) 41vw, (max-width: 1023px) 28vw, (max-width: 1379px) 18vw, 14vw'}
                     onError={() => setBrandImgError(true)}
                     unoptimized
                   />
@@ -225,7 +225,7 @@ export function ProductCard({
           <div
             className={cn(
               'absolute bottom-1.5 right-1.5 z-[2] flex items-center overflow-hidden rounded-md bg-[#1C1C1E] shadow-md',
-              isCompact ? 'h-7' : 'h-9 bottom-2 right-2 rounded-lg',
+              isCompact ? 'h-7' : 'h-8 bottom-1.5 right-1.5 rounded-lg sm:h-9 sm:bottom-2 sm:right-2',
             )}
           >
             <button
@@ -233,7 +233,7 @@ export function ProductCard({
               onClick={handleDecrement}
               className={cn(
                 'flex items-center justify-center text-white active:opacity-70',
-                isCompact ? 'h-7 w-6' : 'h-9 w-8',
+                isCompact ? 'h-7 w-6' : 'h-8 w-7 sm:h-9 sm:w-8',
               )}
               aria-label="Decrease quantity"
             >
@@ -242,7 +242,7 @@ export function ProductCard({
             <span
               className={cn(
                 'min-w-[1.25rem] text-center font-semibold tabular-nums text-white',
-                isCompact ? 'text-xs' : 'min-w-[1.5rem] text-sm',
+                isCompact ? 'text-xs' : 'min-w-[1.25rem] text-xs sm:min-w-[1.5rem] sm:text-sm',
               )}
             >
               {cartItem.quantity}
@@ -252,7 +252,7 @@ export function ProductCard({
               onClick={handleIncrement}
               className={cn(
                 'flex items-center justify-center text-white active:opacity-70',
-                isCompact ? 'h-7 w-6' : 'h-9 w-8',
+                isCompact ? 'h-7 w-6' : 'h-8 w-7 sm:h-9 sm:w-8',
               )}
               aria-label="Increase quantity"
             >
@@ -266,7 +266,7 @@ export function ProductCard({
             className={cn(
               'absolute z-[2] flex items-center justify-center rounded-md bg-[#1C1C1E] text-white shadow-md',
               'active:scale-95',
-              isCompact ? 'bottom-1.5 right-1.5 h-6 w-6' : 'bottom-2 right-2 h-8 w-8',
+              isCompact ? 'bottom-1.5 right-1.5 h-6 w-6' : 'bottom-1.5 right-1.5 h-7 w-7 sm:bottom-2 sm:right-2 sm:h-8 sm:w-8',
             )}
             aria-label="Add to cart"
           >
@@ -286,14 +286,14 @@ export function ProductCard({
           <div
             className={cn(
               'flex h-full flex-1 flex-col bg-[var(--cream-50)]',
-              isCompact ? 'px-2 pb-2 pt-1.5' : 'px-3 pb-3 pt-2.5',
+              isCompact ? 'px-2 pb-2 pt-1.5' : 'px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5',
             )}
           >
             <p
               className={cn(BUYER_TWO_LINE_TITLE_CLASS, 'font-medium text-[var(--fg-1)]')}
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: isCompact ? 'var(--b-text-label)' : 'var(--b-text-body)',
+                fontSize: isCompact ? 'var(--b-text-label)' : 'clamp(13px, 1.5vw, var(--b-text-body))',
                 fontWeight: 500,
                 letterSpacing: '-0.005em',
               }}
@@ -301,7 +301,7 @@ export function ProductCard({
               {item.display_name}
             </p>
             {!isCompact ? (
-              <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+              <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: '11px' }}>
                 {item.internal_sku}
               </p>
             ) : null}
@@ -310,7 +310,7 @@ export function ProductCard({
                 className="font-medium tabular-nums text-[var(--fg-1)]"
                 style={{
                   fontFamily: 'var(--font-display)',
-                  fontSize: isCompact ? 'var(--b-text-sub)' : 'var(--b-text-price)',
+                  fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(15px, 1.9vw, var(--b-text-price))',
                   fontVariantNumeric: 'tabular-nums',
                   fontWeight: 500,
                   letterSpacing: '-0.01em',

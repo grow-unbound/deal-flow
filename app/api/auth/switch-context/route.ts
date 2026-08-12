@@ -57,6 +57,18 @@ async function resolveCallerPhone(userId: string, role: string | null): Promise<
   }
 
   if (role && (BUYER_ROLES as readonly string[]).includes(role)) {
+    // Buyer owners log in directly as app.buyers (buyers.user_id) and have no
+    // buyer_users row at all — check that first. Delegates (real staff) only
+    // ever have a buyer_users row, never buyers.user_id.
+    const { data: ownerRow } = await supabaseAdmin
+      .schema('app')
+      .from('buyers')
+      .select('phone')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const ownerPhone = (ownerRow as { phone: string | null } | null)?.phone;
+    if (ownerPhone) return ownerPhone;
+
     // A user can be a member of multiple buyer accounts — take one deterministically
     // rather than .maybeSingle() (which errors on >1 rows).
     const { data } = await supabaseAdmin

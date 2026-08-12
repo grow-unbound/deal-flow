@@ -66,6 +66,7 @@ function BuyerShellMain({
       pullEnabled={canPullToRefresh}
       onRefresh={handleRefresh}
       className="min-h-0 flex-1"
+      contentClassName="flex h-full min-h-0 flex-col"
       style={{
         paddingBottom: showTabBarPadding
           ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))'

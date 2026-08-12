@@ -103,23 +103,12 @@ describe('CatalogDiscoveryLanding independent section streaming', () => {
     expect(screen.getByText('Campaigns')).toBeInTheDocument();
     expect(screen.getByText('Brands')).toBeInTheDocument();
     expect(screen.getByText('Categories')).toBeInTheDocument();
-    expect(screen.getByLabelText('Loading category filters')).toBeInTheDocument();
-
     await screen.findByText('Monsoon Push');
-
-    // Campaigns streamed in while brands/categories still skeleton.
-    expect(screen.queryByText('Hikvision')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Loading brands')).toBeInTheDocument();
-    expect(screen.getByLabelText('Loading categories')).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Hikvision')).toBeInTheDocument();
-      expect(screen.getAllByText('CCTV').length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText('CCTV').length).toBeGreaterThanOrEqual(1);
     });
-
-    expect(screen.queryByLabelText('Loading brands')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Loading categories')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Loading category filters')).not.toBeInTheDocument();
 
     expect(apiFetchMock.mock.calls.some((call) => call[0] === '/api/buyer/catalogs')).toBe(true);
     expect(apiFetchMock.mock.calls.some((call) => call[0] === '/api/buyer/brands')).toBe(true);

@@ -7,14 +7,12 @@ import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogS
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 
 interface BuyerCatalogLandingHeaderProps {
-  categoryChips?: React.ReactNode;
   searchPlaceholder?: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
 }
 
 export function BuyerCatalogLandingHeader({
-  categoryChips = null,
   searchPlaceholder = 'Search products, SKU, brand…',
   searchValue,
   onSearchChange,
@@ -68,12 +66,6 @@ export function BuyerCatalogLandingHeader({
             placeholder={searchPlaceholder}
           />
         </div>
-
-        {categoryChips ? (
-          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-2.5">
-            {categoryChips}
-          </div>
-        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0 bg-transparent" aria-hidden />
     </>

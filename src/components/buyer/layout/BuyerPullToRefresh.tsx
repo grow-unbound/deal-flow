@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 const PULL_THRESHOLD_PX = 72;
 const MAX_PULL_PX = 112;
 const DRAG_DAMPING = 0.48;
+const NESTED_SCROLL_SELECTOR = '[data-buyer-nested-scroll="true"]';
 
 type PullState = 'idle' | 'pulling' | 'armed' | 'refreshing';
 
@@ -19,6 +20,11 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T) {
   if (ref && 'current' in ref) {
     (ref as { current: T }).current = value;
   }
+}
+
+function isTouchInsideNestedScrollTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.closest(NESTED_SCROLL_SELECTOR) != null;
 }
 
 export function BuyerPullToRefresh({
@@ -86,6 +92,10 @@ export function BuyerPullToRefresh({
 
   const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
     if (!pullEnabled || refreshingRef.current) return;
+    if (isTouchInsideNestedScrollTarget(event.target)) {
+      resetGesture();
+      return;
+    }
     if (event.touches.length !== 1) {
       resetGesture();
       return;
@@ -103,6 +113,10 @@ export function BuyerPullToRefresh({
 
   const handleTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
     if (!pullEnabled || refreshingRef.current) return;
+    if (isTouchInsideNestedScrollTarget(event.target)) {
+      resetGesture();
+      return;
+    }
     if (event.touches.length !== 1) {
       resetGesture();
       return;

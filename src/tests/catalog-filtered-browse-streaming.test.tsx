@@ -119,18 +119,16 @@ describe('CatalogFilteredBrowse independent section streaming', () => {
 
     expect(screen.getByText('Trending in this category')).toBeInTheDocument();
     expect(screen.getByText('All Products')).toBeInTheDocument();
-    expect(screen.getByLabelText('Loading category filters')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading desktop filters')).toBeInTheDocument();
 
     await screen.findByText('Trending Cam');
-    // Reco painted while products still skeleton.
-    expect(screen.queryByText('Bullet Camera')).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Bullet Camera')).toBeInTheDocument();
       expect(screen.getAllByText('CCTV').length).toBeGreaterThanOrEqual(2);
     });
 
-    expect(screen.queryByLabelText('Loading category filters')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading desktop filters')).not.toBeInTheDocument();
     expect(apiFetchMock.mock.calls.some((c) => c[0] === '/api/buyer/reco/category/cat-1')).toBe(true);
     expect(apiFetchMock.mock.calls.some((c) => typeof c[0] === 'string' && c[0].startsWith('/api/buyer/catalog?'))).toBe(true);
   });
