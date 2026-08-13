@@ -3,7 +3,7 @@
 import { formatNumberValue } from '@/lib/utils';
 import * as React from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MapPin, Package, ShoppingCart } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -310,6 +310,8 @@ export function ReorderButton({
   className?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { items: cartItems, clearCart, addItem } = useCart();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -333,7 +335,15 @@ export function ReorderButton({
         source_document_type: docType,
       });
     });
-    router.push('/buy/cart');
+    // Desktop keeps the persistent header/cart Sheet mounted across routes —
+    // open it in place instead of navigating to the mobile-only /buy/cart page.
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      const next = new URLSearchParams(searchParams?.toString() ?? '');
+      next.set('cart', 'open');
+      router.push(`${pathname}?${next.toString()}`);
+    } else {
+      router.push('/buy/cart');
+    }
   }
 
   function handleReorder() {

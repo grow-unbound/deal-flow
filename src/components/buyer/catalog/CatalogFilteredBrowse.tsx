@@ -8,6 +8,7 @@ import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
+import { CatalogSearchState } from '@/components/buyer/catalog/CatalogSearchState';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
@@ -334,28 +335,19 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
 function NoProductsFoundState(): React.ReactNode {
   return (
-    <div className="px-4 py-10">
-      <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[var(--shadow-xs)]">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-[var(--cream-700)]">
-          <SearchX className="h-5 w-5" />
-        </div>
-        <h2
-          className="mt-4 text-lg font-semibold text-[var(--fg-1)]"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          No products found
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--fg-3)]">
-          Try a different search or switch filters to explore more products.
-        </p>
+    <CatalogSearchState
+      icon={<SearchX className="h-5 w-5" />}
+      title="No products found"
+      description="Try a different search or switch filters to explore more products."
+      action={(
         <Link
           href="/buy/catalog"
-          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
         >
           Browse Catalog
         </Link>
-      </div>
-    </div>
+      )}
+    />
   );
 }
 

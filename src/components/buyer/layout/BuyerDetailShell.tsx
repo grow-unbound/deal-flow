@@ -77,10 +77,10 @@ export function BuyerDetailShell({
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--fg-2)] transition-colors active:bg-[var(--cream-100)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center p-0 text-[var(--fg-2)] transition-colors active:opacity-60"
             aria-label="Back"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </button>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -108,7 +108,7 @@ export function BuyerDetailShell({
         ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      <div className={cn('min-h-0 flex-1 overflow-hidden pt-3', hideDesktopHeader && 'md:pt-0')}>{children}</div>
+      <div className={cn('min-h-0 flex-1 overflow-hidden pt-3', hideDesktopHeader && 'md:overflow-visible md:pt-0')}>{children}</div>
     </div>
   );
 }

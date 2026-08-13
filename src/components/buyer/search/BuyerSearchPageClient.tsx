@@ -3,37 +3,36 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
+import { Search } from 'lucide-react';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
+import { CatalogSearchEmptyState, CatalogSearchErrorState, CatalogSearchPromptState } from '@/components/buyer/catalog/CatalogSearchState';
+import { Spinner } from '@/components/ui/spinner';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
 import { useBuyerCatalogSearchTextInfinite } from '@/hooks/useBuyerProducts';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
-import type { BuyerCatalogTextItem } from '@/types/buyer';
-
-function matchesQuery(item: BuyerCatalogTextItem, q: string): boolean {
-  if (!q.trim()) return true;
-  const s = q.trim().toLowerCase();
-  return (
-    item.display_name.toLowerCase().includes(s) ||
-    item.internal_sku.toLowerCase().includes(s) ||
-    (item.brand_name?.toLowerCase().includes(s) ?? false)
-  );
-}
 
 export function BuyerSearchPageClient() {
   const router = useRouter();
   const posthog = usePostHog();
   const searchParams = useSearchParams();
   const scope = searchParams.get('scope') ?? 'catalog';
-  const initialQ = searchParams.get('q') ?? '';
   const categoryId = searchParams.get('category_id') ?? '';
   const brandId = searchParams.get('brand_id') ?? '';
   const catalogId = searchParams.get('campaign_id') ?? '';
+  const urlQ = searchParams.get('q') ?? '';
 
-  const [q, setQ] = React.useState(initialQ);
-  const [debounced, setDebounced] = React.useState(initialQ.trim());
+  const [q, setQ] = React.useState(urlQ);
+  const [debounced, setDebounced] = React.useState(urlQ.trim());
   const searchEventKeyRef = React.useRef<string | null>(null);
+
+  // Stay in sync with the URL — the persistent desktop header owns the actual
+  // input there and drives searches by pushing `q` into this same route.
+  React.useEffect(() => {
+    setQ(urlQ);
+    setDebounced(urlQ.trim());
+  }, [urlQ]);
 
   const catalogSearchQuery = useBuyerCatalogSearchTextInfinite(
     debounced,
@@ -58,19 +57,15 @@ export function BuyerSearchPageClient() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const shownTextItems = React.useMemo(
-    () => catalogTextItems.filter((item) => matchesQuery(item, q)),
-    [catalogTextItems, q],
-  );
   const resetKey = React.useMemo(
     () => [debounced, categoryId, brandId, catalogId].join('|'),
     [debounced, categoryId, brandId, catalogId],
   );
-  const { shownItems, registerItemRef } = useTwoPhaseProductGrid(shownTextItems, resetKey);
+  const { shownItems, registerItemRef } = useTwoPhaseProductGrid(catalogTextItems, resetKey);
 
-  const loading = catalogSearchQuery.isLoading && catalogTextItems.length === 0;
+  const fetching = catalogSearchQuery.isFetching;
+  const initialLoading = fetching && catalogTextItems.length === 0;
   const error = catalogSearchQuery.isError;
-  const refreshing = catalogSearchQuery.isFetching && catalogTextItems.length > 0;
 
   const sentinelIndex = getSentinelInsertIndex(shownItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
@@ -80,7 +75,7 @@ export function BuyerSearchPageClient() {
   });
 
   React.useEffect(() => {
-    if (!posthog || debounced.length === 0 || loading || refreshing) return;
+    if (!posthog || debounced.length === 0 || fetching) return;
     const key = `${scope}:${debounced}:${shownItems.length}:${error ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
@@ -102,9 +97,8 @@ export function BuyerSearchPageClient() {
     categoryId,
     debounced,
     error,
-    loading,
+    fetching,
     posthog,
-    refreshing,
     scope,
     shownItems.length,
   ]);
@@ -113,9 +107,13 @@ export function BuyerSearchPageClient() {
     navigateBuyerBack(router);
   }
 
+  function handleChange(value: string): void {
+    setQ(value);
+  }
+
   return (
-    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)]">
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 py-2 backdrop-blur-md">
+    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)] md:pb-0">
+      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 py-2 backdrop-blur-md md:hidden">
         <button
           type="button"
           onClick={handleClose}
@@ -126,28 +124,28 @@ export function BuyerSearchPageClient() {
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <input
-          autoFocus
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search products, SKU, brand…"
-          className="min-w-0 flex-1 rounded-xl border border-[var(--border-1)] bg-[var(--bg-recessed)] px-3 py-2.5 text-sm text-[var(--fg-1)] outline-none focus:border-[var(--teal-500)]"
-          aria-label="Search"
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[var(--border-1)] bg-[var(--bg-recessed)] px-3 py-2.5">
+          {fetching ? <Spinner size="sm" className="shrink-0 text-[var(--fg-3)]" /> : <Search className="h-4 w-4 shrink-0 text-[var(--fg-3)]" aria-hidden />}
+          <input
+            autoFocus
+            type="search"
+            value={q}
+            onChange={(e) => handleChange(e.target.value)}
+            placeholder="Search products, SKU, brand…"
+            className="min-w-0 flex-1 bg-transparent text-sm text-[var(--fg-1)] outline-none"
+            aria-label="Search"
+          />
+        </div>
       </header>
       <div className="flex-1 px-0 pt-2">
-        {refreshing ? (
-          <div className="px-4 pb-2 text-xs text-[var(--fg-3)]">Updating results…</div>
-        ) : null}
-        {loading ? (
+        {initialLoading ? (
           <ProductGrid items={[]} loading />
         ) : error ? (
-          <div className="px-4 py-8 text-center text-sm text-[var(--danger-500)]">Could not load results.</div>
+          <CatalogSearchErrorState onRetry={() => { void catalogSearchQuery.refetch(); }} />
         ) : shownItems.length === 0 && !debounced ? (
-          <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">Type to search products</div>
+          <CatalogSearchPromptState />
         ) : shownItems.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">No matches. Try another term.</div>
+          <CatalogSearchEmptyState query={debounced} />
         ) : (
           <ProductGrid
             items={shownItems}

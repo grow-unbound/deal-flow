@@ -64,7 +64,7 @@ export function BuyerDesktopBreadcrumbs() {
   return (
     <div className="hidden bg-[var(--cream-50)] md:block">
       <div
-        className="mx-auto flex w-full items-center gap-3 px-6 pb-5 pt-4"
+        className="mx-auto flex w-full items-center gap-3 px-6 pb-2 pt-4"
         style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH, fontSize: 'var(--b-text-body)' }}
       >
         {crumbs.map((crumb, index) => {

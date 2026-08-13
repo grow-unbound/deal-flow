@@ -6,7 +6,7 @@ import { Receipt } from 'lucide-react';
 
 import { BuyerEmptyState } from '@/components/buyer/BuyerEmptyState';
 import { InvoiceCard } from './InvoiceCard';
-import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
+import { BuyerTransactionCardSkeleton, TransactionCardSkeletonItem } from './BuyerTransactionCardSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerInvoicesInfinite } from '@/hooks/useBuyerInvoices';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -136,7 +136,12 @@ export function InvoicesTab({
               {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
             </Fragment>
           ))}
-          {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
+          {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
         </div>
       </div>
     );
@@ -150,7 +155,12 @@ export function InvoicesTab({
           {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
         </Fragment>
       ))}
-      {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
+      {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
     </div>
   );
 }

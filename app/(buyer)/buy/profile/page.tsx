@@ -605,7 +605,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#f8f4ed] pb-8">
+    <div className="min-h-dvh bg-[var(--bg-base)] pb-8">
       <div className="md:hidden">
         <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
           <div className="flex items-center gap-4">

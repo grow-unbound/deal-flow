@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 
@@ -12,6 +12,7 @@ interface BuyerCatalogLandingHeaderProps {
   searchPlaceholder?: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
+  searchLoading?: boolean;
 }
 
 function getInitials(value: string | null | undefined) {
@@ -25,6 +26,7 @@ export function BuyerCatalogLandingHeader({
   searchPlaceholder = 'Search products, SKU, brand…',
   searchValue,
   onSearchChange,
+  searchLoading = false,
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
   const { data: me } = useBuyerMe();
@@ -49,10 +51,13 @@ export function BuyerCatalogLandingHeader({
           <div className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-5">
               <div className="flex min-w-0 items-center gap-3">
-                <Avatar className="h-11 w-11 border border-cream-200 shadow-[var(--shadow-sm)]">
-                  {tenantLogoUrl ? <AvatarImage src={tenantLogoUrl} alt={tenantName} /> : null}
-                  <AvatarFallback>{getInitials(tenantName)}</AvatarFallback>
-                </Avatar>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-cream-200 bg-white shadow-[var(--shadow-sm)]">
+                  {tenantLogoUrl ? (
+                    <Image src={tenantLogoUrl} alt={tenantName} width={44} height={44} className="h-full w-full object-contain p-1" unoptimized />
+                  ) : (
+                    <span className="text-caption font-semibold uppercase text-cream-900">{getInitials(tenantName)}</span>
+                  )}
+                </div>
                 <div className="min-w-0">
                   <p className="truncate text-base font-semibold text-[var(--cream-900)]">{tenantName}</p>
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-500)]">Catalog</p>
@@ -68,6 +73,7 @@ export function BuyerCatalogLandingHeader({
             value={searchValue}
             onChange={onSearchChange}
             placeholder={searchPlaceholder}
+            loading={searchLoading}
           />
         </div>
       </header>

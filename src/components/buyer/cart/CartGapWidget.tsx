@@ -229,10 +229,15 @@ function CartGapListItem({
         <button
           type="button"
           onClick={handleAdd}
-          className={cn(BUYER_QUICK_ADD_IDLE_CLASS, 'flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg')}
+          className={cn(
+            BUYER_QUICK_ADD_IDLE_CLASS,
+            'flex shrink-0 items-center justify-center gap-1 self-center rounded-full px-2.5 py-1 font-semibold',
+          )}
+          style={{ fontSize: 'var(--b-text-eyebrow)' }}
           aria-label={`Add ${product.display_name} to cart`}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3 w-3" />
+          ADD
         </button>
       </div>
     </>

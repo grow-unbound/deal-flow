@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ChevronDown, CircleHelp, LogOut, ReceiptText, Repeat, Search, ShoppingCart, User } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import Image from 'next/image';
+import { useIsFetching } from '@tanstack/react-query';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { Popover, PopoverContent, PopoverTrigger, PopoverClose } from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerSession } from '@/hooks/useBuyerSession';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +19,7 @@ import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationCon
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { triggerHaptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
@@ -38,52 +40,57 @@ function formatRoleLabel(role: string | null | undefined) {
   return 'Buyer';
 }
 
-function DesktopHeaderAction({
+function DesktopIconAction({
   href,
-  label,
+  ariaLabel,
   icon,
   badge,
   active = false,
   onClick,
-  ariaLabel,
 }: {
   href?: string;
-  label: string;
+  ariaLabel: string;
   icon: ReactNode;
   badge?: string | number | null;
   active?: boolean;
   onClick?: () => void;
-  ariaLabel?: string;
 }) {
   const content = (
     <span
       className={cn(
-        'relative inline-flex flex-col items-center justify-center gap-1 rounded-[10px] px-2.5 py-1.5 text-center transition-colors',
-        active ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-cream-100',
+        'relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors duration-fast',
+        active ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-[var(--yk-hover-tint)] hover:text-cream-950',
       )}
     >
-      <span className="relative inline-flex h-5 w-5 items-center justify-center">
-        {icon}
-        {badge ? (
-          <span className="absolute -right-2.5 -top-1.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-ember-500 px-1 text-[length:var(--b-text-eyebrow)] font-semibold leading-4 text-white">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-[length:var(--b-text-eyebrow)] font-medium leading-none">{label}</span>
+      {icon}
+      {badge ? (
+        <span className="absolute -right-1 -top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-ember-500 px-1 text-[length:var(--b-text-eyebrow)] font-semibold leading-4 text-white">
+          {badge}
+        </span>
+      ) : null}
     </span>
   );
 
+  function handlePointerDown() {
+    triggerHaptic('light');
+  }
+
   if (href) {
     return (
-      <Link href={href} aria-label={ariaLabel ?? label} className="shrink-0">
+      <Link href={href} aria-label={ariaLabel} className="shrink-0" onPointerDown={handlePointerDown}>
         {content}
       </Link>
     );
   }
 
   return (
-    <button type="button" onClick={onClick} aria-label={ariaLabel ?? label} className="shrink-0">
+    <button
+      type="button"
+      onClick={onClick}
+      onPointerDown={handlePointerDown}
+      aria-label={ariaLabel}
+      className="shrink-0"
+    >
       {content}
     </button>
   );
@@ -109,12 +116,36 @@ export function BuyerDesktopHeader() {
   const cartDrawerOpen = searchParams?.get('cart') === 'open';
   const cartActive = pathname === '/buy/cart' || cartDrawerOpen;
   const cartBadge = cartCount > 0 ? (cartCount > 99 ? '99+' : cartCount) : null;
-  const searchHref = useMemo(() => {
-    const next = new URLSearchParams(searchParams?.toString() ?? '');
-    next.delete('cart');
-    const query = next.toString();
-    return query ? `/buy/search?${query}` : '/buy/search';
-  }, [searchParams]);
+
+  const isOnSearchPage = pathname === '/buy/search';
+  const [searchInput, setSearchInput] = useState(() => (isOnSearchPage ? (searchParams?.get('q') ?? '') : ''));
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchFetching = useIsFetching({ queryKey: ['buyer-catalog-search-text'] }) > 0;
+
+  useEffect(() => {
+    setSearchInput(pathname === '/buy/search' ? (searchParams?.get('q') ?? '') : '');
+  }, [pathname, searchParams]);
+
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  }, []);
+
+  function handleSearchInputChange(value: string) {
+    setSearchInput(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      const next = new URLSearchParams();
+      if (value.trim()) next.set('q', value.trim());
+      const query = next.toString();
+      const href = query ? `/buy/search?${query}` : '/buy/search';
+      if (pathname === '/buy/search') {
+        router.replace(href);
+      } else {
+        router.push(href);
+      }
+    }, 280);
+  }
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -127,11 +158,11 @@ export function BuyerDesktopHeader() {
       const isSearchShortcut = (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) || event.key.toLowerCase() === 'f';
       if (!isSearchShortcut) return;
       event.preventDefault();
-      router.push(searchHref);
+      searchInputRef.current?.focus();
     }
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [router, searchHref]);
+  }, []);
 
   async function handleSwitchAccount() {
     setSwitchPending(true);
@@ -192,15 +223,15 @@ export function BuyerDesktopHeader() {
           className="mx-auto grid min-h-[64px] w-full grid-cols-[auto_minmax(280px,1fr)_auto] items-center gap-4 px-5 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,760px)_auto]"
           style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
         >
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
             {isBuyerLoading ? (
               <div
-                className="h-8 w-24 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
+                className="h-[3.25rem] w-16 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
                 aria-label="Loading tenant logo"
               />
             ) : tenantLogoUrl ? (
-              <Link href="/buy/catalog" className="flex h-8 w-24 shrink-0 items-center justify-start">
-                <Image src={tenantLogoUrl} alt={tenantName} width={96} height={32} className="h-8 w-auto max-w-24 object-contain object-left" unoptimized />
+              <Link href="/buy/catalog" className="flex h-[3.25rem] w-16 shrink-0 items-center justify-start">
+                <Image src={tenantLogoUrl} alt={tenantName} width={64} height={52} className="h-[3.25rem] w-auto max-w-16 object-contain object-left" unoptimized />
               </Link>
             ) : (
               <Link href="/buy/catalog" className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
@@ -210,50 +241,52 @@ export function BuyerDesktopHeader() {
 
             <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
 
-            <Link href="/buy/catalog" className="flex h-6 w-6 shrink-0 items-center justify-center opacity-70 transition-opacity hover:opacity-100" aria-label="Yukti">
-              <YuktiLogo variant="mark" className="h-6 w-6" priority />
-            </Link>
-
             <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
           </div>
 
           <div className="flex min-w-0 justify-center">
-            <button
-              type="button"
-              onClick={() => router.push(searchHref)}
-              className="flex h-10 w-full min-w-0 max-w-[760px] items-center gap-3 rounded-[12px] border border-cream-300 bg-[var(--cream-50)] px-4 text-cream-500 transition-colors hover:border-cream-400"
-            >
-              <Search className="h-4 w-4" />
-              <span className="truncate text-[length:var(--b-text-sub)]">Search products, SKU, brand…</span>
-              <span className="ml-auto hidden rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+            <div className="flex h-11 w-full min-w-0 max-w-[760px] items-center gap-3 rounded-[12px] border border-cream-300 bg-[var(--cream-50)] px-4 text-cream-500 transition-colors hover:border-cream-400 focus-within:border-cream-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-ember-400/20">
+              {searchFetching ? <Spinner size="sm" className="shrink-0 text-cream-500" /> : <Search className="h-4 w-4 shrink-0" />}
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchInput}
+                onChange={(event) => handleSearchInputChange(event.target.value)}
+                placeholder="Search products, SKU, brand…"
+                className="min-w-0 flex-1 bg-transparent text-[length:var(--b-text-sub)] text-cream-950 outline-none placeholder:text-cream-500"
+                aria-label="Search products"
+              />
+              <span className="ml-auto hidden shrink-0 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
                 Ctrl/Cmd+K
               </span>
-            </button>
+            </div>
           </div>
 
           <div className="flex min-w-0 justify-self-end">
-            <div className="flex shrink-0 items-center gap-1">
-            <DesktopHeaderAction
+            <div className="flex shrink-0 items-center gap-1.5">
+            <Link
               href="/buy/orders"
-              label="Orders"
-              icon={<ReceiptText className="h-5 w-5" />}
-              active={pathname === '/buy/orders'}
-            />
+              onPointerDown={() => triggerHaptic('light')}
+              className={cn(
+                'inline-flex h-10 items-center gap-2 rounded-[12px] px-3 text-[length:var(--b-text-body)] font-medium transition-colors duration-fast',
+                pathname === '/buy/orders' ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-[var(--yk-hover-tint)] hover:text-cream-950',
+              )}
+            >
+              <ReceiptText className="h-5 w-5" />
+              Orders
+            </Link>
 
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
+                  onPointerDown={() => triggerHaptic('light')}
                   className="shrink-0"
                   aria-label={`Open account menu for ${userName}`}
                 >
-                  <span className="inline-flex flex-col items-center justify-center gap-1 rounded-[10px] px-2.5 py-1.5 text-center text-cream-800 transition-colors hover:bg-cream-100">
-                    <span className="relative inline-flex h-5 w-5 items-center justify-center">
-                      <User className="h-5 w-5" />
-                    </span>
-                    <span className="inline-flex items-center gap-0.5 text-[length:var(--b-text-eyebrow)] font-medium leading-none">
-                      Profile
-                      <ChevronDown className="h-3 w-3 text-cream-500" />
+                  <span className="relative inline-flex h-10 w-10 items-center justify-center rounded-[12px] transition-colors duration-fast hover:bg-[var(--yk-hover-tint)]">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-cream-300 text-cream-800">
+                      <User className="h-4 w-4" />
                     </span>
                   </span>
                 </button>
@@ -274,30 +307,37 @@ export function BuyerDesktopHeader() {
               </div>
 
               <div className="p-3">
-                <Button asChild variant="ghost" className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100">
-                  <Link href="/buy/profile">
-                    <User className="h-4 w-4" />
-                    Profile
-                  </Link>
-                </Button>
-                <Button variant="ghost" className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleHelp}>
-                  <CircleHelp className="h-4 w-4" />
-                  Help
-                </Button>
-                <Button variant="ghost" className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleSwitchAccount} disabled={switchPending}>
-                  <Repeat className="h-4 w-4" />
-                  {switchPending ? 'Switching…' : 'Switch Account'}
-                </Button>
-                <Button variant="ghost" className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleLogout} disabled={logoutPending}>
-                  <LogOut className="h-4 w-4" />
-                  {logoutPending ? 'Logging out…' : 'Logout'}
-                </Button>
+                <PopoverClose asChild>
+                  <Button asChild variant="ghost" haptic className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100">
+                    <Link href="/buy/profile">
+                      <User className="h-4 w-4" />
+                      Profile
+                    </Link>
+                  </Button>
+                </PopoverClose>
+                <PopoverClose asChild>
+                  <Button variant="ghost" haptic className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleHelp}>
+                    <CircleHelp className="h-4 w-4" />
+                    Help
+                  </Button>
+                </PopoverClose>
+                <PopoverClose asChild>
+                  <Button variant="ghost" haptic className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleSwitchAccount} disabled={switchPending}>
+                    <Repeat className="h-4 w-4" />
+                    {switchPending ? 'Switching…' : 'Switch Account'}
+                  </Button>
+                </PopoverClose>
+                <PopoverClose asChild>
+                  <Button variant="ghost" haptic className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100" onClick={handleLogout} disabled={logoutPending}>
+                    <LogOut className="h-4 w-4" />
+                    {logoutPending ? 'Logging out…' : 'Logout'}
+                  </Button>
+                </PopoverClose>
               </div>
             </PopoverContent>
             </Popover>
 
-            <DesktopHeaderAction
-              label="Cart"
+            <DesktopIconAction
               icon={<ShoppingCart className="h-5 w-5" />}
               badge={cartBadge}
               active={cartActive}

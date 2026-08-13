@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { type RefObject } from 'react';
 import { ProductCard } from './ProductCard';
-import { LoadingSkeleton } from './LoadingSkeleton';
+import { LoadingSkeleton, ProductCardSkeletonItem } from './LoadingSkeleton';
 import { BUYER_PRODUCT_GRID_CLASS } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -53,7 +53,12 @@ export function ProductGrid({
           <ProductCard item={item} showPromotionBadge={showPromotionBadge} />
         </div>
       ))}
-      {loadingMore ? <LoadingSkeleton count={2} /> : null}
+      {loadingMore ? (
+        <>
+          <ProductCardSkeletonItem />
+          <ProductCardSkeletonItem />
+        </>
+      ) : null}
     </div>
   );
 }

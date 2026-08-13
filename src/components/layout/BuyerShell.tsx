@@ -18,7 +18,6 @@ import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { BuyerPreviewBootstrap } from './BuyerPreviewBootstrap';
 import { BuyerTabBar } from './BuyerTabBar';
 import { CartBar } from '@/components/buyer/cart/CartBar';
-import { BuyerSearchOverlay } from '@/components/buyer/layout/BuyerSearchOverlay';
 import { BuyerPullToRefresh } from '@/components/buyer/layout/BuyerPullToRefresh';
 import { BuyerDesktopHeader } from '@/components/buyer/layout/BuyerDesktopHeader';
 import { BuyerDesktopBreadcrumbs } from '@/components/buyer/layout/BuyerDesktopBreadcrumbs';
@@ -123,7 +122,6 @@ export function BuyerShell({ children }: BuyerShellProps) {
           </BuyerPreviewBootstrap>
         </div>
       </div>
-      <BuyerSearchOverlay />
     </BuyerRealtimeProvider>
   );
 }

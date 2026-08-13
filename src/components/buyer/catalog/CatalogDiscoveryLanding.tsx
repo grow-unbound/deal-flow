@@ -2,10 +2,10 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { SearchX } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { BuyerCatalogDesktopLayout } from '@/components/buyer/catalog/BuyerCatalogDesktopLayout';
+import { CatalogSearchEmptyState, CatalogSearchErrorState } from '@/components/buyer/catalog/CatalogSearchState';
 import { DiscoveryThumbTile } from '@/components/buyer/catalog/DiscoveryThumbTile';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';
@@ -161,13 +161,14 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
 
   return (
     <div className="flex flex-col pb-8">
-      <BuyerCatalogLandingHeader searchValue={searchQuery} onSearchChange={setSearchQuery} />
+      <BuyerCatalogLandingHeader searchValue={searchQuery} onSearchChange={setSearchQuery} searchLoading={searchQueryResult.isFetching} />
 
       <BuyerCatalogDesktopLayout contentClassName="space-y-0 px-3">
         {isSearching ? (
           <CatalogSearchResults
             loading={searchLoading}
             error={searchError}
+            onRetry={() => { void searchQueryResult.refetch(); }}
             items={searchItems}
             query={debouncedSearch}
             loadingMore={searchLoadingMore}
@@ -182,7 +183,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
         ) : (
           <>
             {showPromotionsSkeleton || promotions.length > 0 ? (
-              <section className="pt-6 lg:pt-8">
+              <section className="pt-8 lg:pt-10">
                 <BuyerSectionRow title="Campaigns" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
                 {showPromotionsSkeleton ? (
                   <CampaignTilesSkeleton />
@@ -207,7 +208,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
 
             {showRecoSkeleton || orderAgainItems.length > 0 ? (
-              <section className="pt-8">
+              <section className="pt-12">
                 <BuyerSectionRow title="Order Again" className="px-1 pb-3" />
                 <BuyerHorizontalScroll className="gap-2.5 px-1">
                   {showRecoSkeleton ? (
@@ -227,7 +228,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
 
             {showRecoSkeleton || bestsellers.length > 0 ? (
-              <section className="pt-8">
+              <section className="pt-12">
                 <BuyerSectionRow title="Bestsellers" className="px-1 pb-3" />
                 <BuyerHorizontalScroll className="gap-2.5 px-1">
                   {showRecoSkeleton ? (
@@ -247,7 +248,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
 
             {showCatalogsSkeleton || catalogs.length > 0 ? (
-              <section className="pt-8">
+              <section className="pt-12">
                 <BuyerSectionRow title="Catalogs" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
                 {showCatalogsSkeleton ? (
                   <CatalogRailSkeleton />
@@ -272,7 +273,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
 
             {showBrandsSkeleton || brands.length > 0 ? (
-              <section className="pt-8">
+              <section className="pt-12">
                 <BuyerSectionRow title="Brands" className="px-1 pb-3" />
                 {showBrandsSkeleton ? (
                   <BrandScrollSkeleton />
@@ -295,7 +296,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             ) : null}
 
             {showCategoriesSkeleton || categories.length > 0 ? (
-              <section className="pt-8 pb-4">
+              <section className="pt-12 pb-4">
                 <BuyerSectionRow title="Categories" className="px-1 pb-3" />
                 {showCategoriesSkeleton ? (
                   <CategoryGridSkeleton />
@@ -325,6 +326,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
 function CatalogSearchResults({
   loading,
   error,
+  onRetry,
   items,
   query,
   loadingMore = false,
@@ -334,6 +336,7 @@ function CatalogSearchResults({
 }: {
   loading: boolean;
   error: boolean;
+  onRetry?: () => void;
   items: BuyerCatalogItem[];
   query: string;
   loadingMore?: boolean;
@@ -349,23 +352,17 @@ function CatalogSearchResults({
     );
   }
   if (error) {
-    return <p className="px-1 pt-4 text-center text-sm text-[var(--danger-500)]">Could not load search results.</p>;
+    return (
+      <section className="pt-3 pb-4">
+        <CatalogSearchErrorState onRetry={onRetry} />
+      </section>
+    );
   }
   if (items.length === 0) {
     return (
-      <div className="px-1 pt-4">
-        <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[var(--shadow-xs)]">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-[var(--cream-700)]">
-            <SearchX className="h-5 w-5" />
-          </div>
-          <h2 className="mt-4 text-lg font-semibold text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)' }}>
-            No products found
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--fg-3)]">
-            No matches for &ldquo;{query}&rdquo;. Try another term.
-          </p>
-        </div>
-      </div>
+      <section className="pt-3 pb-4">
+        <CatalogSearchEmptyState query={query} />
+      </section>
     );
   }
   return (

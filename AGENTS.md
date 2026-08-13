@@ -90,6 +90,13 @@ dealflow/
   - Use `dvh`, not `vh`, for any full-height mobile sheet/drawer/page shell — plain `vh` reflows when the mobile browser chrome collapses on scroll.
   - When a table/landing page re-fetches in place (filter change, background refresh), don't swap in the full page-level skeleton over content that's already rendered — that duplicates KPI/header sections instead of just refreshing the row area.
 
+## Scrollbar Standard
+- Scrollbars are transparent by default and only take color while the element is actively being interacted with (hover or focus-within). No scrollable surface in either app should show a permanently-visible thumb.
+- This is enforced globally in `app/globals.css` (`::-webkit-scrollbar-thumb` + `scrollbar-color`, revealed on `:hover`/`:focus-within`) — do not add component-level `::-webkit-scrollbar` overrides that hardcode a visible thumb color; if a surface needs different behavior, extend the shared pattern instead of hand-rolling a new one.
+- Showing/hiding the thumb must never shift layout: only change thumb/track *color*, never the reserved scrollbar-gutter width. The gutter is reserved by the browser the moment content overflows regardless of thumb visibility, so a pure color toggle is layout-shift-free by construction — don't "fix" a jump by conditionally adding/removing `overflow-y-auto` or swapping element height instead.
+- For panels where the pointer often rests over content without scrolling it (dashboard cards, tall lists), prefer the stricter true-active-scroll pattern (`dashboard-vscroll` class + an `onScroll` handler that sets an active flag and clears it after ~900ms of inactivity, see `SellerDashboardClient.tsx`) over the base hover reveal.
+- Horizontal chip/carousel rows with an obvious non-scrollbar affordance (drag, chevron buttons, touch swipe) may hide their scrollbar entirely (`buyer-hscroll` / `[scrollbar-width:none]` pattern) — that's a deliberate exception, not a violation of this standard.
+
 ---
 
 ## Backend & Data-Fetching Performance Standard

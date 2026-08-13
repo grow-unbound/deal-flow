@@ -267,6 +267,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       console.error('[buyer/estimates] Items insert error:', itemsError);
     }
 
+    // Fire-and-forget: the estimate row above is already committed (and is what
+    // the realtime channel notifies on), so don't hold the HTTP response hostage
+    // on PostHog or the outbound WhatsApp API — that made the buyer's own
+    // response arrive noticeably after the realtime "new estimate" toast for the
+    // same row.
     try {
       const ph = getPostHogClient();
       ph.capture({
@@ -282,34 +287,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
           source: 'buyer_app',
         },
       });
-      await ph.flush();
+      void ph.flush().catch(() => {});
     } catch {
       // non-blocking
     }
 
-    let whatsappSent = false;
+    const whatsappDispatched = !deferDocumentNumber && Boolean(typed.estimate_number);
     if (!deferDocumentNumber && typed.estimate_number) {
-      try {
-        whatsappSent = await sendImmediateTransactionNotifications({
-          kind: 'estimate',
-          tenantId: tenant_id,
-          buyerId: buyer_id,
-          locationId: routedLocationId,
-          initiatingBuyerUserId: context.sub,
-          documentId: typed.id,
-          documentNumber: typed.estimate_number,
-          totalAmount: total_amount,
-          itemCount: acceptedItems.length,
-          db,
-          table: 'estimates',
-        });
-      } catch (err) {
+      void sendImmediateTransactionNotifications({
+        kind: 'estimate',
+        tenantId: tenant_id,
+        buyerId: buyer_id,
+        locationId: routedLocationId,
+        initiatingBuyerUserId: context.sub,
+        documentId: typed.id,
+        documentNumber: typed.estimate_number,
+        totalAmount: total_amount,
+        itemCount: acceptedItems.length,
+        db,
+        table: 'estimates',
+      }).catch((err) => {
         console.error('[buyer/estimates] whatsapp notify failed', {
           estimate_id: typed.id,
           error: err instanceof Error ? err.message : String(err),
         });
-        // non-blocking — estimate creation already succeeded
-      }
+      });
     }
 
     void recordBuyerAppActivitySafe(db as any, {
@@ -331,7 +333,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       estimate_number: typed.estimate_number,
       document_url: null,
       document_status_note: typed.estimate_number ? null : TRANSACTION_PENDING_NOTE,
-      whatsapp_sent: whatsappSent,
+      whatsapp_sent: whatsappDispatched,
     });
   } catch (err) {
     console.error('[buyer/estimates] Unexpected error:', err);

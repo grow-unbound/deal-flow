@@ -7,7 +7,7 @@ import { ClipboardList } from 'lucide-react';
 import { ErrorState } from '@/components/ui/empty-state';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { TransactionCard, type OrderSummary } from './TransactionCard';
-import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
+import { BuyerTransactionCardSkeleton, TransactionCardSkeletonItem } from './BuyerTransactionCardSkeleton';
 import { useBuyerOrdersInfinite } from '@/hooks/useBuyerOrders';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
@@ -152,7 +152,12 @@ export function OrdersTab({
               </Fragment>
             );
           })}
-          {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
+          {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
         </div>
       </div>
     );
@@ -181,7 +186,12 @@ export function OrdersTab({
           </Fragment>
         );
       })}
-      {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
+      {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
     </div>
   );
 }

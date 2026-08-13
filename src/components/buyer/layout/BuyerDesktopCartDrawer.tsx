@@ -25,6 +25,8 @@ import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { BuyerTransactionConfirmation, type BuyerTransactionConfirmationData } from '@/components/buyer/transactions/BuyerTransactionConfirmation';
 import { apiFetch } from '@/lib/api-fetch';
 import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
@@ -242,6 +244,11 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<BuyerTransactionConfirmationData | null>(null);
+
+  useEffect(() => {
+    if (!open) setConfirmation(null);
+  }, [open]);
 
   const returnToOpenHref = useMemo(() => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
@@ -417,7 +424,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }
 
   const placeOrderMutation = useMutation({
-    mutationFn: async (): Promise<string> => {
+    mutationFn: async (): Promise<BuyerTransactionConfirmationData> => {
       if (!selectedDelivery) {
         throw new Error('Choose an outlet before placing an order.');
       }
@@ -438,25 +445,22 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       if (!raw.ok || !res.success) {
         throw new Error(res.error ?? 'Could not place order. Please try again.');
       }
-      const params = new URLSearchParams({
-        order_id: res.order_id ?? '',
-        order_number: res.order_number ?? '',
-        total: String(total),
-      });
-      if (res.document_url) {
-        params.set('document_url', res.document_url);
-      }
-      if (res.document_status_note) {
-        params.set('document_status_note', res.document_status_note);
-      }
-      return `/buy/order-placed?${params.toString()}`;
+      return {
+        kind: 'order',
+        id: res.order_id ?? '',
+        provisionalNumber: res.order_number ?? '',
+        initialStatusNote: res.document_status_note ?? '',
+        initialDocumentUrl: res.document_url ?? '',
+        total,
+      };
     },
     onMutate: () => {
       setError('');
       setSubmissionPhase('placing_order');
     },
-    onSuccess: (href) => {
-      router.replace(href);
+    onSuccess: (data) => {
+      setSubmissionPhase('idle');
+      setConfirmation(data);
     },
     onError: (mutationError) => {
       const message = mutationError instanceof Error
@@ -469,7 +473,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   });
 
   const requestQuoteMutation = useMutation({
-    mutationFn: async (): Promise<string> => {
+    mutationFn: async (): Promise<BuyerTransactionConfirmationData> => {
       if (!selectedDelivery) {
         throw new Error('Choose an outlet before requesting a quote.');
       }
@@ -490,25 +494,22 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       if (!raw.ok || !res.success) {
         throw new Error(res.error ?? 'Could not request quote. Please try again.');
       }
-      const params = new URLSearchParams({
-        estimate_id: res.estimate_id ?? '',
-        estimate_number: res.estimate_number ?? '',
-        total: String(total),
-      });
-      if (res.document_url) {
-        params.set('document_url', res.document_url);
-      }
-      if (res.document_status_note) {
-        params.set('document_status_note', res.document_status_note);
-      }
-      return `/buy/estimate-placed?${params.toString()}`;
+      return {
+        kind: 'estimate',
+        id: res.estimate_id ?? '',
+        provisionalNumber: res.estimate_number ?? '',
+        initialStatusNote: res.document_status_note ?? '',
+        initialDocumentUrl: res.document_url ?? '',
+        total,
+      };
     },
     onMutate: () => {
       setError('');
       setSubmissionPhase('requesting_quote');
     },
-    onSuccess: (href) => {
-      router.replace(href);
+    onSuccess: (data) => {
+      setSubmissionPhase('idle');
+      setConfirmation(data);
     },
     onError: (mutationError) => {
       const message = mutationError instanceof Error
@@ -521,7 +522,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   });
 
   const placeOrderWithSplitMutation = useMutation({
-    mutationFn: async (): Promise<string> => {
+    mutationFn: async (): Promise<BuyerTransactionConfirmationData> => {
       if (!selectedDelivery) {
         throw new Error('Choose an outlet before placing an order.');
       }
@@ -568,32 +569,25 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         gstRate,
       ).total;
 
-      const params = new URLSearchParams({
-        order_id: orderRes.order_id ?? '',
-        order_number: orderRes.order_number ?? '',
-        total: String(inStockTotal),
-      });
-      if (orderRes.document_url) {
-        params.set('document_url', orderRes.document_url);
-      }
-      if (orderRes.document_status_note) {
-        params.set('document_status_note', orderRes.document_status_note);
-      }
-      if (estRes.estimate_number) {
-        params.set('linked_estimate_number', estRes.estimate_number);
-      }
-      if (estRes.estimate_id) {
-        params.set('linked_estimate_id', estRes.estimate_id);
-      }
-      return `/buy/order-placed?${params.toString()}`;
+      return {
+        kind: 'order',
+        id: orderRes.order_id ?? '',
+        provisionalNumber: orderRes.order_number ?? '',
+        initialStatusNote: orderRes.document_status_note ?? '',
+        initialDocumentUrl: orderRes.document_url ?? '',
+        total: inStockTotal,
+        linkedEstimateNumber: estRes.estimate_number ?? null,
+        linkedEstimateId: estRes.estimate_id ?? null,
+      };
     },
     onMutate: () => {
       setError('');
       setSubmissionPhase('placing_order');
     },
-    onSuccess: (href) => {
+    onSuccess: (data) => {
+      setSubmissionPhase('idle');
       setOosConfirmOpen(false);
-      router.replace(href);
+      setConfirmation(data);
     },
     onError: (mutationError) => {
       const message = mutationError instanceof Error
@@ -660,9 +654,9 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
-            Cart
+            {confirmation ? (confirmation.kind === 'estimate' ? 'Quote requested' : 'Order placed') : 'Cart'}
           </h1>
-          {items.length > 0 ? (
+          {!confirmation && items.length > 0 ? (
             <button
               type="button"
               onClick={() => clearCart()}
@@ -677,7 +671,35 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
           )}
         </header>
 
-        {items.length === 0 ? (
+        {confirmation ? (
+          <div className="flex flex-1 flex-col overflow-y-auto">
+            <BuyerTransactionConfirmation
+              kind={confirmation.kind}
+              id={confirmation.id}
+              provisionalNumber={confirmation.provisionalNumber}
+              initialStatusNote={confirmation.initialStatusNote}
+              initialDocumentUrl={confirmation.initialDocumentUrl}
+              total={confirmation.total}
+              linkedEstimateNumber={confirmation.linkedEstimateNumber}
+              linkedEstimateId={confirmation.linkedEstimateId}
+              detailEndpoint={confirmation.kind === 'estimate' ? '/api/buyer/estimates' : '/api/buyer/orders'}
+              successHeading={confirmation.kind === 'estimate' ? 'Estimate created successfully' : 'Order created successfully'}
+              successCopy={confirmation.kind === 'estimate' ? 'Your estimate is ready.' : 'Your order is in the queue.'}
+              documentLabel={confirmation.kind === 'estimate' ? 'Estimate' : 'Order'}
+              onGoToCatalog={() => {
+                closeDrawer();
+                router.push('/buy/catalog');
+              }}
+              onGoToOrders={() => {
+                const tab = confirmation.kind === 'estimate' ? 'enquiries' : 'orders';
+                const search = new URLSearchParams({ tab });
+                if (confirmation.id) search.set('highlight', confirmation.id);
+                closeDrawer();
+                router.push(`/buy/orders?${search.toString()}`);
+              }}
+            />
+          </div>
+        ) : items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--cream-100)' }}>
               <ShoppingCart className="h-8 w-8" style={{ color: 'var(--cream-400)' }} />
@@ -853,6 +875,12 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                     {error}
                   </div>
                 ) : null}
+
+                <div className="flex items-center justify-center gap-1.5 pb-1 pt-2 opacity-50">
+                  <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-500)' }}>Powered by</span>
+                  <YuktiLogo variant="mark" className="h-3.5 w-3.5" />
+                  <span className="font-semibold" style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-600)' }}>Yukti</span>
+                </div>
               </div>
             </div>
 

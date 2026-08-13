@@ -16,6 +16,11 @@ Follow the repo `AGENTS.md` as the source of truth for product, UI, and workflow
 - Avoid unnecessary `router.refresh()` calls; prefer targeted query updates and invalidation.
 - CLS budget < 0.05: skeletons must reserve the same height as real content (2-line titles use `min-h-[2.4em]`/`BUYER_TWO_LINE_TITLE_CLASS` on both sides), async conditional widgets show a same-footprint skeleton not nothing-then-pop-in, `dvh` not `vh` for full-height mobile shells, and in-place refetches never swap in a full-page skeleton over already-rendered sections.
 
+## Scrollbar Standard
+- Scrollbars stay transparent until the element is actively hovered/focus-within — no permanently-visible thumb anywhere in either app. Enforced globally in `app/globals.css`; don't add component-level `::-webkit-scrollbar` overrides.
+- Only ever toggle thumb/track *color*. Never toggle the reserved scrollbar-gutter width — the browser reserves that space the moment content overflows regardless of thumb visibility, so a color-only swap is layout-shift-free by construction.
+- For panels where the pointer often rests without scrolling, use the stricter true-active-scroll pattern (`dashboard-vscroll` class + `onScroll`-driven active flag, ~900ms decay) instead of the base hover reveal.
+
 ## Backend & Data-Fetching Performance Standard
 (full rationale - read only when required: `specs/performance-upgrade-2026-07.md`)
 - SSR bootstrap fetches always pass an explicit, bounded `limit` — never fetch a full table for SSR.

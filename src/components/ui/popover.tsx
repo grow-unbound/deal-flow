@@ -7,6 +7,7 @@ import { cn } from '@/lib/cn';
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
 const PopoverAnchor = PopoverPrimitive.Anchor;
+const PopoverClose = PopoverPrimitive.Close;
 
 function PopoverContent({
   className,
@@ -34,4 +35,4 @@ function PopoverContent({
   );
 }
 
-export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverClose, PopoverContent };
