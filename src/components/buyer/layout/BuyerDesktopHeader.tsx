@@ -11,11 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useBuyerSession } from '@/hooks/useBuyerSession';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiPost } from '@/lib/api-fetch';
 import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { cn } from '@/lib/utils';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
@@ -28,6 +30,12 @@ function getInitials(value: string | null | undefined) {
   if (parts.length === 0) return 'BY';
   if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? 'BY').toUpperCase();
   return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
+}
+
+function formatRoleLabel(role: string | null | undefined) {
+  if (role === 'buyer_admin') return 'Buyer admin';
+  if (role === 'buyer_assistant') return 'Buyer assistant';
+  return 'Buyer';
 }
 
 function DesktopHeaderAction({
@@ -50,19 +58,19 @@ function DesktopHeaderAction({
   const content = (
     <span
       className={cn(
-        'relative inline-flex min-w-[72px] flex-col items-center justify-center gap-1.5 rounded-[14px] px-2.5 py-2 text-center transition-colors',
+        'relative inline-flex flex-col items-center justify-center gap-1 rounded-[10px] px-2.5 py-1.5 text-center transition-colors',
         active ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-cream-100',
       )}
     >
-      <span className="relative inline-flex h-6 w-6 items-center justify-center">
+      <span className="relative inline-flex h-5 w-5 items-center justify-center">
         {icon}
         {badge ? (
-          <span className="absolute -right-3 -top-2 inline-flex min-w-[18px] items-center justify-center rounded-full bg-ember-500 px-1.5 text-[length:var(--b-text-eyebrow)] font-semibold leading-4 text-white">
+          <span className="absolute -right-2.5 -top-1.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-ember-500 px-1 text-[length:var(--b-text-eyebrow)] font-semibold leading-4 text-white">
             {badge}
           </span>
         ) : null}
       </span>
-      <span className="text-[length:var(--b-text-body)] font-medium leading-none">{label}</span>
+      <span className="text-[length:var(--b-text-eyebrow)] font-medium leading-none">{label}</span>
     </span>
   );
 
@@ -85,17 +93,21 @@ export function BuyerDesktopHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { data: me } = useBuyerMe();
+  const { data: me, isLoading: isBuyerLoading } = useBuyerMe();
+  const { effectiveBuyerRole } = useBuyerSession();
   const { items } = useCart();
   const { signOut } = useAuth();
   const [switchPending, setSwitchPending] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
-  const userName = me?.greeting_name || me?.contact_name || me?.business_name || 'Buyer';
+  const userName = me?.business_name || 'Buyer';
+  const sessionPersonName = me?.session_person_name?.trim() || null;
+  const popoverSupportingText = [formatRoleLabel(effectiveBuyerRole), sessionPersonName].filter(Boolean).join(' · ');
   const tenantName = me?.tenant.name || 'Tenant';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
-  const cartOpen = pathname === '/buy/cart' || searchParams?.get('cart') === 'open';
+  const cartDrawerOpen = searchParams?.get('cart') === 'open';
+  const cartActive = pathname === '/buy/cart' || cartDrawerOpen;
   const cartBadge = cartCount > 0 ? (cartCount > 99 ? '99+' : cartCount) : null;
   const searchHref = useMemo(() => {
     const next = new URLSearchParams(searchParams?.toString() ?? '');
@@ -159,47 +171,68 @@ export function BuyerDesktopHeader() {
   }
 
   function openCartOverlay() {
-    router.push('/buy/catalog?cart=open');
+    const next = new URLSearchParams(searchParams?.toString() ?? '');
+    next.set('cart', 'open');
+    const query = next.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
   }
 
   function closeCartOverlay(open: boolean) {
     if (open) return;
-    router.replace('/buy/catalog');
+    const next = new URLSearchParams(searchParams?.toString() ?? '');
+    next.delete('cart');
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
   }
 
   return (
     <>
       <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
-        <div className="mx-auto flex min-h-[84px] w-full max-w-[1920px] items-center gap-5 px-6 py-3">
-          <Link href="/buy/catalog" className="flex h-14 shrink-0 items-center self-center">
-            <YuktiLogo variant="stacked-lockup" className="h-7 w-[42px]" priority />
-          </Link>
-
-          <Link href="/buy/catalog" className="flex h-14 w-[148px] shrink-0 items-center justify-center rounded-[14px] px-3 transition-colors hover:bg-cream-100">
-            {tenantLogoUrl ? (
-              <Image src={tenantLogoUrl} alt={tenantName} width={148} height={56} className="h-14 w-full object-contain object-left" unoptimized />
+        <div
+          className="mx-auto grid min-h-[64px] w-full grid-cols-[auto_minmax(280px,1fr)_auto] items-center gap-4 px-5 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,760px)_auto]"
+          style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {isBuyerLoading ? (
+              <div
+                className="h-8 w-24 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
+                aria-label="Loading tenant logo"
+              />
+            ) : tenantLogoUrl ? (
+              <Link href="/buy/catalog" className="flex h-8 w-24 shrink-0 items-center justify-start">
+                <Image src={tenantLogoUrl} alt={tenantName} width={96} height={32} className="h-8 w-auto max-w-24 object-contain object-left" unoptimized />
+              </Link>
             ) : (
-              <div className="flex h-14 w-full items-center justify-center rounded-[14px] border border-cream-200 bg-white px-3 text-sm font-semibold text-cream-700">
+              <Link href="/buy/catalog" className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
                 {tenantName}
-              </div>
+              </Link>
             )}
-          </Link>
 
-          <BuyerLocationControl variant="desktop" className="shrink-0 self-center" />
+            <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
 
-          <button
-            type="button"
-            onClick={() => router.push(searchHref)}
-            className="flex h-12 min-w-0 max-w-[760px] flex-1 items-center gap-3 rounded-[14px] border border-cream-300 bg-[var(--cream-50)] px-4 text-cream-500 transition-colors hover:border-cream-400"
-          >
-            <Search className="h-[18px] w-[18px]" />
-            <span className="truncate text-[length:var(--b-text-body)]">Search products, SKU, brand…</span>
-            <span className="ml-auto hidden rounded-[10px] border border-cream-200 bg-cream-50 px-2.5 py-1 text-[length:var(--b-text-sub)] font-medium text-cream-600 lg:inline-flex">
-              Ctrl/Cmd+K
-            </span>
-          </button>
+            <Link href="/buy/catalog" className="flex h-6 w-6 shrink-0 items-center justify-center opacity-70 transition-opacity hover:opacity-100" aria-label="Yukti">
+              <YuktiLogo variant="mark" className="h-6 w-6" priority />
+            </Link>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
+          </div>
+
+          <div className="flex min-w-0 justify-center">
+            <button
+              type="button"
+              onClick={() => router.push(searchHref)}
+              className="flex h-10 w-full min-w-0 max-w-[760px] items-center gap-3 rounded-[12px] border border-cream-300 bg-[var(--cream-50)] px-4 text-cream-500 transition-colors hover:border-cream-400"
+            >
+              <Search className="h-4 w-4" />
+              <span className="truncate text-[length:var(--b-text-sub)]">Search products, SKU, brand…</span>
+              <span className="ml-auto hidden rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+                Ctrl/Cmd+K
+              </span>
+            </button>
+          </div>
+
+          <div className="flex min-w-0 justify-self-end">
+            <div className="flex shrink-0 items-center gap-1">
             <DesktopHeaderAction
               href="/buy/orders"
               label="Orders"
@@ -214,13 +247,13 @@ export function BuyerDesktopHeader() {
                   className="shrink-0"
                   aria-label={`Open account menu for ${userName}`}
                 >
-                  <span className="inline-flex min-w-[72px] flex-col items-center justify-center gap-1.5 rounded-[14px] px-2.5 py-2 text-center text-cream-800 transition-colors hover:bg-cream-100">
-                    <span className="relative inline-flex h-6 w-6 items-center justify-center">
+                  <span className="inline-flex flex-col items-center justify-center gap-1 rounded-[10px] px-2.5 py-1.5 text-center text-cream-800 transition-colors hover:bg-cream-100">
+                    <span className="relative inline-flex h-5 w-5 items-center justify-center">
                       <User className="h-5 w-5" />
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[length:var(--b-text-body)] font-medium leading-none">
+                    <span className="inline-flex items-center gap-0.5 text-[length:var(--b-text-eyebrow)] font-medium leading-none">
                       Profile
-                      <ChevronDown className="h-3.5 w-3.5 text-cream-500" />
+                      <ChevronDown className="h-3 w-3 text-cream-500" />
                     </span>
                   </span>
                 </button>
@@ -228,13 +261,13 @@ export function BuyerDesktopHeader() {
             <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[18px] border border-cream-200 bg-cream-50 p-0 shadow-xl">
               <div className="border-b border-cream-200 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12 border border-cream-200">
-                    <AvatarFallback>{getInitials(userName)}</AvatarFallback>
+                    <Avatar className="h-12 w-12 border border-cream-200">
+                    <AvatarFallback>{getInitials(me?.business_name || me?.contact_name || me?.greeting_name)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate text-[length:var(--b-text-body)] font-semibold leading-5 text-[var(--fg-1)]">{userName}</p>
-                    <p className="mt-1 text-[length:var(--b-text-sub)] font-medium uppercase tracking-[0.08em] text-cream-600">
-                      {tenantName}
+                    <p className="mt-1 text-[length:var(--b-text-sub)] font-medium text-cream-600">
+                      {popoverSupportingText || tenantName}
                     </p>
                   </div>
                 </div>
@@ -267,14 +300,15 @@ export function BuyerDesktopHeader() {
               label="Cart"
               icon={<ShoppingCart className="h-5 w-5" />}
               badge={cartBadge}
-              active={cartOpen}
+              active={cartActive}
               onClick={openCartOverlay}
               ariaLabel="Open cart"
             />
+            </div>
           </div>
         </div>
       </header>
-      <BuyerDesktopCartDrawer open={cartOpen} onOpenChange={closeCartOverlay} />
+      <BuyerDesktopCartDrawer open={cartDrawerOpen} onOpenChange={closeCartOverlay} />
     </>
   );
 }

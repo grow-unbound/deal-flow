@@ -35,6 +35,10 @@ import {
 } from '@/lib/buyer-orders-tabs';
 import { BUYER_QUERY_GC_TIME, BUYER_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
+import {
+  buyerHomeDemandCountLabel,
+  buyerHomeDemandTitle,
+} from '@/lib/buyer-home-kpi';
 import { formatNumberValue } from '@/lib/utils';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import type { DocType, TransactionDoc } from '@/components/buyer/documents/TransactionDetailPage';
@@ -79,12 +83,25 @@ async function fetchBuyerHomeMetrics(): Promise<BuyerHomeMetricsV4> {
   return response.json() as Promise<BuyerHomeMetricsV4>;
 }
 
-function OrdersKpiGrid({ openOrdersCount, metrics }: { openOrdersCount: number; metrics?: BuyerHomeMetricsV4 }) {
+function OrdersKpiGrid({ metrics }: { metrics?: BuyerHomeMetricsV4 }) {
+  const demandKind = metrics?.demand_kind;
   const cards = [
-    { label: 'Open orders', value: String(openOrdersCount), sub: 'Awaiting action or delivery' },
-    { label: 'Credit limit', value: formatNumberValue(metrics?.credit_limit ?? 0, 'CURRENCY_EXACT'), sub: 'Current account limit' },
     { label: 'Spend this quarter', value: formatNumberValue(metrics?.spend_qtd ?? 0, 'CURRENCY_EXACT'), sub: `${metrics?.invoice_count_qtd ?? 0} invoices` },
-    { label: 'Outstanding dues', value: formatNumberValue(metrics?.outstanding ?? 0, 'CURRENCY_EXACT'), sub: `${formatNumberValue(metrics?.overdue ?? 0, 'CURRENCY_EXACT')} overdue` },
+    {
+      label: buyerHomeDemandTitle(typeof demandKind === 'string' ? demandKind : undefined),
+      value: formatNumberValue(metrics?.demand_qtd ?? 0, 'CURRENCY_EXACT'),
+      sub: buyerHomeDemandCountLabel(typeof demandKind === 'string' ? demandKind : undefined, metrics?.demand_document_count_qtd ?? 0),
+    },
+    {
+      label: 'Outstanding',
+      value: formatNumberValue(metrics?.outstanding ?? 0, 'CURRENCY_EXACT'),
+      sub: `${formatNumberValue(metrics?.overdue ?? 0, 'CURRENCY_EXACT')} overdue`,
+    },
+    {
+      label: 'Available credit',
+      value: formatNumberValue(metrics?.available_credit ?? 0, 'CURRENCY_EXACT'),
+      sub: `of ${formatNumberValue(metrics?.credit_limit ?? 0, 'CURRENCY_EXACT')} limit`,
+    },
   ];
 
   return (
@@ -92,23 +109,26 @@ function OrdersKpiGrid({ openOrdersCount, metrics }: { openOrdersCount: number; 
       {cards.map((card) => (
         <article
           key={card.label}
-          className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4 md:rounded-[20px] md:px-5 md:py-5"
+          className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4 md:rounded-[14px] md:border-cream-300 md:bg-white md:px-[18px] md:py-[16px]"
         >
-          <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+          <p className="font-semibold uppercase tracking-[0.14em] text-cream-500 md:text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
             {card.label}
           </p>
           <p
-            className="mt-3 leading-none text-cream-950"
+            className="mt-3 text-[length:var(--b-text-header)] leading-none text-cream-950 md:mt-2 md:text-xl md:font-medium"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'var(--b-text-header)',
               fontWeight: 600,
               letterSpacing: '-0.025em',
             }}
           >
             {card.value}
           </p>
-          <p className="mt-3 font-medium text-[var(--b-text-sub)] text-cream-600">{card.sub}</p>
+          <p
+            className="mt-3 font-medium text-[var(--b-text-sub)] text-cream-600 md:mt-2 md:text-sm md:text-cream-700"
+          >
+            {card.sub}
+          </p>
         </article>
       ))}
     </div>
@@ -745,10 +765,10 @@ function OrdersPageInner() {
         ) : (
           <>
             <div className="px-6 pt-6 xl:px-8">
-              <OrdersKpiGrid openOrdersCount={buyerMe?.open_orders_count ?? 0} metrics={metricsQuery.data} />
+              <OrdersKpiGrid metrics={metricsQuery.data} />
             </div>
 
-            <div className="px-6 pt-6 xl:px-8">
+            <div className="px-6 pt-1 xl:px-8">
               <OrdersTabButtons tabs={tabs} activeTab={activeTab} onChange={handleTabChange} desktop />
             </div>
 

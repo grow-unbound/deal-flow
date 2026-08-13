@@ -59,7 +59,7 @@ export function useVisibleItemEnrichment({
     };
   }, [flush, rootMargin]);
 
-  const registerRef = useCallback((id: string) => (el: HTMLDivElement | null) => {
+  const registerRef = useCallback((id: string) => (el: HTMLElement | null) => {
     const prev = elementsRef.current.get(id);
     if (prev && prev !== el) {
       observerRef.current?.unobserve(prev);

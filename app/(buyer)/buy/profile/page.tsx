@@ -15,7 +15,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-;
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -33,6 +32,8 @@ interface BuyerInvoicesResponse {
   invoices: BuyerInvoice[];
 }
 
+type BuyerRole = 'buyer_admin' | 'buyer_assistant' | null;
+
 function formatShortDate(value: string | null): string {
   if (!value) return '—';
   return new Date(value).toLocaleDateString('en-IN', {
@@ -44,6 +45,12 @@ function formatShortDate(value: string | null): string {
 
 function normalizePhoneInput(value: string): string {
   return value.replace(/\D/g, '').slice(0, 10);
+}
+
+function formatRoleLabel(role: BuyerRole): string {
+  if (role === 'buyer_admin') return 'Buyer admin';
+  if (role === 'buyer_assistant') return 'Buyer assistant';
+  return 'Buyer';
 }
 
 function RowIcon({
@@ -63,6 +70,49 @@ function RowIcon({
     <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] ${toneClasses}`}>
       {icon}
     </div>
+  );
+}
+
+function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">{label}</p>
+      <p className={mono ? 'font-mono text-base text-cream-900' : 'text-base text-cream-900'}>{value}</p>
+    </div>
+  );
+}
+
+function InlineField({
+  label,
+  value,
+  onChange,
+  maxLength,
+  mono = false,
+  uppercase = false,
+  hint,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  maxLength: number;
+  mono?: boolean;
+  uppercase?: boolean;
+  hint?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="space-y-2">
+      <span className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">{label}</span>
+      <Input
+        value={value}
+        onChange={(event) => onChange(uppercase ? event.target.value.toUpperCase() : event.target.value)}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        className={`h-11 rounded-[12px] border-cream-300 bg-white px-4 text-base text-cream-900 ${mono ? 'font-mono' : ''}`}
+      />
+      {hint ? <span className="block text-sm text-cream-600">{hint}</span> : null}
+    </label>
   );
 }
 
@@ -402,13 +452,23 @@ export default function ProfilePage() {
   const [creditSheetOpen, setCreditSheetOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [switchPending, setSwitchPending] = useState(false);
-  const [desktopSection, setDesktopSection] = useState<'profile' | 'credit' | 'help'>('profile');
+  const [desktopBusinessDraft, setDesktopBusinessDraft] = useState({
+    business_name: '',
+    contact_name: '',
+    gstin: '',
+    phone: '',
+  });
+  const [desktopBusinessEditing, setDesktopBusinessEditing] = useState(false);
 
-  const canEditBusiness = effectiveBuyerRole === 'buyer_admin';
   const sellerPreview = data?.seller_preview === true;
+  const canEditBusiness = effectiveBuyerRole === 'buyer_admin';
+  const canEditPhone = !sellerPreview;
+  const canEditBuyerDetails = canEditBusiness || canEditPhone;
+  const sessionPersonName = data?.session_person_name?.trim() || null;
+  const headerSupportingText = [formatRoleLabel(effectiveBuyerRole), sessionPersonName, data?.phone].filter(Boolean).join(' · ');
 
   const initials = useMemo(() => {
-    const source = data?.contact_name || data?.business_name || 'Buyer';
+    const source = data?.business_name || data?.contact_name || 'Buyer';
     return source
       .split(' ')
       .map((part) => part[0] ?? '')
@@ -416,6 +476,16 @@ export default function ProfilePage() {
       .slice(0, 2)
       .toUpperCase();
   }, [data?.contact_name, data?.business_name]);
+
+  useEffect(() => {
+    if (!data) return;
+    setDesktopBusinessDraft({
+      business_name: data.business_name,
+      contact_name: data.contact_name,
+      gstin: data.gstin ?? '',
+      phone: data.phone,
+    });
+  }, [data]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (payload: Record<string, string>) => {
@@ -453,6 +523,7 @@ export default function ProfilePage() {
       toast.success('Profile updated');
       setBusinessSheetOpen(false);
       setPhoneSheetOpen(false);
+      setDesktopBusinessEditing(false);
     },
   });
 
@@ -462,6 +533,21 @@ export default function ProfilePage() {
 
   const handlePhoneSave = (payload: { phone: string }) => {
     updateProfileMutation.mutate(payload);
+  };
+
+  const handleDesktopBusinessCancel = () => {
+    if (!data) return;
+    setDesktopBusinessDraft({
+      business_name: data.business_name,
+      contact_name: data.contact_name,
+      gstin: data.gstin ?? '',
+      phone: data.phone,
+    });
+    setDesktopBusinessEditing(false);
+  };
+
+  const handleOutstandingInvoices = () => {
+    router.push('/buy/orders?tab=invoices&status=Due');
   };
 
   const handleHelpSupport = () => {
@@ -531,9 +617,11 @@ export default function ProfilePage() {
             </div>
             <div className="min-w-0">
               <h1 className="leading-none text-white" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)', fontWeight: 500, letterSpacing: '-0.015em' }}>
-                {data.greeting_name || data.contact_name || data.business_name}
+                {data.business_name}
               </h1>
-              <p className="mt-2 font-normal text-white/70" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-label)' }}>{data.business_name}</p>
+              <p className="mt-2 font-normal text-white/70" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-label)' }}>
+                {[sessionPersonName, data.phone].filter(Boolean).join(' · ')}
+              </p>
             </div>
           </div>
         </div>
@@ -616,10 +704,10 @@ export default function ProfilePage() {
       </div>
 
       <div className="hidden px-6 py-6 md:block xl:px-8">
-        <div className="grid min-h-[calc(100dvh-180px)] grid-cols-[320px_minmax(0,1fr)] overflow-hidden rounded-[28px] border border-cream-200 bg-white shadow-[0_20px_60px_rgba(20,40,35,0.08)]">
-          <aside className="border-r border-cream-200 bg-[#fcfaf6] p-5">
-            <div className="rounded-[22px] bg-white p-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
-              <div className="flex items-center gap-4">
+        <section className="space-y-5">
+          <div className="rounded-[14px] border border-cream-300 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-4">
                 <div
                   className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-white"
                   style={{ background: 'var(--ember-400)', border: '2px solid var(--ember-200)', fontSize: '1.6rem', fontFamily: 'var(--font-display)' }}
@@ -627,133 +715,167 @@ export default function ProfilePage() {
                   {initials}
                 </div>
                 <div className="min-w-0">
-                  <h1 className="truncate text-2xl font-semibold text-cream-950">{data.greeting_name || data.contact_name || data.business_name}</h1>
-                  <p className="mt-1 text-sm text-cream-600">{data.phone}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Customer</p>
+                  <h1
+                    className="mt-2 text-cream-950"
+                    style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', fontWeight: 600, letterSpacing: '-0.022em' }}
+                  >
+                    {data.business_name}
+                  </h1>
+                  <p className="mt-2 text-sm text-cream-600">{headerSupportingText}</p>
                 </div>
               </div>
+
+              {data.business_policy.credit_enabled && data.credit_used > 0 ? (
+                <div className="min-w-[240px] rounded-[14px] border border-amber-200 bg-amber-50 px-[18px] py-[16px]">
+                  <p className="font-semibold uppercase tracking-[0.14em] text-amber-800" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                    Credit attention
+                  </p>
+                  <p
+                    className="mt-2 leading-none text-amber-950"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'var(--b-text-header)',
+                      fontWeight: 600,
+                      letterSpacing: '-0.025em',
+                    }}
+                  >
+                    {formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} outstanding
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-amber-900">
+                    Limit {formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}
+                  </p>
+                </div>
+              ) : null}
             </div>
+          </div>
 
-            {data.business_policy.credit_enabled && data.credit_used > 0 ? (
-              <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-800">Credit attention</p>
-                <p className="mt-2 text-lg font-semibold text-amber-950">
-                  {formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} outstanding
-                </p>
-                <p className="mt-1 text-sm text-amber-900">
-                  Limit {formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}
-                </p>
+          <div className="grid grid-cols-2 gap-4">
+            <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-md text-cream-950">Buyer details</h3>
+                {canEditBuyerDetails ? (
+                  <div className="flex items-center gap-2">
+                    {desktopBusinessEditing ? (
+                      <>
+                        <Button variant="secondary" size="sm" onClick={handleDesktopBusinessCancel} disabled={updateProfileMutation.isPending}>
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => updateProfileMutation.mutate({
+                            ...(canEditBusiness ? {
+                              business_name: desktopBusinessDraft.business_name,
+                              contact_name: desktopBusinessDraft.contact_name,
+                              gstin: desktopBusinessDraft.gstin,
+                            } : {}),
+                            ...(canEditPhone ? { phone: desktopBusinessDraft.phone } : {}),
+                          })}
+                          disabled={updateProfileMutation.isPending}
+                        >
+                          {updateProfileMutation.isPending ? <Spinner size="sm" className="text-current" /> : <Check className="h-4 w-4" />}
+                          Save
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="secondary" size="sm" onClick={() => setDesktopBusinessEditing(true)}>
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
 
-            <div className="mt-5 space-y-2">
-              <button type="button" onClick={() => setDesktopSection('profile')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'profile' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
-                <User className="h-4.5 w-4.5" />
-                Profile
-              </button>
-              <button type="button" onClick={() => setDesktopSection('credit')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'credit' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
-                <Wallet className="h-4.5 w-4.5" />
-                Credit
-              </button>
-              <button type="button" onClick={() => setDesktopSection('help')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'help' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
-                <HelpCircle className="h-4.5 w-4.5" />
-                Help
-              </button>
-              <button type="button" onClick={() => router.push('/buy/orders')} className="flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left text-cream-700 hover:bg-cream-100/70">
-                <ChevronRight className="h-4.5 w-4.5" />
-                Orders
-              </button>
-            </div>
+              {desktopBusinessEditing ? (
+                <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+                  {canEditBusiness ? (
+                    <>
+                      <InlineField
+                        label="Business name"
+                        value={desktopBusinessDraft.business_name}
+                        onChange={(value) => setDesktopBusinessDraft((current) => ({ ...current, business_name: value }))}
+                        maxLength={200}
+                      />
+                      <InlineField
+                        label="Contact name"
+                        value={desktopBusinessDraft.contact_name}
+                        onChange={(value) => setDesktopBusinessDraft((current) => ({ ...current, contact_name: value }))}
+                        maxLength={200}
+                      />
+                      <InlineField
+                        label="GSTIN"
+                        value={desktopBusinessDraft.gstin}
+                        onChange={(value) => setDesktopBusinessDraft((current) => ({ ...current, gstin: value }))}
+                        maxLength={15}
+                        mono
+                        uppercase
+                        hint="Leave blank if your business is not GST registered."
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <DetailRow label="Business name" value={data.business_name} />
+                      <DetailRow label="Contact name" value={data.contact_name || '—'} />
+                      <DetailRow label="GSTIN" value={data.gstin || '—'} mono />
+                    </>
+                  )}
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Phone</span>
+                    <BuyerSheetPhoneInput
+                      value={desktopBusinessDraft.phone}
+                      onChange={(value) => setDesktopBusinessDraft((current) => ({ ...current, phone: value }))}
+                    />
+                    <span className="block text-sm text-cream-600">OTP will be sent here from your next login.</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+                  <DetailRow label="Business name" value={data.business_name} />
+                  <DetailRow label="Contact name" value={data.contact_name || '—'} />
+                  <DetailRow label="GSTIN" value={data.gstin || '—'} mono />
+                  <DetailRow label="Phone" value={data.phone} mono />
+                </div>
+              )}
+            </article>
 
-            <div className="mt-8 space-y-2">
-              <Button variant="ghost" className="h-11 w-full justify-start rounded-[14px]" onClick={() => { void handleSwitchAccount(); }} disabled={switchPending}>
-                <Repeat className="h-4 w-4" />
-                {switchPending ? 'Switching…' : 'Switch Account'}
-              </Button>
-              <Button variant="ghost" className="h-11 w-full justify-start rounded-[14px] text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => { void handleLogout(); }} disabled={logoutPending}>
-                <LogOut className="h-4 w-4" />
-                {logoutPending ? 'Logging out…' : 'Logout'}
-              </Button>
-            </div>
-          </aside>
+            <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+              <h3 className="font-display text-md text-cream-950">Credit details</h3>
+              <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+                {data.business_policy.credit_enabled ? (
+                  <>
+                    <DetailRow
+                      label="Credit limit"
+                      value={formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}
+                      mono
+                    />
+                    <DetailRow
+                      label="Credit used"
+                      value={formatNumberValue(data.credit_used, 'CURRENCY_EXACT')}
+                      mono
+                    />
+                    <DetailRow
+                      label="Available credit"
+                      value={formatNumberValue(Math.max(data.credit_limit - data.credit_used, 0), 'CURRENCY_EXACT')}
+                      mono
+                    />
+                  </>
+                ) : (
+                  <DetailRow label="Credit" value="Not enabled" />
+                )}
+              </div>
 
-          <section className="bg-[#f8f4ed] p-6">
-            {desktopSection === 'profile' ? (
-              <div className="space-y-5">
+              <div className="mt-5 flex items-center justify-between gap-3 rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Profile</p>
-                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Account details</h2>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Outstanding invoices</p>
+                  <p className="mt-1 text-sm text-cream-600">Review unpaid invoices in the Orders section.</p>
                 </div>
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-lg font-semibold text-cream-950">Business details</h3>
-                      {canEditBusiness ? <Button variant="secondary" size="sm" onClick={() => setBusinessSheetOpen(true)}>Edit</Button> : null}
-                    </div>
-                    <div className="mt-4 space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Business name</p>
-                        <p className="mt-1 text-base text-cream-900">{data.business_name}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Contact name</p>
-                        <p className="mt-1 text-base text-cream-900">{data.contact_name || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">GSTIN</p>
-                        <p className="mt-1 text-base text-cream-900">{data.gstin || '—'}</p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-lg font-semibold text-cream-950">Phone</h3>
-                      <Button variant="secondary" size="sm" onClick={() => setPhoneSheetOpen(true)}>Edit</Button>
-                    </div>
-                    <p className="mt-4 text-2xl font-semibold text-cream-950">{data.phone}</p>
-                    <p className="mt-2 text-sm text-cream-600">OTP will be sent here from your next login.</p>
-                  </article>
-                </div>
+                <Button variant="secondary" onClick={handleOutstandingInvoices}>
+                  View outstanding invoices
+                </Button>
               </div>
-            ) : null}
-
-            {desktopSection === 'credit' ? (
-              <div className="space-y-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Credit</p>
-                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Credit summary</h2>
-                </div>
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Credit limit</p>
-                    <p className="mt-3 text-3xl font-semibold text-cream-950">{formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}</p>
-                    <p className="mt-2 text-sm text-cream-600">Used: {formatNumberValue(data.credit_used, 'CURRENCY_EXACT')}</p>
-                  </article>
-                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Available credit</p>
-                    <p className="mt-3 text-3xl font-semibold text-cream-950">{formatNumberValue(Math.max(data.credit_limit - data.credit_used, 0), 'CURRENCY_EXACT')}</p>
-                    <p className="mt-2 text-sm text-cream-600">Tap below to inspect unpaid invoices.</p>
-                    <Button className="mt-4" onClick={() => setCreditSheetOpen(true)}>View invoice breakdown</Button>
-                  </article>
-                </div>
-              </div>
-            ) : null}
-
-            {desktopSection === 'help' ? (
-              <div className="space-y-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Help</p>
-                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Support</h2>
-                </div>
-                <article className="rounded-[22px] border border-cream-200 bg-white p-5">
-                  <p className="text-base text-cream-800">Need help with orders, invoices, or your account?</p>
-                  <p className="mt-2 text-sm text-cream-600">Our team will continue the conversation on WhatsApp.</p>
-                  <Button className="mt-4" onClick={handleHelpSupport}>Open WhatsApp support</Button>
-                </article>
-              </div>
-            ) : null}
-          </section>
-        </div>
+            </article>
+          </div>
+        </section>
       </div>
 
       <BusinessDetailsSheet

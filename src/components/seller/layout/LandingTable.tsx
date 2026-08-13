@@ -41,6 +41,10 @@ interface LandingTableProps {
    * trailing) — forwarded to `SellerMobileList`. */
   sentinelIndex?: number;
   sentinelRef?: RefObject<HTMLDivElement | null>;
+  /** Per-row ref registrar for viewport-gated enrichment — forwarded to `SellerMobileList`
+   * (mobile/split-pane rows only; desktop `<tr>` rows are hand-rolled per landing client
+   * and register their own refs directly). */
+  registerItemRef?: (id: string) => (el: HTMLElement | null) => void;
 }
 
 export function LandingTable({
@@ -56,6 +60,7 @@ export function LandingTable({
   horizontalScrollOnly,
   sentinelIndex,
   sentinelRef,
+  registerItemRef,
 }: LandingTableProps) {
   const hasHeader = columns.some((column) => column.label != null && column.label !== '');
 
@@ -67,6 +72,7 @@ export function LandingTable({
         forceVisible
         sentinelIndex={sentinelIndex}
         sentinelRef={sentinelRef}
+        registerItemRef={registerItemRef}
       />
     ) : null;
   }
@@ -79,6 +85,7 @@ export function LandingTable({
           emptyState={showEmptyState ? emptyState : undefined}
           sentinelIndex={sentinelIndex}
           sentinelRef={sentinelRef}
+          registerItemRef={registerItemRef}
         />
       ) : null}
       {/* Single scroll container for BOTH axes (not a horizontal-only

@@ -125,16 +125,16 @@ export function OrdersLandingSkeleton({
         <div className="px-6 pt-6 xl:px-8">
           <div className="grid gap-4 md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="rounded-[20px] border border-cream-200 bg-white px-5 py-5">
+              <div key={index} className="rounded-[14px] border border-cream-200 bg-white px-[18px] py-[16px]">
                 <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-                <div className="mt-3 h-8 w-28 animate-pulse rounded bg-cream-200" />
-                <div className="mt-3 h-4 w-36 animate-pulse rounded bg-cream-200" />
+                <div className="mt-2 h-6 w-24 animate-pulse rounded bg-cream-200" />
+                <div className="mt-2 h-4 w-32 animate-pulse rounded bg-cream-200" />
               </div>
             ))}
           </div>
         </div>
 
-        <div className="px-6 pt-6 xl:px-8">
+        <div className="px-6 pt-1 xl:px-8">
           <div className="flex items-end gap-6 border-b border-cream-300">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className={`border-b-2 px-5 py-3.5 ${i === 0 ? 'border-ember-500' : 'border-transparent'}`}>

@@ -6,11 +6,10 @@ import { usePostHog } from 'posthog-js/react';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { useVisibleItemEnrichment } from '@/hooks/useVisibleItemEnrichment';
+import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
 import { useBuyerCatalogSearchTextInfinite } from '@/hooks/useBuyerProducts';
-import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
-import type { BuyerCatalogItem, BuyerCatalogTextItem } from '@/types/buyer';
+import type { BuyerCatalogTextItem } from '@/types/buyer';
 
 function matchesQuery(item: BuyerCatalogTextItem, q: string): boolean {
   if (!q.trim()) return true;
@@ -20,37 +19,6 @@ function matchesQuery(item: BuyerCatalogTextItem, q: string): boolean {
     item.internal_sku.toLowerCase().includes(s) ||
     (item.brand_name?.toLowerCase().includes(s) ?? false)
   );
-}
-
-/** Text-only result rendered as a placeholder card while phase-2 price/stock enrichment is pending. */
-function toPlaceholderItem(item: BuyerCatalogTextItem): BuyerCatalogItem {
-  return {
-    id: item.id,
-    tenant_product_id: item.tenant_product_id,
-    campaign_id: null,
-    campaign_name: null,
-    campaign_valid_until: null,
-    internal_sku: item.internal_sku,
-    display_name: item.display_name,
-    brand_id: item.brand_id,
-    brand_name: item.brand_name,
-    category_id: item.category_id,
-    category_name: item.category_name,
-    mrp: 0,
-    price: 0,
-    resolved_price: 0,
-    has_campaign_price: false,
-    gst_rate: null,
-    default_uom: null,
-    pack_size: null,
-    image_urls: [],
-    brand_logo_url: null,
-    category_image_url: null,
-    stock_status: 'available',
-    on_hand: 0,
-    is_featured: false,
-    is_enriched: false,
-  };
 }
 
 export function BuyerSearchPageClient() {
@@ -65,9 +33,6 @@ export function BuyerSearchPageClient() {
 
   const [q, setQ] = React.useState(initialQ);
   const [debounced, setDebounced] = React.useState(initialQ.trim());
-  const [enrichedById, setEnrichedById] = React.useState<Map<string, BuyerCatalogItem>>(new Map());
-  const enrichedByIdRef = React.useRef(enrichedById);
-  enrichedByIdRef.current = enrichedById;
   const searchEventKeyRef = React.useRef<string | null>(null);
 
   const catalogSearchQuery = useBuyerCatalogSearchTextInfinite(
@@ -88,41 +53,6 @@ export function BuyerSearchPageClient() {
   const catalogHasMore = catalogPages.at(-1)?.has_more ?? false;
   const catalogLoadingMore = catalogSearchQuery.isFetchingNextPage;
 
-  // Reset enrichment cache when the query/filters change — stale ids won't
-  // match the new result set anyway, and this keeps the map from growing
-  // unbounded across an entire session.
-  React.useEffect(() => {
-    setEnrichedById(new Map());
-  }, [debounced, categoryId, brandId, catalogId]);
-
-  const handleBatchVisible = React.useCallback((ids: string[]) => {
-    const toFetch = ids.filter((id) => !enrichedByIdRef.current.has(id));
-    if (toFetch.length === 0) return;
-    void (async () => {
-      try {
-        const params = new URLSearchParams({ ids: toFetch.join(',') });
-        const res = await apiFetch(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
-        if (!res.ok) return;
-        const body = await res.json() as { items?: BuyerCatalogItem[] };
-        if (!body.items?.length) return;
-        setEnrichedById((prev) => {
-          const next = new Map(prev);
-          for (const item of body.items!) next.set(item.tenant_product_id, item);
-          return next;
-        });
-      } catch {
-        // Best-effort — the card stays a skeleton and re-enters the
-        // observer's queue next time it intersects.
-      }
-    })();
-  }, []);
-
-  const enrichedIds = React.useMemo(() => new Set(enrichedById.keys()), [enrichedById]);
-  const { registerRef } = useVisibleItemEnrichment({
-    enrichedIds,
-    onBatchVisible: handleBatchVisible,
-  });
-
   React.useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 280);
     return () => clearTimeout(t);
@@ -132,10 +62,11 @@ export function BuyerSearchPageClient() {
     () => catalogTextItems.filter((item) => matchesQuery(item, q)),
     [catalogTextItems, q],
   );
-  const shownItems = React.useMemo(
-    () => shownTextItems.map((item) => enrichedById.get(item.tenant_product_id) ?? toPlaceholderItem(item)),
-    [shownTextItems, enrichedById],
+  const resetKey = React.useMemo(
+    () => [debounced, categoryId, brandId, catalogId].join('|'),
+    [debounced, categoryId, brandId, catalogId],
   );
+  const { shownItems, registerItemRef } = useTwoPhaseProductGrid(shownTextItems, resetKey);
 
   const loading = catalogSearchQuery.isLoading && catalogTextItems.length === 0;
   const error = catalogSearchQuery.isError;
@@ -223,7 +154,7 @@ export function BuyerSearchPageClient() {
             loadingMore={catalogLoadingMore}
             sentinelIndex={sentinelIndex}
             sentinelRef={sentinelRef}
-            registerItemRef={registerRef}
+            registerItemRef={registerItemRef}
           />
         )}
       </div>

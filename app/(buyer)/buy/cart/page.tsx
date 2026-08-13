@@ -90,7 +90,7 @@ const STICKY_HEADER: React.CSSProperties = {
 export default function CartPage() {
   const router = useRouter();
   const posthog = usePostHog();
-  const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
+  const { items, removeItem, updateQty, clearCart, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
@@ -104,14 +104,6 @@ export default function CartPage() {
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
-  const [desktopRedirected, setDesktopRedirected] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!window.matchMedia('(min-width: 768px)').matches) return;
-    setDesktopRedirected(true);
-    router.replace('/buy/catalog?cart=open');
-  }, [router]);
 
   useEffect(() => {
     router.prefetch('/buy/order-placed');
@@ -511,11 +503,6 @@ export default function CartPage() {
     }
     captureCartSubmitIntent('estimate');
     requestQuoteMutation.mutate();
-  }
-
-
-  if (desktopRedirected) {
-    return null;
   }
 
   if (items.length === 0) {

@@ -14,6 +14,7 @@ import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
 type CatalogStatus = RawCampaignStatus;
 type DisplayStatus = CampaignWorkflowStatusLabel;
@@ -236,8 +237,15 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
     campaignQuery = campaignQuery.or(`created_at.lt.${cursor.t},and(created_at.eq.${cursor.t},id.lt.${cursor.i})`);
   }
   if (search) {
-    const safe = search.replace(/[%_]/g, '\\$&');
-    campaignQuery = campaignQuery.ilike('name', `%${safe}%`);
+    // Indexed (idx_campaigns_search_vector) candidate-id lookup instead of an
+    // unindexed ILIKE seq scan.
+    const { ids: searchIds } = await searchSellerLandingEntityIds({
+      tenantId,
+      entity: 'campaigns',
+      query: search,
+      limit: scanLimit,
+    });
+    campaignQuery = campaignQuery.in('id', searchIds.length > 0 ? searchIds : ['00000000-0000-0000-0000-000000000000']);
   }
 
   const campaignsRes = await campaignQuery;

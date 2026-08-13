@@ -247,9 +247,20 @@ export async function GET(request: NextRequest) {
 
     const categories = await fetchCategories(db, tenantId);
     const categoryIds = categories.map((row) => row.id);
-    const [metricsByCategory, products] = await Promise.all([
+    const [metricsByCategory, products, searchCandidateIds] = await Promise.all([
       fetchCategoryMetrics(db, tenantId, categoryIds, period),
       fetchProductsByCategory(db, tenantId),
+      search
+        ? db.schema('app').rpc('search_seller_category_landing_ids', {
+            p_tenant_id: tenantId,
+            p_query: search,
+            p_limit: CATEGORY_SCAN_LIMIT,
+            p_offset: 0,
+          }).then(({ data, error }: { data: Array<{ id: string }> | null; error: unknown }) => {
+            if (error) throw error;
+            return new Set((data ?? []).map((row) => row.id));
+          })
+        : Promise.resolve(null as Set<string> | null),
     ]);
     const activeProducts = products.filter((product) => product.is_active);
     const inventoryByProduct = await fetchInventoryByProduct(db, activeProducts.map((product) => product.id));
@@ -325,7 +336,7 @@ export async function GET(request: NextRequest) {
           });
           if (!stockOk) return false;
         }
-        return !search || row.name.toLowerCase().includes(search) || row.slug.toLowerCase().includes(search);
+        return !search || (searchCandidateIds?.has(row.id) ?? false);
       })
       .sort((a, b) => compareRows(a, b, sort));
 

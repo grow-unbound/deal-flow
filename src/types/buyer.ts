@@ -35,7 +35,9 @@ export interface BuyerCatalogItem {
   is_enriched?: boolean;
 }
 
-/** Text-only search result: no price/stock resolution. */
+/** Text-only search result: no price/stock resolution. Images are included
+ * (cheap PK-indexed lookup, no join) so cards show real photos immediately
+ * instead of a blank placeholder while phase-2 enrichment is pending. */
 export interface BuyerCatalogTextItem {
   id: string;
   tenant_product_id: string;
@@ -45,6 +47,9 @@ export interface BuyerCatalogTextItem {
   brand_name: string | null;
   category_id: string | null;
   category_name: string | null;
+  image_urls: string[];
+  brand_logo_url: string | null;
+  category_image_url: string | null;
 }
 
 export interface BuyerCatalogTextResponse {

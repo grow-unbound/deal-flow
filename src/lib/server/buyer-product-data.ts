@@ -791,14 +791,105 @@ export async function fetchBuyerCatalogPage(
  * text fields on every row, so this reuses that single call rather than a
  * second lookup.
  */
+type CatalogScopeImageRow = {
+  id: string;
+  image_urls: string[] | null;
+  r2_small_key: string | null;
+  r2_medium_key: string | null;
+  master_product_id: string | null;
+  tenant_brand_id: string | null;
+  tenant_category_id: string | null;
+};
+
+/**
+ * Batched, PK-indexed image lookup for phase-1 text results — cheap enough
+ * to attach on every keystroke (no join fan-out like enrichBuyerProducts'
+ * inventory/price resolution), so cards show real photos immediately instead
+ * of a blank placeholder while phase-2 price/stock enrichment is pending.
+ * Mirrors enrichBuyerProducts' own/master fallback chain, condensed.
+ */
+async function resolveCatalogScopeImages(
+  db: SupabaseClient,
+  productIds: string[],
+): Promise<Map<string, { image_urls: string[]; brand_logo_url: string | null; category_image_url: string | null }>> {
+  const out = new Map<string, { image_urls: string[]; brand_logo_url: string | null; category_image_url: string | null }>();
+  if (productIds.length === 0) return out;
+
+  const { data: productRows, error: productError } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id, image_urls, r2_small_key, r2_medium_key, master_product_id, tenant_brand_id, tenant_category_id')
+    .in('id', productIds);
+  if (productError) throw new Error(productError.message);
+  const products = (productRows ?? []) as CatalogScopeImageRow[];
+
+  const masterProductIds = uniq(products.map((p) => p.master_product_id).filter((v): v is string => Boolean(v)));
+  const tenantBrandIds = uniq(products.map((p) => p.tenant_brand_id).filter((v): v is string => Boolean(v)));
+  const tenantCategoryIds = uniq(products.map((p) => p.tenant_category_id).filter((v): v is string => Boolean(v)));
+
+  const [masterProductsRes, tenantBrandsRes, tenantCategoriesRes] = await Promise.all([
+    masterProductIds.length > 0
+      ? db.schema('catalog').from('products').select('id, image_urls').in('id', masterProductIds)
+      : Promise.resolve({ data: [], error: null }),
+    tenantBrandIds.length > 0
+      ? db.schema('app').from('tenant_brands').select('id, logo_url, master_brand_id').in('id', tenantBrandIds).is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    tenantCategoryIds.length > 0
+      ? db.schema('app').from('tenant_categories').select('id, r2_image_thumb_key, r2_image_medium_key').in('id', tenantCategoryIds).is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (masterProductsRes.error) throw new Error((masterProductsRes.error as { message: string }).message);
+  if (tenantBrandsRes.error) throw new Error((tenantBrandsRes.error as { message: string }).message);
+  if (tenantCategoriesRes.error) throw new Error((tenantCategoriesRes.error as { message: string }).message);
+
+  const masterProductMap = new Map(
+    ((masterProductsRes.data ?? []) as Array<{ id: string; image_urls: string[] | null }>).map((row) => [row.id, row]),
+  );
+  const masterBrandIds = uniq(
+    ((tenantBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null; master_brand_id: string | null }>)
+      .map((row) => row.master_brand_id)
+      .filter((v): v is string => Boolean(v)),
+  );
+  const masterBrandsRes = masterBrandIds.length > 0
+    ? await db.schema('catalog').from('brands').select('id, logo_url').in('id', masterBrandIds)
+    : { data: [], error: null };
+  if (masterBrandsRes.error) throw new Error((masterBrandsRes.error as { message: string }).message);
+  const masterBrandMap = new Map(
+    ((masterBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null }>).map((row) => [row.id, row]),
+  );
+  const tenantBrandMap = new Map(
+    ((tenantBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null; master_brand_id: string | null }>).map((row) => [row.id, row]),
+  );
+  const tenantCategoryMap = new Map(
+    ((tenantCategoriesRes.data ?? []) as Array<{ id: string; r2_image_thumb_key: string | null; r2_image_medium_key: string | null }>).map((row) => [row.id, row]),
+  );
+
+  for (const product of products) {
+    const masterProduct = product.master_product_id ? masterProductMap.get(product.master_product_id) ?? null : null;
+    const tenantBrand = product.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id) ?? null : null;
+    const masterBrand = tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null;
+    const tenantCategory = product.tenant_category_id ? tenantCategoryMap.get(product.tenant_category_id) ?? null : null;
+
+    out.set(product.id, {
+      image_urls: (product.image_urls?.length ? product.image_urls : masterProduct?.image_urls ?? []) as string[],
+      brand_logo_url: tenantBrand?.logo_url ?? masterBrand?.logo_url ?? null,
+      category_image_url: r2Url(tenantCategory?.r2_image_thumb_key ?? tenantCategory?.r2_image_medium_key) ?? null,
+    });
+  }
+
+  return out;
+}
+
 export async function fetchBuyerCatalogTextPage(
   params: CatalogPageParams,
 ): Promise<BuyerCatalogTextResponse> {
   const scope = await resolveCatalogScope(params);
+  const imagesByProductId = await resolveCatalogScopeImages(params.db, scope.orderedProductIds);
 
   const items: BuyerCatalogTextItem[] = scope.orderedProductIds.flatMap((id) => {
     const text = scope.textByProductId.get(id);
     if (!text) return [];
+    const images = imagesByProductId.get(id);
     return [{
       id,
       tenant_product_id: id,
@@ -808,6 +899,9 @@ export async function fetchBuyerCatalogTextPage(
       brand_name: text.brand_name,
       category_id: text.category_id,
       category_name: text.category_name,
+      image_urls: images?.image_urls ?? [],
+      brand_logo_url: images?.brand_logo_url ?? null,
+      category_image_url: images?.category_image_url ?? null,
     }];
   });
 

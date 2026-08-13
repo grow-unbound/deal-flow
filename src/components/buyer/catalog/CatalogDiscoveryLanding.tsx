@@ -14,11 +14,12 @@ import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontal
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
+import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import {
   useBuyerBrands,
   useBuyerCatalogs,
-  useBuyerCatalogSearchInfinite,
+  useBuyerCatalogSearchTextInfinite,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
@@ -93,11 +94,12 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     refetch: refetchCategories,
   } = useBuyerCategories();
 
-  const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
+  const searchQueryResult = useBuyerCatalogSearchTextInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
   const searchPages = searchQueryResult.data?.pages ?? [];
-  const searchItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
+  const searchTextItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
+  const { shownItems: searchItems, registerItemRef: searchRegisterItemRef } = useTwoPhaseProductGrid(searchTextItems, debouncedSearch);
   const searchHasMore = searchPages.at(-1)?.has_more ?? false;
-  const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
+  const searchLoading = searchQueryResult.isLoading && searchTextItems.length === 0;
   const searchError = searchQueryResult.isError;
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
 
@@ -171,6 +173,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             loadingMore={searchLoadingMore}
             sentinelIndex={searchSentinelIndex}
             sentinelRef={searchSentinelRef}
+            registerItemRef={searchRegisterItemRef}
           />
         ) : allSectionsFailed ? (
           <p className="px-1 pt-4 text-center text-sm text-[var(--danger-500)]">
@@ -327,6 +330,7 @@ function CatalogSearchResults({
   loadingMore = false,
   sentinelIndex = -1,
   sentinelRef,
+  registerItemRef,
 }: {
   loading: boolean;
   error: boolean;
@@ -335,6 +339,7 @@ function CatalogSearchResults({
   loadingMore?: boolean;
   sentinelIndex?: number;
   sentinelRef?: React.RefObject<HTMLDivElement | null>;
+  registerItemRef?: (id: string) => (el: HTMLDivElement | null) => void;
 }): React.ReactNode {
   if (loading) {
     return (
@@ -365,7 +370,7 @@ function CatalogSearchResults({
   }
   return (
     <section className="pt-3 pb-4">
-      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} />
+      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} registerItemRef={registerItemRef} />
     </section>
   );
 }

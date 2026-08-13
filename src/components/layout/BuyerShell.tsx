@@ -110,7 +110,7 @@ export function BuyerShell({ children }: BuyerShellProps) {
     <BuyerRealtimeProvider>
       <div data-app="buyer" className="min-h-dvh bg-[var(--bg-page)]">
         <div
-          className="mx-auto flex h-dvh w-full max-w-[1440px] flex-col overflow-hidden bg-[var(--bg-page)] md:h-dvh md:max-w-[1920px] md:rounded-none md:border-0 md:shadow-none"
+          className="mx-auto flex h-dvh w-full max-w-[1440px] flex-col overflow-hidden bg-[var(--bg-page)] md:h-dvh md:max-w-[1440px] md:rounded-none md:border-0 md:shadow-none"
         >
           <BuyerPreviewBootstrap>
             <BuyerScrollRootContext.Provider value={scrollRootContextValue}>

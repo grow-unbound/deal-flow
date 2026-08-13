@@ -15,9 +15,10 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
 import {
   useBuyerBrands,
-  useBuyerCatalogList,
+  useBuyerCatalogListTextInfinite,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
@@ -71,9 +72,11 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     refetch: refetchBrandRecos,
   } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
+  const listQuery = useBuyerCatalogListTextInfinite(mode, activeId, debouncedSearch);
   const pages = listQuery.data?.pages ?? [];
-  const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
+  const textItems = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
+  const resetKey = React.useMemo(() => `${mode}:${activeId}:${debouncedSearch}`, [mode, activeId, debouncedSearch]);
+  const { shownItems: items, registerItemRef } = useTwoPhaseProductGrid(textItems, resetKey);
   const hasMore = pages.at(-1)?.has_more ?? false;
   const isSwitchingEntity = mode !== 'list' && activeId !== resolvedGridId;
   // Cold-cache only, plus detail-rail switches where we want the grid to show an explicit refresh state.
@@ -315,6 +318,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
                 showPromotionBadge={mode !== 'list'}
+                registerItemRef={registerItemRef}
               />
 
               {!showProductsSkeleton && items.length === 0 ? (

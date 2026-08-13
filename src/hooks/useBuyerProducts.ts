@@ -280,6 +280,39 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
   });
 }
 
+/**
+ * Text-first sibling of `useBuyerCatalogList` — same category/brand/campaign
+ * filtering, no price/stock join. Pair with `useBuyerCatalogEnrichment` (or
+ * `useTwoPhaseProductGrid`) for phase 2.
+ */
+export function useBuyerCatalogListTextInfinite(mode: FilterMode, id: string, search = '') {
+  const trimmedSearch = search.trim();
+  return useInfiniteQuery<BuyerCatalogTextResponse>({
+    queryKey: ['buyer-catalog-list-text', mode, id, trimmedSearch],
+    queryFn: async ({ pageParam = 0 }) => {
+      const params = new URLSearchParams({
+        mode: 'text',
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      if (mode === 'category') params.set('category_id', id);
+      if (mode === 'brand') params.set('brand_id', id);
+      if (mode === 'list') params.set('campaign_id', id);
+      if (trimmedSearch) params.set('search', trimmedSearch);
+      return fetchJson<BuyerCatalogTextResponse>(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage.has_more) return undefined;
+      const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
 export function useBuyerProductRecommendations(tenantProductId: string) {
   return useQuery<BuyerProductPageRecos>({
     queryKey: buyerProductRecommendationsQueryKey(tenantProductId),

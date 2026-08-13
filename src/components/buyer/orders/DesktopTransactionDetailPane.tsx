@@ -65,7 +65,7 @@ export function DesktopTransactionDetailPane({
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-cream-200 bg-white">
+      <div className="flex h-full min-h-0 flex-col">
         <div className="flex-1 space-y-4 overflow-hidden px-5 py-5">
           <div className="space-y-2">
             <div className="h-3 w-32 animate-pulse rounded-full bg-cream-200" />
@@ -88,14 +88,14 @@ export function DesktopTransactionDetailPane({
 
   if (error || !doc) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center rounded-[20px] border border-cream-200 bg-white px-6 text-center text-sm text-cream-600">
+      <div className="flex h-full min-h-0 items-center justify-center px-6 text-center text-sm text-cream-600">
         {error ?? emptyLabel}
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-cream-200 bg-white">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-y-auto px-5 pb-5 pt-7">
         <TransactionDetailDocumentBody
           doc={doc}

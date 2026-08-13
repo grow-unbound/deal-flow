@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { useBuyerBrands, useBuyerCategories, useBuyerProductDetail } from '@/hooks/useBuyerProducts';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
 
 interface Crumb {
@@ -61,12 +62,15 @@ export function BuyerDesktopBreadcrumbs() {
   });
 
   return (
-    <div className="hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
-      <div className="mx-auto flex w-full max-w-[1920px] items-center gap-2 px-6 py-3 text-sm">
+    <div className="hidden bg-[var(--cream-50)] md:block">
+      <div
+        className="mx-auto flex w-full items-center gap-3 px-6 pb-5 pt-4"
+        style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH, fontSize: 'var(--b-text-body)' }}
+      >
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;
           return (
-            <div key={`${crumb.label}-${index}`} className="flex items-center gap-2">
+            <div key={`${crumb.label}-${index}`} className="flex items-center gap-3">
               {crumb.href && !isLast ? (
                 <Link href={crumb.href} className="font-medium text-cream-600 transition-colors hover:text-cream-900">
                   {crumb.label}
@@ -76,7 +80,7 @@ export function BuyerDesktopBreadcrumbs() {
                   {crumb.label}
                 </span>
               )}
-              {!isLast ? <ChevronRight className="h-4 w-4 text-cream-400" /> : null}
+              {!isLast ? <ChevronRight className="h-4.5 w-4.5 text-cream-400" /> : null}
             </div>
           );
         })}

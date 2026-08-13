@@ -17,7 +17,7 @@ export const BUYER_GRID_AUTOFILL_CLASS =
   'grid grid-cols-3 gap-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] md:gap-2.5' as const;
 
 /** Prefetch next page when the user scrolls past this fraction of the loaded list. */
-export const BUYER_INFINITE_SCROLL_RATIO = 0.7 as const;
+export const BUYER_INFINITE_SCROLL_RATIO = 0.75 as const;
 
 /** Responsive `sizes` hint for default-variant product card images — matches BUYER_PRODUCT_GRID_CLASS breakpoints. */
 export const BUYER_CARD_IMAGE_SIZES =
