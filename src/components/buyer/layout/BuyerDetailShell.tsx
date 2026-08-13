@@ -31,6 +31,8 @@ export interface BuyerDetailShellProps {
    * Catalog tree details should pass `/buy/catalog` — default is buyer home.
    */
   backFallbackHref?: string;
+  /** Desktop deep pages already live under the persistent buyer chrome. */
+  hideDesktopHeader?: boolean;
   children: React.ReactNode;
 }
 
@@ -44,6 +46,7 @@ export function BuyerDetailShell({
   hideSearch = false,
   contentRef,
   backFallbackHref,
+  hideDesktopHeader = false,
   children,
 }: BuyerDetailShellProps) {
   const router = useRouter();
@@ -57,7 +60,7 @@ export function BuyerDetailShell({
     <div className="flex min-h-0 flex-1 flex-col">
       <header
         ref={contentRef}
-        className={cn('sticky top-0 z-[15] transition-shadow', collapsed && 'shadow-sm')}
+        className={cn('sticky top-0 z-[15] transition-shadow', hideDesktopHeader && 'md:hidden', collapsed && 'shadow-sm')}
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
           background: 'var(--bg-base)',
@@ -105,7 +108,7 @@ export function BuyerDetailShell({
         ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      <div className="min-h-0 flex-1 overflow-hidden pt-3">{children}</div>
+      <div className={cn('min-h-0 flex-1 overflow-hidden pt-3', hideDesktopHeader && 'md:pt-0')}>{children}</div>
     </div>
   );
 }

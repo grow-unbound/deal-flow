@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { MapPin } from 'lucide-react';
+import { ChevronDown, MapPin } from 'lucide-react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { buildBuyerLocationHref } from '@/lib/buyer-routes';
@@ -12,9 +12,10 @@ import { cn } from '@/lib/utils';
 
 interface BuyerLocationControlProps {
   className?: string;
+  variant?: 'pill' | 'inline' | 'desktop';
 }
 
-export function BuyerLocationControl({ className }: BuyerLocationControlProps) {
+export function BuyerLocationControl({ className, variant = 'pill' }: BuyerLocationControlProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const delivery = useBuyerDeliveryOptional();
@@ -30,15 +31,33 @@ export function BuyerLocationControl({ className }: BuyerLocationControlProps) {
       href={buildBuyerLocationHref(returnTo)}
       onClick={() => markBuyerNavigationForward()}
       className={cn(
-        'inline-flex max-w-[11rem] items-center gap-1.5 rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-2.5 py-2 text-[var(--fg-2)] transition-colors hover:bg-[var(--bg-recessed)]',
+        variant === 'pill'
+          ? 'inline-flex max-w-[11rem] items-center gap-1.5 rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-2.5 py-2 text-[var(--fg-2)] transition-colors hover:bg-[var(--bg-recessed)]'
+          : variant === 'desktop'
+            ? 'inline-flex min-w-0 max-w-[15rem] items-center gap-2 rounded-[16px] px-2.5 py-2 transition-colors hover:bg-cream-100'
+            : 'inline-flex max-w-[12rem] items-center gap-1.5 rounded-[10px] px-1 py-1 text-[var(--fg-2)] transition-colors hover:bg-cream-100',
         className,
       )}
       aria-label={`Selected location: ${formatBuyerSelectedLocationLabel(selected)}`}
     >
-      <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--teal-500)]" aria-hidden />
-      <span className="truncate text-sm font-medium text-[var(--fg-1)]">
-        {formatBuyerSelectedLocationLabel(selected)}
-      </span>
+      <MapPin className={cn('shrink-0 text-[var(--teal-500)]', variant === 'desktop' ? 'h-4 w-4' : 'h-3.5 w-3.5')} aria-hidden />
+      {variant === 'desktop' ? (
+        <>
+          <span className="min-w-0">
+            <span className="block text-[length:var(--b-text-sub)] font-medium uppercase tracking-[0.08em] text-cream-500">
+              Deliver to
+            </span>
+            <span className="block truncate text-[length:var(--b-text-body)] font-semibold leading-5 text-[var(--fg-1)]">
+              {formatBuyerSelectedLocationLabel(selected)}
+            </span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-cream-500" aria-hidden />
+        </>
+      ) : (
+        <span className="truncate text-sm font-medium text-[var(--fg-1)]">
+          {formatBuyerSelectedLocationLabel(selected)}
+        </span>
+      )}
     </Link>
   );
 }

@@ -2,14 +2,23 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
+import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 
 interface BuyerCatalogLandingHeaderProps {
   searchPlaceholder?: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
+}
+
+function getInitials(value: string | null | undefined) {
+  const parts = (value ?? '').split(/\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return 'YT';
+  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? 'YT').toUpperCase();
+  return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
 }
 
 export function BuyerCatalogLandingHeader({
@@ -18,12 +27,15 @@ export function BuyerCatalogLandingHeader({
   onSearchChange,
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
+  const { data: me } = useBuyerMe();
+  const tenantName = me?.tenant.name || 'Yukti';
+  const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
   return (
     <>
       <header
         className={cn(
-          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow',
+          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow md:hidden',
           collapsed && 'shadow-sm',
         )}
         style={{ backgroundColor: 'var(--bg-base)', isolation: 'isolate' }}
@@ -35,26 +47,18 @@ export function BuyerCatalogLandingHeader({
           )}
         >
           <div className="overflow-hidden">
-            <div className="flex items-end justify-between gap-3 px-4 pb-2 pt-6">
-              <div className="min-w-0 shrink-0">
-                <p
-                  className="font-semibold uppercase text-[var(--cream-700)]"
-                  style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}
-                >
-                  Browse
-                </p>
-                <h1
-                  className="mt-1.5 font-semibold leading-[0.96] text-[var(--cream-900)]"
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'var(--b-text-page-sm)',
-                    letterSpacing: '-0.022em',
-                  }}
-                >
-                  Catalog
-                </h1>
+            <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar className="h-11 w-11 border border-cream-200 shadow-[var(--shadow-sm)]">
+                  {tenantLogoUrl ? <AvatarImage src={tenantLogoUrl} alt={tenantName} /> : null}
+                  <AvatarFallback>{getInitials(tenantName)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold text-[var(--cream-900)]">{tenantName}</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-500)]">Catalog</p>
+                </div>
               </div>
-              <BuyerCatalogLocationLink className="max-w-[58%] shrink pb-0.5" />
+              <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
             </div>
           </div>
         </div>

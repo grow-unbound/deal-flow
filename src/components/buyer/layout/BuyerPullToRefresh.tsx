@@ -212,7 +212,7 @@ export function BuyerPullToRefresh({
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 rounded-full border border-cream-300 bg-[rgba(255,255,255,0.96)] px-3 py-2 text-[var(--b-text-sub)] font-medium text-[var(--cream-700)] shadow-[0_8px_24px_rgba(23,36,31,0.08)]"
+          className="flex items-center gap-2 rounded-full border border-cream-300 bg-white/95 px-3 py-2 text-[var(--b-text-sub)] font-medium text-[var(--cream-700)] shadow-[var(--shadow-sm)]"
         >
           {pullState === 'refreshing' ? (
             <Loader2 className="h-4 w-4 animate-spin text-[var(--ember-500)]" />

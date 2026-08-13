@@ -92,10 +92,9 @@ export function RecoSectionSkeleton({
           )}
         >
           <div className="aspect-square animate-pulse bg-cream-100" />
-          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+          <div className="px-2 pb-2 pt-1.5">
             <div className={`${BUYER_TWO_LINE_TITLE_CLASS} animate-pulse rounded bg-cream-200`} />
-            <div className="mt-0.5 h-3.5 w-2/5 animate-pulse rounded bg-cream-200" />
-            <div className="mt-2 h-5 w-24 animate-pulse rounded bg-cream-200" />
+            <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
           </div>
         </div>
       ))}

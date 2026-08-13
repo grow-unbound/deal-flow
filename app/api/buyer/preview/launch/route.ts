@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const buyerId = tenantCandidates.length === 1 ? tenantCandidates[0]!.buyer_id : null;
     const needsBuyerPicker = tenantCandidates.length > 1;
 
-    const redirectPath = needsBuyerPicker ? '/buy/preview/select-buyer' : '/buy/home';
+    const redirectPath = needsBuyerPicker ? '/buy/preview/select-buyer' : '/buy/catalog';
     const response = NextResponse.redirect(new URL(redirectPath, request.url));
 
     await setBuyerPreviewCookies(response, {

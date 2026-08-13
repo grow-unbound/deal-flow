@@ -19,12 +19,42 @@ export interface BuyerCatalogItem {
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];
+  /** 320px variant — compact tiles, mobile grid. Falls back through medium/large/image_urls[0]. */
+  image_url_small?: string | null;
+  /** 640px variant — desktop grid. Falls back through large/small/image_urls[0]. */
+  image_url_medium?: string | null;
+  /** 1200px variant — product detail. Falls back through medium/small/image_urls[0]. */
+  image_url_large?: string | null;
   brand_logo_url?: string | null;
   category_image_url?: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';
   on_hand: number;
   /** From campaign_items when product appears in a catalog. */
   is_featured?: boolean;
+  /** false = text-only placeholder awaiting price/stock enrichment (search-as-you-type phase 1). */
+  is_enriched?: boolean;
+}
+
+/** Text-only search result: no price/stock resolution. */
+export interface BuyerCatalogTextItem {
+  id: string;
+  tenant_product_id: string;
+  display_name: string;
+  internal_sku: string;
+  brand_id: string | null;
+  brand_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+}
+
+export interface BuyerCatalogTextResponse {
+  items: BuyerCatalogTextItem[];
+  total: number;
+  has_more: boolean;
+  selected_campaign_id?: string | null;
+  selected_campaign_name?: string | null;
+  selected_campaign_valid_until?: string | null;
+  selected_campaign_message?: string | null;
 }
 
 export interface BuyerCatalogSummary {

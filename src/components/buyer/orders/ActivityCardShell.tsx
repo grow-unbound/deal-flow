@@ -16,6 +16,8 @@ interface ActivityCardShellProps {
   middleRight?: React.ReactNode;
   amount: React.ReactNode;
   trailing?: React.ReactNode;
+  variant?: 'card' | 'rail';
+  selected?: boolean;
 }
 
 export function ActivityCardShell({
@@ -28,9 +30,20 @@ export function ActivityCardShell({
   middleRight,
   amount,
   trailing,
+  variant = 'card',
+  selected = false,
 }: ActivityCardShellProps) {
+  const rail = variant === 'rail';
   const content = (
-    <div className={cn(BUYER_CARD_RADIUS_CLASS, 'border border-[var(--border-1)] bg-white px-3.5 py-3 text-left no-underline transition hover:bg-white')}>
+    <div
+      className={cn(
+        rail
+          ? 'border-b border-[var(--border-1)] px-1 py-3.5 text-left no-underline transition'
+          : cn(BUYER_CARD_RADIUS_CLASS, 'border border-[var(--border-1)] bg-white px-3.5 py-3 text-left no-underline transition hover:bg-white'),
+        rail && selected ? 'rounded-[12px] bg-[var(--cream-100)] px-3 shadow-[inset_3px_0_0_var(--teal-500)]' : '',
+        rail && !selected ? 'bg-transparent hover:bg-[var(--cream-50)]' : ''
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         {/* Left column */}
         <div className="min-w-0 flex-1">

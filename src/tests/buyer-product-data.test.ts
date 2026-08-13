@@ -33,7 +33,12 @@ describe('buyer product enrichment', () => {
     const idsIn = vi.fn(() => ({ is: deletedIs }));
     const tenantEq = vi.fn(() => ({ in: idsIn }));
     const select = vi.fn(() => ({ eq: tenantEq }));
-    const from = vi.fn(() => ({ select }));
+    const settingsMaybeSingle = vi.fn(async () => ({ data: null }));
+    const settingsEq = vi.fn(() => ({ maybeSingle: settingsMaybeSingle }));
+    const settingsSelect = vi.fn(() => ({ eq: settingsEq }));
+    const from = vi.fn((table: string) =>
+      table === 'tenant_settings' ? { select: settingsSelect } : { select },
+    );
     const schema = vi.fn(() => ({ from }));
     const db = { schema } as any;
 

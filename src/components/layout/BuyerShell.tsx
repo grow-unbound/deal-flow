@@ -3,12 +3,12 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import {
   isBuyerCartPillRoute,
   isBuyerChromelessRoute,
   isBuyerDeepRoute,
   isBuyerLandingRoute,
+  shouldShowBuyerDesktopBreadcrumbs,
 } from '@/lib/buyer-routes';
 import { isActiveBuyerRefreshQuery } from '@/lib/buyer-refresh';
 import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
@@ -20,6 +20,8 @@ import { BuyerTabBar } from './BuyerTabBar';
 import { CartBar } from '@/components/buyer/cart/CartBar';
 import { BuyerSearchOverlay } from '@/components/buyer/layout/BuyerSearchOverlay';
 import { BuyerPullToRefresh } from '@/components/buyer/layout/BuyerPullToRefresh';
+import { BuyerDesktopHeader } from '@/components/buyer/layout/BuyerDesktopHeader';
+import { BuyerDesktopBreadcrumbs } from '@/components/buyer/layout/BuyerDesktopBreadcrumbs';
 interface BuyerShellProps {
   children: ReactNode;
 }
@@ -36,7 +38,8 @@ function BuyerShellMain({
   const queryClient = useQueryClient();
   const isDeep = isBuyerDeepRoute(pathname);
   const isLanding = isBuyerLandingRoute(pathname);
-  const isChromeless = isDeep || isBuyerChromelessRoute(pathname);
+  const isChromeless = isBuyerChromelessRoute(pathname);
+  const showDesktopBreadcrumbs = shouldShowBuyerDesktopBreadcrumbs(pathname);
   const { tabBarVisible } = useBuyerScrollChromeState();
   const { triggerRefresh } = useBuyerRealtimeContext();
   const showTabBarPadding = !isChromeless && (!isLanding || tabBarVisible);
@@ -65,14 +68,16 @@ function BuyerShellMain({
       viewportRef={scrollRootRef}
       pullEnabled={canPullToRefresh}
       onRefresh={handleRefresh}
-      className="min-h-0 flex-1"
       contentClassName="flex h-full min-h-0 flex-col"
-      style={{
-        paddingBottom: showTabBarPadding
-          ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))'
-          : 'env(safe-area-inset-bottom, 0px)',
-      }}
+      className={`min-h-0 flex-1 ${showTabBarPadding ? '[--buyer-bottom-chrome:var(--tab-bar-h)] md:[--buyer-bottom-chrome:0px]' : '[--buyer-bottom-chrome:0px]'}`}
+      style={{ paddingBottom: 'calc(var(--buyer-bottom-chrome, 0px) + env(safe-area-inset-bottom, 0px))' }}
     >
+      {!isChromeless ? (
+        <>
+          <BuyerDesktopHeader />
+          {showDesktopBreadcrumbs ? <BuyerDesktopBreadcrumbs /> : null}
+        </>
+      ) : null}
       {children}
     </BuyerPullToRefresh>
   );
@@ -103,16 +108,15 @@ export function BuyerShell({ children }: BuyerShellProps) {
 
   return (
     <BuyerRealtimeProvider>
-      <div data-app="buyer" className="min-h-dvh bg-[var(--bg-page)] md:px-4 md:py-6">
+      <div data-app="buyer" className="min-h-dvh bg-[var(--bg-page)]">
         <div
-          className="mx-auto flex h-dvh w-full flex-col overflow-hidden bg-[var(--bg-page)] md:h-[calc(100dvh-3rem)] md:rounded-[28px] md:border md:border-[var(--cream-300)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
-          style={{ maxWidth: `${BUYER_PREVIEW_MAX_WIDTH}px` }}
+          className="mx-auto flex h-dvh w-full max-w-[1440px] flex-col overflow-hidden bg-[var(--bg-page)] md:h-dvh md:max-w-[1920px] md:rounded-none md:border-0 md:shadow-none"
         >
           <BuyerPreviewBootstrap>
             <BuyerScrollRootContext.Provider value={scrollRootContextValue}>
               <BuyerScrollChromeProvider>
                 <BuyerShellMain scrollRootRef={handleScrollRootRef}>{children}</BuyerShellMain>
-                {isBuyerCartPillRoute(pathname) ? <CartBar /> : null}
+                {isBuyerCartPillRoute(pathname) ? <div className="md:hidden"><CartBar /></div> : null}
                 <BuyerTabBar />
               </BuyerScrollChromeProvider>
             </BuyerScrollRootContext.Provider>

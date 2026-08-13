@@ -55,11 +55,11 @@ function NotificationRow({ n, onClose }: { n: AppNotification; onClose: () => vo
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="default" className="text-[10px]">{label}</Badge>
+          <Badge variant="default" className="text-[length:var(--b-text-eyebrow)]">{label}</Badge>
         </div>
         <p className="mt-1 text-sm font-medium leading-snug text-cream-900">{n.title}</p>
         <p className="mt-0.5 text-xs text-cream-600">{n.body}</p>
-        <p className="mt-1 font-mono text-[11px] tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
+        <p className="mt-1 font-mono text-[length:var(--b-text-sub)] tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
       </div>
       {isUnread && (
         <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-ember-500" aria-label="Unread" />
@@ -71,17 +71,17 @@ function NotificationRow({ n, onClose }: { n: AppNotification; onClose: () => vo
 interface Props {
   open: boolean;
   onClose: () => void;
+  side?: 'bottom' | 'right';
 }
 
-export function BuyerNotificationDrawer({ open, onClose }: Props) {
+export function BuyerNotificationDrawer({ open, onClose, side = 'bottom' }: Props) {
   const { notifications, markAllRead, unreadCount } = useBuyerRealtimeContext();
   const { today, earlier } = groupNotifications(notifications);
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="bottom" className="flex h-[82dvh] flex-col rounded-t-[20px] p-0">
-        {/* drag handle */}
-        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-cream-300" />
+      <SheetContent side={side} className={side === 'right' ? 'flex w-[400px] flex-col p-0' : 'flex h-[82dvh] flex-col rounded-t-[20px] p-0'}>
+        {side === 'bottom' ? <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-cream-300" /> : null}
 
         <SheetHeader className="flex-row items-center justify-between px-4 pb-2 pt-3">
           <SheetTitle>Notifications</SheetTitle>
@@ -102,13 +102,13 @@ export function BuyerNotificationDrawer({ open, onClose }: Props) {
             <>
               {today.length > 0 && (
                 <section>
-                  <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
+                  <p className="mb-1 px-3 text-[length:var(--b-text-sub)] font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
                   {today.map((n) => <NotificationRow key={n.id} n={n} onClose={onClose} />)}
                 </section>
               )}
               {earlier.length > 0 && (
                 <section className={today.length > 0 ? 'mt-4' : ''}>
-                  <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-500">Earlier</p>
+                  <p className="mb-1 px-3 text-[length:var(--b-text-sub)] font-medium uppercase tracking-[0.08em] text-cream-500">Earlier</p>
                   {earlier.map((n) => <NotificationRow key={n.id} n={n} onClose={onClose} />)}
                 </section>
               )}

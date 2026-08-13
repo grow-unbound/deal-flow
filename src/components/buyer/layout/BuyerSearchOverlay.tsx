@@ -4,7 +4,7 @@ import { formatNumberValue } from '@/lib/utils';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Search, Package, Receipt, FileText, ClipboardList } from 'lucide-react';
+import { X, Search, Package, Receipt, FileText, ClipboardList, Tag, LayoutGrid } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { usePointerPrefetch } from '@/hooks/usePointerPrefetch';
@@ -35,6 +35,8 @@ type Scope = 'catalog' | 'orders';
 
 const ENTITY_ICON: Record<string, React.ElementType> = {
   product:  Package,
+  brand:    Tag,
+  category: LayoutGrid,
   order:    Receipt,
   invoice:  FileText,
   estimate: ClipboardList,
@@ -42,10 +44,14 @@ const ENTITY_ICON: Record<string, React.ElementType> = {
 
 const ENTITY_LABEL: Record<string, string> = {
   product:  'Product',
+  brand:    'Brand',
+  category: 'Category',
   order:    'Order',
   invoice:  'Invoice',
   estimate: 'Estimate',
 };
+
+const CATALOG_ENTITY_TYPES = new Set(['product', 'brand', 'category']);
 
 export function BuyerSearchOverlay() {
   const router = useRouter();
@@ -166,6 +172,10 @@ export function BuyerSearchOverlay() {
     setOpen(false);
     if (item.entity_type === 'product') {
       router.push(`/buy/product/${item.id}`);
+    } else if (item.entity_type === 'brand') {
+      router.push(`/buy/catalog/brand/${item.id}`);
+    } else if (item.entity_type === 'category') {
+      router.push(`/buy/catalog/category/${item.id}`);
     } else if (item.entity_type === 'order') {
       router.push(`/buy/orders?tab=orders`);
     } else if (item.entity_type === 'estimate') {
@@ -182,8 +192,8 @@ export function BuyerSearchOverlay() {
 
     return items.filter((item) => {
       const belongsToScope = scope === 'catalog'
-        ? item.entity_type === 'product'
-        : item.entity_type !== 'product';
+        ? CATALOG_ENTITY_TYPES.has(item.entity_type)
+        : !CATALOG_ENTITY_TYPES.has(item.entity_type);
       const searchableText = `${item.label} ${item.sublabel} ${item.meta ?? ''}`.toLocaleLowerCase();
       return belongsToScope && searchableText.includes(normalizedQuery);
     });

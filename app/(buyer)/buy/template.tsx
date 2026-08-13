@@ -42,7 +42,7 @@ export default function BuyerRouteTemplate({ children }: { children: React.React
   return (
     <div
       key={pathname}
-      className={`min-h-0 flex-1 ${animClass}`}
+      className={`flex min-h-0 flex-1 flex-col ${animClass}`}
       style={{ willChange: shouldAnimate ? 'transform, opacity' : undefined }}
     >
       {children}

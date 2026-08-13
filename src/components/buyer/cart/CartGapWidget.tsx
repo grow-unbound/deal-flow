@@ -12,6 +12,7 @@ import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import type { CartBundle } from '@/hooks/useCartBundles';
 import { BUYER_PRODUCT_CAROUSEL_COMPACT_WIDTH_CLASS } from '@/lib/buyer-lookbook';
 import {
+  BUYER_QUICK_ADD_IDLE_CLASS,
   getBuyerProductPrimaryImageUrl,
   hasBuyerCampaignPrice,
 } from '@/lib/buyer-ui';
@@ -55,16 +56,16 @@ export function CartGapWidget({ bundles, items, tenantId }: CartGapWidgetProps) 
   return (
     <div
       className="rounded-[12px] overflow-hidden"
-      style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
+      style={{ border: '1px solid var(--teal-100)', background: 'var(--teal-50)' }}
     >
       <div
         className="flex items-center gap-2 px-3 py-2"
-        style={{ borderBottom: '1px solid var(--teal-100, #ccfbf1)' }}
+        style={{ borderBottom: '1px solid var(--teal-100)' }}
       >
         <Sparkles className="h-3 w-3 shrink-0" style={{ color: 'var(--teal-500)' }} />
         <p
           className="min-w-0 flex-1 font-semibold"
-          style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-800, #134e4a)' }}
+          style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-800)' }}
         >
           You might be missing
         </p>
@@ -168,12 +169,12 @@ function CartGapListItem({
   return (
     <>
       {showDivider ? (
-        <div style={{ borderTop: '1px solid var(--teal-100, #ccfbf1)' }} />
+        <div style={{ borderTop: '1px solid var(--teal-100)' }} />
       ) : null}
       <div className="flex gap-3 px-4 py-3">
         <div
           className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg"
-          style={{ width: 56, height: 56, background: 'var(--teal-100, #ccfbf1)' }}
+          style={{ width: 56, height: 56, background: 'var(--teal-100)' }}
         >
           {imageUrl ? (
             <Image src={imageUrl} alt={product.display_name} fill className="object-cover" sizes="56px" unoptimized />
@@ -189,7 +190,7 @@ function CartGapListItem({
               style={{
                 fontSize: 'var(--b-text-eyebrow)',
                 letterSpacing: '0.12em',
-                color: 'var(--teal-600, #0d9488)',
+                color: 'var(--teal-600)',
               }}
             >
               {slotLabel}
@@ -197,18 +198,18 @@ function CartGapListItem({
           ) : null}
           <p
             className="truncate font-semibold leading-snug"
-            style={{ fontSize: 'var(--b-text-label)', color: 'var(--teal-900, #042f2e)' }}
+            style={{ fontSize: 'var(--b-text-label)', color: 'var(--teal-900)' }}
           >
             {product.display_name}
           </p>
           {subline ? (
-            <p className="mt-0.5 truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)' }}>
+            <p className="mt-0.5 truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700)' }}>
               {subline}
             </p>
           ) : null}
           <div
             className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1"
-            style={{ color: 'var(--teal-700, #0f766e)' }}
+            style={{ color: 'var(--teal-700)' }}
           >
             <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
               {formatNumberValue(product.price, 'CURRENCY_EXACT')}
@@ -228,8 +229,7 @@ function CartGapListItem({
         <button
           type="button"
           onClick={handleAdd}
-          className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg"
-          style={{ background: 'var(--teal-500)', color: '#fff' }}
+          className={cn(BUYER_QUICK_ADD_IDLE_CLASS, 'flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-lg')}
           aria-label={`Add ${product.display_name} to cart`}
         >
           <Plus className="h-4 w-4" />

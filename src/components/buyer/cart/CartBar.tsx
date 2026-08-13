@@ -56,8 +56,8 @@ export function CartBar() {
           }}
         >
           <span
-            className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-            style={{ background: 'var(--ember-400, #C26E3A)', fontFamily: 'var(--font-mono)' }}
+            className="rounded-full px-2 py-0.5 text-[length:var(--b-text-sub)] font-semibold text-white"
+            style={{ background: 'var(--ember-400)', fontFamily: 'var(--font-mono)' }}
           >
             {itemCount}
           </span>

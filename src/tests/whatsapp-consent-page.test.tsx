@@ -113,7 +113,7 @@ describe('whatsapp consent page', () => {
         expect.objectContaining({ fresh: true }),
       );
       expect(queryClient.getQueryData(['buyer-me'])).toEqual(refreshedMe);
-      expect(routerReplaceMock).toHaveBeenCalledWith('/buy/home');
+      expect(routerReplaceMock).toHaveBeenCalledWith('/buy/catalog');
     });
   });
 });

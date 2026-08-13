@@ -20,6 +20,7 @@ export interface BuyerMeData {
     id: string;
     name: string;
     slug: string;
+    logo_url: string | null;
     outlets: Array<{
       location_id: string;
       name: string;

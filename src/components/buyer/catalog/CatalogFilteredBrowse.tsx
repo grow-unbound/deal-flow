@@ -41,9 +41,6 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const [search, setSearch] = React.useState('');
   const [activeId, setActiveId] = React.useState(id);
   const [resolvedGridId, setResolvedGridId] = React.useState(id);
-  const shellRef = React.useRef<HTMLDivElement>(null);
-  const headerRef = React.useRef<HTMLDivElement>(null);
-  const [splitHeight, setSplitHeight] = React.useState<number | null>(null);
   const debouncedSearch = useDebounce(search, 300);
   const searchEventKeyRef = React.useRef<string | null>(null);
 
@@ -88,29 +85,6 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     if (listQuery.isFetching) return;
     setResolvedGridId(activeId);
   }, [activeId, listQuery.isFetching]);
-
-  React.useLayoutEffect(() => {
-    const shell = shellRef.current;
-    const header = headerRef.current;
-    if (!shell || !header || typeof window === 'undefined') return;
-
-    const update = () => {
-      const shellRect = shell.getBoundingClientRect();
-      const headerRect = header.getBoundingClientRect();
-      const next = Math.max(240, Math.floor(shellRect.height - headerRect.height - 1));
-      setSplitHeight(next);
-    };
-
-    update();
-    const resizeObserver = new ResizeObserver(update);
-    resizeObserver.observe(shell);
-    resizeObserver.observe(header);
-    window.addEventListener('resize', update);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, []);
 
   const showCategoryRecosSkeleton = mode === 'category' && categoryRecosLoading && categoryRecos === undefined;
   const showBrandRecosSkeleton = mode === 'brand' && brandRecosLoading && brandRecos === undefined;
@@ -201,9 +175,9 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
   const searchPlaceholder =
     mode === 'brand'
-      ? 'Search products in this brand'
+      ? `Search ${selectedBrandName ?? 'brand'} products`
       : mode === 'category'
-        ? 'Search products in this category'
+        ? `Search products in ${selectedCategoryName ?? 'this category'}`
       : 'Search products in this catalog';
 
   const handleRailSelect = React.useCallback((nextId: string) => {
@@ -247,12 +221,12 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     ) : null;
 
   return (
-    <div ref={shellRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <BuyerDetailShell
         title={title}
         hideSearch
+        hideDesktopHeader
         backFallbackHref="/buy/catalog"
-        contentRef={headerRef}
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -261,11 +235,26 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
           />
         }
       >
-        <BuyerCatalogDesktopLayout
-          rail={desktopRail}
-          splitScroll
-          style={splitHeight != null ? { height: `${splitHeight}px` } : undefined}
-        >
+        <BuyerCatalogDesktopLayout rail={desktopRail} splitScroll>
+          <div className="hidden px-2 pt-5 md:block lg:px-2 lg:pt-6">
+            {mode !== 'list' ? (
+              <h1
+                className="mb-3 truncate font-semibold text-[var(--fg-1)]"
+                style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.01em' }}
+              >
+                {title}
+              </h1>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <BuyerCatalogSearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder={searchPlaceholder}
+                className="max-w-[34rem]"
+              />
+            </div>
+          </div>
+
           {mode === 'list' ? (
             <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
           ) : null}
@@ -307,26 +296,15 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             <>
               {showProductsSkeleton || items.length > 0 ? (
                 <div className="px-4 pb-3 pt-4 lg:px-2">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
-                        Browse
-                      </p>
-                      <h2
-                        className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
-                        style={{ fontFamily: 'var(--font-display)' }}
-                      >
-                        All Products
-                      </h2>
-                    </div>
-                    {showProductsSkeleton ? (
-                      <div className="h-4 w-14 shrink-0 animate-pulse rounded bg-cream-200" />
-                    ) : (
-                      <p className="shrink-0 text-sm text-[var(--fg-3)]">
-                        {items.length} {items.length === 1 ? 'item' : 'items'}
-                      </p>
-                    )}
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
+                    Browse
+                  </p>
+                  <h2
+                    className="mt-1 text-base font-semibold text-[var(--fg-1)]"
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    All Products
+                  </h2>
                 </div>
               ) : null}
 
@@ -353,7 +331,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 function NoProductsFoundState(): React.ReactNode {
   return (
     <div className="px-4 py-10">
-      <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[0_1px_3px_rgba(34,30,26,0.04)]">
+      <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-8 text-center shadow-[var(--shadow-xs)]">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cream-100)] text-[var(--cream-700)]">
           <SearchX className="h-5 w-5" />
         </div>

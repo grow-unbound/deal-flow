@@ -8,10 +8,11 @@ import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@
 import { BUYER_CARD_RADIUS_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
+// Decorative per-card gradient stops, no equivalent token exists in globals.css.
 const CATALOG_HUES = [
-  'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
-  'linear-gradient(135deg, #874720 0%, #C26E3A 100%)',
-  'linear-gradient(135deg, #6B6760 0%, #3D3A35 100%)',
+  'linear-gradient(135deg, var(--teal-500) 0%, #2D5549 100%)', // token-exempt
+  'linear-gradient(135deg, #874720 0%, var(--ember-400) 100%)', // token-exempt
+  'linear-gradient(135deg, var(--cream-800) 0%, #3D3A35 100%)', // token-exempt
 ];
 
 export interface CatalogLookbookCardProps {
@@ -56,7 +57,7 @@ export function CatalogLookbookCard({
       href={href}
       onClick={() => markBuyerNavigationForward()}
       className={cn(
-        'block overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]',
+        'block overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[var(--shadow-xs)]',
         BUYER_CARD_RADIUS_CLASS,
         isList ? 'w-full' : 'shrink-0',
       )}

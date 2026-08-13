@@ -14,6 +14,19 @@ interface ProductGridProps {
   sentinelIndex?: number;
   sentinelRef?: RefObject<HTMLDivElement | null>;
   showPromotionBadge?: boolean;
+  /** Per-item ref registrar for viewport-gated enrichment (e.g. search results). */
+  registerItemRef?: (id: string) => (el: HTMLDivElement | null) => void;
+}
+
+function mergeRefs(
+  a: RefObject<HTMLDivElement | null> | undefined,
+  b: ((el: HTMLDivElement | null) => void) | undefined,
+): ((el: HTMLDivElement | null) => void) | undefined {
+  if (!a && !b) return undefined;
+  return (el: HTMLDivElement | null) => {
+    if (a) a.current = el;
+    if (b) b(el);
+  };
 }
 
 export function ProductGrid({
@@ -23,6 +36,7 @@ export function ProductGrid({
   sentinelIndex = -1,
   sentinelRef,
   showPromotionBadge = true,
+  registerItemRef,
 }: ProductGridProps) {
   if (loading) return <LoadingSkeleton count={6} />;
 
@@ -33,7 +47,7 @@ export function ProductGrid({
       {items.map((item, index) => (
         <div
           key={item.id}
-          ref={index === sentinelIndex ? sentinelRef : undefined}
+          ref={mergeRefs(index === sentinelIndex ? sentinelRef : undefined, registerItemRef?.(item.id))}
           className="min-w-0"
         >
           <ProductCard item={item} showPromotionBadge={showPromotionBadge} />

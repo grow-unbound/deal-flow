@@ -5,13 +5,15 @@ import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
-import { searchScopedProducts } from '@/lib/server/scoped-product-search';
+import { searchScopedProducts, type ScopedProductSearchRow } from '@/lib/server/scoped-product-search';
 import { r2Url } from '@/lib/r2-url';
 import type {
   BuyerBrand,
   BuyerCatalogItem,
   BuyerCatalogResponse,
   BuyerCatalogSummary,
+  BuyerCatalogTextItem,
+  BuyerCatalogTextResponse,
   BuyerCategory,
 } from '@/types/buyer';
 
@@ -35,6 +37,9 @@ type TenantProductRow = {
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[] | null;
+  r2_small_key: string | null;
+  r2_medium_key: string | null;
+  r2_large_key: string | null;
   is_active?: boolean | null;
 };
 
@@ -134,6 +139,15 @@ type CatalogPageParams = {
   offset: number;
 };
 
+type CatalogScopeTextRow = {
+  product_name: string;
+  sku: string | null;
+  brand_id: string | null;
+  brand_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+};
+
 type CatalogScopeResult = {
   orderedProductIds: string[];
   total: number;
@@ -145,10 +159,34 @@ type CatalogScopeResult = {
     campaign_price: number | null;
     is_featured?: boolean;
   }>;
+  textByProductId: Map<string, CatalogScopeTextRow>;
 };
 
 function uniq<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+async function isBuyerStockVisibilityEnabled(db: SupabaseClient, tenantId: string): Promise<boolean> {
+  const { data } = await (db as any)
+    .schema('app')
+    .from('tenant_settings')
+    .select('settings')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  const rawSettings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+  const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
+  return rawBuyerApp.stock_visibility_enabled === true;
+}
+
+function rowsToTextMap(rows: ScopedProductSearchRow[]): Map<string, CatalogScopeTextRow> {
+  return new Map(rows.map((row) => [row.tenant_product_id, {
+    product_name: row.product_name,
+    sku: row.sku,
+    brand_id: row.brand_id,
+    brand_name: row.brand_name,
+    category_id: row.category_id,
+    category_name: row.category_name,
+  }]));
 }
 
 export async function resolveVisibleCampaignMap(
@@ -370,7 +408,7 @@ export async function enrichBuyerProducts(
   let tenantProductsQuery = db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls')
+    .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls, r2_small_key, r2_medium_key, r2_large_key')
     .eq('tenant_id', tenantId)
     .in('id', orderedIds)
     .is('deleted_at', null)
@@ -381,7 +419,10 @@ export async function enrichBuyerProducts(
     tenantProductsQuery = tenantProductsQuery.in('tenant_brand_id', allowedTenantBrandIds);
   }
 
-  const { data: tenantProductsData, error: tenantProductsError } = await tenantProductsQuery;
+  const [{ data: tenantProductsData, error: tenantProductsError }, stockVisibilityEnabled] = await Promise.all([
+    tenantProductsQuery,
+    isBuyerStockVisibilityEnabled(db, tenantId),
+  ]);
   if (tenantProductsError) throw new Error(tenantProductsError.message);
 
   const tenantProducts = (tenantProductsData ?? []) as TenantProductRow[];
@@ -423,6 +464,7 @@ export async function enrichBuyerProducts(
           .in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
     (() => {
+      if (!stockVisibilityEnabled) return Promise.resolve({ data: [], error: null });
       let inventoryQuery = db
         .schema('app')
         .from('tenant_inventory')
@@ -532,6 +574,10 @@ export async function enrichBuyerProducts(
     const resolvedPrice = priceMap.get(product.id) ?? Number(product.base_selling_price ?? product.mrp ?? 0);
     const campaignPrice = campaign?.campaign_price ?? null;
     const onHand = Math.max(0, inventoryMap.get(product.id) ?? 0);
+    const fallbackImageUrl = product.image_urls?.length ? product.image_urls[0] : (masterProduct?.image_urls?.[0] ?? null);
+    const smallVariantUrl = r2Url(product.r2_small_key) ?? r2Url(product.r2_medium_key) ?? r2Url(product.r2_large_key);
+    const mediumVariantUrl = r2Url(product.r2_medium_key) ?? r2Url(product.r2_large_key) ?? r2Url(product.r2_small_key);
+    const largeVariantUrl = r2Url(product.r2_large_key) ?? r2Url(product.r2_medium_key) ?? r2Url(product.r2_small_key);
 
     out.set(product.id, {
       id: product.id,
@@ -554,9 +600,12 @@ export async function enrichBuyerProducts(
       default_uom: product.default_uom,
       pack_size: product.pack_size,
       image_urls: (product.image_urls?.length ? product.image_urls : (masterProduct?.image_urls ?? [])) as string[],
+      image_url_small: smallVariantUrl ?? fallbackImageUrl,
+      image_url_medium: mediumVariantUrl ?? fallbackImageUrl,
+      image_url_large: largeVariantUrl ?? fallbackImageUrl,
       brand_logo_url: tenantBrand?.logo_url ?? masterBrand?.logo_url ?? null,
       category_image_url: r2Url(tenantCategory?.r2_image_thumb_key ?? tenantCategory?.r2_image_medium_key) ?? category?.image_url ?? null,
-      stock_status: onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available',
+      stock_status: !stockVisibilityEnabled ? 'available' : onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available',
       on_hand: onHand,
       is_featured: campaign?.is_featured ?? false,
     });
@@ -589,6 +638,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
         total: 0,
         selectedCampaign: null,
         campaignByProductId: new Map(),
+        textByProductId: new Map(),
       };
     }
 
@@ -601,7 +651,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
     }
     if (effectiveTenantBrandIds) {
       if (effectiveTenantBrandIds.length === 0) {
-        return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map() };
+        return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map(), textByProductId: new Map() };
       }
     }
 
@@ -622,8 +672,9 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
       sort: trimmedSearch ? 'relevance' : 'created_desc',
     });
     const orderedProductIds = rows.map((row) => row.tenant_product_id);
+    const textByProductId = rowsToTextMap(rows);
     if (orderedProductIds.length === 0) {
-      return { orderedProductIds: [], total, selectedCampaign, campaignByProductId: new Map() };
+      return { orderedProductIds: [], total, selectedCampaign, campaignByProductId: new Map(), textByProductId };
     }
 
     const { data: pageCampaignItemsData, error: pageCampaignItemsError } = await db
@@ -657,6 +708,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
       total,
       selectedCampaign,
       campaignByProductId,
+      textByProductId,
     };
   }
 
@@ -669,7 +721,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
   }
   if (effectiveTenantBrandIds) {
     if (effectiveTenantBrandIds.length === 0) {
-      return { orderedProductIds: [], total: 0, selectedCampaign: null, campaignByProductId: new Map() };
+      return { orderedProductIds: [], total: 0, selectedCampaign: null, campaignByProductId: new Map(), textByProductId: new Map() };
     }
   }
 
@@ -690,6 +742,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
   });
 
   const orderedProductIds = rows.map((row) => row.tenant_product_id);
+  const textByProductId = rowsToTextMap(rows);
   const campaignByProductId = await resolveVisibleCampaignMap(db, {
     tenantId,
     buyerId: params.buyerId,
@@ -702,6 +755,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
     total,
     selectedCampaign: null,
     campaignByProductId,
+    textByProductId,
   };
 }
 
@@ -729,6 +783,87 @@ export async function fetchBuyerCatalogPage(
     selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
     selected_campaign_message: scope.selectedCampaign?.message ?? null,
   };
+}
+
+/**
+ * Phase 1 of buyer-PWA search-as-you-type: text-only match, no inventory/price
+ * resolution. `resolveCatalogScope`'s underlying RPC already carries these
+ * text fields on every row, so this reuses that single call rather than a
+ * second lookup.
+ */
+export async function fetchBuyerCatalogTextPage(
+  params: CatalogPageParams,
+): Promise<BuyerCatalogTextResponse> {
+  const scope = await resolveCatalogScope(params);
+
+  const items: BuyerCatalogTextItem[] = scope.orderedProductIds.flatMap((id) => {
+    const text = scope.textByProductId.get(id);
+    if (!text) return [];
+    return [{
+      id,
+      tenant_product_id: id,
+      display_name: text.product_name,
+      internal_sku: text.sku ?? id,
+      brand_id: text.brand_id,
+      brand_name: text.brand_name,
+      category_id: text.category_id,
+      category_name: text.category_name,
+    }];
+  });
+
+  return {
+    items,
+    total: scope.total,
+    has_more: params.offset + params.limit < scope.total,
+    selected_campaign_id: scope.selectedCampaign?.id ?? null,
+    selected_campaign_name: scope.selectedCampaign?.name ?? null,
+    selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
+    selected_campaign_message: scope.selectedCampaign?.message ?? null,
+  };
+}
+
+export type BuyerCatalogEnrichmentParams = {
+  db: SupabaseClient;
+  tenantId: string;
+  buyerId: string | null;
+  tenantProductIds: string[];
+  allowedTenantBrandIds?: string[] | null;
+  inventoryWarehouseId?: string | null;
+  visibleCampaigns: BuyerVisibleCatalog[];
+};
+
+/**
+ * Phase 2 of buyer-PWA search-as-you-type: price/stock enrichment for a
+ * specific, already-resolved set of ids (e.g. the cards a viewport observer
+ * just brought into view). Skips `resolveCatalogScope`'s RPC call entirely —
+ * the ids are already known — and only recomputes the (cheap) campaign-price
+ * lookup for those ids before enriching.
+ */
+export async function fetchBuyerCatalogEnrichmentByIds(
+  params: BuyerCatalogEnrichmentParams,
+): Promise<BuyerCatalogItem[]> {
+  const orderedIds = params.tenantProductIds.filter(Boolean);
+  if (orderedIds.length === 0) return [];
+
+  const campaignByProductId = await resolveVisibleCampaignMap(params.db, {
+    tenantId: params.tenantId,
+    buyerId: params.buyerId,
+    productIds: orderedIds,
+    visibleCampaigns: params.visibleCampaigns,
+  });
+
+  const itemsMap = await enrichBuyerProducts(params.db, {
+    tenantId: params.tenantId,
+    buyerId: params.buyerId,
+    tenantProductIds: orderedIds,
+    allowedTenantBrandIds: params.allowedTenantBrandIds,
+    inventoryWarehouseId: params.inventoryWarehouseId,
+    campaignByProductId,
+  });
+
+  return orderedIds
+    .map((id) => itemsMap.get(id))
+    .filter((item): item is BuyerCatalogItem => Boolean(item));
 }
 
 type FacetScopeParams = {
@@ -794,7 +929,7 @@ export async function fetchBuyerCategories(
       id: row.facet_id,
       name: row.facet_label,
       slug: row.facet_slug ?? row.facet_id,
-      image_url: tenantCategoryImageUrl(row.image_thumb_key, row.image_medium_key) ?? row.image_url,
+      image_url: tenantCategoryImageUrl(row.image_medium_key, row.image_thumb_key) ?? row.image_url,
       product_count: Number(row.product_count),
     }));
 }

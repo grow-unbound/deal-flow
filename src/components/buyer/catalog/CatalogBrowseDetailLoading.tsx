@@ -45,7 +45,7 @@ function ProductGridSkeleton({ count = 6 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex flex-col overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+          className="flex flex-col overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]"
         >
           <div className="relative aspect-square animate-pulse bg-cream-100">
             <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-cream-200" />

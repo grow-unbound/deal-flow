@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'df_buyer_nav_direction';
-const DEFAULT_BUYER_BACK_FALLBACK = '/buy/home';
+const DEFAULT_BUYER_BACK_FALLBACK = '/buy/catalog';
 
 export type BuyerNavDirection = 'forward' | 'back';
 export interface BuyerBackRouter {

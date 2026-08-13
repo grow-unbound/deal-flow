@@ -16,7 +16,12 @@ export function RecoCarousel({ items, scrollClassName = 'gap-3 px-4' }: RecoCaro
   return (
     <BuyerHorizontalScroll className={scrollClassName}>
       {items.map((item) => (
-        <ProductCard key={item.tenant_product_id} item={item} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0`} />
+        <ProductCard
+          key={item.tenant_product_id}
+          item={item}
+          variant="compact"
+          className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0`}
+        />
       ))}
     </BuyerHorizontalScroll>
   );

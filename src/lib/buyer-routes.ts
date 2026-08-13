@@ -3,7 +3,6 @@
  */
 
 export const BUYER_LANDING_ROUTES = [
-  '/buy/home',
   '/buy/catalog',
   '/buy/orders',
   '/buy/profile',
@@ -45,12 +44,17 @@ export function isBuyerLandingRoute(pathname: string): boolean {
   return (BUYER_LANDING_ROUTES as readonly string[]).includes(pathname);
 }
 
+/** Desktop breadcrumbs appear only on deep buyer pages, never landing tabs. */
+export function shouldShowBuyerDesktopBreadcrumbs(pathname: string): boolean {
+  return isBuyerDeepRoute(pathname);
+}
+
 /** Hide tab bar / bottom padding (preview gates, not stack "deep" screens). */
 export function isBuyerChromelessRoute(pathname: string): boolean {
   return isBuyerPreviewSetupRoute(pathname);
 }
 
-const BUYER_CART_PILL_EXACT = ['/buy/home', '/buy/catalog'] as const;
+const BUYER_CART_PILL_EXACT = ['/buy/catalog'] as const;
 
 const BUYER_CART_PILL_PREFIXES = [
   '/buy/catalog/category/',

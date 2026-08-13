@@ -124,7 +124,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           : 'Available'
     : '';
   const taxLabel = item ? (item.gst_rate != null ? `${item.gst_rate}% GST` : '—') : '';
-  const productImage = item && !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
+  const productImage = item && !imgError && item.image_urls.length > 0
+    ? (item.image_url_large ?? item.image_urls[0])
+    : null;
   const categoryImage = item && !productImage && !categoryImgError && item.category_image_url
     ? item.category_image_url
     : null;
@@ -138,11 +140,12 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     : 'More in this category';
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
-      <BuyerDetailShell title="Product" hideSearch>
+    <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
+      <BuyerDetailShell title="Product" hideSearch hideDesktopHeader>
         {/* Hero — square, card-like padding, aligned to header px-3 */}
-        <div className="px-3">
-          <div className="relative aspect-square w-full overflow-hidden bg-[var(--bg-surface)]">
+        <div className="px-3 md:px-6 md:pt-6">
+          <div className="grid gap-5 md:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)] md:items-start">
+            <div className="relative aspect-square w-full overflow-hidden rounded-[18px] bg-[var(--bg-surface)] md:sticky md:top-6 md:max-w-[420px]">
             {productLoading ? (
               <div className="absolute inset-0 animate-pulse bg-cream-100" />
             ) : activeImage ? (
@@ -169,11 +172,10 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 status={item.stock_status === 'limited' ? 'limited' : 'out_of_stock'}
               />
             ) : null}
-          </div>
-        </div>
+            </div>
 
-        {/* Title block */}
-        <div className="space-y-2 px-3 py-4">
+            <div className="min-w-0">
+        <div className="space-y-2 py-4 md:px-1 md:pt-0">
           {productLoading ? (
             <>
               <div className="h-3 w-16 animate-pulse rounded bg-cream-200" />
@@ -223,12 +225,55 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   })}
                 </p>
               ) : null}
+
+              {/* Desktop-only CTA — replaces the mobile sticky footer */}
+              <div className="hidden pt-2 md:block">
+                {cartLine ? (
+                  <div
+                    className="flex min-h-12 w-fit items-center overflow-hidden rounded-xl"
+                    style={{ background: 'var(--teal-500)' }}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-12 w-12 items-center justify-center text-white"
+                      aria-label="Decrease quantity"
+                      onClick={handleDecrement}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span
+                      className="min-w-[2rem] text-center text-sm font-semibold text-white"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    >
+                      {cartLine.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex h-12 w-12 items-center justify-center text-white"
+                      aria-label="Increase quantity"
+                      onClick={handleIncrement}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-semibold text-white"
+                    style={{ background: 'var(--teal-500)' }}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add to Cart
+                  </button>
+                )}
+              </div>
             </>
           ) : null}
         </div>
 
         {/* Product Details accordion */}
-        <div className="px-3 pb-4">
+        <div className="pb-4 md:px-1">
           <button
             type="button"
             onClick={() => setDetailsOpen((open) => !open)}
@@ -267,6 +312,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
             </div>
           ) : null}
         </div>
+            </div>
+          </div>
+        </div>
 
         {/* Reco rails — title + skeleton while loading; hide after settle if empty */}
         <RecoSection
@@ -275,8 +323,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           items={recos.co_order}
           sourceProductId={tenantProductId}
           isLoading={isRecosLoading}
-          sectionClassName="px-3 pb-3"
-          scrollClassName="gap-3 px-3"
+          sectionClassName="px-3 pb-3 md:px-6"
+          scrollClassName="gap-3 px-3 md:px-6"
         />
 
         <RecoSection
@@ -290,9 +338,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         />
       </BuyerDetailShell>
 
-      {/* Sticky footer — price + Add / qty stepper */}
+      {/* Sticky footer — price + Add / qty stepper (mobile only; desktop uses inline CTA above) */}
       <BuyerFixedFooter
-        className="left-1/2 w-full -translate-x-1/2 px-3 py-3"
+        className="left-1/2 w-full -translate-x-1/2 px-3 py-3 md:hidden"
         style={{
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
           paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',

@@ -43,7 +43,7 @@ describe('buyer preview launch route', () => {
     setBuyerPreviewCookiesMock.mockResolvedValue(undefined);
   });
 
-  it('redirects seller to /buy/home and marks the preview for confirmation when no linked buyer account', async () => {
+  it('redirects seller to /buy/catalog and marks the preview for confirmation when no linked buyer account', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       sub: 'user-1',
       tenant_id: 'tenant-1',
@@ -63,7 +63,7 @@ describe('buyer preview launch route', () => {
     const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/buy/home');
+    expect(response.headers.get('location')).toBe('http://localhost/buy/catalog');
     expect(setBuyerPreviewCookiesMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -94,7 +94,7 @@ describe('buyer preview launch route', () => {
     const { GET } = await import('../../../app/api/buyer/preview/launch/route');
     const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch?share_token=tok'));
 
-    expect(response.headers.get('location')).toBe('http://localhost/buy/home');
+    expect(response.headers.get('location')).toBe('http://localhost/buy/catalog');
     expect(setBuyerPreviewCookiesMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -147,7 +147,7 @@ describe('buyer preview launch route', () => {
     const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/buy/home');
+    expect(response.headers.get('location')).toBe('http://localhost/buy/catalog');
     expect(setBuyerPreviewCookiesMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

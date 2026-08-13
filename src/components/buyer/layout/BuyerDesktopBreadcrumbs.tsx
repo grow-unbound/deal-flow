@@ -1,0 +1,86 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ChevronRight } from 'lucide-react';
+import { useBuyerBrands, useBuyerCategories, useBuyerProductDetail } from '@/hooks/useBuyerProducts';
+import { shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+
+interface Crumb {
+  label: string;
+  href?: string;
+}
+
+function buildCrumbs(
+  pathname: string,
+  labels: { category?: string; categoryId?: string; brand?: string; product?: string },
+): Crumb[] {
+  const crumbs: Crumb[] = [{ label: 'Catalog', href: '/buy/catalog' }];
+
+  if (pathname === '/buy/orders') return [...crumbs, { label: 'Orders' }];
+  if (pathname.startsWith('/buy/orders/')) return [...crumbs, { label: 'Orders', href: '/buy/orders' }, { label: 'Order details' }];
+  if (pathname.startsWith('/buy/estimates/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=enquiries' }, { label: 'Enquiry details' }];
+  if (pathname.startsWith('/buy/invoices/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=invoices' }, { label: 'Invoice details' }];
+  if (pathname === '/buy/profile') return [...crumbs, { label: 'Profile' }];
+  if (pathname.startsWith('/buy/catalog/category/')) return [...crumbs, { label: labels.category ?? 'Category browse' }];
+  if (pathname.startsWith('/buy/catalog/brand/')) return [...crumbs, { label: labels.brand ?? 'Brand browse' }];
+  if (pathname.startsWith('/buy/catalog/list/')) return [...crumbs, { label: 'Campaign browse' }];
+  if (pathname.startsWith('/buy/product/')) {
+    if (labels.product && labels.category) {
+      return [
+        ...crumbs,
+        { label: labels.category, href: labels.categoryId ? `/buy/catalog/category/${labels.categoryId}` : undefined },
+        { label: labels.product },
+      ];
+    }
+    return [...crumbs, { label: labels.product ?? 'Product details' }];
+  }
+  if (pathname === '/buy/search') return [...crumbs, { label: 'Search' }];
+  if (pathname === '/buy/location') return [...crumbs, { label: 'Select location' }];
+  return crumbs;
+}
+
+export function BuyerDesktopBreadcrumbs() {
+  const pathname = usePathname();
+  if (!shouldShowBuyerDesktopBreadcrumbs(pathname)) return null;
+
+  const categoryId = pathname.startsWith('/buy/catalog/category/') ? pathname.split('/').at(-1) ?? '' : '';
+  const brandId = pathname.startsWith('/buy/catalog/brand/') ? pathname.split('/').at(-1) ?? '' : '';
+  const productId = pathname.startsWith('/buy/product/') ? pathname.split('/').at(-1) ?? '' : '';
+  const { data: categories } = useBuyerCategories();
+  const { data: brands } = useBuyerBrands();
+  const productDetail = useBuyerProductDetail(productId);
+  const crumbs = buildCrumbs(pathname, {
+    category:
+      categories?.find((category) => category.id === categoryId)?.name
+      ?? productDetail.item?.category_name
+      ?? undefined,
+    categoryId: categoryId || (productDetail.item?.category_id ?? undefined),
+    brand: brands?.find((brand) => brand.id === brandId)?.name ?? undefined,
+    product: productDetail.item?.display_name ?? undefined,
+  });
+
+  return (
+    <div className="hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
+      <div className="mx-auto flex w-full max-w-[1920px] items-center gap-2 px-6 py-3 text-sm">
+        {crumbs.map((crumb, index) => {
+          const isLast = index === crumbs.length - 1;
+          return (
+            <div key={`${crumb.label}-${index}`} className="flex items-center gap-2">
+              {crumb.href && !isLast ? (
+                <Link href={crumb.href} className="font-medium text-cream-600 transition-colors hover:text-cream-900">
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span className={isLast ? 'font-semibold text-cream-950' : 'font-medium text-cream-600'}>
+                  {crumb.label}
+                </span>
+              )}
+              {!isLast ? <ChevronRight className="h-4 w-4 text-cream-400" /> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

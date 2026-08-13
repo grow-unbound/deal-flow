@@ -421,27 +421,15 @@
     flex-shrink: 0;
   }
 
-  /* Buyer horizontal carousels — scrollbar hidden until active scroll */
+  /* Buyer horizontal carousels — scrollbar always hidden (drag + chevron buttons + touch
+     swipe are the affordance). Previously toggled visible-on-scroll via a `--active` class,
+     but that swap changed the row's reserved height, causing a layout jump on every scroll. */
   .buyer-hscroll {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
   .buyer-hscroll::-webkit-scrollbar {
     height: 0;
-  }
-  .buyer-hscroll.buyer-hscroll--active {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
-  }
-  .buyer-hscroll.buyer-hscroll--active::-webkit-scrollbar {
-    height: 4px;
-  }
-  .buyer-hscroll.buyer-hscroll--active::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .buyer-hscroll.buyer-hscroll--active::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 9999px;
   }
 
   .dashboard-vscroll {

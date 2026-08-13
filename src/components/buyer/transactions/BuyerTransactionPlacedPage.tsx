@@ -250,7 +250,7 @@ export function BuyerTransactionPlacedPage({
                 {linkedEstimateId ? (
                   <Link
                     href={`/buy/estimates/${linkedEstimateId}`}
-                    className="inline-flex items-center gap-1 text-[var(--b-text-sub)] font-medium text-[var(--teal-600,#0d9488)]"
+                    className="inline-flex items-center gap-1 text-[var(--b-text-sub)] font-medium text-[var(--teal-600)]"
                   >
                     View Enquiry
                     <ArrowUpRight className="h-3.5 w-3.5" />
@@ -277,7 +277,7 @@ export function BuyerTransactionPlacedPage({
 }
 
 function StatusChip({ label }: { label: string }) {
-  return <StatusPill label={label} tone="warning" className="text-[11px]" />;
+  return <StatusPill label={label} tone="warning" className="text-[length:var(--b-text-sub)]" />;
 }
 
 function ReceiptRow({

@@ -115,7 +115,7 @@ function useScrollableSelectionSync(
 
     active.scrollIntoView({
       inline: variant === 'chips' ? 'center' : 'nearest',
-      block: variant === 'rail' ? 'nearest' : 'nearest',
+      block: 'nearest',
       behavior: 'smooth',
     });
   }, [itemCount, selectedId, variant]);
@@ -216,12 +216,12 @@ export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactN
                   ? 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--teal-100)] bg-[var(--teal-50)] px-3 py-1.5 font-medium text-[var(--teal-700)] transition-colors'
                   : 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-[var(--fg-2)] transition-colors'
                 : cn(
-                    'border-b border-[var(--border-1)] text-left transition-colors last:border-b-0',
+                    'border-b border-[var(--border-1)] text-left transition-colors last:border-b-0 [@media(hover:hover)]:hover:bg-[var(--bg-recessed)] focus-visible:bg-[var(--bg-recessed)] focus-visible:outline-none',
                     'flex min-h-[88px] flex-col items-center justify-center gap-2 px-1 py-3 sm:min-h-[96px] sm:px-2',
                     'lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1 lg:py-3',
                     selected
-                      ? 'bg-[rgba(181,100,47,0.12)] font-semibold text-cream-950'
-                      : 'bg-transparent font-medium text-[var(--fg-2)] hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
+                      ? 'bg-[var(--cream-300)] font-bold text-cream-950'
+                      : 'bg-transparent font-medium text-[var(--fg-2)]',
                   )
             }
             style={variant === 'chips' ? { fontSize: 'var(--b-text-label)' } : undefined}
@@ -264,7 +264,12 @@ function RailThumb({
   const FallbackIcon = entityKind === 'brand' ? Store : LayoutGrid;
 
   return (
-    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
+    <div
+      className={cn(
+        'relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:p-2',
+        entityKind === 'brand' ? 'rounded-full' : 'rounded-[10px] lg:rounded-[12px]',
+      )}
+    >
       {showImage ? (
         <Image
           src={imageUrl!}

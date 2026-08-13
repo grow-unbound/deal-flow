@@ -9,6 +9,7 @@ import type {
   BuyerCatalogItem,
   BuyerCatalogResponse,
   BuyerCatalogSummary,
+  BuyerCatalogTextResponse,
   BuyerCategory,
   BuyerResolvedProductsResponse,
 } from '@/types/buyer';
@@ -175,6 +176,76 @@ export function useBuyerCatalogSearchInfinite(
       return loaded;
     },
     placeholderData: keepPreviousData,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
+/**
+ * Phase 1 of buyer-PWA search-as-you-type: fast text-only results, no
+ * price/stock join. Pair with `useBuyerCatalogEnrichment` for phase 2.
+ */
+export function useBuyerCatalogSearchTextInfinite(
+  search: string,
+  filters: BuyerCatalogSearchFilters = {},
+  enabled = true,
+) {
+  const trimmedSearch = search.trim();
+  const categoryId = filters.categoryId?.trim() ?? '';
+  const brandId = filters.brandId?.trim() ?? '';
+  const campaignId = filters.campaignId?.trim() ?? '';
+
+  return useInfiniteQuery<BuyerCatalogTextResponse>({
+    queryKey: [
+      'buyer-catalog-search-text',
+      trimmedSearch,
+      categoryId,
+      brandId,
+      campaignId,
+    ],
+    enabled: enabled && trimmedSearch.length > 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const params = new URLSearchParams({
+        mode: 'text',
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      if (trimmedSearch) params.set('search', trimmedSearch);
+      if (categoryId) params.set('category_id', categoryId);
+      if (brandId) params.set('brand_id', brandId);
+      if (campaignId) params.set('campaign_id', campaignId);
+      return fetchJson<BuyerCatalogTextResponse>(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage.has_more) return undefined;
+      const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
+/**
+ * Phase 2 of buyer-PWA search-as-you-type: price/stock for a specific batch
+ * of ids (e.g. cards a viewport observer just brought into view).
+ */
+export function useBuyerCatalogEnrichment(ids: string[]) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
+  const sortedIds = [...ids].sort();
+  const key = sortedIds.join(',');
+
+  return useQuery<BuyerCatalogItem[]>({
+    queryKey: ['buyer-catalog-enrichment', key, stockSignature],
+    enabled: sortedIds.length > 0,
+    queryFn: async () => {
+      const params = new URLSearchParams({ ids: sortedIds.join(',') });
+      const body = await fetchJson<{ items?: BuyerCatalogItem[] }>(`/api/buyer/catalog?${params.toString()}`, { fresh: true });
+      return body.items ?? [];
+    },
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });

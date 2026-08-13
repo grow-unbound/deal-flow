@@ -23,6 +23,7 @@ interface BuyerMeResponse {
     id: string;
     name: string;
     slug: string;
+    logo_url: string | null;
     outlets: Array<{
       location_id: string;
       name: string;
@@ -139,6 +140,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
     const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
     const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
+    const rawBusiness = (rawSettings.business ?? {}) as Record<string, unknown>;
     const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
 
     const orderFeatures = {
@@ -153,6 +155,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       gst_inclusive: rawPolicy.gst_inclusive === true,
       gst_rate: typeof rawPolicy.gst_rate === 'number' ? rawPolicy.gst_rate : 18,
     };
+    const tenantLogoUrl = typeof rawBusiness.logo_url === 'string' && rawBusiness.logo_url.trim().length > 0
+      ? rawBusiness.logo_url.trim()
+      : null;
     const stockVisibility = {
       enabled: rawBuyerApp.stock_visibility_enabled === true,
       block_order_on_oos: rawBuyerApp.block_order_on_oos === true,
@@ -181,6 +186,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           id: tenant.id,
           name: tenant.business_name,
           slug: tenant.slug,
+          logo_url: tenantLogoUrl,
           outlets: [],
         },
         greeting_name: 'Preview',
@@ -304,6 +310,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         id: tenant.id,
         name: tenant.business_name,
         slug: tenant.slug,
+        logo_url: tenantLogoUrl,
         outlets: Array.from(outletsByLocation.values()),
       },
       greeting_name: profile.greeting_name,

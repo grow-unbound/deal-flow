@@ -10,6 +10,7 @@
     "analyze": "ANALYZE=true next build",
     "start": "next start",
     "perf:smoke": "node scripts/perf-smoke.mjs",
+    "check:buyer-ui-tokens": "node scripts/check-buyer-ui-tokens.mjs",
     "metrics:v2:phase1a:doctor": "node scripts/metrics-v2-phase1a-acceptance.mjs doctor",
     "metrics:v2:phase1a:prepare-baseline": "node scripts/metrics-v2-phase1a-acceptance.mjs prepare-baseline",
     "metrics:v2:phase1a:baseline": "node scripts/metrics-v2-phase1a-acceptance.mjs baseline",

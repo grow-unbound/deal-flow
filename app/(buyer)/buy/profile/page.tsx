@@ -4,7 +4,7 @@ import { formatNumberValue } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Repeat, Wallet } from 'lucide-react';
+import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Repeat, User, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { formatWhatsappDestination } from '@/lib/phone';
@@ -138,7 +138,7 @@ function ProfileSheetFrame({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className={`flex max-h-[calc(100vh-20px)] flex-col overflow-hidden rounded-t-[32px] border-0 bg-[#fcf8f2] p-0 shadow-[0_-24px_60px_rgba(23,36,31,0.18)] ${className ?? ''}`}
+        className={`flex max-h-[calc(100vh-20px)] flex-col overflow-hidden rounded-t-[20px] border-0 bg-[#fcf8f2] p-0 shadow-[0_-24px_60px_rgba(23,36,31,0.18)] ${className ?? ''}`}
       >
         <div className="flex justify-center px-5 pb-4 pt-4">
           <div className="h-1.5 w-16 rounded-full bg-[#ddd2c1]" />
@@ -159,7 +159,7 @@ function BuyerSheetPhoneInput({
   placeholder?: string;
 }) {
   return (
-    <div className="flex h-14 items-stretch overflow-hidden rounded-[18px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
+    <div className="flex h-14 items-stretch overflow-hidden rounded-[12px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
       <span className="inline-flex items-center border-r border-cream-300 bg-[#f6efe4] px-4 font-medium text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
         +91
       </span>
@@ -218,7 +218,7 @@ function BusinessDetailsSheet({
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="Contact name">
@@ -226,7 +226,7 @@ function BusinessDetailsSheet({
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="GSTIN" hint="Leave blank if your business is not GST registered.">
@@ -234,7 +234,7 @@ function BusinessDetailsSheet({
             value={gstin}
             onChange={(e) => setGstin(e.target.value.toUpperCase())}
             maxLength={15}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
       </SheetBody>
@@ -242,7 +242,7 @@ function BusinessDetailsSheet({
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
+          className="h-14 flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -250,7 +250,7 @@ function BusinessDetailsSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[18px]" style={{ fontSize: 'var(--b-text-body)' }}
+          className="h-14 flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ business_name: businessName, contact_name: contactName, gstin })}
           disabled={pending}
         >
@@ -302,7 +302,7 @@ function PhoneSheet({
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
+          className="h-14 flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -310,7 +310,7 @@ function PhoneSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[18px]" style={{ fontSize: 'var(--b-text-body)' }}
+          className="h-14 flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ phone })}
           disabled={pending}
         >
@@ -402,6 +402,7 @@ export default function ProfilePage() {
   const [creditSheetOpen, setCreditSheetOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [switchPending, setSwitchPending] = useState(false);
+  const [desktopSection, setDesktopSection] = useState<'profile' | 'credit' | 'help'>('profile');
 
   const canEditBusiness = effectiveBuyerRole === 'buyer_admin';
   const sellerPreview = data?.seller_preview === true;
@@ -519,96 +520,239 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-dvh bg-[#f8f4ed] pb-8">
-      <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
-        <div className="flex items-center gap-4">
-          <div
-            className="flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-white"
-            style={{ width: 64, height: 64, background: 'var(--ember-400)', border: '2px solid var(--ember-200)', fontSize: 'var(--b-text-kpi)', fontFamily: 'var(--font-display)', fontWeight: 500 }}
-          >
-            {initials}
+      <div className="md:hidden">
+        <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
+          <div className="flex items-center gap-4">
+            <div
+              className="flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-white"
+              style={{ width: 64, height: 64, background: 'var(--ember-400)', border: '2px solid var(--ember-200)', fontSize: 'var(--b-text-kpi)', fontFamily: 'var(--font-display)', fontWeight: 500 }}
+            >
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <h1 className="leading-none text-white" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)', fontWeight: 500, letterSpacing: '-0.015em' }}>
+                {data.greeting_name || data.contact_name || data.business_name}
+              </h1>
+              <p className="mt-2 font-normal text-white/70" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-label)' }}>{data.business_name}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="leading-none text-white" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)', fontWeight: 500, letterSpacing: '-0.015em' }}>
-              {data.greeting_name || data.contact_name || data.business_name}
-            </h1>
-            <p className="mt-2 font-normal text-white/70" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-label)' }}>{data.business_name}</p>
+        </div>
+
+        {sellerPreview ? (
+          <div className="px-4 pt-3">
+            <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Previewing as seller. Buyers see their account details and credit summary here.
+            </div>
+          </div>
+        ) : null}
+
+        <div className="px-4 pt-5">
+          <p className="px-2 font-semibold uppercase text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}>Account</p>
+          <div className="mt-3 overflow-hidden rounded-[12px] border border-cream-200 bg-white">
+            <div className="border-b border-cream-200">
+              <AccountRow
+                icon={<BriefcaseBusiness className="h-5 w-5" />}
+                title="Business details"
+                subtitle={data.business_name}
+                onClick={canEditBusiness ? () => setBusinessSheetOpen(true) : undefined}
+                action={canEditBusiness ? <ChevronRight className="h-5 w-5 text-cream-500" /> : null}
+              />
+            </div>
+            <div className="border-b border-cream-200">
+              <AccountRow
+                icon={<Phone className="h-5 w-5" />}
+                title="Phone number"
+                subtitle={data.phone}
+                onClick={() => setPhoneSheetOpen(true)}
+                action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+                mono
+              />
+            </div>
+            {data.business_policy.credit_enabled ? (
+              <AccountRow
+                icon={<Wallet className="h-5 w-5" />}
+                tone="accent"
+                title="Credit limit"
+                subtitle={`${formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} used of ${formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}`}
+                onClick={() => setCreditSheetOpen(true)}
+                action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+              />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="space-y-3 px-4 pt-5">
+          <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
+            <AccountRow
+              icon={<HelpCircle className="h-5 w-5" />}
+              title="Help & Support"
+              subtitle="Chat with us on WhatsApp"
+              onClick={handleHelpSupport}
+              action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
+            <AccountRow
+              icon={<Repeat className="h-5 w-5" />}
+              title="Switch account"
+              subtitle="Use another account linked to this number"
+              onClick={() => { void handleSwitchAccount(); }}
+              action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
+            <AccountRow
+              icon={<LogOut className="h-5 w-5" />}
+              tone="danger"
+              title="Logout"
+              subtitle="You’ll need a fresh OTP next time."
+              onClick={() => { void handleLogout(); }}
+              action={logoutPending ? <Spinner size="sm" /> : null}
+            />
           </div>
         </div>
       </div>
 
-      {sellerPreview ? (
-        <div className="px-4 pt-3">
-          <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Previewing as seller. Buyers see their account details and credit summary here.
-          </div>
-        </div>
-      ) : null}
+      <div className="hidden px-6 py-6 md:block xl:px-8">
+        <div className="grid min-h-[calc(100dvh-180px)] grid-cols-[320px_minmax(0,1fr)] overflow-hidden rounded-[28px] border border-cream-200 bg-white shadow-[0_20px_60px_rgba(20,40,35,0.08)]">
+          <aside className="border-r border-cream-200 bg-[#fcfaf6] p-5">
+            <div className="rounded-[22px] bg-white p-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-white"
+                  style={{ background: 'var(--ember-400)', border: '2px solid var(--ember-200)', fontSize: '1.6rem', fontFamily: 'var(--font-display)' }}
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-2xl font-semibold text-cream-950">{data.greeting_name || data.contact_name || data.business_name}</h1>
+                  <p className="mt-1 text-sm text-cream-600">{data.phone}</p>
+                </div>
+              </div>
+            </div>
 
-      <div className="px-4 pt-5">
-        <p className="px-2 font-semibold uppercase text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}>Account</p>
-        <div className="mt-3 overflow-hidden rounded-[12px] border border-cream-200 bg-white">
-          <div className="border-b border-cream-200">
-            <AccountRow
-              icon={<BriefcaseBusiness className="h-5 w-5" />}
-              title="Business details"
-              subtitle={data.business_name}
-              onClick={canEditBusiness ? () => setBusinessSheetOpen(true) : undefined}
-              action={canEditBusiness ? <ChevronRight className="h-5 w-5 text-cream-500" /> : null}
-            />
-          </div>
-          <div className="border-b border-cream-200">
-            <AccountRow
-              icon={<Phone className="h-5 w-5" />}
-              title="Phone number"
-              subtitle={data.phone}
-              onClick={() => setPhoneSheetOpen(true)}
-              action={<ChevronRight className="h-5 w-5 text-cream-500" />}
-              mono
-            />
-          </div>
-          {data.business_policy.credit_enabled ? (
-            <AccountRow
-              icon={<Wallet className="h-5 w-5" />}
-              tone="accent"
-              title="Credit limit"
-              subtitle={`${formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} used of ${formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}`}
-              onClick={() => setCreditSheetOpen(true)}
-              action={<ChevronRight className="h-5 w-5 text-cream-500" />}
-            />
-          ) : null}
-        </div>
-      </div>
+            {data.business_policy.credit_enabled && data.credit_used > 0 ? (
+              <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-800">Credit attention</p>
+                <p className="mt-2 text-lg font-semibold text-amber-950">
+                  {formatNumberValue(data.credit_used, 'CURRENCY_EXACT')} outstanding
+                </p>
+                <p className="mt-1 text-sm text-amber-900">
+                  Limit {formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}
+                </p>
+              </div>
+            ) : null}
 
-      <div className="space-y-3 px-4 pt-5">
-        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
-          <AccountRow
-            icon={<HelpCircle className="h-5 w-5" />}
-            title="Help & Support"
-            subtitle="Chat with us on WhatsApp"
-            onClick={handleHelpSupport}
-            action={<ChevronRight className="h-5 w-5 text-cream-500" />}
-          />
-        </div>
+            <div className="mt-5 space-y-2">
+              <button type="button" onClick={() => setDesktopSection('profile')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'profile' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
+                <User className="h-4.5 w-4.5" />
+                Profile
+              </button>
+              <button type="button" onClick={() => setDesktopSection('credit')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'credit' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
+                <Wallet className="h-4.5 w-4.5" />
+                Credit
+              </button>
+              <button type="button" onClick={() => setDesktopSection('help')} className={`flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left ${desktopSection === 'help' ? 'bg-cream-100 text-cream-950' : 'text-cream-700 hover:bg-cream-100/70'}`}>
+                <HelpCircle className="h-4.5 w-4.5" />
+                Help
+              </button>
+              <button type="button" onClick={() => router.push('/buy/orders')} className="flex w-full items-center gap-3 rounded-[16px] px-4 py-3 text-left text-cream-700 hover:bg-cream-100/70">
+                <ChevronRight className="h-4.5 w-4.5" />
+                Orders
+              </button>
+            </div>
 
-        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
-          <AccountRow
-            icon={<Repeat className="h-5 w-5" />}
-            title="Switch account"
-            subtitle="Use another account linked to this number"
-            onClick={() => { void handleSwitchAccount(); }}
-            action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
-          />
-        </div>
+            <div className="mt-8 space-y-2">
+              <Button variant="ghost" className="h-11 w-full justify-start rounded-[14px]" onClick={() => { void handleSwitchAccount(); }} disabled={switchPending}>
+                <Repeat className="h-4 w-4" />
+                {switchPending ? 'Switching…' : 'Switch Account'}
+              </Button>
+              <Button variant="ghost" className="h-11 w-full justify-start rounded-[14px] text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => { void handleLogout(); }} disabled={logoutPending}>
+                <LogOut className="h-4 w-4" />
+                {logoutPending ? 'Logging out…' : 'Logout'}
+              </Button>
+            </div>
+          </aside>
 
-        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
-          <AccountRow
-            icon={<LogOut className="h-5 w-5" />}
-            tone="danger"
-            title="Logout"
-            subtitle="You’ll need a fresh OTP next time."
-            onClick={() => { void handleLogout(); }}
-            action={logoutPending ? <Spinner size="sm" /> : null}
-          />
+          <section className="bg-[#f8f4ed] p-6">
+            {desktopSection === 'profile' ? (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Profile</p>
+                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Account details</h2>
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-lg font-semibold text-cream-950">Business details</h3>
+                      {canEditBusiness ? <Button variant="secondary" size="sm" onClick={() => setBusinessSheetOpen(true)}>Edit</Button> : null}
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Business name</p>
+                        <p className="mt-1 text-base text-cream-900">{data.business_name}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Contact name</p>
+                        <p className="mt-1 text-base text-cream-900">{data.contact_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">GSTIN</p>
+                        <p className="mt-1 text-base text-cream-900">{data.gstin || '—'}</p>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-lg font-semibold text-cream-950">Phone</h3>
+                      <Button variant="secondary" size="sm" onClick={() => setPhoneSheetOpen(true)}>Edit</Button>
+                    </div>
+                    <p className="mt-4 text-2xl font-semibold text-cream-950">{data.phone}</p>
+                    <p className="mt-2 text-sm text-cream-600">OTP will be sent here from your next login.</p>
+                  </article>
+                </div>
+              </div>
+            ) : null}
+
+            {desktopSection === 'credit' ? (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Credit</p>
+                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Credit summary</h2>
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Credit limit</p>
+                    <p className="mt-3 text-3xl font-semibold text-cream-950">{formatNumberValue(data.credit_limit, 'CURRENCY_EXACT')}</p>
+                    <p className="mt-2 text-sm text-cream-600">Used: {formatNumberValue(data.credit_used, 'CURRENCY_EXACT')}</p>
+                  </article>
+                  <article className="rounded-[22px] border border-cream-200 bg-white p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Available credit</p>
+                    <p className="mt-3 text-3xl font-semibold text-cream-950">{formatNumberValue(Math.max(data.credit_limit - data.credit_used, 0), 'CURRENCY_EXACT')}</p>
+                    <p className="mt-2 text-sm text-cream-600">Tap below to inspect unpaid invoices.</p>
+                    <Button className="mt-4" onClick={() => setCreditSheetOpen(true)}>View invoice breakdown</Button>
+                  </article>
+                </div>
+              </div>
+            ) : null}
+
+            {desktopSection === 'help' ? (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-500">Help</p>
+                  <h2 className="mt-2 text-3xl font-semibold text-cream-950">Support</h2>
+                </div>
+                <article className="rounded-[22px] border border-cream-200 bg-white p-5">
+                  <p className="text-base text-cream-800">Need help with orders, invoices, or your account?</p>
+                  <p className="mt-2 text-sm text-cream-600">Our team will continue the conversation on WhatsApp.</p>
+                  <Button className="mt-4" onClick={handleHelpSupport}>Open WhatsApp support</Button>
+                </article>
+              </div>
+            ) : null}
+          </section>
         </div>
       </div>
 

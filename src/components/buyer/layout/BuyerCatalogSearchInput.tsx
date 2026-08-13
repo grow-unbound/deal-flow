@@ -29,7 +29,7 @@ export function BuyerCatalogSearchInput({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className={cn(
-          'w-full rounded-[12px] border-0 bg-[var(--bg-recessed)] py-2.5 pl-9 pr-3',
+          'w-full rounded-[10px] border border-cream-300 bg-[var(--bg-base)] py-2.5 pl-9 pr-3 shadow-none',
           'text-[var(--fg-1)] placeholder:text-[var(--fg-4)] outline-none',
           'focus:ring-1 focus:ring-[var(--teal-500)]/30',
         )}

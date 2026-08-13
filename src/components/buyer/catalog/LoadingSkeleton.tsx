@@ -14,7 +14,7 @@ export function LoadingSkeleton({ count = 6 }: LoadingSkeletonProps) {
           key={i}
           className={cn(
             BUYER_CARD_RADIUS_CLASS,
-            'flex flex-col overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] animate-pulse shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]',
+            'flex flex-col overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] animate-pulse',
           )}
         >
           <div className="relative aspect-square bg-[var(--bg-recessed)]">

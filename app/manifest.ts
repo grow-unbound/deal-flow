@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Yukti',
     short_name: 'Yukti',
     description: 'Order from your distributor — browse catalogs, place orders, track invoices.',
-    start_url: '/buy/home',
+    start_url: '/buy/catalog',
     scope: '/buy',
     display: 'standalone',
     background_color: '#F3EEE6',

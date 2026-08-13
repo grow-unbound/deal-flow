@@ -81,7 +81,7 @@ export default function PreviewSelectBuyerPage() {
         setError(data.error ?? 'Failed to open buyer preview');
         return;
       }
-      router.replace(data.redirect ?? '/buy/home');
+      router.replace(data.redirect ?? '/buy/catalog');
       router.refresh();
     } catch {
       setError('Network error. Please try again.');
