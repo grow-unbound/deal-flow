@@ -3,7 +3,6 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_CATALOG, BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
-import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 export interface BuyerSearchItem {
   id: string;
@@ -43,21 +42,25 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
           ? await resolveBuyerAllowedTenantBrandIds(db as any, tenant_id, buyer_id)
           : null;
 
-      const { rows } = await searchScopedProducts({
-        db: db as any,
-        tenantId: tenant_id,
-        buyerId: buyer_id,
-        query: q,
-        limit: 20,
-        allowedBrandIds: allowedTenantBrandIds,
+      const { data: rows, error } = await (db as any).schema('app').rpc('global_search', {
+        p_query: q,
+        p_tenant_id: tenant_id,
+        p_role: profile.context.role,
+        p_items_per_group: 20,
+        p_buyer_id: buyer_id,
+        p_allowed_brand_ids: allowedTenantBrandIds,
       });
 
-      for (const p of rows) {
+      if (error) {
+        console.error('[buyer/search] global_search error:', error);
+      }
+
+      for (const row of (rows ?? []) as Array<{ entity_type: string; id: string; label: string; sublabel: string }>) {
         items.push({
-          id:          p.tenant_product_id,
-          entity_type: 'product',
-          label:       p.product_name ?? p.sku ?? '',
-          sublabel:    p.sku ?? '',
+          id: row.id,
+          entity_type: row.entity_type,
+          label: row.label,
+          sublabel: row.sublabel,
         });
       }
     }

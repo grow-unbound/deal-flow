@@ -1,12 +1,10 @@
-import { CatalogFilteredBrowse } from '@/components/buyer/catalog/CatalogFilteredBrowse';
-import { requireBuyerDeliverySelection } from '@/lib/server/buyer-location-selection';
+import { redirect } from 'next/navigation';
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-export default async function BuyerCatalogBrandPage({ params }: PageProps) {
+export default async function BuyerCatalogBrandRedirectPage({ params }: PageProps) {
   const { id } = await params;
-  await requireBuyerDeliverySelection(`/buy/catalog/brand/${id}`);
-  return <CatalogFilteredBrowse mode="brand" id={id} />;
+  redirect(`/buy/home/brand/${id}`);
 }

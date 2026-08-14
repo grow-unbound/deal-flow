@@ -193,7 +193,13 @@ async function resolveCustomersSearchBuyerIds(
       .is('deleted_at', null)
       .limit(BUYER_FLAG_ID_CAP);
 
-  const [byName, byPhone, byPhoneDigits, byRef] = await Promise.all([
+  const [byNameFts, byName, byPhone, byPhoneDigits, byRef] = await Promise.all([
+    // Indexed (idx_buyers_search_vector) whole-word/multi-word match — fast
+    // path for the common case, resolved via GIN instead of a seq scan.
+    buyersBase().textSearch('search_vector', normalized, { type: 'websearch', config: 'english' }),
+    // Kept alongside FTS: tsvector lexeme matching doesn't do partial-word
+    // prefixes ("cam" won't match "Camline"), so ILIKE substring search stays
+    // as the fallback for prefix-as-you-type queries. Bounded by BUYER_FLAG_ID_CAP.
     buyersBase().ilike('business_name', likeValue),
     buyersBase().ilike('phone', likeValue),
     digitLike ? buyersBase().ilike('phone', digitLike) : Promise.resolve({ data: [], error: null }),
@@ -207,6 +213,7 @@ async function resolveCustomersSearchBuyerIds(
       .limit(BUYER_FLAG_ID_CAP),
   ]);
 
+  if (byNameFts.error) throw new Error(byNameFts.error.message ?? 'Failed to search buyers by name (fts)');
   if (byName.error) throw new Error(byName.error.message ?? 'Failed to search buyers by name');
   if (byPhone.error) throw new Error(byPhone.error.message ?? 'Failed to search buyers by phone');
   if (byPhoneDigits.error) {
@@ -215,6 +222,7 @@ async function resolveCustomersSearchBuyerIds(
   if (byRef.error) throw new Error(byRef.error.message ?? 'Failed to search buyers by ref');
 
   const ids = new Set<string>();
+  for (const row of (byNameFts.data ?? []) as Array<{ id: string }>) ids.add(row.id);
   for (const row of (byName.data ?? []) as Array<{ id: string }>) ids.add(row.id);
   for (const row of (byPhone.data ?? []) as Array<{ id: string }>) ids.add(row.id);
   for (const row of (byPhoneDigits.data ?? []) as Array<{ id: string }>) ids.add(row.id);

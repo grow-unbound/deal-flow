@@ -85,6 +85,8 @@ interface SellerMobileListProps {
    * trailing) — see `getSentinelInsertIndex` in `useInfiniteScroll.ts`. */
   sentinelIndex?: number;
   sentinelRef?: RefObject<HTMLDivElement | null>;
+  /** Per-row ref registrar for viewport-gated enrichment (e.g. lazy image/stock hydration). */
+  registerItemRef?: (id: string) => (el: HTMLElement | null) => void;
 }
 
 const SPLIT_LIST_PRIMARY_CLASS = SELLER_SPLIT_LIST_PRIMARY_CLASS;
@@ -157,7 +159,7 @@ function SellerSplitListItemSkeleton({
   );
 }
 
-export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef }: SellerMobileListProps) {
+export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef, registerItemRef }: SellerMobileListProps) {
   const listRootRef = useRef<HTMLDivElement>(null);
   const selectedId = items.find((item) => item.selected)?.id ?? null;
 
@@ -199,6 +201,7 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
                 onClick={item.onClick}
                 data-split-list-id={item.id}
                 aria-current={item.selected ? 'page' : undefined}
+                ref={registerItemRef?.(item.id)}
                 className={cn(
                   'block text-left no-underline transition-colors hover:bg-cream-50',
                   SELLER_SPLIT_LIST_ROW_PADDING_CLASS,
@@ -225,6 +228,7 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
             <Link
               href={item.href}
               onClick={item.onClick}
+              ref={registerItemRef?.(item.id)}
               className={cn(
                 'block rounded-[12px] border px-3.5 py-3 text-left no-underline transition-colors active:bg-cream-100',
                 item.selected ? 'border-ember-300 bg-ember-50' : item.eyebrow ? 'border-[var(--border-1)] bg-white' : 'border-cream-200 bg-white',

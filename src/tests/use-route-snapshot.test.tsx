@@ -3,7 +3,7 @@ import { act, render, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/buy/catalog',
+  usePathname: () => '/buy/home',
 }));
 
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';

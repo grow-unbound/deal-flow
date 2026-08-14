@@ -10,6 +10,7 @@ import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
 type CohortType = 'Geo-based' | 'Activity-based' | 'Brand affinity';
 type CohortStatusFilter = 'Active' | 'Dormant' | 'Inactive';
@@ -227,7 +228,15 @@ export async function getCohortsLandingPayload(
     .order('created_at', { ascending: false })
     .limit(scanLimit);
   if (search) {
-    identityQuery = identityQuery.or(`name.ilike.%${search.replace(/[%_]/g, '\\$&')}%,description.ilike.%${search.replace(/[%_]/g, '\\$&')}%`);
+    // Indexed (idx_cohorts_search_vector) candidate-id lookup instead of an
+    // unindexed ILIKE seq scan.
+    const { ids: searchIds } = await searchSellerLandingEntityIds({
+      tenantId,
+      entity: 'cohorts',
+      query: search,
+      limit: scanLimit,
+    });
+    identityQuery = identityQuery.in('id', searchIds.length > 0 ? searchIds : ['00000000-0000-0000-0000-000000000000']);
   }
   const identitiesRes = await identityQuery;
   if (identitiesRes.error) throw identitiesRes.error;

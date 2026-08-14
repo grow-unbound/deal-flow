@@ -49,7 +49,7 @@ supabase/.temp/*
 
 # Claude 
 .claude/
-CLAUDE_OUTPUTS/
+CLAUDE\ OUTPUTS/
 
 #Playwright
 .playwright-mcp/

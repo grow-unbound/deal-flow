@@ -8,6 +8,7 @@ import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -194,12 +195,6 @@ function normalizeSearch(value: string | null): string | null {
   return normalized || null;
 }
 
-function matchesNeedle(values: Array<string | null | undefined>, needle: string | null): boolean {
-  if (!needle) return true;
-  const lower = needle.toLowerCase();
-  return values.some((value) => value?.toLowerCase().includes(lower));
-}
-
 function uniqueSortedOptions(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
     .sort((a, b) => a.localeCompare(b))
@@ -256,8 +251,8 @@ async function fetchProductFilterLookups(db: DbClient, tenantId: string) {
   return { brandById, categoryById };
 }
 
-async function fetchProductIdentities(db: DbClient, tenantId: string): Promise<ProductIdentityRow[]> {
-  const { data, error } = await db
+async function fetchProductIdentities(db: DbClient, tenantId: string, searchIds: string[] | null): Promise<ProductIdentityRow[]> {
+  let query = db
     .schema('app')
     .from('tenant_products')
     .select('id, tenant_id, tenant_brand_id, tenant_category_id, master_product_id, internal_sku, name_override, mrp, base_selling_price, cost_price, default_uom, pack_size, hsn_code, gst_rate, description, attributes_override, image_urls, is_active, external_ref, created_at, updated_at')
@@ -265,8 +260,26 @@ async function fetchProductIdentities(db: DbClient, tenantId: string): Promise<P
     .is('deleted_at', null)
     .order('id', { ascending: true })
     .limit(PRODUCT_SCAN_LIMIT);
+  if (searchIds) {
+    if (searchIds.length === 0) return [];
+    query = query.in('id', searchIds);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as ProductIdentityRow[];
+}
+
+/** Indexed candidate-id lookup for the free-text search box (search_vector/trigram-backed via search_products_scoped). */
+async function resolveProductSearchIds(db: DbClient, tenantId: string, search: string | null): Promise<string[] | null> {
+  if (!search) return null;
+  const { rows } = await searchScopedProducts({
+    db: db as any,
+    tenantId,
+    query: search,
+    limit: PRODUCT_SCAN_LIMIT,
+    sort: 'relevance',
+  });
+  return rows.map((row) => row.tenant_product_id);
 }
 
 async function fetchMasterProducts(db: DbClient, masterIds: string[]) {
@@ -383,8 +396,11 @@ export async function GET(req: NextRequest) {
     const decodedCursor = decodeProductCursor(cursorParam);
     const periodDays = elapsedDaysInPeriod(period.period_start, period.period_end_exclusive);
 
-    const { brandById, categoryById } = await fetchProductFilterLookups(db, tenantId);
-    const identities = await fetchProductIdentities(db, tenantId);
+    const [{ brandById, categoryById }, searchIds] = await Promise.all([
+      fetchProductFilterLookups(db, tenantId),
+      resolveProductSearchIds(db, tenantId, search),
+    ]);
+    const identities = await fetchProductIdentities(db, tenantId, searchIds);
     const masterIds = [...new Set(identities.map((row) => row.master_product_id).filter((id): id is string => Boolean(id)))];
     const masterById = await fetchMasterProducts(db, masterIds);
     const productIds = identities.map((row) => row.id);
@@ -481,14 +497,7 @@ export async function GET(req: NextRequest) {
 
       if (brandParams.length > 0 && (!product.brand_name || !brandParams.includes(product.brand_name))) return false;
       if (categoryParams.length > 0 && (!product.category_name || !categoryParams.includes(product.category_name))) return false;
-      return matchesNeedle([
-        product.display_name,
-        product.internal_sku,
-        product.external_ref,
-        product.brand_name,
-        product.category_name,
-        product.master_product?.master_sku,
-      ], search);
+      return true;
     }).sort((a, b) => compareProducts(a, b, sort));
 
     const afterCursor = filtered.filter((row) => passesKeyset(row, sort, decodedCursor));

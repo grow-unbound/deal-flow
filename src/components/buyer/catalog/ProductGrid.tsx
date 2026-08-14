@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Fragment, type RefObject } from 'react';
+import { type RefObject } from 'react';
 import { ProductCard } from './ProductCard';
-import { LoadingSkeleton } from './LoadingSkeleton';
+import { LoadingSkeleton, ProductCardSkeletonItem } from './LoadingSkeleton';
+import { BUYER_PRODUCT_GRID_CLASS } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface ProductGridProps {
@@ -28,16 +29,22 @@ export function ProductGrid({
   if (items.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-2 px-2 pb-3">
+    <div className={BUYER_PRODUCT_GRID_CLASS}>
       {items.map((item, index) => (
-        <Fragment key={item.id}>
+        <div
+          key={item.id}
+          ref={index === sentinelIndex ? sentinelRef : undefined}
+          className="min-w-0"
+        >
           <ProductCard item={item} showPromotionBadge={showPromotionBadge} />
-          {index === sentinelIndex && sentinelRef ? (
-            <div ref={sentinelRef} className="col-span-2 h-px" aria-hidden />
-          ) : null}
-        </Fragment>
+        </div>
       ))}
-      {loadingMore ? <LoadingSkeleton count={2} /> : null}
+      {loadingMore ? (
+        <>
+          <ProductCardSkeletonItem />
+          <ProductCardSkeletonItem />
+        </>
+      ) : null}
     </div>
   );
 }

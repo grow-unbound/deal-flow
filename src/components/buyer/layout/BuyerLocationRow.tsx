@@ -18,7 +18,7 @@ export function BuyerLocationRow({ className }: BuyerLocationRowProps) {
   const pathname = usePathname();
   const delivery = useBuyerDeliveryOptional();
   const display = formatBuyerSelectedLocationLabel(delivery?.selected, 'Select delivery location');
-  const locationHref = React.useMemo(() => buildBuyerLocationHref(pathname || '/buy/catalog'), [pathname]);
+  const locationHref = React.useMemo(() => buildBuyerLocationHref(pathname || '/buy/home'), [pathname]);
 
   return (
     <Link

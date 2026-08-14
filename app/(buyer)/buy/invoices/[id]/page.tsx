@@ -30,6 +30,7 @@ export default function BuyerInvoiceDetailPage({ params }: { params: Promise<{ i
       title="Invoice"
       endpoint={`/api/buyer/invoices/${id}`}
       docType="invoice"
+      backFallbackHref="/buy/orders?tab=invoices"
       pickDoc={pickDoc}
     />
   );

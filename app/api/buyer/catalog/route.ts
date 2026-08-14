@@ -4,7 +4,10 @@ import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
-import { fetchBuyerCatalogPage, resolveBuyerCatalogContext } from '@/lib/server/buyer-product-data';
+import {
+  fetchBuyerCatalogPage,
+  resolveBuyerCatalogContext,
+} from '@/lib/server/buyer-product-data';
 import type { BuyerCatalogResponse } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
@@ -26,6 +29,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
 
     const context = await resolveBuyerCatalogContext(supabaseAdmin as any, req, profile);
+
     if (context.buyerId) {
       void recordBuyerAppActivitySafe(supabaseAdmin as any, {
         tenantId: context.tenantId,

@@ -6,7 +6,7 @@ import { FileText } from 'lucide-react';
 
 import { BuyerEmptyState } from '@/components/buyer/BuyerEmptyState';
 import { EnquiryCard } from './EnquiryCard';
-import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
+import { BuyerTransactionCardSkeleton, TransactionCardSkeletonItem } from './BuyerTransactionCardSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerEstimatesInfinite } from '@/hooks/useEstimates';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -21,6 +21,9 @@ interface EnquiriesTabProps {
   statusFilter: BuyerEstimateStatusChip;
   highlightId?: string | null;
   sellerPreview?: boolean;
+  desktopSelectedId?: string | null;
+  onDesktopSelect?: (id: string) => void;
+  desktopMode?: boolean;
 }
 
 export function EnquiriesTab({
@@ -28,7 +31,11 @@ export function EnquiriesTab({
   statusFilter,
   highlightId,
   sellerPreview = false,
+  desktopSelectedId,
+  onDesktopSelect,
+  desktopMode = false,
 }: EnquiriesTabProps) {
+  const listRootRef = React.useRef<HTMLDivElement | null>(null);
   const {
     data,
     isLoading,
@@ -74,8 +81,20 @@ export function EnquiriesTab({
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,
+    rootRef: desktopMode ? listRootRef : undefined,
     onLoadMore: () => { void fetchNextPage(); },
   });
+
+  const desktopSelectedEstimate = desktopSelectedId
+    ? visibleEstimates.find((estimate) => estimate.id === desktopSelectedId) ?? visibleEstimates[0]
+    : visibleEstimates[0];
+
+  React.useEffect(() => {
+    if (!desktopMode || !onDesktopSelect || visibleEstimates.length === 0) return;
+    if (!desktopSelectedId || !visibleEstimates.some((estimate) => estimate.id === desktopSelectedId)) {
+      onDesktopSelect(visibleEstimates[0]!.id);
+    }
+  }, [desktopMode, desktopSelectedId, onDesktopSelect, visibleEstimates]);
 
   if (sellerPreview) return null;
 
@@ -114,6 +133,38 @@ export function EnquiriesTab({
     );
   }
 
+  if (desktopMode && onDesktopSelect) {
+    return (
+      <div ref={listRootRef} className="h-full overflow-y-auto pr-3">
+        <div className="flex flex-col">
+          {visibleEstimates.map((estimate, index) => (
+            <Fragment key={estimate.id}>
+              <button
+                type="button"
+                onClick={() => onDesktopSelect(estimate.id)}
+                className="text-left transition-colors"
+              >
+                <EnquiryCard
+                  estimate={estimate}
+                  highlighted={highlightId === estimate.id}
+                  variant="rail"
+                  selected={desktopSelectedEstimate?.id === estimate.id}
+                />
+              </button>
+              {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
+            </Fragment>
+          ))}
+          {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 px-4 pt-3">
       {visibleEstimates.map((e, index) => (
@@ -126,7 +177,12 @@ export function EnquiriesTab({
           {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
         </Fragment>
       ))}
-      {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
+      {isFetchingNextPage ? (
+            <>
+              <TransactionCardSkeletonItem />
+              <TransactionCardSkeletonItem />
+            </>
+          ) : null}
     </div>
   );
 }

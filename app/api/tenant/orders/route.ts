@@ -21,7 +21,7 @@ import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { FEATURE_FLAGS } from '@/constants';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
-import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds, loadTransactionNumberMatchIds } from '@/lib/server/document-table-search';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
@@ -306,7 +306,12 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin;
     const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
-    const searchScope = search ? await loadTransactionSearchScopeIds(db, tenantId, search) : { buyerIds: [], locationIds: [] };
+    const [searchScope, numberMatchIds] = search
+      ? await Promise.all([
+          loadTransactionSearchScopeIds(db, tenantId, search),
+          loadTransactionNumberMatchIds(db as any, tenantId, 'order_number', search),
+        ])
+      : [{ buyerIds: [], locationIds: [] }, []];
 
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const buildOrdersPageQuery = () => {
@@ -323,7 +328,7 @@ export async function GET(req: NextRequest) {
       query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
       query = applyOrderListFilters(query, { sourceParams, statusParams, locationParams });
       if (attentionParams.length > 0) query = applyOrderAttentionFilters(query, attentionParams);
-      query = applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
+      query = applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds, numberMatchIds);
       if (cursorParam) {
         query = applyOrderCursor(query, cursorParam);
       }

@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createProductQueryEmbedding } from '@/lib/server/product-search';
 
 export type ScopedProductAvailability =
   | 'show_all'
@@ -70,7 +69,6 @@ export async function searchScopedProducts(
   }
 
   const trimmedQuery = params.query?.trim() ?? '';
-  const queryEmbedding = trimmedQuery ? await createProductQueryEmbedding(trimmedQuery) : null;
   const db = params.db as any;
 
   const rpcArgs = {
@@ -82,7 +80,6 @@ export async function searchScopedProducts(
     p_category_scope_id: params.categoryScopeId?.trim() || null,
     p_limit: Math.max(1, params.limit),
     p_offset: Math.max(0, params.offset ?? 0),
-    p_query_embedding: queryEmbedding,
     p_ids: normalizeUuidArray(params.ids),
     p_brand_ids: normalizeUuidArray(params.brandIds),
     p_category_ids: normalizeUuidArray(params.categoryIds),

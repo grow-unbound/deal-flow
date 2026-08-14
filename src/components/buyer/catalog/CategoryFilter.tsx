@@ -23,7 +23,7 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
         className={cn(
           'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
           selected === null
-            ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)]'
+            ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)] shadow-[inset_3px_0_0_0_var(--teal-500)]'
             : 'border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)]',
         )}
         style={{ fontSize: 'var(--b-text-label)' }}
@@ -38,7 +38,7 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
           className={cn(
             'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
             selected === cat.id
-              ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)]'
+              ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)] shadow-[inset_3px_0_0_0_var(--teal-500)]'
               : 'border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)]',
           )}
           style={{ fontSize: 'var(--b-text-label)' }}

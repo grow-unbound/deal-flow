@@ -28,6 +28,7 @@ export default function BuyerOrderDetailPage({ params }: { params: Promise<{ id:
       title="Order"
       endpoint={`/api/buyer/orders/${id}`}
       docType="order"
+      backFallbackHref="/buy/orders?tab=orders"
       respectBusinessPolicyTotals
       pickDoc={pickDoc}
     />

@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils';
 const PULL_THRESHOLD_PX = 72;
 const MAX_PULL_PX = 112;
 const DRAG_DAMPING = 0.48;
+/** Dead zone before the gesture engages — lets small/incidental downward touches (e.g. on a short page with no real scroll) pass through as no-ops instead of visibly rubber-banding. */
+const PULL_ACTIVATION_THRESHOLD_PX = 12;
+const NESTED_SCROLL_SELECTOR = '[data-buyer-nested-scroll="true"]';
 
 type PullState = 'idle' | 'pulling' | 'armed' | 'refreshing';
 
@@ -19,6 +22,11 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T) {
   if (ref && 'current' in ref) {
     (ref as { current: T }).current = value;
   }
+}
+
+function isTouchInsideNestedScrollTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.closest(NESTED_SCROLL_SELECTOR) != null;
 }
 
 export function BuyerPullToRefresh({
@@ -48,9 +56,24 @@ export function BuyerPullToRefresh({
   const [pullDistance, setPullDistance] = useState(0);
   const [pullState, setPullState] = useState<PullState>('idle');
 
+  // Scrollbar stays invisible until actively scrolled (not just hovered) — the
+  // pointer rests over this viewport most of the time while browsing, so the
+  // base hover-reveal rule would leave the thumb visible almost constantly.
+  const [scrollActive, setScrollActive] = useState(false);
+  const scrollActiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleScrollActive = useCallback(() => {
+    setScrollActive(true);
+    if (scrollActiveTimerRef.current != null) clearTimeout(scrollActiveTimerRef.current);
+    scrollActiveTimerRef.current = setTimeout(() => {
+      setScrollActive(false);
+      scrollActiveTimerRef.current = null;
+    }, 900);
+  }, []);
+
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (scrollActiveTimerRef.current != null) clearTimeout(scrollActiveTimerRef.current);
     };
   }, []);
 
@@ -86,6 +109,10 @@ export function BuyerPullToRefresh({
 
   const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
     if (!pullEnabled || refreshingRef.current) return;
+    if (isTouchInsideNestedScrollTarget(event.target)) {
+      resetGesture();
+      return;
+    }
     if (event.touches.length !== 1) {
       resetGesture();
       return;
@@ -103,6 +130,10 @@ export function BuyerPullToRefresh({
 
   const handleTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
     if (!pullEnabled || refreshingRef.current) return;
+    if (isTouchInsideNestedScrollTarget(event.target)) {
+      resetGesture();
+      return;
+    }
     if (event.touches.length !== 1) {
       resetGesture();
       return;
@@ -127,11 +158,12 @@ export function BuyerPullToRefresh({
       return;
     }
     if (deltaX > deltaY) return;
+    if (deltaY < PULL_ACTIVATION_THRESHOLD_PX) return;
 
     draggingRef.current = true;
     event.preventDefault();
 
-    const nextPull = Math.min(MAX_PULL_PX, Math.round(deltaY * DRAG_DAMPING));
+    const nextPull = Math.min(MAX_PULL_PX, Math.round((deltaY - PULL_ACTIVATION_THRESHOLD_PX) * DRAG_DAMPING));
     setPullDistance(nextPull);
     setPullState(nextPull >= PULL_THRESHOLD_PX ? 'armed' : 'pulling');
   }, [pullEnabled, resetGesture]);
@@ -179,8 +211,13 @@ export function BuyerPullToRefresh({
   return (
     <div
       ref={setViewportRef}
-      className={cn('relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain', className)}
+      className={cn(
+        'dashboard-vscroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain',
+        scrollActive && 'dashboard-vscroll--active',
+        className,
+      )}
       style={style}
+      onScroll={handleScrollActive}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -198,7 +235,7 @@ export function BuyerPullToRefresh({
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 rounded-full border border-cream-300 bg-[rgba(255,255,255,0.96)] px-3 py-2 text-[var(--b-text-sub)] font-medium text-[var(--cream-700)] shadow-[0_8px_24px_rgba(23,36,31,0.08)]"
+          className="flex items-center gap-2 rounded-full border border-cream-300 bg-white/95 px-3 py-2 text-[var(--b-text-sub)] font-medium text-[var(--cream-700)] shadow-[var(--shadow-sm)]"
         >
           {pullState === 'refreshing' ? (
             <Loader2 className="h-4 w-4 animate-spin text-[var(--ember-500)]" />

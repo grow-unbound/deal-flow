@@ -257,47 +257,17 @@ async function resolveBrandSearchIds(db: DbClient, tenantId: string, search: str
   if (!search) return null;
   const normalized = search.replace(/[*(),]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!normalized) return null;
-  const likeValue = `%${normalized}%`;
 
-  const directRes = await db
-    .schema('app')
-    .from('tenant_brands')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .or(`display_name_override.ilike.${likeValue},external_ref.ilike.${likeValue}`)
-    .limit(500);
-  if (directRes.error) throw directRes.error;
-
-  const masterRes = await db
-    .schema('catalog')
-    .from('brands')
-    .select('id')
-    .ilike('name', likeValue)
-    .is('deleted_at', null)
-    .limit(500);
-  if (masterRes.error) throw masterRes.error;
-
-  let linkedRes: { data: unknown; error: unknown } = { data: [], error: null };
-  const masterIds = ((masterRes.data ?? []) as Array<{ id: string }>).map((row) => row.id);
-  if (masterIds.length > 0) {
-    linkedRes = await db
-      .schema('app')
-      .from('tenant_brands')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .in('master_brand_id', masterIds)
-      .is('deleted_at', null)
-      .limit(500);
-    if (linkedRes.error) throw linkedRes.error;
-  }
-
-  return [
-    ...new Set([
-      ...((directRes.data ?? []) as Array<{ id: string }>).map((row) => row.id),
-      ...((linkedRes.data ?? []) as Array<{ id: string }>).map((row) => row.id),
-    ]),
-  ];
+  // Indexed (idx_tenant_brands_search_vector) — the vector already includes
+  // the master-catalog brand name, so this covers master-linked brands too.
+  const { data, error } = await (db as any).schema('app').rpc('search_seller_brand_landing_ids', {
+    p_tenant_id: tenantId,
+    p_query: normalized,
+    p_limit: 500,
+    p_offset: 0,
+  });
+  if (error) throw error;
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
 }
 
 async function fetchActiveBrandIds(db: DbClient, tenantId: string, searchIds: string[] | null): Promise<string[]> {

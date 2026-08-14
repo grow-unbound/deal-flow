@@ -1,3 +1,5 @@
+import { BUYER_PRODUCT_GRID_CLASS } from '@/lib/buyer-ui';
+
 /** Shared route loading for category/brand detail — mirrors CatalogFilteredBrowse layout. */
 
 const SECTION_TITLE_STYLE = {
@@ -39,11 +41,11 @@ function RecoCarouselSkeleton() {
 
 function ProductGridSkeleton({ count = 6 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-2 px-2 pb-3">
+    <div className={BUYER_PRODUCT_GRID_CLASS}>
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex flex-col overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+          className="flex flex-col overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]"
         >
           <div className="relative aspect-square animate-pulse bg-cream-100">
             <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-cream-200" />
@@ -88,40 +90,51 @@ export function CatalogBrowseDetailLoading({
         <div className="border-t border-cream-200 px-4 py-2.5">
           <div className="h-11 w-full animate-pulse rounded-[12px] bg-cream-200" />
         </div>
-        {/* Filter-chip carousel — matches BuyerEntityChipNav footprint */}
-        <div className="border-t border-cream-200 pb-2 pt-1">
-          <div className="flex gap-2 overflow-hidden px-4 pb-1 pt-1.5">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-8 w-20 shrink-0 animate-pulse rounded-full bg-cream-200" />
-            ))}
-          </div>
-        </div>
       </div>
 
-      <div className="pt-3">
-        <div className="pb-4 pt-1">
-          <SectionHeader title={recoTitle} />
-          <RecoCarouselSkeleton />
-        </div>
-
-        <div className="px-4 pb-3 pt-4">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
-                Browse
-              </p>
-              <h2
-                className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                All Products
-              </h2>
+      <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-2 pb-4 pt-3 sm:grid-cols-[108px_minmax(0,1fr)] sm:gap-4 sm:px-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-4 lg:pb-6">
+        <aside className="min-w-0 border-r border-cream-200 pr-2 sm:pr-3 lg:pt-6 lg:pr-4">
+          <div className="sticky top-3 lg:top-[10.5rem]">
+            <div className="flex flex-col" aria-label="Loading desktop filters">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex min-h-[88px] flex-col items-center justify-center gap-2 border-b border-cream-200 px-1 py-3 last:border-b-0 sm:min-h-[96px] sm:px-2 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1">
+                  <div className="h-12 w-12 shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
+                    <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="h-4 w-14 animate-pulse rounded bg-cream-200 lg:w-4/5" />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="h-4 w-14 shrink-0 animate-pulse rounded bg-cream-200" />
           </div>
-        </div>
+        </aside>
 
-        <ProductGridSkeleton count={6} />
+        <div className="min-w-0">
+          <div className="pb-4 pt-1 lg:pt-6">
+            <SectionHeader title={recoTitle} />
+            <RecoCarouselSkeleton />
+          </div>
+
+          <div className="px-4 pb-3 pt-4 lg:px-2">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--fg-3)]">
+                  Browse
+                </p>
+                <h2
+                  className="mt-1 text-lg font-semibold text-[var(--fg-1)]"
+                  style={{ fontFamily: 'var(--font-display)' }}
+                >
+                  All Products
+                </h2>
+              </div>
+              <div className="h-4 w-14 shrink-0 animate-pulse rounded bg-cream-200" />
+            </div>
+          </div>
+
+          <ProductGridSkeleton count={10} />
+        </div>
       </div>
     </div>
   );

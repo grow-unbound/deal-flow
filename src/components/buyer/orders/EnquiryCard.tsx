@@ -18,6 +18,8 @@ interface EnquiryCardProps {
   estimate: EstimateSummary;
   href?: string;
   highlighted?: boolean;
+  variant?: 'card' | 'rail';
+  selected?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -46,7 +48,7 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
   return statusBadge[status as EnquiryStatusKey] ?? { tone: 'info', label: status.replace(/_/g, ' ') };
 }
 
-export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {
+export function EnquiryCard({ estimate, href, highlighted, variant, selected }: EnquiryCardProps) {
   const badge = getBadge(estimate.status);
   const docNumber = estimate.estimate_number ?? `ENQ-${estimate.id.slice(0, 6).toUpperCase()}`;
 
@@ -60,6 +62,8 @@ export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {
     >
       <ActivityCardShell
         href={href}
+        variant={variant}
+        selected={selected}
         documentNumber={docNumber}
         statusLabel={badge.label}
         statusTone={badge.tone}

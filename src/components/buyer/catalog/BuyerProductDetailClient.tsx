@@ -95,7 +95,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   if (productError && !productLoading) {
     return (
       <div className="flex min-h-[50dvh] flex-col" style={{ background: 'var(--bg-base)' }}>
-        <BuyerDetailShell title="Product" hideSearch>
+        <BuyerDetailShell title="Product" hideSearchOnDesktop>
           <div className="flex flex-col gap-4 px-3 py-8">
             <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
             <button
@@ -124,7 +124,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           : 'Available'
     : '';
   const taxLabel = item ? (item.gst_rate != null ? `${item.gst_rate}% GST` : '—') : '';
-  const productImage = item && !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
+  const productImage = item && !imgError && item.image_urls.length > 0
+    ? (item.image_url_large ?? item.image_urls[0])
+    : null;
   const categoryImage = item && !productImage && !categoryImgError && item.category_image_url
     ? item.category_image_url
     : null;
@@ -138,11 +140,12 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     : 'More in this category';
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
-      <BuyerDetailShell title="Product" hideSearch>
+    <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
+      <BuyerDetailShell title="Product" hideDesktopHeader>
         {/* Hero — square, card-like padding, aligned to header px-3 */}
-        <div className="px-3">
-          <div className="relative aspect-square w-full overflow-hidden bg-[var(--bg-surface)]">
+        <div className="px-3 pb-4 md:px-6 md:pb-6 md:pt-6">
+          <div className="grid gap-5 md:grid-cols-[minmax(340px,0.95fr)_minmax(0,1.05fr)] md:items-start">
+            <div className={cn('relative aspect-square w-full overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] md:sticky md:top-6', BUYER_CARD_RADIUS_CLASS)}>
             {productLoading ? (
               <div className="absolute inset-0 animate-pulse bg-cream-100" />
             ) : activeImage ? (
@@ -150,8 +153,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 src={activeImage}
                 alt={item?.display_name ?? 'Product'}
                 fill
-                className="object-contain p-3.5"
-                sizes="100vw"
+                className="object-contain p-3.5 md:p-5"
+                sizes="(min-width: 768px) 42vw, 100vw"
                 onError={() => {
                   if (productImage) setImgError(true);
                   else if (categoryImage) setCategoryImgError(true);
@@ -169,11 +172,10 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 status={item.stock_status === 'limited' ? 'limited' : 'out_of_stock'}
               />
             ) : null}
-          </div>
-        </div>
+            </div>
 
-        {/* Title block */}
-        <div className="space-y-2 px-3 py-4">
+            <div className="min-w-0 space-y-4 md:space-y-5">
+        <div className="space-y-1.5 py-4 md:rounded-[12px] md:border md:border-[var(--border-1)] md:bg-[var(--bg-surface)] md:px-5 md:py-5">
           {productLoading ? (
             <>
               <div className="h-3 w-16 animate-pulse rounded bg-cream-200" />
@@ -188,33 +190,36 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : item ? (
             <>
               {item.brand_name ? (
-                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--fg-3)' }}>
+                <p
+                  className="font-semibold uppercase tracking-wide"
+                  style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}
+                >
                   {item.brand_name}
                 </p>
               ) : null}
               <h2
-                className="w-full text-xl font-bold leading-tight [text-wrap:wrap]"
-                style={{ fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}
+                className="w-full font-semibold leading-snug [text-wrap:wrap]"
+                style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', color: 'var(--fg-1)' }}
               >
                 {item.display_name}
               </h2>
               {metaParts.length > 0 ? (
-                <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
+                <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
                   {metaParts.join(' · ')}
                 </p>
               ) : null}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <p className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-1">
+                <p className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price-lg)', color: 'var(--fg-1)' }}>
                   {formatNumberValue(item.price, 'CURRENCY_EXACT')}
                 </p>
                 {showCampaignPrice ? (
-                  <span className="text-sm line-through text-[var(--fg-3)]">
+                  <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                   </span>
                 ) : null}
               </div>
               {item.has_campaign_price && item.campaign_valid_until ? (
-                <p className="text-sm text-amber-700">
+                <p className="text-amber-700" style={{ fontSize: 'var(--b-text-sub)' }}>
                   Valid until{' '}
                   {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', {
                     day: '2-digit',
@@ -223,30 +228,80 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   })}
                 </p>
               ) : null}
+
+              {/* Desktop-only CTA — replaces the mobile sticky footer */}
+              <div className="hidden pt-2 md:block">
+                {cartLine ? (
+                  <div
+                    className="flex min-h-11 w-fit items-center overflow-hidden rounded-[10px]"
+                    style={{ background: 'var(--teal-500)' }}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-11 w-11 items-center justify-center text-white"
+                      aria-label="Decrease quantity"
+                      onClick={handleDecrement}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span
+                      className="min-w-[2rem] text-center font-semibold text-white"
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-sub)' }}
+                    >
+                      {cartLine.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex h-11 w-11 items-center justify-center text-white"
+                      aria-label="Increase quantity"
+                      onClick={handleIncrement}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-[10px] px-5 font-semibold text-white"
+                    style={{ background: 'var(--teal-500)', fontSize: 'var(--b-text-label)' }}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add to Cart
+                  </button>
+                )}
+              </div>
             </>
           ) : null}
         </div>
 
         {/* Product Details accordion */}
-        <div className="px-3 pb-4">
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((open) => !open)}
-            className="flex w-full items-center justify-between py-2 text-left"
-            aria-expanded={detailsOpen}
-            disabled={productLoading}
-          >
-            <span className="text-base font-semibold" style={{ color: 'var(--fg-1)' }}>
-              Product Details
-            </span>
-            {detailsOpen ? (
-              <ChevronUp className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
-            ) : (
-              <ChevronDown className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
-            )}
-          </button>
-          {detailsOpen ? (
-            <div className={`overflow-hidden ${BUYER_CARD_RADIUS_CLASS}`} style={{ border: '1px solid var(--border-1)' }}>
+        <div className="pb-4 md:pb-0">
+          <div className="md:hidden">
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((open) => !open)}
+              className="flex w-full items-center justify-between py-2 text-left"
+              aria-expanded={detailsOpen}
+              disabled={productLoading}
+            >
+              <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                Product Details
+              </span>
+              {detailsOpen ? (
+                <ChevronUp className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
+              ) : (
+                <ChevronDown className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
+              )}
+            </button>
+          </div>
+          {(detailsOpen || productLoading) ? (
+            <div className={`overflow-hidden md:border md:border-[var(--border-1)] md:bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`}>
+              <div className="border-b border-[var(--border-1)] px-4 py-2.5 md:px-5 md:py-3">
+                <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                  Product Details
+                </span>
+              </div>
               {productLoading || !item ? (
                 <>
                   <SpecRowSkeleton />
@@ -267,6 +322,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
             </div>
           ) : null}
         </div>
+            </div>
+          </div>
+        </div>
 
         {/* Reco rails — title + skeleton while loading; hide after settle if empty */}
         <RecoSection
@@ -275,8 +333,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           items={recos.co_order}
           sourceProductId={tenantProductId}
           isLoading={isRecosLoading}
-          sectionClassName="px-3 pb-3"
-          scrollClassName="gap-3 px-3"
+          sectionClassName="px-3 pb-3 md:px-6"
+          scrollClassName="gap-3 px-3 md:px-6"
         />
 
         <RecoSection
@@ -290,9 +348,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         />
       </BuyerDetailShell>
 
-      {/* Sticky footer — price + Add / qty stepper */}
+      {/* Sticky footer — price + Add / qty stepper (mobile only; desktop uses inline CTA above) */}
       <BuyerFixedFooter
-        className="left-1/2 w-full -translate-x-1/2 px-3 py-3"
+        className="left-1/2 w-full -translate-x-1/2 px-3 py-3 md:hidden"
         style={{
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
           paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
@@ -314,11 +372,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : (
             <>
               <div className="flex flex-col items-end">
-                <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+                <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>
                   {formatNumberValue(item.price, 'CURRENCY_EXACT')}
                 </span>
                 {showCampaignPrice ? (
-                  <span className="text-sm line-through text-[var(--fg-3)]">
+                  <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
                   </span>
                 ) : null}
@@ -400,15 +458,15 @@ function SpecRow({
 }) {
   return (
     <div
-      className="flex items-center justify-between px-4 py-3"
+      className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-4 px-4 py-2.5 md:px-5 md:py-3"
       style={{ borderBottom: isLast ? undefined : '1px solid var(--border-1)' }}
     >
-      <span className="text-sm" style={{ color: 'var(--fg-3)' }}>
+      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
         {label}
       </span>
       <span
-        className="text-sm font-medium"
-        style={{ color: 'var(--fg-1)', fontFamily: mono ? 'var(--font-mono)' : undefined }}
+        className="text-right font-medium md:text-left"
+        style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-1)', fontFamily: mono ? 'var(--font-mono)' : undefined }}
       >
         {value}
       </span>
@@ -419,11 +477,11 @@ function SpecRow({
 function SpecRowSkeleton({ isLast }: { isLast?: boolean }) {
   return (
     <div
-      className="flex items-center justify-between px-4 py-3"
+      className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-4 px-4 py-2.5 md:px-5 md:py-3"
       style={{ borderBottom: isLast ? undefined : '1px solid var(--border-1)' }}
     >
       <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-      <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />
+      <div className="ml-auto h-4 w-24 animate-pulse rounded bg-cream-200 md:ml-0" />
     </div>
   );
 }

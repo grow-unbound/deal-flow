@@ -277,10 +277,24 @@ export async function GET(request: NextRequest) {
     const warehouses = await fetchWarehouses(db, tenantId);
     const warehouseIds = warehouses.map((row) => row.id);
     const locationIds = [...new Set(warehouses.map((row) => row.location_id).filter((id): id is string => Boolean(id)))];
-    const [locationNames, metricsByWarehouse, stockByWarehouse] = await Promise.all([
+    const [locationNames, metricsByWarehouse, stockByWarehouse, searchCandidateIds] = await Promise.all([
       fetchLocationNames(db, locationIds),
       fetchWarehouseMetrics(db, tenantId, warehouseIds, period),
       fetchInventoryByWarehouse(db, warehouseIds),
+      search
+        ? db.schema('app').rpc('search_seller_warehouse_landing_ids_v2', {
+            p_tenant_id: tenantId,
+            p_query: search,
+            p_statuses: null,
+            p_stock_modes: null,
+            p_location_ids: null,
+            p_limit: WAREHOUSE_SCAN_LIMIT,
+            p_offset: 0,
+          }).then(({ data, error }: { data: Array<{ id: string }> | null; error: unknown }) => {
+            if (error) throw error;
+            return new Set((data ?? []).map((row) => row.id));
+          })
+        : Promise.resolve(null as Set<string> | null),
     ]);
 
     const rows = warehouses.map((warehouse) => {
@@ -334,7 +348,10 @@ export async function GET(request: NextRequest) {
           });
           if (!stockOk) return false;
         }
-        return !search || row.name.toLowerCase().includes(search) || row.linked_location_name?.toLowerCase().includes(search);
+        // Indexed (idx_warehouses_search_vector) name/phone/status match, plus a
+        // fallback substring check on the joined location name (not part of
+        // the warehouse's own search_vector).
+        return !search || (searchCandidateIds?.has(row.id) ?? false) || row.linked_location_name?.toLowerCase().includes(search);
       })
       .sort((a, b) => compareRows(a, b, sort));
 

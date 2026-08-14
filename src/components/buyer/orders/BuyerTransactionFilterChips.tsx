@@ -6,15 +6,17 @@ interface BuyerTransactionFilterChipsProps<T extends string> {
   chips: readonly T[];
   active: T;
   onChange: (chip: T) => void;
+  className?: string;
 }
 
 export function BuyerTransactionFilterChips<T extends string>({
   chips,
   active,
   onChange,
+  className,
 }: BuyerTransactionFilterChipsProps<T>) {
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 pt-3 pb-1 scrollbar-none">
+    <div className={cn('flex gap-2 overflow-x-auto px-4 pt-3 pb-1 scrollbar-none', className)}>
       {chips.map((chip) => {
         const isActive = chip === active;
         return (

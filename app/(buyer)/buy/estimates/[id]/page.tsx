@@ -28,6 +28,7 @@ export default function BuyerEstimateDetailPage({ params }: { params: Promise<{ 
       title="Estimate"
       endpoint={`/api/buyer/estimates/${id}`}
       docType="estimate"
+      backFallbackHref="/buy/orders?tab=enquiries"
       respectBusinessPolicyTotals
       pickDoc={pickDoc}
     />

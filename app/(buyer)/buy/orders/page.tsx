@@ -1,19 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { BuyerStickyPageHeader } from '@/components/buyer/layout/BuyerStickyPageHeader';
+import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { BuyerTransactionFilterChips } from '@/components/buyer/orders/BuyerTransactionFilterChips';
-import { OrdersLandingSkeleton, OrdersTabBarSkeleton } from '@/components/buyer/orders/OrdersLandingSkeleton';
-import { BuyerTransactionCardSkeleton } from '@/components/buyer/orders/BuyerTransactionCardSkeleton';
+import { OrdersLandingSkeleton } from '@/components/buyer/orders/OrdersLandingSkeleton';
 import { OrdersTab } from '@/components/buyer/orders/OrdersTab';
 import { EnquiriesTab } from '@/components/buyer/orders/EnquiriesTab';
 import { InvoicesTab } from '@/components/buyer/orders/InvoicesTab';
+import { DesktopTransactionDetailPane } from '@/components/buyer/orders/DesktopTransactionDetailPane';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useBuyerScrollRoot } from '@/contexts/BuyerScrollContext';
+import { apiFetch } from '@/lib/api-fetch';
 import {
   BUYER_ESTIMATE_STATUS_CHIPS,
   BUYER_INVOICE_STATUS_CHIPS,
@@ -22,6 +25,7 @@ import {
   type BuyerInvoiceStatusChip,
   type BuyerOrderStatusChip,
 } from '@/lib/buyer-transaction-filters';
+import type { BuyerHomeMetricsV4 } from '@/lib/buyer-home-types';
 import {
   BUYER_ORDERS_DEFAULT_TAB,
   isBuyerOrdersTabId,
@@ -29,8 +33,30 @@ import {
   resolveBuyerOrdersTabVisibility,
   type BuyerOrdersTabId,
 } from '@/lib/buyer-orders-tabs';
+import { BUYER_QUERY_GC_TIME, BUYER_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { effectiveInvoiceStatus } from '@/lib/invoice-status';
+import {
+  buyerHomeDemandCountLabel,
+  buyerHomeDemandTitle,
+} from '@/lib/buyer-home-kpi';
+import { formatNumberValue } from '@/lib/utils';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import type { DocType, TransactionDoc } from '@/components/buyer/documents/TransactionDetailPage';
 
 type TabId = BuyerOrdersTabId;
+
+interface OrdersTabMeta {
+  id: TabId;
+  label: string;
+  enabled: boolean;
+}
+
+interface OrdersDetailConfig {
+  endpoint: string;
+  docType: DocType;
+  respectBusinessPolicyTotals?: boolean;
+  pickDoc: (payload: any) => TransactionDoc | null;
+}
 
 function parseInvoiceStatusFromUrl(status: string | null): BuyerInvoiceStatusChip {
   if (status === 'Due' || status === 'Overdue' || status === 'Paid' || status === 'Void') {
@@ -48,6 +74,328 @@ function PreviewPlaceholder({ icon, title, description }: { icon: string; title:
         <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">{description}</p>
       </div>
     </div>
+  );
+}
+
+async function fetchBuyerHomeMetrics(): Promise<BuyerHomeMetricsV4> {
+  const response = await apiFetch('/api/buyer/home/metrics');
+  if (!response.ok) throw new Error('Failed to fetch buyer metrics');
+  return response.json() as Promise<BuyerHomeMetricsV4>;
+}
+
+function OrdersKpiGrid({ metrics }: { metrics?: BuyerHomeMetricsV4 }) {
+  const demandKind = metrics?.demand_kind;
+  const cards = [
+    { label: 'Spend this quarter', value: formatNumberValue(metrics?.spend_qtd ?? 0, 'CURRENCY_EXACT'), sub: `${metrics?.invoice_count_qtd ?? 0} invoices` },
+    {
+      label: buyerHomeDemandTitle(typeof demandKind === 'string' ? demandKind : undefined),
+      value: formatNumberValue(metrics?.demand_qtd ?? 0, 'CURRENCY_EXACT'),
+      sub: buyerHomeDemandCountLabel(typeof demandKind === 'string' ? demandKind : undefined, metrics?.demand_document_count_qtd ?? 0),
+    },
+    {
+      label: 'Outstanding',
+      value: formatNumberValue(metrics?.outstanding ?? 0, 'CURRENCY_EXACT'),
+      sub: `${formatNumberValue(metrics?.overdue ?? 0, 'CURRENCY_EXACT')} overdue`,
+    },
+    {
+      label: 'Available credit',
+      value: formatNumberValue(metrics?.available_credit ?? 0, 'CURRENCY_EXACT'),
+      sub: `of ${formatNumberValue(metrics?.credit_limit ?? 0, 'CURRENCY_EXACT')} limit`,
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+      {cards.map((card) => (
+        <article
+          key={card.label}
+          className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4 md:rounded-[14px] md:border-cream-300 md:bg-white md:px-[18px] md:py-[16px]"
+        >
+          <p className="font-semibold uppercase tracking-[0.14em] text-cream-500 md:text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+            {card.label}
+          </p>
+          <p
+            className="mt-3 text-[length:var(--b-text-header)] leading-none text-cream-950 md:mt-2 md:text-xl md:font-medium"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+            }}
+          >
+            {card.value}
+          </p>
+          <p
+            className="mt-3 font-medium text-[var(--b-text-sub)] text-cream-600 md:mt-2 md:text-sm md:text-cream-700"
+          >
+            {card.sub}
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function OrdersMobileKpiRibbon({
+  activeTab,
+  metrics,
+}: {
+  activeTab: TabId;
+  metrics?: BuyerHomeMetricsV4;
+}) {
+  if (activeTab === 'invoices') {
+    return (
+      <div className="px-4 pt-3">
+        <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="min-w-0">
+              <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                Spend this quarter
+              </p>
+              <p
+                className="mt-2 leading-none text-cream-950"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--b-text-header)',
+                  fontWeight: 600,
+                  letterSpacing: '-0.025em',
+                }}
+              >
+                {formatNumberValue(metrics?.spend_qtd ?? 0, 'CURRENCY_EXACT')}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                Invoices this quarter
+              </p>
+              <p
+                className="mt-2 leading-none text-cream-950"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--b-text-header)',
+                  fontWeight: 600,
+                  letterSpacing: '-0.025em',
+                }}
+              >
+                {metrics?.invoice_count_qtd ?? 0}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 border-t border-cream-200 pt-3">
+            <div className="min-w-0">
+              <p className="text-[var(--b-text-sub)] font-medium text-cream-600">Outstanding dues</p>
+              <p className="mt-1 font-semibold text-cream-900">{formatNumberValue(metrics?.outstanding ?? 0, 'CURRENCY_EXACT')}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[var(--b-text-sub)] font-medium text-cream-600">Overdue amount</p>
+              <p className="mt-1 font-semibold text-cream-900">{formatNumberValue(metrics?.overdue ?? 0, 'CURRENCY_EXACT')}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const noun = activeTab === 'orders' ? 'Orders' : 'Estimates';
+
+  return (
+    <div className="px-4 pt-3">
+      <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="min-w-0">
+            <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+              {noun} value this quarter
+            </p>
+            <p
+              className="mt-2 leading-none text-cream-950"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--b-text-header)',
+                fontWeight: 600,
+                letterSpacing: '-0.025em',
+              }}
+            >
+              {formatNumberValue(metrics?.demand_qtd ?? 0, 'CURRENCY_EXACT')}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+              {noun} this quarter
+            </p>
+            <p
+              className="mt-2 leading-none text-cream-950"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--b-text-header)',
+                fontWeight: 600,
+                letterSpacing: '-0.025em',
+              }}
+            >
+              {metrics?.demand_document_count_qtd ?? 0}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OrdersTabButtons({
+  tabs,
+  activeTab,
+  onChange,
+  desktop = false,
+}: {
+  tabs: OrdersTabMeta[];
+  activeTab: TabId;
+  onChange: (tab: TabId) => void;
+  desktop?: boolean;
+}) {
+  if (tabs.length <= 1) return null;
+
+  if (desktop) {
+    return (
+      <div
+        className="mx-0 mt-6 flex items-end gap-0 border-b border-cream-300 bg-transparent p-0"
+        role="tablist"
+        aria-orientation="horizontal"
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => onChange(tab.id)}
+              className={`flex-none rounded-none border-b-2 px-5 py-3.5 text-base font-medium transition-colors ${
+                isActive
+                  ? 'border-ember-500 text-cream-950'
+                  : 'border-transparent text-cream-700 hover:text-cream-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-3 pt-3">
+      <div className="flex rounded-[10px] bg-[var(--cream-200)] p-[3px]" role="tablist" aria-orientation="horizontal">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => onChange(tab.id)}
+              className="flex h-8 flex-1 items-center justify-center rounded-lg border-none px-2 transition"
+              style={{
+                background: isActive ? '#fff' : 'transparent',
+                boxShadow: isActive ? '0 1px 2px rgba(31,58,52,0.06)' : 'none',
+              }}
+            >
+              <span
+                className="text-[length:var(--b-text-sub)] font-medium"
+                style={{ color: isActive ? 'var(--teal-500)' : 'var(--cream-700)' }}
+              >
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrdersSearchField({
+  value,
+  onChange,
+  placeholder,
+  compact = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2.5 rounded-[12px] border border-cream-300 bg-transparent px-3.5 ${compact ? 'py-2.5' : 'py-3'}`}
+    >
+      <Search className="h-4 w-4 text-cream-600" />
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="flex-1 border-none bg-transparent text-[length:var(--b-text-body)] text-[var(--cream-900)] outline-none"
+      />
+    </div>
+  );
+}
+
+function OrdersMobileStickyChrome({
+  tabs,
+  activeTab,
+  onTabChange,
+  search,
+  onSearchChange,
+  searchPlaceholder,
+  filterRow,
+}: {
+  tabs: OrdersTabMeta[];
+  activeTab: TabId;
+  onTabChange: (tab: TabId) => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  searchPlaceholder: string;
+  filterRow: React.ReactNode;
+}) {
+  const { collapsed, sentinelRef } = useBuyerScrollCollapse();
+
+  return (
+    <>
+      <header
+        className={`sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow ${collapsed ? 'shadow-sm' : ''}`}
+      >
+        <div className="px-5 pb-2 pt-4">
+          {!collapsed ? (
+            <p
+              className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--cream-700)]"
+              style={{ fontFamily: 'var(--font-body)' }}
+            >
+              Activity
+            </p>
+          ) : null}
+          <h1
+            className="mt-0.5 text-[var(--cream-900)] leading-tight"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: collapsed ? 'var(--b-text-header)' : 'var(--b-text-page)',
+              fontWeight: 600,
+              letterSpacing: collapsed ? '-0.01em' : '-0.025em',
+            }}
+          >
+            {collapsed ? 'Orders' : 'Your orders'}
+          </h1>
+        </div>
+        <OrdersTabButtons tabs={tabs} activeTab={activeTab} onChange={onTabChange} />
+        <div className="border-t border-cream-200 px-4 py-3">
+          <OrdersSearchField value={search} onChange={onSearchChange} placeholder={searchPlaceholder} compact />
+        </div>
+        <div className="border-t border-cream-200 bg-[var(--bg-base)]">{filterRow}</div>
+      </header>
+      <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
+    </>
   );
 }
 
@@ -72,6 +420,12 @@ function OrdersPageInner() {
   const hasUrlTab = Boolean(tabParam);
   const hasDeepLink = hasUrlTab || Boolean(statusParam);
   const scrollContext = useBuyerScrollRoot();
+  const metricsQuery = useQuery({
+    queryKey: ['buyer-home-metrics'],
+    queryFn: fetchBuyerHomeMetrics,
+    staleTime: BUYER_QUERY_STALE_TIME,
+    gcTime: BUYER_QUERY_GC_TIME,
+  });
 
   const [search, setSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<BuyerOrderStatusChip>('All');
@@ -81,6 +435,9 @@ function OrdersPageInner() {
       ? parseInvoiceStatusFromUrl(statusParam)
       : 'All'
   ));
+  const [desktopOrderId, setDesktopOrderId] = useState<string | null>(null);
+  const [desktopEstimateId, setDesktopEstimateId] = useState<string | null>(null);
+  const [desktopInvoiceId, setDesktopInvoiceId] = useState<string | null>(null);
   const { updatedEntityIds, markSeen } = useBuyerRealtimeContext();
 
   const { state: snapshotTab, setState: setSnapshotTab } = useRouteSnapshot<TabId>({
@@ -93,9 +450,7 @@ function OrdersPageInner() {
   const requestedTab = hasUrlTab ? urlDrivenTab : snapshotTab;
 
   const setActiveTab = (tab: TabId) => {
-    if (hasUrlTab) {
-      setUrlDrivenTab(tab);
-    }
+    if (hasUrlTab) setUrlDrivenTab(tab);
     setSnapshotTab(tab);
   };
 
@@ -105,7 +460,6 @@ function OrdersPageInner() {
       ? requestedTab
       : (fallbackTab ?? BUYER_ORDERS_DEFAULT_TAB);
 
-  // Deep links from home KPIs must land at the top — do not restore a prior scrollY.
   useRouteScrollRestoration({
     storageKey: 'buyer-orders-page-tab',
     ready: true,
@@ -115,11 +469,8 @@ function OrdersPageInner() {
   useEffect(() => {
     if (!hasDeepLink) return;
     const root = scrollContext?.scrollRoot;
-    if (root) {
-      root.scrollTo({ top: 0, behavior: 'auto' });
-    } else if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
+    if (root) root.scrollTo({ top: 0, behavior: 'auto' });
+    else if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
   }, [hasDeepLink, scrollContext?.scrollRoot, statusParam, tabParam]);
 
   useEffect(() => {
@@ -132,10 +483,7 @@ function OrdersPageInner() {
   useEffect(() => {
     if (!visibility.ready) return;
     if (visibility[requestedTab]) return;
-    if (fallbackTab && fallbackTab !== requestedTab) {
-      setActiveTab(fallbackTab);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only snap when visibility/request mismatch
+    if (fallbackTab && fallbackTab !== requestedTab) setActiveTab(fallbackTab);
   }, [visibility.ready, visibility.orders, visibility.enquiries, visibility.invoices, requestedTab, fallbackTab]);
 
   useEffect(() => {
@@ -160,16 +508,17 @@ function OrdersPageInner() {
     };
   }, [highlightId, activeTab]);
 
-  const allTabs: Array<{ id: TabId; label: string; enabled: boolean }> = [
+  const allTabs: OrdersTabMeta[] = [
     { id: 'orders', label: 'Orders', enabled: visibility.orders },
     { id: 'enquiries', label: 'Enquiries', enabled: visibility.enquiries },
     { id: 'invoices', label: 'Invoices', enabled: visibility.invoices },
   ];
-  const tabs = allTabs.filter((t) => t.enabled);
+  const tabs = allTabs.filter((tab) => tab.enabled);
 
   const searchPlaceholder =
-    activeTab === 'orders' ? 'Search orders…' :
-    activeTab === 'enquiries' ? 'Search enquiries…' : 'Search invoices…';
+    activeTab === 'orders' ? 'Search orders…'
+      : activeTab === 'enquiries' ? 'Search enquiries…'
+        : 'Search invoices…';
 
   function handleTabChange(tab: TabId) {
     setActiveTab(tab);
@@ -181,171 +530,288 @@ function OrdersPageInner() {
 
   const tabsReady = visibility.ready;
 
-  return (
-    <div>
-      <BuyerStickyPageHeader
-        eyebrow="Activity"
-        title="Your orders"
-        collapsedTitle="Orders"
+  const filterRow =
+    activeTab === 'orders' && !sellerPreview ? (
+      <BuyerTransactionFilterChips
+        chips={BUYER_ORDER_STATUS_CHIPS}
+        active={orderStatusFilter}
+        onChange={setOrderStatusFilter}
+        className="px-4 pb-3 pt-3 md:px-0 md:pb-0 md:pt-0"
       />
+    ) : activeTab === 'enquiries' && !sellerPreview ? (
+      <BuyerTransactionFilterChips
+        chips={BUYER_ESTIMATE_STATUS_CHIPS}
+        active={estimateStatusFilter}
+        onChange={setEstimateStatusFilter}
+        className="px-4 pb-3 pt-3 md:px-0 md:pb-0 md:pt-0"
+      />
+    ) : activeTab === 'invoices' && !sellerPreview ? (
+      <BuyerTransactionFilterChips
+        chips={BUYER_INVOICE_STATUS_CHIPS}
+        active={invoiceStatusFilter}
+        onChange={setInvoiceStatusFilter}
+        className="px-4 pb-3 pt-3 md:px-0 md:pb-0 md:pt-0"
+      />
+    ) : null;
 
-      {!tabsReady ? (
-        <OrdersTabBarSkeleton />
-      ) : tabs.length === 0 ? null : tabs.length > 1 ? (
-        <div className="mx-[22px] mt-3.5 flex rounded-[10px] bg-[var(--cream-200)] p-[3px]">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => handleTabChange(t.id)}
-              className="flex h-8 flex-1 items-center justify-center rounded-lg border-none px-2 transition"
-              style={{
-                background: activeTab === t.id ? '#fff' : 'transparent',
-                boxShadow: activeTab === t.id ? '0 1px 2px rgba(31,58,52,0.06)' : 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <span
-                className="text-[length:var(--b-text-sub)] font-medium"
-                style={{ color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)' }}
-              >
-                {t.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+  function isPreviewTab(): boolean {
+    return (
+      (activeTab === 'orders' || activeTab === 'enquiries' || activeTab === 'invoices')
+      && sellerPreview
+    );
+  }
 
-      {!tabsReady ? (
-        <>
-          <div className="px-4 pt-3">
-            <div className="flex h-[42px] items-center gap-2.5 rounded-[10px] border border-[var(--border-2)] bg-[var(--cream-50)] px-3.5">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cream-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <span className="text-[length:var(--b-text-body)] text-[var(--cream-500)]">
-                Search invoices…
-              </span>
+  function previewContent() {
+    if (activeTab === 'orders') {
+      return (
+        <PreviewPlaceholder
+          icon="📦"
+          title="Order history"
+          description="When a buyer logs in, their complete order history appears here — with real-time status tracking, filters, and search."
+        />
+      );
+    }
+    if (activeTab === 'enquiries') {
+      return (
+        <PreviewPlaceholder
+          icon="📋"
+          title="Enquiries"
+          description="Buyers can raise enquiries for custom pricing or bulk orders. Their enquiries and status updates appear here."
+        />
+      );
+    }
+    return (
+      <PreviewPlaceholder
+        icon="🧾"
+        title="Invoices"
+        description="Invoices generated for delivered orders appear here, with payment status and due dates."
+      />
+    );
+  }
+
+  function renderActiveTab(desktop = false) {
+    if (isPreviewTab()) return previewContent();
+
+    if (activeTab === 'orders') {
+      return (
+        <OrdersTab
+          search={search}
+          statusFilter={orderStatusFilter}
+          updatedEntityIds={updatedEntityIds}
+          onMarkSeen={markSeen}
+          desktopSelectedId={desktop ? desktopOrderId : undefined}
+          onDesktopSelect={desktop ? setDesktopOrderId : undefined}
+          desktopMode={desktop}
+        />
+      );
+    }
+
+    if (activeTab === 'enquiries') {
+      return (
+        <EnquiriesTab
+          search={search}
+          statusFilter={estimateStatusFilter}
+          highlightId={activeHighlight}
+          desktopSelectedId={desktop ? desktopEstimateId : undefined}
+          onDesktopSelect={desktop ? setDesktopEstimateId : undefined}
+          desktopMode={desktop}
+        />
+      );
+    }
+
+    return (
+      <InvoicesTab
+        search={search}
+        statusFilter={invoiceStatusFilter}
+        desktopSelectedId={desktop ? desktopInvoiceId : undefined}
+        onDesktopSelect={desktop ? setDesktopInvoiceId : undefined}
+        desktopMode={desktop}
+      />
+    );
+  }
+
+  function desktopDetailConfig(): OrdersDetailConfig | null {
+    if (isPreviewTab()) return null;
+
+    if (activeTab === 'orders' && desktopOrderId) {
+      return {
+        endpoint: `/api/buyer/orders/${desktopOrderId}`,
+        docType: 'order',
+        respectBusinessPolicyTotals: true,
+        pickDoc: (payload: any) => {
+          const order = payload?.order;
+          if (!order) return null;
+          return {
+            docNumber: order.order_number,
+            status: order.status,
+            primaryDate: order.placed_at,
+            secondaryDate: null,
+            notes: order.notes ?? null,
+            placeOfSupply: order.place_of_supply ?? null,
+            subtotal: order.subtotal,
+            tax_total: order.tax_total,
+            total_amount: order.total_amount,
+            items: order.items ?? [],
+          };
+        },
+      };
+    }
+
+    if (activeTab === 'enquiries' && desktopEstimateId) {
+      return {
+        endpoint: `/api/buyer/estimates/${desktopEstimateId}`,
+        docType: 'estimate',
+        respectBusinessPolicyTotals: true,
+        pickDoc: (payload: any) => {
+          const estimate = payload?.estimate;
+          if (!estimate) return null;
+          return {
+            docNumber: estimate.estimate_number ?? `ENQ-${estimate.id.slice(0, 6).toUpperCase()}`,
+            status: estimate.status,
+            primaryDate: estimate.created_at,
+            secondaryDate: estimate.valid_until ?? null,
+            notes: estimate.notes ?? null,
+            placeOfSupply: estimate.place_of_supply ?? null,
+            subtotal: estimate.subtotal,
+            tax_total: estimate.tax_total,
+            total_amount: estimate.total_amount,
+            items: estimate.items ?? [],
+          };
+        },
+      };
+    }
+
+    if (activeTab === 'invoices' && desktopInvoiceId) {
+      return {
+        endpoint: `/api/buyer/invoices/${desktopInvoiceId}`,
+        docType: 'invoice',
+        pickDoc: (payload: any) => {
+          const invoice = payload?.invoice;
+          if (!invoice) return null;
+          return {
+            docNumber: invoice.invoice_number,
+            status: effectiveInvoiceStatus({ status: invoice.status, due_date: invoice.due_date }),
+            primaryDate: invoice.invoice_date,
+            secondaryDate: invoice.due_date ?? null,
+            notes: null,
+            placeOfSupply: invoice.place_of_supply ?? null,
+            subtotal: invoice.subtotal,
+            tax_total: invoice.tax_total,
+            total_amount: invoice.total_amount,
+            outstandingBalance: invoice.outstanding_balance,
+            items: invoice.items ?? [],
+          };
+        },
+      };
+    }
+
+    return null;
+  }
+
+  const detailConfig = desktopDetailConfig();
+
+  return (
+    <div className="flex h-full min-h-full flex-col">
+      <div className="md:hidden">
+        {!tabsReady ? (
+          <OrdersLandingSkeleton />
+        ) : tabs.length === 0 ? (
+          <>
+            <OrdersMobileStickyChrome
+              tabs={tabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder={searchPlaceholder}
+              filterRow={null}
+            />
+            <div className="px-4 pt-6">
+              <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
+                <p className="text-[var(--b-text-body)] font-semibold text-[var(--cream-800)]">Orders are unavailable</p>
+                <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
+                  Your distributor has not enabled document tracking for this account yet.
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <OrdersMobileStickyChrome
+              tabs={tabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder={searchPlaceholder}
+              filterRow={filterRow}
+            />
+            <OrdersMobileKpiRibbon activeTab={activeTab} metrics={metricsQuery.data} />
+            <div className="min-h-0 flex-1">{renderActiveTab(false)}</div>
+          </>
+        )}
+      </div>
+
+      <div className="hidden min-h-0 flex-1 flex-col md:flex">
+        {!tabsReady ? (
+          <OrdersLandingSkeleton />
+        ) : tabs.length === 0 ? (
+          <div className="px-6 py-6 xl:px-8">
+            <div className="rounded-[20px] border border-[var(--border-1)] bg-white px-5 py-6 text-center">
+              <p className="text-base font-semibold text-cream-800">Orders are unavailable</p>
+              <p className="mt-2 text-sm text-cream-600">Your distributor has not enabled document tracking for this account yet.</p>
             </div>
           </div>
-          <div className="flex gap-2 overflow-hidden px-4 pt-3 pb-1">
-            {BUYER_INVOICE_STATUS_CHIPS.map((chip, index) => (
-              <span
-                key={chip}
-                className={
-                  index === 0
-                    ? 'shrink-0 rounded-full border border-[var(--teal-500)] bg-[var(--teal-500)] px-3.5 py-1.5 text-[length:var(--b-text-label)] font-medium text-white'
-                    : 'shrink-0 rounded-full border border-[var(--cream-400)] bg-[var(--cream-50)] px-3.5 py-1.5 text-[length:var(--b-text-label)] font-medium text-[var(--cream-800)]'
-                }
-              >
-                {chip}
-              </span>
-            ))}
-          </div>
-          <BuyerTransactionCardSkeleton count={5} />
-        </>
-      ) : tabs.length === 0 ? (
-        <div className="px-4 pt-6">
-          <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
-            <p className="text-[var(--b-text-body)] font-semibold text-[var(--cream-800)]">
-              Orders are unavailable
-            </p>
-            <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-              Your distributor has not enabled document tracking for this account yet.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="px-4 pt-3">
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--border-2)] bg-[var(--cream-50)] px-3.5 py-2.5">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cream-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="flex-1 border-none bg-transparent text-[length:var(--b-text-body)] text-[var(--cream-900)] outline-none"
-              />
-              {search ? (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="border-none bg-transparent p-0 text-[var(--cream-500)]"
-                  aria-label="Clear search"
-                >
-                  ×
-                </button>
-              ) : null}
+        ) : (
+          <>
+            <div className="px-6 pt-6 xl:px-8">
+              <OrdersKpiGrid metrics={metricsQuery.data} />
             </div>
-          </div>
 
-          {activeTab === 'orders' && !sellerPreview ? (
-            <BuyerTransactionFilterChips
-              chips={BUYER_ORDER_STATUS_CHIPS}
-              active={orderStatusFilter}
-              onChange={setOrderStatusFilter}
-            />
-          ) : null}
+            <div className="px-6 pt-1 xl:px-8">
+              <OrdersTabButtons tabs={tabs} activeTab={activeTab} onChange={handleTabChange} desktop />
+            </div>
 
-          {activeTab === 'enquiries' && !sellerPreview ? (
-            <BuyerTransactionFilterChips
-              chips={BUYER_ESTIMATE_STATUS_CHIPS}
-              active={estimateStatusFilter}
-              onChange={setEstimateStatusFilter}
-            />
-          ) : null}
-
-          {activeTab === 'invoices' && !sellerPreview ? (
-            <BuyerTransactionFilterChips
-              chips={BUYER_INVOICE_STATUS_CHIPS}
-              active={invoiceStatusFilter}
-              onChange={setInvoiceStatusFilter}
-            />
-          ) : null}
-
-          {activeTab === 'orders' && sellerPreview ? (
-            <PreviewPlaceholder
-              icon="📦"
-              title="Order history"
-              description="When a buyer logs in, their complete order history appears here — with real-time status tracking, filters, and search."
-            />
-          ) : activeTab === 'orders' ? (
-            <OrdersTab
-              search={search}
-              statusFilter={orderStatusFilter}
-              updatedEntityIds={updatedEntityIds}
-              onMarkSeen={markSeen}
-            />
-          ) : null}
-
-          {activeTab === 'enquiries' && sellerPreview ? (
-            <PreviewPlaceholder
-              icon="📋"
-              title="Enquiries"
-              description="Buyers can raise enquiries for custom pricing or bulk orders. Their enquiries and status updates appear here."
-            />
-          ) : activeTab === 'enquiries' ? (
-            <EnquiriesTab
-              search={search}
-              statusFilter={estimateStatusFilter}
-              highlightId={activeHighlight}
-            />
-          ) : null}
-
-          {activeTab === 'invoices' && sellerPreview ? (
-            <PreviewPlaceholder
-              icon="🧾"
-              title="Invoices"
-              description="Invoices generated for delivered orders appear here, with payment status and due dates."
-            />
-          ) : activeTab === 'invoices' ? (
-            <InvoicesTab search={search} statusFilter={invoiceStatusFilter} />
-          ) : null}
-        </>
-      )}
+            {isPreviewTab() ? (
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 xl:px-8">
+                {previewContent()}
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 px-6 pb-6 xl:px-8">
+                <ResizablePanelGroup direction="horizontal" autoSaveId="buyer-orders-split-pane" className="h-full">
+                  <ResizablePanel defaultSize={30} minSize={24} className="h-full min-h-0">
+                    <div className="flex h-full min-h-0 flex-col pr-4">
+                      <div className="flex-none space-y-3 py-4">
+                        <OrdersSearchField value={search} onChange={setSearch} placeholder={searchPlaceholder} />
+                        <div className="min-w-0">{filterRow}</div>
+                      </div>
+                      <div className="min-h-0 flex-1">{renderActiveTab(true)}</div>
+                    </div>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={70} minSize={46} className="h-full min-h-0">
+                    <div className="h-full min-h-0 pl-4">
+                      {detailConfig ? (
+                        <DesktopTransactionDetailPane
+                          endpoint={detailConfig.endpoint}
+                          emptyLabel="Select a transaction to inspect its details."
+                          docType={detailConfig.docType}
+                          respectBusinessPolicyTotals={detailConfig.respectBusinessPolicyTotals}
+                          pickDoc={detailConfig.pickDoc}
+                        />
+                      ) : (
+                        <div className="flex h-full min-h-0 items-center justify-center rounded-[20px] border border-cream-200 bg-white px-6 text-center text-sm text-cream-600">
+                          Select a transaction to inspect its details.
+                        </div>
+                      )}
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

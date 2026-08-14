@@ -3,7 +3,7 @@
 import { formatNumberValue } from '@/lib/utils';
 import * as React from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MapPin, Package, ShoppingCart } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -72,6 +72,7 @@ interface TransactionDetailPageProps {
   title: string;
   endpoint: string;
   docType: DocType;
+  backFallbackHref?: string;
   respectBusinessPolicyTotals?: boolean;
   /** Extract TransactionDoc from the API response payload */
   pickDoc: (payload: any) => TransactionDoc | null;
@@ -104,8 +105,11 @@ function getStatusBadge(status: string): { tone: StatusTone; label: string } {
   return orderStatusBadge[status] ?? { tone: 'neutral', label: status };
 }
 
+export function getTransactionStatusBadge(status: string): { tone: StatusTone; label: string } {
+  return getStatusBadge(status);
+}
 
-function formatDocSubtitle(doc: TransactionDoc, docType: DocType): string {
+export function formatTransactionDocSubtitle(doc: TransactionDoc, docType: DocType): string {
   const created = fmtDate(doc.primaryDate);
   if (docType === 'invoice' && doc.secondaryDate) {
     return `${created} · due ${fmtDate(doc.secondaryDate)}`;
@@ -208,8 +212,106 @@ function TotalsBlock({
   );
 }
 
-function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docType: DocType }) {
+export function TransactionDetailDocumentBody({
+  doc,
+  docType,
+  gstInclusive,
+  gstRate,
+  respectBusinessPolicyTotals,
+}: {
+  doc: TransactionDoc;
+  docType: DocType;
+  gstInclusive: boolean;
+  gstRate: number;
+  respectBusinessPolicyTotals: boolean;
+}) {
+  const badge = getStatusBadge(doc.status);
+  const totalUnits = doc.items.reduce((sum, item) => sum + item.qty, 0);
+  const deliveryPlace = doc.placeOfSupply?.trim() ?? '';
+
+  return (
+    <div className="flex flex-col space-y-3">
+      <div className="px-1">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--cream-600)]">
+          {doc.items.length} product{doc.items.length !== 1 ? 's' : ''} · {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
+        </p>
+        <div className="mt-1 flex items-start justify-between gap-3">
+          <h2 className="min-w-0 flex-1 font-mono text-[var(--b-text-page)] font-semibold leading-tight text-[var(--cream-900)]">
+            {doc.docNumber}
+          </h2>
+          <StatusPill label={badge.label} tone={badge.tone} />
+        </div>
+        <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
+          {formatTransactionDocSubtitle(doc, docType)}
+        </p>
+        {doc.notes ? (
+          <p className="mt-2 text-sm leading-5 text-[var(--cream-800)]">{doc.notes}</p>
+        ) : null}
+      </div>
+
+      <div
+        className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] px-4 py-4`}
+        style={{ background: 'white' }}
+      >
+        {doc.items.length > 0 ? (
+          <div>
+            {doc.items.map((item, idx) => (
+              <React.Fragment key={item.tenant_product_id + idx}>
+                <LineItemRow item={item} />
+                {idx < doc.items.length - 1 && <div className="h-px bg-[var(--border-1)]" />}
+              </React.Fragment>
+            ))}
+          </div>
+        ) : (
+          <div className="py-2 text-center text-[var(--b-text-sub)] text-[var(--cream-600)]">
+            No items found.
+          </div>
+        )}
+      </div>
+
+      <TotalsBlock
+        subtotal={doc.subtotal}
+        tax_total={doc.tax_total}
+        total_amount={doc.total_amount}
+        outstandingBalance={doc.outstandingBalance}
+        gstInclusive={gstInclusive}
+        gstRate={gstRate}
+        respectBusinessPolicyTotals={respectBusinessPolicyTotals}
+      />
+
+      {deliveryPlace ? (
+        <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-cream-200 bg-cream-100">
+              <MapPin className="h-4 w-4 text-[var(--teal-500)]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-600)]">
+                Delivery to
+              </p>
+              <p className="mt-1 font-semibold text-[var(--cream-900)]">
+                {deliveryPlace}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ReorderButton({
+  items,
+  docType,
+  className,
+}: {
+  items: TransactionLineItem[];
+  docType: DocType;
+  className?: string;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { items: cartItems, clearCart, addItem } = useCart();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -233,7 +335,15 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
         source_document_type: docType,
       });
     });
-    router.push('/buy/cart');
+    // Desktop keeps the persistent header/cart Sheet mounted across routes —
+    // open it in place instead of navigating to the mobile-only /buy/cart page.
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      const next = new URLSearchParams(searchParams?.toString() ?? '');
+      next.set('cart', 'open');
+      router.push(`${pathname}?${next.toString()}`);
+    } else {
+      router.push('/buy/cart');
+    }
   }
 
   function handleReorder() {
@@ -245,14 +355,14 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
   }
 
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
-  const sourceLabel = docType === 'order' ? 'order' : 'estimate';
+  const sourceLabel = docType === 'order' ? 'order' : docType === 'invoice' ? 'invoice' : 'estimate';
 
   return (
     <>
       <button
         type="button"
         onClick={handleReorder}
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80"
+        className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80 ${className ?? ''}`}
         style={{ background: 'var(--teal-500)' }}
       >
         <ShoppingCart className="h-4 w-4" />
@@ -309,6 +419,7 @@ export function TransactionDetailPage({
   title,
   endpoint,
   docType,
+  backFallbackHref,
   respectBusinessPolicyTotals = false,
   pickDoc,
 }: TransactionDetailPageProps) {
@@ -340,17 +451,15 @@ export function TransactionDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endpoint, id]);
 
-  const badge = doc ? getStatusBadge(doc.status) : null;
-  const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
-  const deliveryPlace = doc?.placeOfSupply?.trim() ?? '';
   const showReorderFooter = Boolean(doc && doc.items.length > 0 && docType !== 'invoice');
 
   return (
     <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell
         title={title}
-        hideSearch
+        hideSearchOnDesktop
         showLocationControl={false}
+        backFallbackHref={backFallbackHref}
       >
         {loading ? (
           <div className="space-y-3 px-4 py-4 pb-24">
@@ -382,71 +491,13 @@ export function TransactionDetailPage({
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">{title} not found.</div>
         ) : (
           <div className={`flex flex-col space-y-3 px-4 py-4 ${showReorderFooter ? 'pb-24' : 'pb-6'}`}>
-            <div className="px-1">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--cream-600)]">
-                {doc.items.length} product{doc.items.length !== 1 ? 's' : ''} · {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
-              </p>
-              <div className="mt-1 flex items-start justify-between gap-3">
-                <h2 className="min-w-0 flex-1 font-mono text-[var(--b-text-page)] font-semibold leading-tight text-[var(--cream-900)]">
-                  {doc.docNumber}
-                </h2>
-                {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
-              </div>
-              <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-                {formatDocSubtitle(doc, docType)}
-              </p>
-              {doc.notes ? (
-                <p className="mt-2 text-sm leading-5 text-[var(--cream-800)]">{doc.notes}</p>
-              ) : null}
-            </div>
-
-            <div
-              className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] px-4 py-4`}
-              style={{ background: 'white' }}
-            >
-              {doc.items.length > 0 ? (
-                <div>
-                  {doc.items.map((item, idx) => (
-                    <React.Fragment key={item.tenant_product_id + idx}>
-                      <LineItemRow item={item} />
-                      {idx < doc.items.length - 1 && <div className="h-px bg-[var(--border-1)]" />}
-                    </React.Fragment>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-2 text-center text-[var(--b-text-sub)] text-[var(--cream-600)]">
-                  No items found.
-                </div>
-              )}
-            </div>
-
-            <TotalsBlock
-              subtotal={doc.subtotal}
-              tax_total={doc.tax_total}
-              total_amount={doc.total_amount}
-              outstandingBalance={doc.outstandingBalance}
+            <TransactionDetailDocumentBody
+              doc={doc}
+              docType={docType}
               gstInclusive={gstInclusive}
               gstRate={gstRate}
               respectBusinessPolicyTotals={respectBusinessPolicyTotals}
             />
-
-            {deliveryPlace ? (
-              <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-cream-200 bg-cream-100">
-                    <MapPin className="h-4 w-4 text-[var(--teal-500)]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-600)]">
-                      Delivery to
-                    </p>
-                    <p className="mt-1 font-semibold text-[var(--cream-900)]">
-                      {deliveryPlace}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
         )}
       </BuyerDetailShell>

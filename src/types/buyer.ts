@@ -19,6 +19,12 @@ export interface BuyerCatalogItem {
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];
+  /** 320px variant — compact tiles, mobile grid. Falls back through medium/large/image_urls[0]. */
+  image_url_small?: string | null;
+  /** 640px variant — desktop grid. Falls back through large/small/image_urls[0]. */
+  image_url_medium?: string | null;
+  /** 1200px variant — product detail. Falls back through medium/small/image_urls[0]. */
+  image_url_large?: string | null;
   brand_logo_url?: string | null;
   category_image_url?: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';

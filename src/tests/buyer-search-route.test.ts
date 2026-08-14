@@ -5,7 +5,7 @@ import { BUYER_CACHE_CATALOG, BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-ca
 const mocks = vi.hoisted(() => ({
   requireBuyerAccessProfile: vi.fn(),
   resolveBuyerAllowedTenantBrandIds: vi.fn(),
-  searchScopedProducts: vi.fn(),
+  rpc: vi.fn(),
   orderDeletedIs: vi.fn(),
 }));
 
@@ -17,13 +17,10 @@ vi.mock('@/lib/server/buyer-brand-visibility', () => ({
   resolveBuyerAllowedTenantBrandIds: mocks.resolveBuyerAllowedTenantBrandIds,
 }));
 
-vi.mock('@/lib/server/scoped-product-search', () => ({
-  searchScopedProducts: mocks.searchScopedProducts,
-}));
-
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn(() => ({
+      rpc: mocks.rpc,
       from: vi.fn((table: string) => {
         return {
           select: vi.fn(() => ({
@@ -58,8 +55,9 @@ describe('buyer search route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireBuyerAccessProfile.mockResolvedValue({
-      context: { tenant_id: 'tenant-1', buyer_id: 'buyer-1', mode: 'buyer' },
+      context: { tenant_id: 'tenant-1', buyer_id: 'buyer-1', mode: 'buyer', role: 'buyer_admin' },
     });
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
   });
 
   it('privately caches empty catalog and order searches by scope', async () => {
@@ -78,16 +76,30 @@ describe('buyer search route', () => {
     expect(response.headers.get('Cache-Control')).toBe(BUYER_CACHE_PERSONAL['Cache-Control']);
   });
 
-  it('privately caches successful catalog results', async () => {
+  it('calls the unified global_search rpc for catalog scope with buyer role and brand scope', async () => {
     mocks.resolveBuyerAllowedTenantBrandIds.mockResolvedValue(['brand-1']);
-    mocks.searchScopedProducts.mockResolvedValue({
-      rows: [{ tenant_product_id: 'product-1', product_name: 'Camera', sku: 'CAM-1' }],
+    mocks.rpc.mockResolvedValue({
+      data: [
+        { entity_type: 'product', id: 'product-1', label: 'Camera', sublabel: 'CAM-1' },
+        { entity_type: 'brand', id: 'brand-1', label: 'Vinikus', sublabel: '' },
+      ],
+      error: null,
     });
 
     const response = await GET(request('/api/buyer/search?scope=catalog&q=camera'));
+    const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe(BUYER_CACHE_CATALOG['Cache-Control']);
+    expect(mocks.rpc).toHaveBeenCalledWith('global_search', expect.objectContaining({
+      p_query: 'camera',
+      p_tenant_id: 'tenant-1',
+      p_role: 'buyer_admin',
+      p_buyer_id: 'buyer-1',
+      p_allowed_brand_ids: ['brand-1'],
+    }));
+    expect(body.items).toHaveLength(2);
+    expect(body.items.map((item: { entity_type: string }) => item.entity_type)).toEqual(['product', 'brand']);
   });
 
   it('does not cache error responses', async () => {
