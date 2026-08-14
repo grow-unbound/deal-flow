@@ -533,7 +533,7 @@ export default function CartPage() {
               posthog?.capture('buyer_empty_cart_browse_clicked', {
                 source_surface: 'cart_empty_state',
               });
-              router.push('/buy/catalog');
+              router.push('/buy/home');
             }}
             className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 font-semibold text-white"
             style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}

@@ -39,7 +39,7 @@ export function BuyerTransactionPlacedPage({
 
   function goToCatalog() {
     markBuyerNavigationBack();
-    router.push('/buy/catalog');
+    router.push('/buy/home');
   }
 
   function goToOrders() {

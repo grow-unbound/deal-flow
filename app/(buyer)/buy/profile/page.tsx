@@ -209,7 +209,7 @@ function BuyerSheetPhoneInput({
   placeholder?: string;
 }) {
   return (
-    <div className="flex h-14 items-stretch overflow-hidden rounded-[12px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
+    <div className="flex h-[var(--ctl-h-input)] items-stretch overflow-hidden rounded-[12px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
       <span className="inline-flex items-center border-r border-cream-300 bg-[#f6efe4] px-4 font-medium text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
         +91
       </span>
@@ -254,7 +254,7 @@ function BusinessDetailsSheet({
 
   return (
     <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44dvh]">
-      <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
+      <SheetHeader className="border-b border-cream-200 px-5 pb-4 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Edit business details
         </SheetTitle>
@@ -262,13 +262,13 @@ function BusinessDetailsSheet({
           These details appear on every order placed and on invoices issued by your distributors.
         </p>
       </SheetHeader>
-      <SheetBody className="space-y-5 px-5 py-5">
+      <SheetBody className="space-y-5 px-[22px] py-5">
         <SheetField label="Business name">
           <Input
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="Contact name">
@@ -276,7 +276,7 @@ function BusinessDetailsSheet({
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="GSTIN" hint="Leave blank if your business is not GST registered.">
@@ -284,15 +284,15 @@ function BusinessDetailsSheet({
             value={gstin}
             onChange={(e) => setGstin(e.target.value.toUpperCase())}
             maxLength={15}
-            className="h-14 rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
+            className="rounded-[12px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t-0 bg-transparent px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] pt-2">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
+          className="flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -300,7 +300,7 @@ function BusinessDetailsSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
+          className="flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ business_name: businessName, contact_name: contactName, gstin })}
           disabled={pending}
         >
@@ -335,7 +335,7 @@ function PhoneSheet({
 
   return (
     <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32dvh]">
-      <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
+      <SheetHeader className="border-b border-cream-200 px-5 pb-4 pt-0">
         <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Phone number
         </SheetTitle>
@@ -343,16 +343,16 @@ function PhoneSheet({
           OTP will be sent to this new number from your next login.
         </p>
       </SheetHeader>
-      <SheetBody className="px-5 py-5">
+      <SheetBody className="px-[22px] py-5">
         <SheetField label="Phone number">
           <BuyerSheetPhoneInput value={phone} onChange={setPhone} />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t-0 bg-transparent px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] pt-2">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
+          className="flex-1 rounded-[12px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -360,7 +360,7 @@ function PhoneSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
+          className="flex-1 rounded-[12px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ phone })}
           disabled={pending}
         >
@@ -605,7 +605,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[var(--bg-base)] pb-8">
+    <div className="min-h-full bg-[var(--bg-base)] pb-8">
       <div className="md:hidden">
         <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
           <div className="flex items-center gap-4">

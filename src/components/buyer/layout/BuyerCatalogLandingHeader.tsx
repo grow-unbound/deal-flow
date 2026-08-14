@@ -29,8 +29,9 @@ export function BuyerCatalogLandingHeader({
   searchLoading = false,
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
-  const { data: me } = useBuyerMe();
-  const tenantName = me?.tenant.name || 'Yukti';
+  const { data: me, isLoading: meLoading } = useBuyerMe();
+  const tenantLoading = meLoading && !me;
+  const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
   return (
@@ -51,16 +52,29 @@ export function BuyerCatalogLandingHeader({
           <div className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-5">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-cream-200 bg-white shadow-[var(--shadow-sm)]">
-                  {tenantLogoUrl ? (
-                    <Image src={tenantLogoUrl} alt={tenantName} width={44} height={44} className="h-full w-full object-contain p-1" unoptimized />
-                  ) : (
-                    <span className="text-caption font-semibold uppercase text-cream-900">{getInitials(tenantName)}</span>
-                  )}
-                </div>
+                {tenantLoading ? (
+                  <div className="h-11 w-11 shrink-0 animate-pulse rounded-[10px] bg-cream-200" aria-label="Loading tenant logo" />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-cream-200 bg-white shadow-[var(--shadow-sm)]">
+                    {tenantLogoUrl ? (
+                      <Image src={tenantLogoUrl} alt={tenantName} width={44} height={44} className="h-full w-full object-contain p-1" unoptimized />
+                    ) : (
+                      <span className="text-caption font-semibold uppercase text-cream-900">{getInitials(tenantName)}</span>
+                    )}
+                  </div>
+                )}
                 <div className="min-w-0">
-                  <p className="truncate text-base font-semibold text-[var(--cream-900)]">{tenantName}</p>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-500)]">Catalog</p>
+                  {tenantLoading ? (
+                    <>
+                      <div className="h-4 w-24 animate-pulse rounded bg-cream-200" aria-label="Loading tenant name" />
+                      <div className="mt-1.5 h-3 w-16 animate-pulse rounded bg-cream-200" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="truncate text-base font-semibold text-[var(--cream-900)]">{tenantName}</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-500)]">Catalog</p>
+                    </>
+                  )}
                 </div>
               </div>
               <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />

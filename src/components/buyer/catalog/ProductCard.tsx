@@ -91,9 +91,8 @@ export function ProductCard({
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
 
-  const isEnriched = item.is_enriched !== false;
   const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
-  const isOos = isEnriched && item.stock_status === 'out_of_stock';
+  const isOos = item.stock_status === 'out_of_stock';
   const productHref = `/buy/product/${item.tenant_product_id}`;
   const showCampaignPrice = hasBuyerCampaignPrice(item);
   const discountPct = showCampaignPrice && item.resolved_price
@@ -254,7 +253,7 @@ export function ProductCard({
           </Link>
         </Pressable>
 
-        {!isEnriched ? null : cartItem ? (
+        {cartItem ? (
           <div
             className={cn(
               cn('absolute bottom-1.5 right-1.5 z-[2] flex items-center overflow-hidden rounded-md text-white', BUYER_QUICK_ADD_BUTTON_CLASS),
@@ -349,40 +348,31 @@ export function ProductCard({
               </p>
             ) : null}
             <div className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5', isCompact ? 'mt-1' : 'mt-2')}>
-              {!isEnriched ? (
+              <span
+                className="font-medium tabular-nums text-[var(--fg-1)]"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 500,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {formatNumberValue(item.price, 'CURRENCY_EXACT')}
+              </span>
+              {showCampaignPrice ? (
+                <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+                </span>
+              ) : null}
+              {showCampaignPrice && discountPct > 0 ? (
                 <span
-                  className="h-4 w-16 animate-pulse rounded bg-[var(--cream-100)]"
-                  aria-hidden
-                />
-              ) : (
-                <>
-                  <span
-                    className="font-medium tabular-nums text-[var(--fg-1)]"
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
-                      fontVariantNumeric: 'tabular-nums',
-                      fontWeight: 500,
-                      letterSpacing: '-0.01em',
-                    }}
-                  >
-                    {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-                  </span>
-                  {showCampaignPrice ? (
-                    <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
-                      {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
-                    </span>
-                  ) : null}
-                  {showCampaignPrice && discountPct > 0 ? (
-                    <span
-                      className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
-                      style={{ fontSize: 'var(--b-text-eyebrow)' }}
-                    >
-                      -{discountPct}%
-                    </span>
-                  ) : null}
-                </>
-              )}
+                  className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
+                  style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                >
+                  -{discountPct}%
+                </span>
+              ) : null}
             </div>
             {!isCompact && item.has_campaign_price && item.campaign_valid_until ? (
               <p className="mt-1 text-amber-700" style={{ fontSize: 'var(--b-text-sub)' }}>

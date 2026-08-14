@@ -9,7 +9,7 @@
 // /_next/static/* URLs are content-hashed by Next.js — a new deploy always produces new URLs,
 // never reuses old ones — so caching them is always safe with zero staleness risk.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `yukti-buyer-shell-${CACHE_VERSION}`;
 
 self.addEventListener('install', () => {

@@ -48,7 +48,7 @@ describe('navigateBuyerBack', () => {
     navigateBuyerBack(router);
 
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/buy/catalog');
+    expect(router.replace).toHaveBeenCalledWith('/buy/home');
     expect(window.sessionStorage.getItem('df_buyer_nav_direction')).toBe('back');
   });
 
@@ -63,9 +63,9 @@ describe('navigateBuyerBack', () => {
       value: { idx: 0 },
     });
 
-    navigateBuyerBack(router, '/buy/catalog');
+    navigateBuyerBack(router, '/buy/home');
 
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/buy/catalog');
+    expect(router.replace).toHaveBeenCalledWith('/buy/home');
   });
 });

@@ -1,3 +1,6 @@
+import { BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS } from '@/lib/buyer-ui';
+import { BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS, BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
+
 const SECTION_TITLE_STYLE = {
   fontFamily: 'var(--font-display)',
   fontSize: 'var(--b-text-section)',
@@ -11,7 +14,7 @@ const SECTION_LINK_STYLE = {
 
 function SectionHeader({ title, linkLabel }: { title: string; linkLabel?: string }) {
   return (
-    <div className="flex items-center justify-between px-4 pb-3">
+    <div className="flex items-center justify-between px-1 pb-3">
       <h2 className="leading-none text-[var(--cream-900)]" style={SECTION_TITLE_STYLE}>
         {title}
       </h2>
@@ -27,107 +30,105 @@ function SectionHeader({ title, linkLabel }: { title: string; linkLabel?: string
   );
 }
 
-function PromotionCarouselSkeletonCards() {
+/** Mirrors CatalogDiscoveryLanding: campaigns → brands → categories with no left rail on landing. */
+export default function CatalogLoading() {
   return (
-    <>
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50">
-          <div className="aspect-[15/8] w-full animate-pulse bg-cream-100" />
-          <div className="space-y-2 bg-white px-5 py-4">
-            <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+    <div className="flex flex-col pb-8" role="status" aria-label="Loading catalog">
+      <div className="sticky top-0 z-[15] border-b border-cream-200 bg-cream-50/95 backdrop-blur-md md:hidden">
+        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-5">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
+            <div className="space-y-2">
+              <div className="h-4 w-32 animate-pulse rounded bg-cream-200" />
+              <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
+            </div>
           </div>
+          <div className="h-11 w-11 shrink-0 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
         </div>
-      ))}
-    </>
-  );
-}
+        <div className="px-4 pb-2">
+          <div className="h-10 w-full animate-pulse rounded-[12px] bg-cream-200" />
+        </div>
+        <div className="border-t border-cream-200 px-4 py-3">
+          <div className="h-4 w-40 animate-pulse rounded bg-cream-200" />
+        </div>
+      </div>
 
-function ProductCarouselSkeletonCards() {
-  return (
-    <>
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="w-[178px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50">
-          <div className="aspect-square animate-pulse bg-cream-100" />
-          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
-            <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
-            <div className="mt-0.5 h-3.5 w-2/5 animate-pulse rounded bg-cream-200" />
-            <div className="mt-2 h-5 w-24 animate-pulse rounded bg-cream-200" />
+      <div className="px-5 pb-4 sm:px-4 lg:px-4 lg:pb-6">
+        <section className="pt-6 lg:pt-8">
+          <SectionHeader title="Campaigns" />
+          <div className="flex gap-3 overflow-hidden px-1">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className={`${BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200`}
+              >
+                <div className="aspect-[15/8] w-full animate-pulse bg-cream-100" />
+                <div className="space-y-2 bg-white px-3.5 py-3">
+                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      ))}
-    </>
-  );
-}
+        </section>
 
-export default function HomeLoading() {
-  return (
-    <div className="pb-8" role="status" aria-label="Loading home">
-      <div className="flex items-start justify-between px-5 pb-2 pt-6">
-        <div className="space-y-2">
-          <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-          <h1
-            className="font-semibold leading-[0.96] text-[var(--cream-900)]"
-            style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.022em' }}
-          >
-            Your shelf, this quarter.
-          </h1>
-        </div>
-        <div className="mt-1.5 h-12 w-12 shrink-0 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-      </div>
+        <section className="pt-10">
+          <SectionHeader title="Order Again" />
+          <div className="flex gap-2.5 overflow-hidden px-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50`}>
+                <div className="aspect-square animate-pulse bg-cream-100" />
+                <div className="px-2 pb-2 pt-1.5">
+                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                  <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <div className="grid grid-cols-2 gap-2.5 px-3 pt-3">
-        <div className="rounded-[12px] bg-[#1f3a33] px-4 py-5">
-          <div className="h-3 w-28 animate-pulse rounded bg-white/20" />
-          <div className="mt-3 h-10 w-28 animate-pulse rounded bg-white/20" />
-          <div className="mt-3 h-4 w-36 animate-pulse rounded bg-white/20" />
-        </div>
-        <div className="rounded-[12px] bg-[#1f3a33] px-4 py-5">
-          <div className="h-3 w-28 animate-pulse rounded bg-white/20" />
-          <div className="mt-3 h-10 w-28 animate-pulse rounded bg-white/20" />
-          <div className="mt-3 h-4 w-36 animate-pulse rounded bg-white/20" />
-        </div>
-        <div className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-5">
-          <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-          <div className="mt-3 h-8 w-24 animate-pulse rounded bg-cream-200" />
-          <div className="mt-3 h-4 w-36 animate-pulse rounded bg-cream-200" />
-        </div>
-        <div className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-5">
-          <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-          <div className="mt-3 h-8 w-24 animate-pulse rounded bg-cream-200" />
-          <div className="mt-3 h-4 w-36 animate-pulse rounded bg-cream-200" />
-        </div>
-        <div className="col-span-2 h-4 w-40 animate-pulse rounded bg-cream-200 px-1" />
-      </div>
+        <section className="pt-8">
+          <SectionHeader title="Bestsellers" />
+          <div className="flex gap-2.5 overflow-hidden px-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50`}>
+                <div className="aspect-square animate-pulse bg-cream-100" />
+                <div className="px-2 pb-2 pt-1.5">
+                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                  <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <div className="pt-10">
-        <SectionHeader title="Promotions" linkLabel="See all" />
-        <div className="flex gap-3 overflow-hidden px-4">
-          <PromotionCarouselSkeletonCards />
-        </div>
-      </div>
+        <section className="pt-8">
+          <SectionHeader title="Brands" />
+          <div className="flex gap-2 overflow-hidden px-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex w-[calc((100vw-2.5rem)/3)] max-w-[124px] shrink-0 flex-col items-center">
+                <div className="aspect-square w-full animate-pulse rounded-full border border-cream-200 bg-cream-100" />
+                <div className="mt-1.5 h-4 w-3/4 animate-pulse rounded bg-cream-200" />
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <div className="pt-10">
-        <SectionHeader title="Order again" />
-        <div className="flex gap-3 overflow-hidden px-4">
-          <ProductCarouselSkeletonCards />
-        </div>
-      </div>
-
-      <div className="pt-10">
-        <SectionHeader title="Bestsellers" />
-        <div className="flex gap-3 overflow-hidden px-4">
-          <ProductCarouselSkeletonCards />
-        </div>
-      </div>
-
-      <div className="pt-10">
-        <SectionHeader title="Recent activity" linkLabel="See all" />
-        <div className="space-y-2 px-4">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-[88px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-          ))}
-        </div>
+        <section className="pt-8 pb-4">
+          <SectionHeader title="Categories" />
+          <div className={BUYER_PRODUCT_GRID_CLASS}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className={`${BUYER_TILE_FRAME_CLASS} rounded-[12px]`}
+              >
+                <div className="aspect-square animate-pulse bg-cream-100" />
+                <div className="flex flex-col px-3 pt-2.5">
+                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );

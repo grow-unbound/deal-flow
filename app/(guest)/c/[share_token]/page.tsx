@@ -6,5 +6,5 @@ export default async function CampaignSharePage({
   params: Promise<{ share_token: string }>;
 }) {
   const { share_token } = await params;
-  redirect(`/buy/catalog?share_token=${encodeURIComponent(share_token)}`);
+  redirect(`/buy/home?share_token=${encodeURIComponent(share_token)}`);
 }

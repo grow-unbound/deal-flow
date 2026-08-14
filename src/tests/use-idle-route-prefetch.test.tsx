@@ -15,13 +15,13 @@ describe('useIdleRoutePrefetch', () => {
   beforeEach(() => {
     prefetchMock.mockReset();
     usePathnameMock.mockReset();
-    usePathnameMock.mockReturnValue('/buy/catalog');
+    usePathnameMock.mockReturnValue('/buy/home');
     vi.useFakeTimers();
   });
 
   it('prefetches only non-active routes and does not repeat on rerender', () => {
     const { rerender } = renderHook(() =>
-      useIdleRoutePrefetch(['/buy/catalog', '/buy/orders']),
+      useIdleRoutePrefetch(['/buy/home', '/buy/orders']),
     );
 
     vi.runAllTimers();

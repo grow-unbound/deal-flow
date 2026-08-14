@@ -220,21 +220,21 @@ export function BuyerDesktopHeader() {
     <>
       <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
         <div
-          className="mx-auto grid min-h-[64px] w-full grid-cols-[auto_minmax(280px,1fr)_auto] items-center gap-4 px-5 py-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,760px)_auto]"
+          className="mx-auto flex min-h-[64px] w-full items-center gap-4 px-5 py-2.5"
           style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
         >
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {isBuyerLoading ? (
               <div
                 className="h-[3.25rem] w-16 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
                 aria-label="Loading tenant logo"
               />
             ) : tenantLogoUrl ? (
-              <Link href="/buy/catalog" className="flex h-[3.25rem] w-16 shrink-0 items-center justify-start">
+              <Link href="/buy/home" className="flex h-[3.25rem] w-16 shrink-0 items-center justify-start">
                 <Image src={tenantLogoUrl} alt={tenantName} width={64} height={52} className="h-[3.25rem] w-auto max-w-16 object-contain object-left" unoptimized />
               </Link>
             ) : (
-              <Link href="/buy/catalog" className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
+              <Link href="/buy/home" className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
                 {tenantName}
               </Link>
             )}
@@ -244,25 +244,27 @@ export function BuyerDesktopHeader() {
             <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
           </div>
 
-          <div className="flex min-w-0 justify-center">
-            <div className="flex h-11 w-full min-w-0 max-w-[760px] items-center gap-3 rounded-[12px] border border-cream-300 bg-[var(--cream-50)] px-4 text-cream-500 transition-colors hover:border-cream-400 focus-within:border-cream-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-ember-400/20">
-              {searchFetching ? <Spinner size="sm" className="shrink-0 text-cream-500" /> : <Search className="h-4 w-4 shrink-0" />}
+          <div className="flex min-w-[280px] flex-1 justify-center">
+            <div className="relative w-full min-w-0 max-w-[760px]">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cream-500">
+                {searchFetching ? <Spinner size="sm" /> : <Search className="h-4 w-4" />}
+              </span>
               <input
                 ref={searchInputRef}
                 type="search"
                 value={searchInput}
                 onChange={(event) => handleSearchInputChange(event.target.value)}
                 placeholder="Search products, SKU, brand…"
-                className="min-w-0 flex-1 bg-transparent text-[length:var(--b-text-sub)] text-cream-950 outline-none placeholder:text-cream-500"
+                className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--cream-50)] pl-11 pr-20 text-[length:var(--b-text-sub)] text-cream-950 outline-none transition-colors hover:border-cream-400 focus:border-cream-400 focus:ring-2 focus:ring-ember-400/20 placeholder:text-cream-500"
                 aria-label="Search products"
               />
-              <span className="ml-auto hidden shrink-0 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+              <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
                 Ctrl/Cmd+K
               </span>
             </div>
           </div>
 
-          <div className="flex min-w-0 justify-self-end">
+          <div className="flex min-w-0 shrink-0 justify-end">
             <div className="flex shrink-0 items-center gap-1.5">
             <Link
               href="/buy/orders"

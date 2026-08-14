@@ -8,7 +8,7 @@ const apiFetchMock = vi.fn();
 const posthogCaptureMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/buy/catalog',
+  usePathname: () => '/buy/home',
   useSearchParams: () => useSearchParamsMock(),
 }));
 
@@ -41,7 +41,7 @@ vi.mock('@/contexts/BuyerRealtimeContext', () => ({
   }),
 }));
 
-import CatalogPage from '../../app/(buyer)/buy/catalog/page';
+import CatalogPage from '../../app/(buyer)/buy/home/page';
 import OrdersPage from '../../app/(buyer)/buy/orders/page';
 
 function jsonResponse(data: unknown) {

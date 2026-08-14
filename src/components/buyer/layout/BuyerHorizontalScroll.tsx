@@ -9,6 +9,9 @@ interface BuyerHorizontalScrollProps extends React.HTMLAttributes<HTMLDivElement
   children: React.ReactNode;
 }
 
+/** Wheel ticks arriving more than this long after the previous one on this node are treated as a fresh, passing-through hover rather than sustained intent to scroll the carousel. */
+const WHEEL_INTENT_GRACE_MS = 350;
+
 const CHEVRON_BUTTON_CLASS =
   'absolute top-1/2 z-[3] hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-1)] shadow-[var(--shadow-sm)] [@media(hover:hover)]:flex [@media(hover:hover)]:hover:bg-[var(--bg-recessed)]';
 
@@ -22,6 +25,7 @@ export function BuyerHorizontalScroll({
   const [canScrollRight, setCanScrollRight] = React.useState(false);
   // Click-drag state — mouse/pen only, native touch scrolling is left untouched.
   const dragRef = React.useRef<{ startX: number; startScrollLeft: number; dragging: boolean; moved: boolean; pointerId: number } | null>(null);
+  const lastWheelAtRef = React.useRef(0);
 
   const updateScrollState = React.useCallback(() => {
     const node = scrollRef.current;
@@ -56,6 +60,14 @@ export function BuyerHorizontalScroll({
       const atStart = node.scrollLeft <= 0;
       const atEnd = node.scrollLeft + node.clientWidth >= node.scrollWidth - 1;
       if ((event.deltaY < 0 && atStart) || (event.deltaY > 0 && atEnd)) return;
+
+      // First tick after a gap is a fresh arrival (cursor passing through while the page
+      // scrolls) — let it through untouched. Only sustained ticks (still hovering) redirect.
+      const now = event.timeStamp;
+      const isFreshEntry = now - lastWheelAtRef.current > WHEEL_INTENT_GRACE_MS;
+      lastWheelAtRef.current = now;
+      if (isFreshEntry) return;
+
       event.preventDefault();
       node.scrollLeft += event.deltaY;
     }

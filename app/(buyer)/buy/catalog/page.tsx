@@ -1,13 +1,10 @@
-import { Suspense } from 'react';
-import { CatalogDiscoveryLanding } from '@/components/buyer/catalog/CatalogDiscoveryLanding';
-import { BuyerSelectionGate } from '@/components/buyer/layout/BuyerSelectionGate';
-import { CatalogShareTokenView } from './CatalogShareTokenView';
+import { redirect } from 'next/navigation';
 
-type CatalogPageProps = {
+type CatalogRedirectPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function CatalogPage({ searchParams }: CatalogPageProps) {
+export default async function BuyerCatalogRedirectPage({ searchParams }: CatalogRedirectPageProps) {
   const params = await searchParams;
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -19,23 +16,6 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     }
     if (value) search.set(key, value);
   }
-  const returnTo = search.toString() ? `/buy/catalog?${search.toString()}` : '/buy/catalog';
-  const raw = params.share_token;
-  const shareToken = Array.isArray(raw) ? raw[0] : raw;
-
-  if (shareToken) {
-    return (
-      <BuyerSelectionGate returnTo={returnTo}>
-        <Suspense fallback={null}>
-          <CatalogShareTokenView shareToken={shareToken} />
-        </Suspense>
-      </BuyerSelectionGate>
-    );
-  }
-
-  return (
-    <BuyerSelectionGate returnTo={returnTo}>
-      <CatalogDiscoveryLanding />
-    </BuyerSelectionGate>
-  );
+  const qs = search.toString();
+  redirect(qs ? `/buy/home?${qs}` : '/buy/home');
 }

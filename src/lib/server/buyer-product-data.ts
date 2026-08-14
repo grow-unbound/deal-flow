@@ -12,8 +12,6 @@ import type {
   BuyerCatalogItem,
   BuyerCatalogResponse,
   BuyerCatalogSummary,
-  BuyerCatalogTextItem,
-  BuyerCatalogTextResponse,
   BuyerCategory,
 } from '@/types/buyer';
 
@@ -121,6 +119,13 @@ export type BuyerProductEnrichmentParams = {
     is_featured?: boolean;
   }>;
   qtyByProductId?: Map<string, number>;
+  /**
+   * Price/stock already resolved by `search_products_scoped` (e.g. via `resolveCatalogScope`).
+   * When provided, skips the `resolve_prices_batch` RPC and the standalone inventory query
+   * entirely — callers without a prior scope resolution (product-detail resolve, share-token
+   * catalog, cart/order assembly) omit this and get the original self-contained resolution.
+   */
+  priceStockByProductId?: Map<string, { unit_price: number; on_hand: number }>;
 };
 
 type CatalogPageParams = {
@@ -146,6 +151,8 @@ type CatalogScopeTextRow = {
   brand_name: string | null;
   category_id: string | null;
   category_name: string | null;
+  unit_price: number | null;
+  on_hand: number | null;
 };
 
 type CatalogScopeResult = {
@@ -186,7 +193,18 @@ function rowsToTextMap(rows: ScopedProductSearchRow[]): Map<string, CatalogScope
     brand_name: row.brand_name,
     category_id: row.category_id,
     category_name: row.category_name,
+    unit_price: row.unit_price,
+    on_hand: row.on_hand,
   }]));
+}
+
+/** Price/stock already resolved by `search_products_scoped` — skips re-resolving via `resolve_prices_batch`. */
+function priceStockMapFromScope(textByProductId: Map<string, CatalogScopeTextRow>): Map<string, { unit_price: number; on_hand: number }> {
+  const out = new Map<string, { unit_price: number; on_hand: number }>();
+  for (const [productId, row] of textByProductId) {
+    out.set(productId, { unit_price: Number(row.unit_price ?? 0), on_hand: Number(row.on_hand ?? 0) });
+  }
+  return out;
 }
 
 export async function resolveVisibleCampaignMap(
@@ -400,6 +418,7 @@ export async function enrichBuyerProducts(
     inventoryWarehouseId = null,
     campaignByProductId = new Map(),
     qtyByProductId = new Map(),
+    priceStockByProductId = null,
   } = params;
 
   const orderedIds = tenantProductIds.filter(Boolean);
@@ -464,6 +483,7 @@ export async function enrichBuyerProducts(
           .in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
     (() => {
+      if (priceStockByProductId) return Promise.resolve({ data: [], error: null });
       if (!stockVisibilityEnabled) return Promise.resolve({ data: [], error: null });
       let inventoryQuery = db
         .schema('app')
@@ -524,15 +544,29 @@ export async function enrichBuyerProducts(
   );
 
   const inventoryMap = new Map<string, number>();
-  for (const row of inventoryRows) {
-    inventoryMap.set(
-      row.tenant_product_id,
-      (inventoryMap.get(row.tenant_product_id) ?? 0) + Number(row.qty_available ?? 0),
-    );
+  if (priceStockByProductId) {
+    // Match the standalone-query path's semantics exactly: stock is only ever
+    // surfaced (even internally) when the tenant has visibility turned on.
+    if (stockVisibilityEnabled) {
+      for (const [productId, entry] of priceStockByProductId) {
+        inventoryMap.set(productId, Math.max(0, entry.on_hand));
+      }
+    }
+  } else {
+    for (const row of inventoryRows) {
+      inventoryMap.set(
+        row.tenant_product_id,
+        (inventoryMap.get(row.tenant_product_id) ?? 0) + Number(row.qty_available ?? 0),
+      );
+    }
   }
 
   const priceMap = new Map<string, number>();
-  if (buyerId && productIds.length > 0) {
+  if (priceStockByProductId) {
+    for (const [productId, entry] of priceStockByProductId) {
+      priceMap.set(productId, entry.unit_price);
+    }
+  } else if (buyerId && productIds.length > 0) {
     const grouped = new Map<number, string[]>();
     for (const productId of productIds) {
       const qty = Math.max(1, Number(qtyByProductId.get(productId) ?? 1));
@@ -770,6 +804,7 @@ export async function fetchBuyerCatalogPage(
     allowedTenantBrandIds: params.allowedTenantBrandIds,
     inventoryWarehouseId: params.inventoryWarehouseId,
     campaignByProductId: scope.campaignByProductId,
+    priceStockByProductId: priceStockMapFromScope(scope.textByProductId),
   });
 
   return {
@@ -783,181 +818,6 @@ export async function fetchBuyerCatalogPage(
     selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
     selected_campaign_message: scope.selectedCampaign?.message ?? null,
   };
-}
-
-/**
- * Phase 1 of buyer-PWA search-as-you-type: text-only match, no inventory/price
- * resolution. `resolveCatalogScope`'s underlying RPC already carries these
- * text fields on every row, so this reuses that single call rather than a
- * second lookup.
- */
-type CatalogScopeImageRow = {
-  id: string;
-  image_urls: string[] | null;
-  r2_small_key: string | null;
-  r2_medium_key: string | null;
-  master_product_id: string | null;
-  tenant_brand_id: string | null;
-  tenant_category_id: string | null;
-};
-
-/**
- * Batched, PK-indexed image lookup for phase-1 text results — cheap enough
- * to attach on every keystroke (no join fan-out like enrichBuyerProducts'
- * inventory/price resolution), so cards show real photos immediately instead
- * of a blank placeholder while phase-2 price/stock enrichment is pending.
- * Mirrors enrichBuyerProducts' own/master fallback chain, condensed.
- */
-async function resolveCatalogScopeImages(
-  db: SupabaseClient,
-  productIds: string[],
-): Promise<Map<string, { image_urls: string[]; brand_logo_url: string | null; category_image_url: string | null }>> {
-  const out = new Map<string, { image_urls: string[]; brand_logo_url: string | null; category_image_url: string | null }>();
-  if (productIds.length === 0) return out;
-
-  const { data: productRows, error: productError } = await db
-    .schema('app')
-    .from('tenant_products')
-    .select('id, image_urls, r2_small_key, r2_medium_key, master_product_id, tenant_brand_id, tenant_category_id')
-    .in('id', productIds);
-  if (productError) throw new Error(productError.message);
-  const products = (productRows ?? []) as CatalogScopeImageRow[];
-
-  const masterProductIds = uniq(products.map((p) => p.master_product_id).filter((v): v is string => Boolean(v)));
-  const tenantBrandIds = uniq(products.map((p) => p.tenant_brand_id).filter((v): v is string => Boolean(v)));
-  const tenantCategoryIds = uniq(products.map((p) => p.tenant_category_id).filter((v): v is string => Boolean(v)));
-
-  const [masterProductsRes, tenantBrandsRes, tenantCategoriesRes] = await Promise.all([
-    masterProductIds.length > 0
-      ? db.schema('catalog').from('products').select('id, image_urls').in('id', masterProductIds)
-      : Promise.resolve({ data: [], error: null }),
-    tenantBrandIds.length > 0
-      ? db.schema('app').from('tenant_brands').select('id, logo_url, master_brand_id').in('id', tenantBrandIds).is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    tenantCategoryIds.length > 0
-      ? db.schema('app').from('tenant_categories').select('id, r2_image_thumb_key, r2_image_medium_key').in('id', tenantCategoryIds).is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (masterProductsRes.error) throw new Error((masterProductsRes.error as { message: string }).message);
-  if (tenantBrandsRes.error) throw new Error((tenantBrandsRes.error as { message: string }).message);
-  if (tenantCategoriesRes.error) throw new Error((tenantCategoriesRes.error as { message: string }).message);
-
-  const masterProductMap = new Map(
-    ((masterProductsRes.data ?? []) as Array<{ id: string; image_urls: string[] | null }>).map((row) => [row.id, row]),
-  );
-  const masterBrandIds = uniq(
-    ((tenantBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null; master_brand_id: string | null }>)
-      .map((row) => row.master_brand_id)
-      .filter((v): v is string => Boolean(v)),
-  );
-  const masterBrandsRes = masterBrandIds.length > 0
-    ? await db.schema('catalog').from('brands').select('id, logo_url').in('id', masterBrandIds)
-    : { data: [], error: null };
-  if (masterBrandsRes.error) throw new Error((masterBrandsRes.error as { message: string }).message);
-  const masterBrandMap = new Map(
-    ((masterBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null }>).map((row) => [row.id, row]),
-  );
-  const tenantBrandMap = new Map(
-    ((tenantBrandsRes.data ?? []) as Array<{ id: string; logo_url: string | null; master_brand_id: string | null }>).map((row) => [row.id, row]),
-  );
-  const tenantCategoryMap = new Map(
-    ((tenantCategoriesRes.data ?? []) as Array<{ id: string; r2_image_thumb_key: string | null; r2_image_medium_key: string | null }>).map((row) => [row.id, row]),
-  );
-
-  for (const product of products) {
-    const masterProduct = product.master_product_id ? masterProductMap.get(product.master_product_id) ?? null : null;
-    const tenantBrand = product.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id) ?? null : null;
-    const masterBrand = tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null;
-    const tenantCategory = product.tenant_category_id ? tenantCategoryMap.get(product.tenant_category_id) ?? null : null;
-
-    out.set(product.id, {
-      image_urls: (product.image_urls?.length ? product.image_urls : masterProduct?.image_urls ?? []) as string[],
-      brand_logo_url: tenantBrand?.logo_url ?? masterBrand?.logo_url ?? null,
-      category_image_url: r2Url(tenantCategory?.r2_image_thumb_key ?? tenantCategory?.r2_image_medium_key) ?? null,
-    });
-  }
-
-  return out;
-}
-
-export async function fetchBuyerCatalogTextPage(
-  params: CatalogPageParams,
-): Promise<BuyerCatalogTextResponse> {
-  const scope = await resolveCatalogScope(params);
-  const imagesByProductId = await resolveCatalogScopeImages(params.db, scope.orderedProductIds);
-
-  const items: BuyerCatalogTextItem[] = scope.orderedProductIds.flatMap((id) => {
-    const text = scope.textByProductId.get(id);
-    if (!text) return [];
-    const images = imagesByProductId.get(id);
-    return [{
-      id,
-      tenant_product_id: id,
-      display_name: text.product_name,
-      internal_sku: text.sku ?? id,
-      brand_id: text.brand_id,
-      brand_name: text.brand_name,
-      category_id: text.category_id,
-      category_name: text.category_name,
-      image_urls: images?.image_urls ?? [],
-      brand_logo_url: images?.brand_logo_url ?? null,
-      category_image_url: images?.category_image_url ?? null,
-    }];
-  });
-
-  return {
-    items,
-    total: scope.total,
-    has_more: params.offset + params.limit < scope.total,
-    selected_campaign_id: scope.selectedCampaign?.id ?? null,
-    selected_campaign_name: scope.selectedCampaign?.name ?? null,
-    selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
-    selected_campaign_message: scope.selectedCampaign?.message ?? null,
-  };
-}
-
-export type BuyerCatalogEnrichmentParams = {
-  db: SupabaseClient;
-  tenantId: string;
-  buyerId: string | null;
-  tenantProductIds: string[];
-  allowedTenantBrandIds?: string[] | null;
-  inventoryWarehouseId?: string | null;
-  visibleCampaigns: BuyerVisibleCatalog[];
-};
-
-/**
- * Phase 2 of buyer-PWA search-as-you-type: price/stock enrichment for a
- * specific, already-resolved set of ids (e.g. the cards a viewport observer
- * just brought into view). Skips `resolveCatalogScope`'s RPC call entirely —
- * the ids are already known — and only recomputes the (cheap) campaign-price
- * lookup for those ids before enriching.
- */
-export async function fetchBuyerCatalogEnrichmentByIds(
-  params: BuyerCatalogEnrichmentParams,
-): Promise<BuyerCatalogItem[]> {
-  const orderedIds = params.tenantProductIds.filter(Boolean);
-  if (orderedIds.length === 0) return [];
-
-  const campaignByProductId = await resolveVisibleCampaignMap(params.db, {
-    tenantId: params.tenantId,
-    buyerId: params.buyerId,
-    productIds: orderedIds,
-    visibleCampaigns: params.visibleCampaigns,
-  });
-
-  const itemsMap = await enrichBuyerProducts(params.db, {
-    tenantId: params.tenantId,
-    buyerId: params.buyerId,
-    tenantProductIds: orderedIds,
-    allowedTenantBrandIds: params.allowedTenantBrandIds,
-    inventoryWarehouseId: params.inventoryWarehouseId,
-    campaignByProductId,
-  });
-
-  return orderedIds
-    .map((id) => itemsMap.get(id))
-    .filter((item): item is BuyerCatalogItem => Boolean(item));
 }
 
 type FacetScopeParams = {

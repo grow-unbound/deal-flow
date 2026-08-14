@@ -52,14 +52,14 @@ const STICKY_HEADER: React.CSSProperties = {
 };
 
 export function safeReturnTo(raw: string | null): string {
-  if (!raw?.trim()) return '/buy/catalog';
+  if (!raw?.trim()) return '/buy/home';
   try {
     const decoded = decodeURIComponent(raw);
     if (decoded.startsWith('/buy/') && !decoded.startsWith('//')) return decoded;
   } catch {
     /* ignore */
   }
-  return '/buy/catalog';
+  return '/buy/home';
 }
 
 function buildSelectedLocationAnalytics(location: BuyerDeliveryLocation) {
@@ -94,7 +94,7 @@ export function BuyerLocationPickerBody({ returnTo, mode, onDone }: BuyerLocatio
   const { data: meData, isLoading: meLoading } = useBuyerMe();
   const outlets = meData?.tenant.outlets ?? [];
   const tenantDisplayName = meData?.tenant.name ?? '';
-  const returnRoutePattern = getAnalyticsRouteInfo(returnTo.split('?')[0] || '/buy/catalog').route_pattern;
+  const returnRoutePattern = getAnalyticsRouteInfo(returnTo.split('?')[0] || '/buy/home').route_pattern;
 
   const [input, setInput] = React.useState('');
   const [suggestions, setSuggestions] = React.useState<google.maps.places.AutocompleteSuggestion[]>([]);

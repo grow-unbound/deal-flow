@@ -9,8 +9,7 @@ import { CatalogSearchEmptyState, CatalogSearchErrorState, CatalogSearchPromptSt
 import { Spinner } from '@/components/ui/spinner';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
-import { useBuyerCatalogSearchTextInfinite } from '@/hooks/useBuyerProducts';
+import { useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 
 export function BuyerSearchPageClient() {
@@ -34,7 +33,7 @@ export function BuyerSearchPageClient() {
     setDebounced(urlQ.trim());
   }, [urlQ]);
 
-  const catalogSearchQuery = useBuyerCatalogSearchTextInfinite(
+  const catalogSearchQuery = useBuyerCatalogSearchInfinite(
     debounced,
     {
       categoryId: categoryId || undefined,
@@ -45,7 +44,7 @@ export function BuyerSearchPageClient() {
   );
 
   const catalogPages = catalogSearchQuery.data?.pages ?? [];
-  const catalogTextItems = React.useMemo(
+  const shownItems = React.useMemo(
     () => catalogPages.flatMap((page) => page.items ?? []),
     [catalogPages],
   );
@@ -57,14 +56,8 @@ export function BuyerSearchPageClient() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const resetKey = React.useMemo(
-    () => [debounced, categoryId, brandId, catalogId].join('|'),
-    [debounced, categoryId, brandId, catalogId],
-  );
-  const { shownItems, registerItemRef } = useTwoPhaseProductGrid(catalogTextItems, resetKey);
-
   const fetching = catalogSearchQuery.isFetching;
-  const initialLoading = fetching && catalogTextItems.length === 0;
+  const initialLoading = fetching && shownItems.length === 0;
   const error = catalogSearchQuery.isError;
 
   const sentinelIndex = getSentinelInsertIndex(shownItems.length, BUYER_INFINITE_SCROLL_RATIO);
@@ -113,7 +106,7 @@ export function BuyerSearchPageClient() {
 
   return (
     <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-base)] pb-[var(--tab-bar)] md:pb-0">
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 py-2 backdrop-blur-md md:hidden">
+      <header className="fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-2 border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 px-3 backdrop-blur-md md:hidden">
         <button
           type="button"
           onClick={handleClose}
@@ -137,6 +130,8 @@ export function BuyerSearchPageClient() {
           />
         </div>
       </header>
+      {/* Spacer for the fixed header above — md:hidden matches the header's own breakpoint gate. */}
+      <div className="h-14 shrink-0 md:hidden" aria-hidden />
       <div className="flex-1 px-0 pt-2">
         {initialLoading ? (
           <ProductGrid items={[]} loading />
@@ -152,7 +147,6 @@ export function BuyerSearchPageClient() {
             loadingMore={catalogLoadingMore}
             sentinelIndex={sentinelIndex}
             sentinelRef={sentinelRef}
-            registerItemRef={registerItemRef}
           />
         )}
       </div>

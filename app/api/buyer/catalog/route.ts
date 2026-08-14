@@ -5,12 +5,10 @@ import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import {
-  fetchBuyerCatalogEnrichmentByIds,
   fetchBuyerCatalogPage,
-  fetchBuyerCatalogTextPage,
   resolveBuyerCatalogContext,
 } from '@/lib/server/buyer-product-data';
-import type { BuyerCatalogResponse, BuyerCatalogTextResponse } from '@/types/buyer';
+import type { BuyerCatalogResponse } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
 
@@ -29,47 +27,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const requestedCampaignId = searchParams.get('campaign_id')?.trim() ?? '';
     const limit = Math.min(Math.max(1, Number(searchParams.get('limit') ?? PAGE_LIMIT)), 100);
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
-    const mode = searchParams.get('mode')?.trim() ?? '';
-    const idsParam = searchParams.get('ids')?.trim() ?? '';
-
-    // Phase 2 of buyer-PWA search: enrich a specific, already-known set of ids
-    // (e.g. cards scrolled into view) with price/stock — no scope resolution.
-    if (idsParam) {
-      const ids = idsParam.split(',').map((id) => id.trim()).filter(Boolean);
-      const context = await resolveBuyerCatalogContext(supabaseAdmin as any, req, profile);
-      const items = await fetchBuyerCatalogEnrichmentByIds({
-        db: supabaseAdmin as any,
-        tenantId: context.tenantId,
-        buyerId: context.buyerId,
-        tenantProductIds: ids,
-        allowedTenantBrandIds: context.allowedTenantBrandIds,
-        inventoryWarehouseId: context.inventoryWarehouseId,
-        visibleCampaigns: context.visibleCampaigns,
-      });
-      return NextResponse.json({ items }, { headers: BUYER_CACHE_PRICED });
-    }
 
     const context = await resolveBuyerCatalogContext(supabaseAdmin as any, req, profile);
-
-    // Phase 1 of buyer-PWA search: text-only match, no inventory/price join.
-    if (mode === 'text') {
-      const textResponse = await fetchBuyerCatalogTextPage({
-        db: supabaseAdmin as any,
-        tenantId: context.tenantId,
-        buyerId: context.buyerId,
-        allowedTenantBrandIds: context.allowedTenantBrandIds,
-        inventoryWarehouseId: context.inventoryWarehouseId,
-        visibleCampaigns: context.visibleCampaigns,
-        search,
-        categoryId,
-        brandId,
-        tenantProductId,
-        requestedCampaignId,
-        limit,
-        offset,
-      });
-      return NextResponse.json(textResponse satisfies BuyerCatalogTextResponse, { headers: BUYER_CACHE_PRICED });
-    }
 
     if (context.buyerId) {
       void recordBuyerAppActivitySafe(supabaseAdmin as any, {

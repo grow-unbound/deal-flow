@@ -28,7 +28,7 @@ export default function WhatsappConsentPage() {
   // Already consented (or nothing to gate, e.g. seller preview) — skip straight through.
   const shouldSkip = !isLoading && !!me && !me.whatsapp_consent_required;
   useEffect(() => {
-    if (shouldSkip) router.replace('/buy/catalog');
+    if (shouldSkip) router.replace('/buy/home');
   }, [shouldSkip, router]);
   if (shouldSkip) return null;
 
@@ -60,7 +60,7 @@ export default function WhatsappConsentPage() {
         const latestMe = await meRes.json() as BuyerMeData;
         queryClient.setQueryData<BuyerMeData>(['buyer-me'], latestMe);
       }
-      router.replace('/buy/catalog');
+      router.replace('/buy/home');
     } catch {
       setError('Network error. Please check your connection and try again.');
       setSubmitting(false);

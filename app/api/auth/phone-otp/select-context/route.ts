@@ -87,8 +87,8 @@ export async function POST(request: NextRequest) {
       });
     }
     // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
-    // the consent checkbox before /buy/catalog.
-    let redirect = '/buy/catalog';
+    // the consent checkbox before /buy/home.
+    let redirect = '/buy/home';
     if (candidate.buyer_id) {
       const { supabaseAdmin } = await import('@/lib/supabase');
       if (supabaseAdmin) {

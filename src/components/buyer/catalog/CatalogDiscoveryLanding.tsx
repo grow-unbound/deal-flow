@@ -14,16 +14,19 @@ import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontal
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
-import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import {
   useBuyerBrands,
   useBuyerCatalogs,
-  useBuyerCatalogSearchTextInfinite,
+  useBuyerCatalogSearchInfinite,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
-import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
+import {
+  BUYER_LOOKBOOK_ASPECT_CLASS,
+  BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS,
+  BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
+} from '@/lib/buyer-lookbook';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
 import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { BUYER_REFERENCE_QUERY_GC_TIME, BUYER_REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -94,12 +97,11 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     refetch: refetchCategories,
   } = useBuyerCategories();
 
-  const searchQueryResult = useBuyerCatalogSearchTextInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
+  const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
   const searchPages = searchQueryResult.data?.pages ?? [];
-  const searchTextItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
-  const { shownItems: searchItems, registerItemRef: searchRegisterItemRef } = useTwoPhaseProductGrid(searchTextItems, debouncedSearch);
+  const searchItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
   const searchHasMore = searchPages.at(-1)?.has_more ?? false;
-  const searchLoading = searchQueryResult.isLoading && searchTextItems.length === 0;
+  const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
   const searchError = searchQueryResult.isError;
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
 
@@ -174,7 +176,6 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             loadingMore={searchLoadingMore}
             sentinelIndex={searchSentinelIndex}
             sentinelRef={searchSentinelRef}
-            registerItemRef={searchRegisterItemRef}
           />
         ) : allSectionsFailed ? (
           <p className="px-1 pt-4 text-center text-sm text-[var(--danger-500)]">
@@ -184,31 +185,32 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
           <>
             {showPromotionsSkeleton || promotions.length > 0 ? (
               <section className="pt-8 lg:pt-10">
-                <BuyerSectionRow title="Campaigns" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
+                <BuyerSectionRow title="Campaigns" className="px-1 pb-3" />
                 {showPromotionsSkeleton ? (
                   <CampaignTilesSkeleton />
                 ) : (
-                  <div className="grid gap-3 px-1 md:grid-cols-2">
+                  <BuyerHorizontalScroll className="gap-3 px-1">
                     {promotions.map((promotion, index) => (
                       <CatalogLookbookCard
                         key={promotion.id}
                         id={promotion.id}
                         name={promotion.name}
                         productCount={promotion.product_count}
-                        href={`/buy/catalog/list/${promotion.id}`}
+                        href={`/buy/home/list/${promotion.id}`}
                         validUntil={promotion.valid_until}
                         heroImageUrl={promotion.hero_image_url}
                         hueIndex={index}
                         priority={index === 0}
+                        size="compact"
                       />
                     ))}
-                  </div>
+                  </BuyerHorizontalScroll>
                 )}
               </section>
             ) : null}
 
             {showRecoSkeleton || orderAgainItems.length > 0 ? (
-              <section className="pt-12">
+              <section className="pt-14">
                 <BuyerSectionRow title="Order Again" className="px-1 pb-3" />
                 <BuyerHorizontalScroll className="gap-2.5 px-1">
                   {showRecoSkeleton ? (
@@ -260,7 +262,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                         id={catalog.id}
                         name={catalog.name}
                         productCount={catalog.product_count}
-                        href={`/buy/catalog/list/${catalog.id}`}
+                        href={`/buy/home/list/${catalog.id}`}
                         validUntil={catalog.valid_until}
                         heroImageUrl={catalog.hero_image_url}
                         hueIndex={index}
@@ -282,7 +284,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                     {brands.slice(0, 24).map((brand) => (
                       <DiscoveryThumbTile
                         key={brand.id}
-                        href={`/buy/catalog/brand/${brand.id}`}
+                        href={`/buy/home/brand/${brand.id}`}
                         label={brand.name}
                         imageUrl={brand.logo_url}
                         entityKind="brand"
@@ -305,7 +307,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                     {categories.map((category) => (
                       <DiscoveryThumbTile
                         key={category.id}
-                        href={`/buy/catalog/category/${category.id}`}
+                        href={`/buy/home/category/${category.id}`}
                         label={category.name}
                         imageUrl={category.image_url}
                         entityKind="category"
@@ -332,7 +334,6 @@ function CatalogSearchResults({
   loadingMore = false,
   sentinelIndex = -1,
   sentinelRef,
-  registerItemRef,
 }: {
   loading: boolean;
   error: boolean;
@@ -342,7 +343,6 @@ function CatalogSearchResults({
   loadingMore?: boolean;
   sentinelIndex?: number;
   sentinelRef?: React.RefObject<HTMLDivElement | null>;
-  registerItemRef?: (id: string) => (el: HTMLDivElement | null) => void;
 }): React.ReactNode {
   if (loading) {
     return (
@@ -367,18 +367,25 @@ function CatalogSearchResults({
   }
   return (
     <section className="pt-3 pb-4">
-      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} registerItemRef={registerItemRef} />
+      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} />
     </section>
   );
 }
 
 function CampaignTilesSkeleton() {
   return (
-    <div className="grid gap-3 px-1 md:grid-cols-2" role="status" aria-label="Loading campaigns">
-      {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className={cn('overflow-hidden border border-cream-200 bg-cream-50', BUYER_CARD_RADIUS_CLASS)}>
+    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading campaigns">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div
+          key={index}
+          className={cn(
+            BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS,
+            'shrink-0 overflow-hidden border border-cream-200 bg-cream-50',
+            BUYER_CARD_RADIUS_CLASS,
+          )}
+        >
           <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
-          <div className="space-y-2 bg-white px-5 py-4">
+          <div className="space-y-2 bg-white px-3.5 py-3">
             <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} />
           </div>
         </div>

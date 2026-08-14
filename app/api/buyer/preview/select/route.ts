@@ -39,7 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Buyer not available for preview' }, { status: 400 });
     }
 
-    const response = NextResponse.json({ ok: true, redirect: '/buy/catalog' });
+    const response = NextResponse.json({ ok: true, redirect: '/buy/home' });
     await setBuyerPreviewCookies(response, {
       tenantId: claims.tenant_id,
       shareToken: preview.share_token,

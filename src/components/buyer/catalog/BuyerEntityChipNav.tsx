@@ -140,16 +140,16 @@ export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactN
 
     if (props.kind === 'category') {
       if (id === null) {
-        if (props.mode === 'detail') path = '/buy/catalog';
+        if (props.mode === 'detail') path = '/buy/home';
       } else {
-        path = `/buy/catalog/category/${id}`;
+        path = `/buy/home/category/${id}`;
         replace = props.mode === 'detail';
       }
     } else {
       if (id === null) {
-        if (props.mode === 'detail') path = '/buy/catalog';
+        if (props.mode === 'detail') path = '/buy/home';
       } else {
-        path = `/buy/catalog/brand/${id}`;
+        path = `/buy/home/brand/${id}`;
         replace = props.mode === 'detail';
       }
     }

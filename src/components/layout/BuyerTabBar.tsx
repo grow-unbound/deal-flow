@@ -9,7 +9,7 @@ import { isBuyerChromelessRoute, isBuyerDeepRoute } from '@/lib/buyer-routes';
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { label: 'Catalog', href: '/buy/catalog', icon: CatalogIcon },
+  { label: 'Home', href: '/buy/home', icon: CatalogIcon },
   { label: 'Orders', href: '/buy/orders', icon: OrdersIcon },
   { label: 'Profile', href: '/buy/profile', icon: ProfileIcon },
 ];
@@ -17,7 +17,7 @@ const tabs = [
 export function BuyerTabBar() {
   const pathname = usePathname();
   const { tabBarVisible } = useBuyerScrollChromeState();
-  useIdleRoutePrefetch(['/buy/catalog', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
+  useIdleRoutePrefetch(['/buy/home', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
 
   if (isBuyerDeepRoute(pathname) || isBuyerChromelessRoute(pathname)) return null;
 

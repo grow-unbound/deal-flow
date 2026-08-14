@@ -138,7 +138,7 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
               body: 'Tap to browse products',
               entityType: 'catalog',
               entityId,
-              href: `/buy/catalog?share_token=${encodeURIComponent(catalog.share_token)}`,
+              href: `/buy/home?share_token=${encodeURIComponent(catalog.share_token)}`,
               readAt: null,
               createdAt: catalog.updated_at,
             });

@@ -31,35 +31,6 @@ export interface BuyerCatalogItem {
   on_hand: number;
   /** From campaign_items when product appears in a catalog. */
   is_featured?: boolean;
-  /** false = text-only placeholder awaiting price/stock enrichment (search-as-you-type phase 1). */
-  is_enriched?: boolean;
-}
-
-/** Text-only search result: no price/stock resolution. Images are included
- * (cheap PK-indexed lookup, no join) so cards show real photos immediately
- * instead of a blank placeholder while phase-2 enrichment is pending. */
-export interface BuyerCatalogTextItem {
-  id: string;
-  tenant_product_id: string;
-  display_name: string;
-  internal_sku: string;
-  brand_id: string | null;
-  brand_name: string | null;
-  category_id: string | null;
-  category_name: string | null;
-  image_urls: string[];
-  brand_logo_url: string | null;
-  category_image_url: string | null;
-}
-
-export interface BuyerCatalogTextResponse {
-  items: BuyerCatalogTextItem[];
-  total: number;
-  has_more: boolean;
-  selected_campaign_id?: string | null;
-  selected_campaign_name?: string | null;
-  selected_campaign_valid_until?: string | null;
-  selected_campaign_message?: string | null;
 }
 
 export interface BuyerCatalogSummary {

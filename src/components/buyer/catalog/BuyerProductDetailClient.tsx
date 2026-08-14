@@ -95,7 +95,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   if (productError && !productLoading) {
     return (
       <div className="flex min-h-[50dvh] flex-col" style={{ background: 'var(--bg-base)' }}>
-        <BuyerDetailShell title="Product" hideSearch>
+        <BuyerDetailShell title="Product" hideSearchOnDesktop>
           <div className="flex flex-col gap-4 px-3 py-8">
             <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
             <button
@@ -141,7 +141,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   return (
     <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
-      <BuyerDetailShell title="Product" hideSearch hideDesktopHeader>
+      <BuyerDetailShell title="Product" hideDesktopHeader>
         {/* Hero — square, card-like padding, aligned to header px-3 */}
         <div className="px-3 pb-4 md:px-6 md:pb-6 md:pt-6">
           <div className="grid gap-5 md:grid-cols-[minmax(340px,0.95fr)_minmax(0,1.05fr)] md:items-start">

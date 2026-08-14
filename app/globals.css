@@ -441,6 +441,13 @@
     position: fixed;
     bottom: 0;
     z-index: 30;
+    /* Full-width fixed layer — only its actual content should intercept touch/scroll,
+       not the surrounding whitespace, otherwise it blocks scrolling underneath it. */
+    pointer-events: none;
+  }
+
+  .buyer-sticky-footer > * {
+    pointer-events: auto;
   }
 
   /* Campaign / lookbook card hero — exact campaign hero ratio (1125 × 600) */

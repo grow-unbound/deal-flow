@@ -357,7 +357,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
                     </button>
                   )}
                   <Link
-                    href="/buy/catalog"
+                    href="/buy/home"
                     className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-4 py-1.5 text-sm font-medium text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
                   >
                     Browse Catalog

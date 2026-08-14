@@ -16,10 +16,10 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { useTwoPhaseProductGrid } from '@/hooks/useTwoPhaseProductGrid';
+import { setBuyerRailPathname } from '@/hooks/useBuyerRailPathnameOverride';
 import {
   useBuyerBrands,
-  useBuyerCatalogListTextInfinite,
+  useBuyerCatalogList,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
@@ -49,6 +49,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   React.useEffect(() => {
     setActiveId(id);
     setResolvedGridId(id);
+    setBuyerRailPathname(null);
+    return () => setBuyerRailPathname(null);
   }, [id]);
 
   const {
@@ -73,11 +75,9 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     refetch: refetchBrandRecos,
   } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogListTextInfinite(mode, activeId, debouncedSearch);
+  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
   const pages = listQuery.data?.pages ?? [];
-  const textItems = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
-  const resetKey = React.useMemo(() => `${mode}:${activeId}:${debouncedSearch}`, [mode, activeId, debouncedSearch]);
-  const { shownItems: items, registerItemRef } = useTwoPhaseProductGrid(textItems, resetKey);
+  const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
   const isSwitchingEntity = mode !== 'list' && activeId !== resolvedGridId;
   // Cold-cache only, plus detail-rail switches where we want the grid to show an explicit refresh state.
@@ -190,9 +190,10 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
     const nextPath =
       mode === 'category'
-        ? `/buy/catalog/category/${nextId}`
-        : `/buy/catalog/brand/${nextId}`;
+        ? `/buy/home/category/${nextId}`
+        : `/buy/home/brand/${nextId}`;
     window.history.replaceState(window.history.state, '', nextPath);
+    setBuyerRailPathname(nextPath);
   }, [mode]);
 
   const desktopRail =
@@ -228,9 +229,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <BuyerDetailShell
         title={title}
-        hideSearch
         hideDesktopHeader
-        backFallbackHref="/buy/catalog"
+        backFallbackHref="/buy/home"
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -263,7 +263,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
           ) : null}
 
-          {mode === 'category' && (showCategoryRecosSkeleton || (categoryRecos?.length ?? 0) > 0) ? (
+          {mode === 'category' && !debouncedSearch && (showCategoryRecosSkeleton || (categoryRecos?.length ?? 0) > 0) ? (
             <div className="pt-1 lg:pt-6">
               <RecoSection
                 title="Trending in this category"
@@ -274,7 +274,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             </div>
           ) : null}
 
-          {mode === 'brand' && (showBrandRecosSkeleton || (brandRecos?.length ?? 0) > 0) ? (
+          {mode === 'brand' && !debouncedSearch && (showBrandRecosSkeleton || (brandRecos?.length ?? 0) > 0) ? (
             <div className="pt-1 lg:pt-6">
               <RecoSection
                 title="Trending in this brand"
@@ -319,7 +319,6 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
                 showPromotionBadge={mode !== 'list'}
-                registerItemRef={registerItemRef}
               />
 
               {!showProductsSkeleton && items.length === 0 ? (
@@ -341,7 +340,7 @@ function NoProductsFoundState(): React.ReactNode {
       description="Try a different search or switch filters to explore more products."
       action={(
         <Link
-          href="/buy/catalog"
+          href="/buy/home"
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
         >
           Browse Catalog

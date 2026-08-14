@@ -138,10 +138,10 @@ async function mintCandidateSession(
     });
   }
   // WhatsApp Broadcast Phase C (§4.8, §9): route first-time buyers through the
-  // forced consent checkbox before /buy/catalog. requireBuyerConsentRedirect
+  // forced consent checkbox before /buy/home. requireBuyerConsentRedirect
   // checks app.buyers.whatsapp_consent_at directly rather than trusting any
   // client-supplied state.
-  const redirect = await requireBuyerConsentRedirect(candidate.buyer_id) ?? '/buy/catalog';
+  const redirect = await requireBuyerConsentRedirect(candidate.buyer_id) ?? '/buy/home';
   return { session, redirect };
 }
 

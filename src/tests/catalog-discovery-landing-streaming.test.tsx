@@ -12,7 +12,7 @@ vi.mock('posthog-js/react', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
-  usePathname: () => '/buy/catalog',
+  usePathname: () => '/buy/home',
   useSearchParams: () => new URLSearchParams(),
 }));
 

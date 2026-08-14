@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
 import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface ActivityCardShellProps {
   href?: string;
@@ -68,14 +69,14 @@ export function ActivityCardShell({
 
   if (href) {
     return (
-      <Link href={href} onClick={onClick} className="block no-underline">
+      <Link href={href} onClick={onClick} onPointerDown={() => triggerHaptic('light')} className="block no-underline">
         {content}
       </Link>
     );
   }
 
   return (
-    <button type="button" onClick={onClick} className="block w-full text-left">
+    <button type="button" onClick={onClick} onPointerDown={() => triggerHaptic('light')} className="block w-full text-left">
       {content}
     </button>
   );

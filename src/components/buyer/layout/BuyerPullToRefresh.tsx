@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 const PULL_THRESHOLD_PX = 72;
 const MAX_PULL_PX = 112;
 const DRAG_DAMPING = 0.48;
+/** Dead zone before the gesture engages — lets small/incidental downward touches (e.g. on a short page with no real scroll) pass through as no-ops instead of visibly rubber-banding. */
+const PULL_ACTIVATION_THRESHOLD_PX = 12;
 const NESTED_SCROLL_SELECTOR = '[data-buyer-nested-scroll="true"]';
 
 type PullState = 'idle' | 'pulling' | 'armed' | 'refreshing';
@@ -54,9 +56,24 @@ export function BuyerPullToRefresh({
   const [pullDistance, setPullDistance] = useState(0);
   const [pullState, setPullState] = useState<PullState>('idle');
 
+  // Scrollbar stays invisible until actively scrolled (not just hovered) — the
+  // pointer rests over this viewport most of the time while browsing, so the
+  // base hover-reveal rule would leave the thumb visible almost constantly.
+  const [scrollActive, setScrollActive] = useState(false);
+  const scrollActiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleScrollActive = useCallback(() => {
+    setScrollActive(true);
+    if (scrollActiveTimerRef.current != null) clearTimeout(scrollActiveTimerRef.current);
+    scrollActiveTimerRef.current = setTimeout(() => {
+      setScrollActive(false);
+      scrollActiveTimerRef.current = null;
+    }, 900);
+  }, []);
+
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (scrollActiveTimerRef.current != null) clearTimeout(scrollActiveTimerRef.current);
     };
   }, []);
 
@@ -141,11 +158,12 @@ export function BuyerPullToRefresh({
       return;
     }
     if (deltaX > deltaY) return;
+    if (deltaY < PULL_ACTIVATION_THRESHOLD_PX) return;
 
     draggingRef.current = true;
     event.preventDefault();
 
-    const nextPull = Math.min(MAX_PULL_PX, Math.round(deltaY * DRAG_DAMPING));
+    const nextPull = Math.min(MAX_PULL_PX, Math.round((deltaY - PULL_ACTIVATION_THRESHOLD_PX) * DRAG_DAMPING));
     setPullDistance(nextPull);
     setPullState(nextPull >= PULL_THRESHOLD_PX ? 'armed' : 'pulling');
   }, [pullEnabled, resetGesture]);
@@ -193,8 +211,13 @@ export function BuyerPullToRefresh({
   return (
     <div
       ref={setViewportRef}
-      className={cn('relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain', className)}
+      className={cn(
+        'dashboard-vscroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain',
+        scrollActive && 'dashboard-vscroll--active',
+        className,
+      )}
       style={style}
+      onScroll={handleScrollActive}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

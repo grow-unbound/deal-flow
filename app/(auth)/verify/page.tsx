@@ -91,10 +91,10 @@ function VerifyOtpForm() {
 
       shouldResetLoading = false;
       const serverRedirect = data.redirect ?? '/dashboard';
-      // Honor `next` only for buyers landing on /buy/catalog.
+      // Honor `next` only for buyers landing on /buy/home.
       // Sellers (/dashboard) and first-time buyers (/consent) always follow their server-assigned path.
       const destination =
-        serverRedirect === '/buy/catalog' && next
+        serverRedirect === '/buy/home' && next
           ? decodeURIComponent(next)
           : serverRedirect;
       // Hard navigation, not router.replace()/router.refresh() — see

@@ -457,7 +457,7 @@ export function TransactionDetailPage({
     <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell
         title={title}
-        hideSearch
+        hideSearchOnDesktop
         showLocationControl={false}
         backFallbackHref={backFallbackHref}
       >
