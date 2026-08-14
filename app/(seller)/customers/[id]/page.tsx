@@ -125,7 +125,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
-      <div className="px-4 py-4 md:px-6 md:py-4">
+      <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">
         <DetailHeader
           loading={isLoading}
           avatar={{ kind: 'brand', initials: data?.header.initials ?? 'CU', hue: data?.header.hue ?? 'cream' }}

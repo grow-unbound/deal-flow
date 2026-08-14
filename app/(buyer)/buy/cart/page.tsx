@@ -3,6 +3,7 @@
 import { formatNumberValue } from '@/lib/utils';
 import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
@@ -73,9 +74,6 @@ function WhatsAppIcon({ className }: { className?: string }) {
 const BACK_BTN: React.CSSProperties = {
   width: 44,
   height: 44,
-  borderRadius: 999,
-  background: 'var(--bg-surface)',
-  border: '1px solid var(--border-1)',
   color: 'var(--cream-800)',
 };
 
@@ -90,7 +88,7 @@ const STICKY_HEADER: React.CSSProperties = {
 export default function CartPage() {
   const router = useRouter();
   const posthog = usePostHog();
-  const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
+  const { items, removeItem, updateQty, clearCart, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
@@ -505,13 +503,12 @@ export default function CartPage() {
     requestQuoteMutation.mutate();
   }
 
-
   if (items.length === 0) {
     return (
       <>
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-          <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-            <ChevronLeft className="h-5 w-5" />
+          <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0 transition-opacity active:opacity-60" style={BACK_BTN} aria-label="Go back">
+            <ChevronLeft className="h-6 w-6" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
             Cart
@@ -536,7 +533,7 @@ export default function CartPage() {
               posthog?.capture('buyer_empty_cart_browse_clicked', {
                 source_surface: 'cart_empty_state',
               });
-              router.push('/buy/catalog');
+              router.push('/buy/home');
             }}
             className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 font-semibold text-white"
             style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
@@ -552,8 +549,8 @@ export default function CartPage() {
     <>
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-        <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
-          <ChevronLeft className="h-5 w-5" />
+        <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0 transition-opacity active:opacity-60" style={BACK_BTN} aria-label="Go back">
+          <ChevronLeft className="h-6 w-6" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
           Cart
@@ -728,6 +725,12 @@ export default function CartPage() {
             {error}
           </div>
         )}
+
+        <div className="flex items-center justify-center gap-1.5 pb-1 pt-2 opacity-50">
+          <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-500)' }}>Powered by</span>
+          <YuktiLogo variant="mark" className="h-3.5 w-3.5" />
+          <span className="font-semibold" style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-600)' }}>Yukti</span>
+        </div>
       </div>
 
       {/* Sticky footer */}

@@ -255,7 +255,7 @@ describe('buyer estimates route (POST)', () => {
     expect(sendImmediateTransactionNotificationsMock).not.toHaveBeenCalled();
   });
 
-  it('does not fire whatsapp when notification helper returns false', async () => {
+  it('dispatches whatsapp without blocking the response even if the helper later resolves false', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
     sendImmediateTransactionNotificationsMock.mockResolvedValue(false);
 
@@ -270,8 +270,12 @@ describe('buyer estimates route (POST)', () => {
     const response = await POST(request as never);
     const body = await response.json();
 
+    // The route no longer awaits the WhatsApp send before responding (it's
+    // fire-and-forget so the response isn't held up by an external API call),
+    // so `whatsapp_sent` reflects that a dispatch was attempted, not its
+    // eventual outcome — which the helper here resolves to `false` for.
     expect(body.document_status_note).toBeNull();
-    expect(body.whatsapp_sent).toBe(false);
+    expect(body.whatsapp_sent).toBe(true);
     expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalled();
   });
 });

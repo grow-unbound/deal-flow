@@ -29,9 +29,9 @@ export function BuyerStickyPageHeader({
         className={cn('sticky top-0 z-[15]', collapsed && 'shadow-sm')}
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
-          background: 'rgba(250, 247, 242, 0.92)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
+          background: 'var(--bg-base)',
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
         }}
       >
         <div className="flex items-start justify-between px-5 pb-2 pt-4">

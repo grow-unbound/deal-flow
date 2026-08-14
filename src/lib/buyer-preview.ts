@@ -10,7 +10,7 @@ export const BUYER_PREVIEW_INACTIVITY_SECONDS = 60 * 60;
 export const BUYER_PREVIEW_TTL_SECONDS = BUYER_PREVIEW_INACTIVITY_SECONDS + 5 * 60;
 /** Refresh the server token when activity resumes and less than this remains. */
 export const BUYER_PREVIEW_ACTIVITY_REFRESH_BUFFER_SECONDS = 5 * 60;
-export const BUYER_PREVIEW_MAX_WIDTH = 840;
+export const BUYER_PREVIEW_MAX_WIDTH = 1440;
 
 export interface BuyerPreviewTokenPayload {
   typ: typeof BUYER_PREVIEW_TOKEN_VERSION;

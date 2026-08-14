@@ -106,7 +106,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
   if (isLoading && !data) return <BrandDetailSkeleton />;
 
   return (
-    <div className="px-4 py-4 md:px-6 md:py-4">
+    <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
         loading={isLoading}
         avatar={{ kind: 'brand', initials: data?.header.initials ?? 'BR', hue: data?.header.hue ?? 'cream', imageUrl: data?.header.logo_url }}

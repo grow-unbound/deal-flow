@@ -1,17 +1,23 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { LayoutGrid, Store } from 'lucide-react';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { cn } from '@/lib/utils';
 import type { BuyerBrand, BuyerCategory } from '@/types/buyer';
 
 type ChipNavMode = 'landing' | 'detail';
+type ChipNavVariant = 'chips' | 'rail';
 
 interface BuyerCategoryChipNavProps {
   kind: 'category';
   categories: BuyerCategory[];
   selectedId: string | null;
   mode: ChipNavMode;
+  variant?: ChipNavVariant;
+  onSelectId?: (id: string) => void;
 }
 
 interface BuyerBrandChipNavProps {
@@ -19,37 +25,65 @@ interface BuyerBrandChipNavProps {
   brands: BuyerBrand[];
   selectedId: string | null;
   mode: ChipNavMode;
+  variant?: ChipNavVariant;
+  onSelectId?: (id: string) => void;
 }
 
 export type BuyerEntityChipNavProps = BuyerCategoryChipNavProps | BuyerBrandChipNavProps;
 
-function storageKeyFor(kind: BuyerEntityChipNavProps['kind'], mode: ChipNavMode): string {
-  return `buyer-chip-scroll:${kind}:${mode}`;
+type BuyerNavItem = {
+  id: string | null;
+  label: string;
+  imageUrl?: string | null;
+};
+
+function storageKeyFor(kind: BuyerEntityChipNavProps['kind'], mode: ChipNavMode, variant: ChipNavVariant): string {
+  return `buyer-chip-scroll:${kind}:${mode}:${variant}`;
 }
 
-/**
- * Restores chip-rail scroll from sessionStorage before paint (avoids jump-from-0),
- * then smoothly centers the selected chip only when it isn't fully visible.
- */
-function useChipScrollIntoView(
+function getItems(props: BuyerEntityChipNavProps): BuyerNavItem[] {
+  const allItem: BuyerNavItem = {
+    id: null,
+    label: props.kind === 'category' ? 'All Categories' : 'All Brands',
+  };
+
+  if (props.kind === 'category') {
+    return [
+      allItem,
+      ...props.categories.map((category) => ({
+        id: category.id,
+        label: category.name,
+        imageUrl: category.image_url,
+      })),
+    ];
+  }
+
+  return [
+    allItem,
+    ...props.brands.map((brand) => ({
+      id: brand.id,
+      label: brand.name,
+      imageUrl: brand.logo_url,
+    })),
+  ];
+}
+
+function useScrollableSelectionSync(
   kind: BuyerEntityChipNavProps['kind'],
   mode: ChipNavMode,
+  variant: ChipNavVariant,
   selectedId: string | null,
-  chipCount: number,
-): {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  persistScrollNow: () => void;
-} {
+  itemCount: number,
+): React.RefObject<HTMLDivElement | null> {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const restoredRef = React.useRef(false);
 
-  // Restore saved offset synchronously before paint so remounts never flash at scrollLeft=0.
   React.useLayoutEffect(() => {
     const node = containerRef.current;
-    if (!node || chipCount === 0 || typeof window === 'undefined') return;
-    if (restoredRef.current) return;
+    if (!node || itemCount === 0 || typeof window === 'undefined') return;
+    if (variant !== 'chips' || restoredRef.current) return;
 
-    const raw = window.sessionStorage.getItem(storageKeyFor(kind, mode));
+    const raw = window.sessionStorage.getItem(storageKeyFor(kind, mode, variant));
     if (raw) {
       const scrollLeft = Number(raw);
       if (!Number.isNaN(scrollLeft)) {
@@ -57,207 +91,199 @@ function useChipScrollIntoView(
       }
     }
     restoredRef.current = true;
-  }, [chipCount, kind, mode]);
+  }, [itemCount, kind, mode, variant]);
 
   React.useEffect(() => {
     const node = containerRef.current;
     if (!node || typeof window === 'undefined') return;
+    if (variant !== 'chips') return;
+
     const onScroll = () => {
-      window.sessionStorage.setItem(storageKeyFor(kind, mode), String(node.scrollLeft));
+      window.sessionStorage.setItem(storageKeyFor(kind, mode, variant), String(node.scrollLeft));
     };
     node.addEventListener('scroll', onScroll, { passive: true });
     return () => node.removeEventListener('scroll', onScroll);
-  }, [chipCount, kind, mode]);
+  }, [kind, mode, variant]);
 
-  // Smooth recenter only when the selected chip is clipped — after restore, movement is minimal.
   React.useEffect(() => {
     const node = containerRef.current;
-    if (!selectedId || !node || chipCount === 0) return;
+    if (!node || itemCount === 0) return;
+    if (variant === 'rail') return;
 
-    const active = node.querySelector<HTMLElement>(`[data-chip-id="${selectedId}"]`);
+    const active = node.querySelector<HTMLElement>(`[data-chip-id="${selectedId ?? '__all__'}"]`);
     if (!active || typeof active.scrollIntoView !== 'function') return;
 
-    const containerRect = node.getBoundingClientRect();
-    const activeRect = active.getBoundingClientRect();
-    const fullyVisible =
-      activeRect.left >= containerRect.left + 8
-      && activeRect.right <= containerRect.right - 8;
-    if (!fullyVisible) {
-      active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-    }
-  }, [chipCount, selectedId]);
+    active.scrollIntoView({
+      inline: variant === 'chips' ? 'center' : 'nearest',
+      block: 'nearest',
+      behavior: 'smooth',
+    });
+  }, [itemCount, selectedId, variant]);
 
-  const persistScrollNow = React.useCallback(() => {
-    const node = containerRef.current;
-    if (!node || typeof window === 'undefined') return;
-    window.sessionStorage.setItem(storageKeyFor(kind, mode), String(node.scrollLeft));
-  }, [kind, mode]);
-
-  return { containerRef, persistScrollNow };
+  return containerRef;
 }
 
 export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactNode {
   const router = useRouter();
-  const chipCount = props.kind === 'category' ? props.categories.length : props.brands.length;
-  const { containerRef, persistScrollNow } = useChipScrollIntoView(
-    props.kind,
-    props.mode,
-    props.selectedId,
-    chipCount,
-  );
+  const variant = props.variant ?? 'chips';
+  const items = getItems(props);
+  const containerRef = useScrollableSelectionSync(props.kind, props.mode, variant, props.selectedId, items.length);
 
-  function navigateTo(path: string, replace: boolean): void {
-    persistScrollNow();
+  const navigateTo = React.useCallback((id: string | null) => {
+    if (props.mode === 'detail' && id !== null && props.onSelectId) {
+      props.onSelectId(id);
+      return;
+    }
+
+    let path: string | null = null;
+    let replace = false;
+
+    if (props.kind === 'category') {
+      if (id === null) {
+        if (props.mode === 'detail') path = '/buy/home';
+      } else {
+        path = `/buy/home/category/${id}`;
+        replace = props.mode === 'detail';
+      }
+    } else {
+      if (id === null) {
+        if (props.mode === 'detail') path = '/buy/home';
+      } else {
+        path = `/buy/home/brand/${id}`;
+        replace = props.mode === 'detail';
+      }
+    }
+
+    if (!path) return;
     markBuyerNavigationForward();
     if (replace) {
       router.replace(path);
       return;
     }
     router.push(path);
-  }
+  }, [props.kind, props.mode, props.onSelectId, router]);
 
-  function handleCategoryChange(id: string | null): void {
-    if (id === null) {
-      if (props.mode === 'detail') navigateTo('/buy/catalog', false);
+  const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex = index;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = Math.min(items.length - 1, index + 1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = Math.max(0, index - 1);
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = items.length - 1;
+    } else {
       return;
     }
-    const path = `/buy/catalog/category/${id}`;
-    navigateTo(path, props.mode === 'detail');
-  }
 
-  function handleBrandChange(id: string | null): void {
-    if (id === null) {
-      if (props.mode === 'detail') navigateTo('/buy/catalog', false);
-      return;
-    }
-    const path = `/buy/catalog/brand/${id}`;
-    navigateTo(path, props.mode === 'detail');
-  }
+    event.preventDefault();
+    const nextItem = items[nextIndex];
+    if (!nextItem) return;
+    navigateTo(nextItem.id);
+  }, [items, navigateTo]);
 
-  if (props.kind === 'category') {
-    if (props.categories.length === 0) return null;
-    return (
-      <CategoryFilterWithDataAttrs
-        containerRef={containerRef}
-        categories={props.categories}
-        selected={props.selectedId}
-        onChange={handleCategoryChange}
-      />
-    );
-  }
+  const navLabel =
+    variant === 'rail'
+      ? props.kind === 'category' ? 'Category navigation' : 'Brand navigation'
+      : props.kind === 'category' ? 'Category filters' : 'Brand filters';
 
-  if (props.brands.length === 0) return null;
+  if (items.length <= 1) return null;
+
   return (
-    <BrandFilterWithDataAttrs
-      containerRef={containerRef}
-      brands={props.brands}
-      selected={props.selectedId}
-      onChange={handleBrandChange}
-    />
-  );
-}
-
-function CategoryFilterWithDataAttrs({
-  containerRef,
-  categories,
-  selected,
-  onChange,
-}: {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  categories: BuyerCategory[];
-  selected: string | null;
-  onChange: (id: string | null) => void;
-}): React.ReactNode {
-  return (
-    <div
+    <nav
       ref={containerRef}
-      className="flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      aria-label="Filter by category"
+      className={cn(
+        variant === 'chips'
+          ? 'flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+          : 'flex max-h-[calc(100dvh-14rem)] flex-col overflow-y-auto',
+      )}
+      aria-label={navLabel}
     >
-      <ChipButton dataChipId="all" pressed={selected === null} onClick={() => onChange(null)}>
-        All
-      </ChipButton>
-      {categories.map((cat) => (
-        <ChipButton
-          key={cat.id}
-          dataChipId={cat.id}
-          pressed={selected === cat.id}
-          onClick={() => onChange(cat.id)}
-        >
-          {cat.name}
-          {cat.product_count > 0 ? (
-            <span
-              className={selected === cat.id ? 'ml-1.5 text-[var(--teal-600)]' : 'ml-1.5 text-[var(--fg-3)]'}
-              style={{ fontSize: 'var(--b-text-eyebrow)' }}
-            >
-              {cat.product_count}
+      {items.map((item, index) => {
+        const selected = props.selectedId === item.id || (props.selectedId === null && item.id === null);
+        return (
+          <button
+            key={item.id ?? 'all'}
+            type="button"
+            data-chip-id={item.id ?? '__all__'}
+            onClick={() => navigateTo(item.id)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+            aria-current={selected ? 'page' : undefined}
+            className={
+              variant === 'chips'
+                ? selected
+                  ? 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--teal-100)] bg-[var(--teal-50)] px-3 py-1.5 font-medium text-[var(--teal-700)] transition-colors'
+                  : 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-[var(--fg-2)] transition-colors'
+                : cn(
+                    'border-b border-[var(--border-1)] text-left transition-colors last:border-b-0 [@media(hover:hover)]:hover:bg-[var(--bg-recessed)] focus-visible:bg-[var(--bg-recessed)] focus-visible:outline-none',
+                    'flex min-h-[88px] flex-col items-center justify-center gap-2 px-1 py-3 sm:min-h-[96px] sm:px-2',
+                    'lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1 lg:py-3',
+                    selected
+                      ? 'bg-[var(--cream-300)] font-bold text-cream-950'
+                      : 'bg-transparent font-medium text-[var(--fg-2)]',
+                  )
+            }
+            style={variant === 'chips' ? { fontSize: 'var(--b-text-label)' } : undefined}
+          >
+            {variant === 'rail' ? (
+              <RailThumb
+                label={item.label}
+                imageUrl={item.imageUrl ?? null}
+                entityKind={props.kind}
+              />
+            ) : null}
+            <span className={cn('min-w-0', variant === 'rail' ? 'flex flex-1 flex-col items-center text-center lg:items-start lg:text-left' : '')}>
+              <span
+                className={cn(
+                  variant === 'rail' ? 'line-clamp-2 text-center font-medium leading-tight lg:text-left' : '',
+                )}
+                style={variant === 'rail' ? { fontSize: 'clamp(11px, 1.8vw, var(--b-text-label))' } : undefined}
+              >
+                {item.label}
+              </span>
             </span>
-          ) : null}
-        </ChipButton>
-      ))}
-    </div>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
-function BrandFilterWithDataAttrs({
-  containerRef,
-  brands,
-  selected,
-  onChange,
+function RailThumb({
+  label,
+  imageUrl,
+  entityKind,
 }: {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  brands: Array<{ id: string; name: string }>;
-  selected: string | null;
-  onChange: (id: string | null) => void;
-}): React.ReactNode {
+  label: string;
+  imageUrl: string | null;
+  entityKind: 'brand' | 'category';
+}) {
+  const [imgError, setImgError] = React.useState(false);
+  const showImage = Boolean(imageUrl) && !imgError;
+  const FallbackIcon = entityKind === 'brand' ? Store : LayoutGrid;
+
   return (
     <div
-      ref={containerRef}
-      className="flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      aria-label="Filter by brand"
+      className={cn(
+        'relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:p-2',
+        entityKind === 'brand' ? 'rounded-full' : 'rounded-[10px] lg:rounded-[12px]',
+      )}
     >
-      <ChipButton dataChipId="all" pressed={selected === null} onClick={() => onChange(null)}>
-        All
-      </ChipButton>
-      {brands.map((brand) => (
-        <ChipButton
-          key={brand.id}
-          dataChipId={brand.id}
-          pressed={selected === brand.id}
-          onClick={() => onChange(brand.id)}
-        >
-          {brand.name}
-        </ChipButton>
-      ))}
+      {showImage ? (
+        <Image
+          src={imageUrl!}
+          alt=""
+          fill
+          className="object-contain"
+          sizes="(max-width: 639px) 48px, (max-width: 1023px) 56px, 64px"
+          onError={() => setImgError(true)}
+          unoptimized
+        />
+      ) : (
+        <FallbackIcon className="h-6 w-6 text-[var(--fg-3)] lg:h-7 lg:w-7" aria-hidden />
+      )}
+      <span className="sr-only">{label}</span>
     </div>
-  );
-}
-
-function ChipButton({
-  children,
-  pressed,
-  onClick,
-  dataChipId,
-}: {
-  children: React.ReactNode;
-  pressed: boolean;
-  onClick: () => void;
-  dataChipId: string;
-}): React.ReactNode {
-  return (
-    <button
-      type="button"
-      data-chip-id={dataChipId}
-      onClick={onClick}
-      className={
-        pressed
-          ? 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--teal-100)] bg-[var(--teal-50)] px-3 py-1.5 font-medium text-[var(--teal-700)] transition-colors'
-          : 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-[var(--fg-2)] transition-colors'
-      }
-      style={{ fontSize: 'var(--b-text-label)' }}
-      aria-pressed={pressed}
-    >
-      {children}
-    </button>
   );
 }

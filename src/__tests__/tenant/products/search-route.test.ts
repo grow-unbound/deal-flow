@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server';
 
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
-const createProductQueryEmbeddingMock = vi.fn();
 const rpcMock = vi.fn();
 const state: { supabaseAdmin: { schema: ReturnType<typeof vi.fn> } | null } = {
   supabaseAdmin: { schema: vi.fn() },
@@ -15,10 +14,6 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
-}));
-
-vi.mock('@/lib/server/product-search', () => ({
-  createProductQueryEmbedding: (...args: unknown[]) => createProductQueryEmbeddingMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -33,12 +28,10 @@ describe('tenant product search route', () => {
   beforeEach(() => {
     getVerifiedClaimsMock.mockReset();
     getFlagMock.mockReset();
-    createProductQueryEmbeddingMock.mockReset();
     rpcMock.mockReset();
     state.supabaseAdmin = { schema: vi.fn(() => ({ rpc: rpcMock })) };
     getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'seller_admin' });
     getFlagMock.mockResolvedValue(true);
-    createProductQueryEmbeddingMock.mockResolvedValue('[0.1,0.2,0.3]');
     rpcMock.mockResolvedValue({
       data: [
         {
@@ -61,21 +54,21 @@ describe('tenant product search route', () => {
     });
   });
 
-  it('forwards the query embedding and maps composer search rows', async () => {
+  it('maps composer search rows with no embedding param sent to the rpc', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/products/search?q=alpha', { method: 'GET' }) as any);
     const body = (await response.json()) as any;
 
     expect(response.status).toBe(200);
-    expect(createProductQueryEmbeddingMock).toHaveBeenCalledWith('alpha');
     expect(rpcMock).toHaveBeenCalledWith('search_products_scoped', expect.objectContaining({
       p_tenant_id: 'tenant-a',
       p_query: 'alpha',
-      p_query_embedding: '[0.1,0.2,0.3]',
       p_buyer_id: null,
       p_price_list_id: null,
       p_limit: 16,
       p_ids: null,
     }));
+    const [, calledArgs] = rpcMock.mock.calls[0];
+    expect(calledArgs).not.toHaveProperty('p_query_embedding');
     expect(body.products).toEqual([
       expect.objectContaining({
         tenant_product_id: 'tp-1',

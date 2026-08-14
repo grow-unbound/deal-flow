@@ -42,7 +42,7 @@ describe('BuyerEntityChipNav', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /HD Camera/i }));
-    expect(push).toHaveBeenCalledWith('/buy/catalog/category/cat-1');
+    expect(push).toHaveBeenCalledWith('/buy/home/category/cat-1');
   });
 
   it('replaces route when switching categories on detail', () => {
@@ -56,10 +56,10 @@ describe('BuyerEntityChipNav', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^DVR/ }));
-    expect(replace).toHaveBeenCalledWith('/buy/catalog/category/cat-2');
+    expect(replace).toHaveBeenCalledWith('/buy/home/category/cat-2');
   });
 
-  it('returns to catalog landing when All is tapped on detail', () => {
+  it('returns to catalog landing when All Categories is tapped on detail', () => {
     render(
       <BuyerEntityChipNav
         kind="category"
@@ -69,8 +69,8 @@ describe('BuyerEntityChipNav', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
-    expect(push).toHaveBeenCalledWith('/buy/catalog');
+    fireEvent.click(screen.getByRole('button', { name: 'All Categories' }));
+    expect(push).toHaveBeenCalledWith('/buy/home');
   });
 
   it('restores saved scroll before paint so smooth recenter does not jump from 0', () => {
@@ -83,14 +83,14 @@ describe('BuyerEntityChipNav', () => {
       />,
     );
 
-    const rail = screen.getByLabelText('Filter by category');
+    const rail = screen.getByLabelText('Category filters');
     Object.defineProperty(rail, 'scrollLeft', { value: 140, writable: true, configurable: true });
     fireEvent.scroll(rail);
-    expect(window.sessionStorage.getItem('buyer-chip-scroll:category:detail')).toBe('140');
+    expect(window.sessionStorage.getItem('buyer-chip-scroll:category:detail:chips')).toBe('140');
 
     fireEvent.click(screen.getByRole('button', { name: /^NVR/ }));
-    expect(replace).toHaveBeenCalledWith('/buy/catalog/category/cat-3');
-    expect(window.sessionStorage.getItem('buyer-chip-scroll:category:detail')).toBe('140');
+    expect(replace).toHaveBeenCalledWith('/buy/home/category/cat-3');
+    expect(window.sessionStorage.getItem('buyer-chip-scroll:category:detail:chips')).toBe('140');
 
     unmount();
 
@@ -103,7 +103,38 @@ describe('BuyerEntityChipNav', () => {
       />,
     );
 
-    const nextRail = screen.getByLabelText('Filter by category');
+    const nextRail = screen.getByLabelText('Category filters');
     expect(nextRail.scrollLeft).toBe(140);
+  });
+
+  it('supports arrow-key navigation on the chip rail', () => {
+    render(
+      <BuyerEntityChipNav
+        kind="category"
+        categories={categories}
+        selectedId="cat-1"
+        mode="detail"
+      />,
+    );
+
+    const active = screen.getByRole('button', { name: /^HD Camera/ });
+    active.focus();
+    fireEvent.keyDown(active, { key: 'ArrowRight' });
+    expect(replace).toHaveBeenCalledWith('/buy/home/category/cat-2');
+  });
+
+  it('renders the desktop rail variant with navigation semantics', () => {
+    render(
+      <BuyerEntityChipNav
+        kind="category"
+        categories={categories}
+        selectedId="cat-1"
+        mode="detail"
+        variant="rail"
+      />,
+    );
+
+    expect(screen.getByLabelText('Category navigation')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /HD Camera/i })).toHaveAttribute('aria-current', 'page');
   });
 });

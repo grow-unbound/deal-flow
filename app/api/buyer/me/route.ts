@@ -14,6 +14,8 @@ interface BuyerMeResponse {
   contact_name: string;
   phone: string;
   gstin: string | null;
+  session_person_name: string | null;
+  session_person_kind: 'buyer' | 'buyer_user' | 'preview';
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -23,6 +25,7 @@ interface BuyerMeResponse {
     id: string;
     name: string;
     slug: string;
+    logo_url: string | null;
     outlets: Array<{
       location_id: string;
       name: string;
@@ -139,6 +142,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
     const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
     const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
+    const rawBusiness = (rawSettings.business ?? {}) as Record<string, unknown>;
     const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
 
     const orderFeatures = {
@@ -153,6 +157,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       gst_inclusive: rawPolicy.gst_inclusive === true,
       gst_rate: typeof rawPolicy.gst_rate === 'number' ? rawPolicy.gst_rate : 18,
     };
+    const tenantLogoUrl = typeof rawBusiness.logo_url === 'string' && rawBusiness.logo_url.trim().length > 0
+      ? rawBusiness.logo_url.trim()
+      : null;
     const stockVisibility = {
       enabled: rawBuyerApp.stock_visibility_enabled === true,
       block_order_on_oos: rawBuyerApp.block_order_on_oos === true,
@@ -172,6 +179,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         contact_name: 'Preview user',
         phone: '—',
         gstin: null,
+        session_person_name: 'Preview user',
+        session_person_kind: 'preview',
         credit_limit: 0,
         credit_used: 0,
         open_orders_count: 0,
@@ -181,6 +190,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           id: tenant.id,
           name: tenant.business_name,
           slug: tenant.slug,
+          logo_url: tenantLogoUrl,
           outlets: [],
         },
         greeting_name: 'Preview',
@@ -198,7 +208,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const tenantId = context.tenant_id!;
-    const [ordersRes, creditSnapshot, outletsRes] = await Promise.all([
+    const buyerUserIdentityPromise = context.sub
+      ? db
+        .schema('app')
+        .from('buyer_users')
+        .select('first_name, last_name')
+        .eq('buyer_id', buyerId)
+        .eq('user_id', context.sub)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null });
+
+    const [ordersRes, creditSnapshot, outletsRes, buyerUserIdentityRes] = await Promise.all([
       db
         .schema('app')
         .from('orders')
@@ -224,6 +246,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .limit(500)
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true }),
+      buyerUserIdentityPromise,
     ]);
 
     if (!profile.buyer) {
@@ -243,9 +266,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       console.error('[GET /api/buyer/me] outlets query error:', outletsRes.error);
       return NextResponse.json({ error: 'Failed to load ordering outlets' }, { status: 500 });
     }
+    if (buyerUserIdentityRes.error) {
+      console.error('[GET /api/buyer/me] buyer user identity query error:', buyerUserIdentityRes.error);
+      return NextResponse.json({ error: 'Failed to load buyer session identity' }, { status: 500 });
+    }
 
+    const buyer = profile.buyer;
+    const tenant = profile.tenant;
     const openOrders = ordersRes.data ?? [];
     const openOrdersCount = openOrders.length;
+    const buyerUserIdentity = (buyerUserIdentityRes.data as {
+      first_name?: string | null;
+      last_name?: string | null;
+    } | null);
+    const buyerUserFullName = [buyerUserIdentity?.first_name, buyerUserIdentity?.last_name]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+      .join(' ')
+      .trim();
+    const sessionPersonName = buyerUserFullName || buyer.contact_name?.trim() || null;
+    const sessionPersonKind: BuyerMeResponse['session_person_kind'] = buyerUserFullName ? 'buyer_user' : 'buyer';
     const outletsByLocation = new Map<string, BuyerMeResponse['tenant']['outlets'][number]>();
 
     for (const row of (outletsRes.data ?? []) as Array<Record<string, unknown>>) {
@@ -284,10 +323,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         warehouse_name: typeof row.name === 'string' ? row.name : 'Warehouse',
       });
     }
-
-    const buyer = profile.buyer;
-    const tenant = profile.tenant;
-
     const payload: BuyerMeResponse = {
       mode: context.mode,
       buyer_id: buyer.id,
@@ -295,6 +330,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       contact_name: buyer.contact_name ?? '',
       phone: buyer.phone ?? '—',
       gstin: buyer.gstin ?? null,
+      session_person_name: sessionPersonName,
+      session_person_kind: sessionPersonKind,
       credit_limit: Number(buyer.credit_limit ?? 0),
       credit_used: creditSnapshot.credit_used,
       open_orders_count: openOrdersCount,
@@ -304,6 +341,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         id: tenant.id,
         name: tenant.business_name,
         slug: tenant.slug,
+        logo_url: tenantLogoUrl,
         outlets: Array.from(outletsByLocation.values()),
       },
       greeting_name: profile.greeting_name,
@@ -365,7 +403,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (phoneAllowed && normalized.phone !== undefined) {
       updateData.phone = normalized.phone;
     }
-
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No editable fields provided' }, { status: 400 });
     }
@@ -384,7 +421,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if ('gstin' in updateData && updateData.gstin !== null && typeof updateData.gstin === 'string' && !/^[0-9A-Z]{15}$/i.test(updateData.gstin)) {
       return NextResponse.json({ error: 'GSTIN must be 15 alphanumeric characters' }, { status: 422 });
     }
-
     const db = supabaseAdmin as any;
 
     if ('phone' in updateData && updateData.phone !== previousPhone) {

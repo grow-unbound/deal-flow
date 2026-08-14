@@ -34,7 +34,7 @@ describe('navigateBuyerBack', () => {
     expect(window.sessionStorage.getItem('df_buyer_nav_direction')).toBe('back');
   });
 
-  it('falls back to buyer home when opened without stacked history', () => {
+  it('falls back to buyer catalog when opened without stacked history', () => {
     const router = {
       back: vi.fn(),
       replace: vi.fn(),
@@ -63,9 +63,9 @@ describe('navigateBuyerBack', () => {
       value: { idx: 0 },
     });
 
-    navigateBuyerBack(router, '/buy/catalog');
+    navigateBuyerBack(router, '/buy/home');
 
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/buy/catalog');
+    expect(router.replace).toHaveBeenCalledWith('/buy/home');
   });
 });

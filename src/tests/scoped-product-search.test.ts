@@ -1,18 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const createProductQueryEmbeddingMock = vi.fn();
-
-vi.mock('@/lib/server/product-search', () => ({
-  createProductQueryEmbedding: (...args: unknown[]) => createProductQueryEmbeddingMock(...args),
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 describe('searchScopedProducts', () => {
-  beforeEach(() => {
-    createProductQueryEmbeddingMock.mockReset();
-  });
-
   it('treats an explicitly empty allowed-brand scope as deny-all', async () => {
     const rpc = vi.fn();
     const result = await searchScopedProducts({
@@ -24,12 +14,10 @@ describe('searchScopedProducts', () => {
     });
 
     expect(result).toEqual({ rows: [], total: 0 });
-    expect(createProductQueryEmbeddingMock).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('pushes campaign membership into the scoped product RPC', async () => {
-    createProductQueryEmbeddingMock.mockResolvedValue(null);
+  it('pushes campaign membership into the scoped product RPC with no embedding param', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
 
     await searchScopedProducts({
@@ -46,10 +34,11 @@ describe('searchScopedProducts', () => {
       p_campaign_id: 'campaign-a',
       p_offset: 40,
     }));
+    const [, calledArgs] = rpc.mock.calls[0];
+    expect(calledArgs).not.toHaveProperty('p_query_embedding');
   });
 
   it('keeps buyer category scope scalar at the shared SQL seam', async () => {
-    createProductQueryEmbeddingMock.mockResolvedValue(null);
     const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
 
     await searchScopedProducts({
@@ -67,7 +56,6 @@ describe('searchScopedProducts', () => {
   });
 
   it('recovers a stable total for an empty later page with one bounded probe', async () => {
-    createProductQueryEmbeddingMock.mockResolvedValue(null);
     const rpc = vi.fn()
       .mockResolvedValueOnce({ data: [], error: null })
       .mockResolvedValueOnce({ data: [{ total_count: 73 }], error: null });

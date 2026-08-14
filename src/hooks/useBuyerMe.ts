@@ -11,6 +11,8 @@ export interface BuyerMeData {
   contact_name: string;
   phone: string;
   gstin: string | null;
+  session_person_name: string | null;
+  session_person_kind: 'buyer' | 'buyer_user' | 'preview';
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -20,6 +22,7 @@ export interface BuyerMeData {
     id: string;
     name: string;
     slug: string;
+    logo_url: string | null;
     outlets: Array<{
       location_id: string;
       name: string;

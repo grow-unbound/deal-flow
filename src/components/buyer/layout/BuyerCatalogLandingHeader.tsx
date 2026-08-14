@@ -1,31 +1,44 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
+import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 
 interface BuyerCatalogLandingHeaderProps {
-  categoryChips?: React.ReactNode;
   searchPlaceholder?: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
+  searchLoading?: boolean;
+}
+
+function getInitials(value: string | null | undefined) {
+  const parts = (value ?? '').split(/\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return 'YT';
+  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? 'YT').toUpperCase();
+  return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
 }
 
 export function BuyerCatalogLandingHeader({
-  categoryChips = null,
   searchPlaceholder = 'Search products, SKU, brand…',
   searchValue,
   onSearchChange,
+  searchLoading = false,
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
+  const { data: me, isLoading: meLoading } = useBuyerMe();
+  const tenantLoading = meLoading && !me;
+  const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
+  const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
   return (
     <>
       <header
         className={cn(
-          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow',
+          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow md:hidden',
           collapsed && 'shadow-sm',
         )}
         style={{ backgroundColor: 'var(--bg-base)', isolation: 'isolate' }}
@@ -37,26 +50,34 @@ export function BuyerCatalogLandingHeader({
           )}
         >
           <div className="overflow-hidden">
-            <div className="flex items-end justify-between gap-3 px-4 pb-2 pt-6">
-              <div className="min-w-0 shrink-0">
-                <p
-                  className="font-semibold uppercase text-[var(--cream-700)]"
-                  style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}
-                >
-                  Browse
-                </p>
-                <h1
-                  className="mt-1.5 font-semibold leading-[0.96] text-[var(--cream-900)]"
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'var(--b-text-page-sm)',
-                    letterSpacing: '-0.022em',
-                  }}
-                >
-                  Catalog
-                </h1>
+            <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-5">
+              <div className="flex min-w-0 items-center gap-3">
+                {tenantLoading ? (
+                  <div className="h-11 w-11 shrink-0 animate-pulse rounded-[10px] bg-cream-200" aria-label="Loading tenant logo" />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-cream-200 bg-white shadow-[var(--shadow-sm)]">
+                    {tenantLogoUrl ? (
+                      <Image src={tenantLogoUrl} alt={tenantName} width={44} height={44} className="h-full w-full object-contain p-1" unoptimized />
+                    ) : (
+                      <span className="text-caption font-semibold uppercase text-cream-900">{getInitials(tenantName)}</span>
+                    )}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  {tenantLoading ? (
+                    <>
+                      <div className="h-4 w-24 animate-pulse rounded bg-cream-200" aria-label="Loading tenant name" />
+                      <div className="mt-1.5 h-3 w-16 animate-pulse rounded bg-cream-200" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="truncate text-base font-semibold text-[var(--cream-900)]">{tenantName}</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-500)]">Catalog</p>
+                    </>
+                  )}
+                </div>
               </div>
-              <BuyerCatalogLocationLink className="max-w-[58%] shrink pb-0.5" />
+              <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
             </div>
           </div>
         </div>
@@ -66,14 +87,9 @@ export function BuyerCatalogLandingHeader({
             value={searchValue}
             onChange={onSearchChange}
             placeholder={searchPlaceholder}
+            loading={searchLoading}
           />
         </div>
-
-        {categoryChips ? (
-          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-2.5">
-            {categoryChips}
-          </div>
-        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0 bg-transparent" aria-hidden />
     </>

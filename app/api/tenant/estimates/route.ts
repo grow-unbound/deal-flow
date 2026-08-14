@@ -18,7 +18,7 @@ import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
-import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds, loadTransactionNumberMatchIds } from '@/lib/server/document-table-search';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -253,7 +253,12 @@ export async function GET(req: NextRequest) {
     const statusParams = explicitStatusParams.length > 0 ? explicitStatusParams : statusesFromEstimatePreset(filterPreset);
     const attentionParams = explicitAttentionParams.length > 0 ? explicitAttentionParams : attentionFromEstimatePreset(filterPreset);
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
-    const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
+    const [searchScope, numberMatchIds] = searchParam
+      ? await Promise.all([
+          loadTransactionSearchScopeIds(db, tenantId, searchParam),
+          loadTransactionNumberMatchIds(db as any, tenantId, 'estimate_number', searchParam),
+        ])
+      : [{ buyerIds: [], locationIds: [] }, []];
 
     const buildBaseEstimateQuery = () => {
       return applySellerLocationScope(
@@ -278,7 +283,7 @@ export async function GET(req: NextRequest) {
     if (cursorParam) {
       scopedEstimatesQuery = applyEstimateCursor(scopedEstimatesQuery, cursorParam);
     }
-    scopedEstimatesQuery = applyTransactionTableSearch(scopedEstimatesQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
+    scopedEstimatesQuery = applyTransactionTableSearch(scopedEstimatesQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds, numberMatchIds);
     scopedEstimatesQuery = applyEstimateSourceFilter(scopedEstimatesQuery, sourceParams);
     if (statusParams.length > 0) {
       scopedEstimatesQuery = scopedEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));

@@ -18,6 +18,8 @@ export interface InvoiceSummary {
 interface InvoiceCardProps {
   invoice: InvoiceSummary;
   href?: string;
+  variant?: 'card' | 'rail';
+  selected?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -43,7 +45,7 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
   return statusBadge[status as InvoiceStatusKey] ?? { tone: 'warning', label: 'Due' };
 }
 
-export function InvoiceCard({ invoice, href }: InvoiceCardProps) {
+export function InvoiceCard({ invoice, href, variant, selected }: InvoiceCardProps) {
   const badge = getBadge(invoice.status);
 
   const middleRight = invoice.due_date
@@ -53,6 +55,8 @@ export function InvoiceCard({ invoice, href }: InvoiceCardProps) {
   return (
     <ActivityCardShell
       href={href}
+      variant={variant}
+      selected={selected}
       documentNumber={invoice.invoice_number}
       statusLabel={badge.label}
       statusTone={badge.tone}

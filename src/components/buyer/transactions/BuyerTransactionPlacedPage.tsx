@@ -1,21 +1,10 @@
 'use client';
 
-import { formatNumberValue } from '@/lib/utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 
-import { useCart } from '@/contexts/BuyerCartContext';
-import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
-import { Button } from '@/components/ui/button';
-import { StatusPill } from '@/components/ui/status-pill';
-import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationBack, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
-import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
-;
-
-type BuyerTransactionKind = 'estimate' | 'order';
+import { BuyerTransactionConfirmation, type BuyerTransactionKind } from '@/components/buyer/transactions/BuyerTransactionConfirmation';
 
 interface BuyerTransactionPlacedPageProps {
   kind: BuyerTransactionKind;
@@ -24,37 +13,6 @@ interface BuyerTransactionPlacedPageProps {
   successHeading: string;
   successCopy: string;
   documentLabel: string;
-}
-
-interface BuyerTransactionDetailResponse {
-  estimate?: {
-    estimate_number: string | null;
-    document_status_note?: string | null;
-    document_url?: string | null;
-    estimate_url?: string | null;
-  };
-  order?: {
-    order_number: string | null;
-    document_status_note?: string | null;
-    document_url?: string | null;
-    order_url?: string | null;
-  };
-}
-
-function getDocumentFields(kind: BuyerTransactionKind, payload: BuyerTransactionDetailResponse | null) {
-  if (!payload) return { number: null, documentUrl: null, statusNote: null };
-  if (kind === 'estimate') {
-    return {
-      number: payload.estimate?.estimate_number ?? null,
-      statusNote: payload.estimate?.document_status_note ?? null,
-      documentUrl: payload.estimate?.document_url ?? payload.estimate?.estimate_url ?? null,
-    };
-  }
-  return {
-    number: payload.order?.order_number ?? null,
-    statusNote: payload.order?.document_status_note ?? null,
-    documentUrl: payload.order?.document_url ?? payload.order?.order_url ?? null,
-  };
 }
 
 export function BuyerTransactionPlacedPage({
@@ -67,8 +25,6 @@ export function BuyerTransactionPlacedPage({
 }: BuyerTransactionPlacedPageProps) {
   const router = useRouter();
   const params = useSearchParams();
-  const { clearCart } = useCart();
-  const { setRefreshFn } = useBuyerRealtimeContext();
 
   const id = params.get(kind === 'estimate' ? 'estimate_id' : 'order_id') ?? params.get('id') ?? '';
   const provisionalNumber =
@@ -81,87 +37,17 @@ export function BuyerTransactionPlacedPage({
   const linkedEstimateNumber = kind === 'order' ? params.get('linked_estimate_number') : null;
   const linkedEstimateId = kind === 'order' ? params.get('linked_estimate_id') : null;
 
-  const [documentNumber, setDocumentNumber] = useState(provisionalNumber);
-  const [documentUrl, setDocumentUrl] = useState(initialDocumentUrl);
-  const [documentStatusNote, setDocumentStatusNote] = useState(
-    provisionalNumber ? '' : initialStatusNote,
-  );
-
-  useEffect(() => {
-    clearCart();
-  }, [clearCart]);
-
-  const loadCanonicalDetail = useCallback(async () => {
-    if (!id) return false;
-    const res = await apiFetch(`${detailEndpoint}/${id}`, { fresh: true });
-    if (!res.ok) return false;
-    const json = (await res.json()) as BuyerTransactionDetailResponse;
-    const fields = getDocumentFields(kind, json);
-    if (fields.number) {
-      setDocumentNumber(fields.number);
-      setDocumentStatusNote('');
-    } else if (fields.statusNote) {
-      setDocumentStatusNote(fields.statusNote);
-    }
-    if (fields.documentUrl) setDocumentUrl(fields.documentUrl);
-    return Boolean(fields.number || fields.documentUrl);
-  }, [detailEndpoint, id, kind]);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let attempt = 0;
-    const maxAttempts = 4;
-    const retryDelayMs = 1500;
-
-    async function pollCanonicalDetail() {
-      attempt += 1;
-      if (cancelled) return;
-      const ready = await loadCanonicalDetail();
-      if (!ready && attempt < maxAttempts) {
-        retryTimer = setTimeout(() => {
-          void pollCanonicalDetail();
-        }, retryDelayMs);
-      }
-    }
-
-    void pollCanonicalDetail();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [id, loadCanonicalDetail]);
-
-  useEffect(() => {
-    if (!id) return;
-    setRefreshFn(async () => {
-      await loadCanonicalDetail();
-    });
-    return () => setRefreshFn(null);
-  }, [id, loadCanonicalDetail, setRefreshFn]);
-
-  const linkLabel = useMemo(
-    () => (kind === 'estimate' ? 'View Estimate PDF' : 'View Order PDF'),
-    [kind],
-  );
-  const documentDisplayValue = documentNumber || documentStatusNote || TRANSACTION_PENDING_NOTE;
-
-  const ordersHref = useMemo(() => {
-    const tab = kind === 'estimate' ? 'enquiries' : 'orders';
-    const search = new URLSearchParams({ tab });
-    if (id) search.set('highlight', id);
-    return `/buy/orders?${search.toString()}`;
-  }, [id, kind]);
-
   function goToCatalog() {
     markBuyerNavigationBack();
-    router.push('/buy/catalog');
+    router.push('/buy/home');
   }
 
   function goToOrders() {
     markBuyerNavigationBack();
-    router.push(ordersHref);
+    const tab = kind === 'estimate' ? 'enquiries' : 'orders';
+    const search = new URLSearchParams({ tab });
+    if (id) search.set('highlight', id);
+    router.push(`/buy/orders?${search.toString()}`);
   }
 
   return (
@@ -179,10 +65,10 @@ export function BuyerTransactionPlacedPage({
         <button
           type="button"
           onClick={() => navigateBuyerBack(router)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--cream-800)] transition-colors active:bg-[var(--cream-100)]"
+          className="flex h-11 w-11 items-center justify-center p-0 text-[var(--cream-800)] transition-opacity active:opacity-60"
           aria-label="Go back"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-6 w-6" />
         </button>
         <h1
           className="font-semibold text-[var(--fg-1)]"
@@ -192,112 +78,24 @@ export function BuyerTransactionPlacedPage({
         </h1>
       </header>
 
-      <main className="flex flex-1 flex-col px-4 py-6">
-        <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center text-center">
-          <div
-            className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border"
-            style={{ background: 'var(--ember-50)', borderColor: 'var(--ember-200)' }}
-          >
-            <CheckCircle2 className="h-10 w-10" style={{ color: 'var(--ember-400)' }} />
-          </div>
-
-          <h2
-            className="text-[var(--fg-1)]"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--b-text-page)',
-              fontWeight: 500,
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {successHeading}
-          </h2>
-          <p className="mt-2 max-w-md text-[var(--b-text-body)] text-[var(--fg-3)]">
-            {successCopy}
-          </p>
-
-          <div className="mt-8 w-full rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] text-left">
-            <div className="border-b border-[var(--border-1)] px-4 py-3" style={{ background: 'var(--cream-50)' }}>
-              <p className="font-semibold uppercase tracking-[0.18em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
-                {documentLabel}
-              </p>
-            </div>
-            <div className="space-y-3 px-4 py-4">
-              <ReceiptRow label={`${documentLabel} #`} value={documentDisplayValue} mono={Boolean(documentNumber)} />
-              <ReceiptRow label="Status" value={<StatusChip label="Received" />} />
-              {total > 0 ? <ReceiptRow label="Total" value={formatNumberValue(total, 'CURRENCY_EXACT')} mono /> : null}
-              {documentUrl ? (
-                <Button asChild variant="outline" className="mt-1 h-10 gap-2 self-start">
-                  <a href={documentUrl} target="_blank" rel="noreferrer">
-                    <FileText className="h-4 w-4" />
-                    {linkLabel}
-                    <ArrowUpRight className="h-4 w-4" />
-                  </a>
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          {linkedEstimateNumber ? (
-            <div className="mt-3 w-full rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-3.5 text-left">
-              <p className="text-[var(--b-text-sub)] text-[var(--fg-3)]">
-                Out-of-stock items were submitted separately as an Enquiry.
-              </p>
-              <div className="mt-1.5 flex items-center justify-between gap-4">
-                <span className="text-[var(--b-text-label)] font-medium text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {linkedEstimateNumber}
-                </span>
-                {linkedEstimateId ? (
-                  <Link
-                    href={`/buy/estimates/${linkedEstimateId}`}
-                    className="inline-flex items-center gap-1 text-[var(--b-text-sub)] font-medium text-[var(--teal-600,#0d9488)]"
-                  >
-                    View Enquiry
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
-            <Button type="button" variant="outline" className="h-12 gap-2" onClick={goToCatalog}>
-              <ShoppingBag className="h-4 w-4" />
-              Go to Catalog
-            </Button>
-            <Button type="button" className="h-12 gap-2" onClick={goToOrders}>
-              <FileText className="h-4 w-4" />
-              Go to Orders
-            </Button>
-          </div>
-        </div>
+      <main className="flex flex-1 flex-col">
+        <BuyerTransactionConfirmation
+          kind={kind}
+          id={id}
+          provisionalNumber={provisionalNumber}
+          initialStatusNote={initialStatusNote}
+          initialDocumentUrl={initialDocumentUrl}
+          total={total}
+          linkedEstimateNumber={linkedEstimateNumber}
+          linkedEstimateId={linkedEstimateId}
+          detailEndpoint={detailEndpoint}
+          successHeading={successHeading}
+          successCopy={successCopy}
+          documentLabel={documentLabel}
+          onGoToCatalog={goToCatalog}
+          onGoToOrders={goToOrders}
+        />
       </main>
-    </div>
-  );
-}
-
-function StatusChip({ label }: { label: string }) {
-  return <StatusPill label={label} tone="warning" className="text-[11px]" />;
-}
-
-function ReceiptRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-[var(--b-text-label)] text-[var(--fg-3)]">{label}</span>
-      <span
-        className="text-[var(--b-text-label)] font-medium text-[var(--fg-1)]"
-        style={{ fontFamily: mono ? 'var(--font-mono)' : undefined }}
-      >
-        {value}
-      </span>
     </div>
   );
 }

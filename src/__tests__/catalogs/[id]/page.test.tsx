@@ -195,13 +195,13 @@ describe('catalog detail page', () => {
     usePublishCatalogMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({
         ok: true,
-        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/catalog?share_token=tok' },
+        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/home?share_token=tok' },
       }),
       isPending: false,
     });
     useEnsureCatalogShareLinkMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({
-        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/catalog?share_token=tok' },
+        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/home?share_token=tok' },
       }),
       isPending: false,
     });
@@ -284,7 +284,7 @@ describe('catalog detail page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Copy link/i }));
     await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.com/buy/catalog?share_token=tok');
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.com/buy/home?share_token=tok');
     });
   });
 });

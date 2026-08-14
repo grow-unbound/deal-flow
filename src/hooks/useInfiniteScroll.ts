@@ -19,7 +19,7 @@ export function getSentinelInsertIndex(itemCount: number, prefetchAtRatio = 0.75
 export function useInfiniteScroll({
   hasMore,
   isLoading = false,
-  rootMargin = '260px',
+  rootMargin = '480px',
   threshold = 0,
   rootRef,
   onLoadMore,

@@ -88,7 +88,7 @@ export default function PromotionsPage() {
                 id={promotion.id}
                 name={promotion.name}
                 productCount={promotion.product_count}
-                href={`/buy/catalog/list/${promotion.id}`}
+                href={`/buy/home/list/${promotion.id}`}
                 validUntil={promotion.valid_until}
                 heroImageUrl={promotion.hero_image_url}
                 hueIndex={index}

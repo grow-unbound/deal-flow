@@ -1,9 +1,11 @@
 'use client';
 
 import { formatNumberValue } from '@/lib/utils';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { Pressable } from '@/components/ui/pressable';
 import { useCart } from '@/contexts/BuyerCartContext';
@@ -20,10 +22,27 @@ export function CartBar() {
   const posthog = usePostHog();
   const { itemCount, subtotal } = useCart();
   const { tabBarVisible } = useBuyerScrollChromeState();
+  const [mounted, setMounted] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const isLanding = isBuyerLandingRoute(pathname);
   const tabBarShown = isLanding && tabBarVisible;
 
-  if (itemCount === 0) return null;
+  useLayoutEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const syncIsMobile = () => setIsMobile(mediaQuery.matches);
+
+    syncIsMobile();
+    mediaQuery.addEventListener('change', syncIsMobile);
+    return () => mediaQuery.removeEventListener('change', syncIsMobile);
+  }, []);
+
+  if (!mounted || !isMobile || itemCount === 0) return null;
 
   const hasStickyFooter = pathname.startsWith('/buy/product/');
 
@@ -33,7 +52,7 @@ export function CartBar() {
       ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 12px)'
       : 'calc(24px + env(safe-area-inset-bottom, 0px))';
 
-  return (
+  return createPortal(
     <div
       className="pointer-events-none fixed left-1/2 z-40 flex w-full -translate-x-1/2 justify-center px-4"
       style={{ bottom: bottomOffset, maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
@@ -56,8 +75,8 @@ export function CartBar() {
           }}
         >
           <span
-            className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-            style={{ background: 'var(--ember-400, #C26E3A)', fontFamily: 'var(--font-mono)' }}
+            className="rounded-full px-2 py-0.5 text-[length:var(--b-text-sub)] font-semibold text-white"
+            style={{ background: 'var(--ember-400)', fontFamily: 'var(--font-mono)' }}
           >
             {itemCount}
           </span>
@@ -69,6 +88,7 @@ export function CartBar() {
           <ChevronRight className="h-4 w-4 opacity-85" aria-hidden />
         </Link>
       </Pressable>
-    </div>
+    </div>,
+    document.body,
   );
 }

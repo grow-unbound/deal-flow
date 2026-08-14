@@ -19,7 +19,7 @@ import { createTimer } from '@/lib/server-timing';
 import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
-import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds, loadTransactionNumberMatchIds } from '@/lib/server/document-table-search';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 
@@ -276,7 +276,12 @@ export async function GET(request: NextRequest) {
     const dueParams = explicitDueParams.length > 0 ? explicitDueParams : dueFiltersFromInvoicePreset(filterPreset);
     const locationParams = readArrayParam(searchParams, 'location_id');
     const todayKey = isoDateInTimeZone(new Date());
-    const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
+    const [searchScope, numberMatchIds] = searchParam
+      ? await Promise.all([
+          loadTransactionSearchScopeIds(db, tenantId, searchParam),
+          loadTransactionNumberMatchIds(db as any, tenantId, 'invoice_number', searchParam),
+        ])
+      : [{ buyerIds: [], locationIds: [] }, []];
 
     const buildBaseInvoiceQuery = () => {
       return applySellerLocationScope(
@@ -297,7 +302,7 @@ export async function GET(request: NextRequest) {
     if (cursorParam) {
       invoiceListQuery = applyInvoiceCursor(invoiceListQuery, cursorParam);
     }
-    invoiceListQuery = applyTransactionTableSearch(invoiceListQuery, 'invoice_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
+    invoiceListQuery = applyTransactionTableSearch(invoiceListQuery, 'invoice_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds, numberMatchIds);
     if (locationParams.length > 0) {
       invoiceListQuery = invoiceListQuery.in('location_id', locationParams);
     }

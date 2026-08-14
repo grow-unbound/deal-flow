@@ -21,7 +21,7 @@ export function BuyerCatalogLocationLink({ className }: BuyerCatalogLocationLink
   const selected = delivery?.selected ?? null;
   const query = searchParams?.toString();
   const returnTo = React.useMemo(() => {
-    const base = pathname || '/buy/catalog';
+    const base = pathname || '/buy/home';
     return query ? `${base}?${query}` : base;
   }, [pathname, query]);
 

@@ -277,16 +277,20 @@ async function resolveLocationIdsBySearch(db: DbClient, tenantId: string, search
   if (!search) return null;
   const normalized = search.replace(/[*(),]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!normalized) return null;
-  const likeValue = `%${normalized}%`;
-  const { data, error } = await db
-    .schema('app')
-    .from('locations')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .or(`name.ilike.${likeValue},phone_number.ilike.${likeValue}`)
-    .limit(500);
-  if (error) throw new Error(error.message ?? 'Failed to search locations');
+
+  // Indexed (idx_locations_search_vector) — the vector already includes
+  // phone_number, so this covers both name and phone matches.
+  const { data, error } = await (db as any).schema('app').rpc('search_seller_location_landing_ids', {
+    p_tenant_id: tenantId,
+    p_query: normalized,
+    p_statuses: null,
+    p_stock_modes: null,
+    p_dues_modes: null,
+    p_location_ids: null,
+    p_limit: 500,
+    p_offset: 0,
+  });
+  if (error) throw new Error((error as { message?: string })?.message ?? 'Failed to search locations');
   return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
 }
 

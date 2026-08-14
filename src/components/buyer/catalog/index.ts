@@ -1,6 +1,7 @@
 export * from './BrandFilter';
 export * from './CategoryFilter';
 export * from './CatalogPageHeader';
+export * from './CatalogSearchState';
 export * from './LoadingSkeleton';
 export * from './ProductCard';
 export * from './ProductGrid';

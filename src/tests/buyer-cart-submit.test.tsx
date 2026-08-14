@@ -243,7 +243,7 @@ describe('buyer transaction placed page CTAs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /go to catalog/i }));
     expect(markBuyerNavigationBackMock).toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith('/buy/catalog');
+    expect(pushMock).toHaveBeenCalledWith('/buy/home');
 
     fireEvent.click(screen.getByRole('button', { name: /go to orders/i }));
     expect(pushMock).toHaveBeenCalledWith('/buy/orders?tab=orders&highlight=ord-99');

@@ -114,7 +114,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
   if (isLoading && !data) return <ProductDetailSkeleton />;
 
   return (
-    <div className="px-4 py-4 md:px-6 md:py-4">
+    <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">
       <DetailHeader
         loading={isLoading}
         avatar={{

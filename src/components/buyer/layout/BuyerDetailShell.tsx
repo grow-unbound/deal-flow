@@ -20,17 +20,21 @@ export interface BuyerDetailShellProps {
   subtitle?: React.ReactNode;
   /** Optional full-width control row shown below the title row. */
   headerSearch?: React.ReactNode;
-  /** Sticky chip/filter row pinned below title row inside the header. */
-  stickyToolbar?: React.ReactNode;
   /** Hide the buyer location control for detail screens. */
   showLocationControl?: boolean;
-  /** Hide the search icon in the header row. */
+  /** Hide the search icon in the header row (both mobile and desktop). */
   hideSearch?: boolean;
+  /** Hide the search icon on desktop only — it still shows on mobile. */
+  hideSearchOnDesktop?: boolean;
+  /** Optional ref to the sticky header block for split-view height calculations. */
+  contentRef?: React.Ref<HTMLDivElement>;
   /**
    * Fallback when the tab has no stacked history (`history.state.idx` missing/0).
-   * Catalog tree details should pass `/buy/catalog` — default is buyer home.
+   * Catalog tree details should pass `/buy/home` — default is buyer home.
    */
   backFallbackHref?: string;
+  /** Desktop deep pages already live under the persistent buyer chrome. */
+  hideDesktopHeader?: boolean;
   children: React.ReactNode;
 }
 
@@ -40,10 +44,12 @@ export function BuyerDetailShell({
   rightSlot,
   subtitle,
   headerSearch,
-  stickyToolbar,
   showLocationControl = false,
   hideSearch = false,
+  hideSearchOnDesktop = false,
+  contentRef,
   backFallbackHref,
+  hideDesktopHeader = false,
   children,
 }: BuyerDetailShellProps) {
   const router = useRouter();
@@ -54,9 +60,10 @@ export function BuyerDetailShell({
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <header
-        className={cn('sticky top-0 z-[15] transition-shadow', collapsed && 'shadow-sm')}
+        ref={contentRef}
+        className={cn('sticky top-0 z-[15] transition-shadow', hideDesktopHeader && 'md:hidden', collapsed && 'shadow-sm')}
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
           background: 'var(--bg-base)',
@@ -73,10 +80,10 @@ export function BuyerDetailShell({
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--fg-2)] transition-colors active:bg-[var(--cream-100)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center p-0 text-[var(--fg-2)] transition-colors active:opacity-60"
             aria-label="Back"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </button>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -95,21 +102,18 @@ export function BuyerDetailShell({
             {subtitle ? <div className="mt-0.5">{subtitle}</div> : null}
           </div>
           {showLocationControl ? <BuyerLocationControl /> : null}
-          {hideSearch ? null : <BuyerSearchIconButton href={searchHref} />}
+          {hideSearch ? null : (
+            <BuyerSearchIconButton href={searchHref} className={hideSearchOnDesktop ? 'md:hidden' : undefined} />
+          )}
         </div>
         {headerSearch ? (
           <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] px-4 py-2.5">
             {headerSearch}
           </div>
         ) : null}
-        {stickyToolbar ? (
-          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-1">
-            {stickyToolbar}
-          </div>
-        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      <div className="pt-3">{children}</div>
-    </>
+      <div className={cn('min-h-0 flex-1 overflow-hidden pt-3', hideDesktopHeader && 'md:overflow-visible md:pt-0')}>{children}</div>
+    </div>
   );
 }

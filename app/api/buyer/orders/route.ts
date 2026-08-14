@@ -280,6 +280,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Failed to create order items' }, { status: 500 });
     }
 
+    // Fire-and-forget: the order row above is already committed (and is what the
+    // realtime channel notifies on), so don't hold the HTTP response hostage on
+    // PostHog or the outbound WhatsApp API — that made the buyer's own response
+    // arrive noticeably after the realtime "order created" toast for the same row.
     try {
       const ph = getPostHogClient();
       ph.capture({
@@ -295,34 +299,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
           source: 'buyer_app',
         },
       });
-      await ph.flush();
+      void ph.flush().catch(() => {});
     } catch {
       // non-blocking
     }
 
-    let whatsappSent = false;
+    const whatsappDispatched = !deferDocumentNumber && Boolean(typed.order_number);
     if (!deferDocumentNumber && typed.order_number) {
-      try {
-        whatsappSent = await sendImmediateTransactionNotifications({
-          kind: 'order',
-          tenantId: tenant_id,
-          buyerId: buyer_id,
-          locationId: routedLocationId,
-          initiatingBuyerUserId: context.sub,
-          documentId: typed.id,
-          documentNumber: typed.order_number,
-          totalAmount: total_amount,
-          itemCount: acceptedItems.length,
-          db,
-          table: 'orders',
-        });
-      } catch (err) {
+      void sendImmediateTransactionNotifications({
+        kind: 'order',
+        tenantId: tenant_id,
+        buyerId: buyer_id,
+        locationId: routedLocationId,
+        initiatingBuyerUserId: context.sub,
+        documentId: typed.id,
+        documentNumber: typed.order_number,
+        totalAmount: total_amount,
+        itemCount: acceptedItems.length,
+        db,
+        table: 'orders',
+      }).catch((err) => {
         console.error('[buyer/orders] whatsapp notify failed', {
           order_id: typed.id,
           error: err instanceof Error ? err.message : String(err),
         });
-        // non-blocking — order creation already succeeded
-      }
+      });
     }
 
     void recordBuyerAppActivitySafe(db as any, {
@@ -344,7 +345,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       order_number: typed.order_number,
       document_url: null,
       document_status_note: typed.order_number ? null : TRANSACTION_PENDING_NOTE,
-      whatsapp_sent: whatsappSent,
+      whatsapp_sent: whatsappDispatched,
     });
   } catch (error) {
     console.error('[POST /api/buyer/orders] unexpected error:', error);

@@ -20,7 +20,7 @@ describe('buyer catalog location gating', () => {
   });
 
   it('wraps catalog page in the client-side selection gate with the full return path', async () => {
-    const mod = await import('../../app/(buyer)/buy/catalog/page');
+    const mod = await import('../../app/(buyer)/buy/home/page');
     const element = await mod.default({
       searchParams: Promise.resolve({
         share_token: 'tok',
@@ -30,7 +30,7 @@ describe('buyer catalog location gating', () => {
 
     expect(requireBuyerDeliverySelectionMock).not.toHaveBeenCalled();
     expect((element as { props?: { returnTo?: string } }).props?.returnTo).toBe(
-      '/buy/catalog?share_token=tok&buyer_preview=preview-token',
+      '/buy/home?share_token=tok&buyer_preview=preview-token',
     );
   });
 

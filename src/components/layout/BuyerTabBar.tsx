@@ -9,8 +9,7 @@ import { isBuyerChromelessRoute, isBuyerDeepRoute } from '@/lib/buyer-routes';
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { label: 'Home', href: '/buy/home', icon: HomeIcon },
-  { label: 'Catalog', href: '/buy/catalog', icon: CatalogIcon },
+  { label: 'Home', href: '/buy/home', icon: CatalogIcon },
   { label: 'Orders', href: '/buy/orders', icon: OrdersIcon },
   { label: 'Profile', href: '/buy/profile', icon: ProfileIcon },
 ];
@@ -18,7 +17,7 @@ const tabs = [
 export function BuyerTabBar() {
   const pathname = usePathname();
   const { tabBarVisible } = useBuyerScrollChromeState();
-  useIdleRoutePrefetch(['/buy/home', '/buy/catalog', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
+  useIdleRoutePrefetch(['/buy/home', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
 
   if (isBuyerDeepRoute(pathname) || isBuyerChromelessRoute(pathname)) return null;
 
@@ -26,7 +25,7 @@ export function BuyerTabBar() {
     <nav
       aria-hidden={!tabBarVisible}
       className={cn(
-        'z-20 flex w-full shrink-0 overflow-hidden border-t border-[var(--border-1)] bg-[var(--bg-base)] transition-[height] duration-300 ease-out',
+        'z-20 flex w-full shrink-0 overflow-hidden border-t border-[var(--border-1)] bg-[var(--bg-base)] transition-[height] duration-300 ease-out md:hidden',
         !tabBarVisible && 'pointer-events-none border-transparent',
       )}
       style={{
@@ -67,13 +66,6 @@ export function BuyerTabBar() {
   );
 }
 
-function HomeIcon({ size = 22, className = '' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-  );
-}
 function CatalogIcon({ size = 22, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
