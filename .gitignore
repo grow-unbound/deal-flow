@@ -62,7 +62,7 @@ CLAUDE\ OUTPUTS/
 .codegraph/
 skills-lock.json
 
-#Sensitive files
+#Media files
 media/
 
 Specs files

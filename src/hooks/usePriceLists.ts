@@ -137,6 +137,30 @@ export interface PriceListsLandingFilters {
   status?: string[];
 }
 
+export interface PriceListsLandingKpiCardV4 {
+  id: string;
+  value: number;
+  entity_count?: number;
+  document_count?: number | null;
+  secondary_value?: number | null;
+  time_basis?: string;
+  filter_preset?: Record<string, unknown>;
+}
+
+export interface PriceListsLandingMetricsV4 {
+  page_key: string;
+  period: {
+    period_key: string;
+    grain: string;
+    period_start: string;
+    period_end_exclusive: string;
+    label?: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  cards: PriceListsLandingKpiCardV4[];
+}
+
 export interface PriceListItem {
   id: string;
   price_list_id: string;
@@ -242,6 +266,32 @@ export function usePriceListsLanding(
   });
   const merged = mergeSellerLandingPages(query.data?.pages, 'price_lists');
   return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
+}
+
+/**
+ * KPI strip for the price lists landing page, sourced from
+ * app.metrics_landing_kpi_snapshot (page_key='price_lists', period_key='now')
+ * via app.get_landing_metrics_v4 -- the same precomputed-snapshot path every
+ * other v4-migrated landing page's KPI strip uses, replacing the old
+ * per-request get_seller_price_list_landing_aggregates(p_include_summary=true)
+ * full-tenant scan for these 4 numbers specifically. The landing table rows
+ * (product_count/avg_discount_pct/avg_margin_pct/cohorts_count per price list)
+ * and counts/todays_read still come from usePriceListsLanding/`/api/price-lists`
+ * unchanged -- this hook covers the KPI strip only.
+ */
+export function useTenantPriceListsMetrics(initialData?: PriceListsLandingMetricsV4 | null) {
+  return useQuery({
+    queryKey: ['tenant-price-lists-metrics'],
+    queryFn: async (): Promise<PriceListsLandingMetricsV4> => {
+      const res = await apiFetch('/api/tenant/price-lists/metrics');
+      if (!res.ok) throw new Error('Failed to fetch price lists metrics');
+      return res.json();
+    },
+    initialData: initialData ?? undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
 }
 
 export function useCreatePriceList() {
