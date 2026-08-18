@@ -60,6 +60,41 @@ const nextConfig = {
     NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID: process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID,
     NEXT_PUBLIC_ZOHO_DOMAIN: process.env.NEXT_PUBLIC_ZOHO_DOMAIN,
   },
+  // Static header list — evaluated once by Next/Vercel's edge, not per-request app
+  // code, so this adds no runtime auth/DB cost. CSP is intentionally permissive on
+  // script/style (Next.js hydration + Tailwind/shadcn inline styles need
+  // 'unsafe-inline'; 'unsafe-eval' only matters in dev) rather than risk breaking
+  // the app — connect-src allowlists Supabase, PostHog (proxied via /ingest, plus
+  // the direct ingest hosts as a fallback), Google Maps, and Cloudflare R2.
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://maps.gstatic.com https://maps.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://maps.googleapis.com",
+      "frame-src 'self' https://www.google.com",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join('; ');
+
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Content-Security-Policy', value: csp },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: '/orders', destination: '/sales-orders', permanent: true },

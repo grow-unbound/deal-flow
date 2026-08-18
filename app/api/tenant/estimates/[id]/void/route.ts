@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeErrorMessage } from '@/lib/server/safe-error-message';
 import { z } from 'zod';
 
 import { FEATURE_FLAGS } from '@/constants';
@@ -79,7 +80,7 @@ export async function PATCH(
       if (msg.includes('invalid_status')) {
         return NextResponse.json({ error: error.message }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message ?? 'Void failed' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Void failed') }, { status: 500 });
     }
 
     return NextResponse.json({ data: (data ?? {}) as Record<string, unknown> });

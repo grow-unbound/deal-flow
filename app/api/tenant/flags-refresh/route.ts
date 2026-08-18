@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!claims.role?.startsWith('seller_')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const data = await resolveTenantFlags(claims.tenant_id);
   return NextResponse.json(data);

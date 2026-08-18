@@ -7,6 +7,7 @@ import { sendLoginOtpWhatsapp } from '@/lib/server/whatsapp';
 import { AUTH_LOGIN_COPY, buildRequestAccessMessage } from '@/constants/auth-login-copy';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const OTP_SEND_COOLDOWN_MS = 45 * 1000; // 45 seconds between sends to the same phone
 
 type PhoneOtpSendResponse =
   | { ref_id: string; registered: true; outcome: 'otp_sent'; message: string }
@@ -38,6 +39,18 @@ export async function POST(request: NextRequest) {
     }
 
     const phone = normalizeIndianPhone(raw);
+
+    // Per-phone cooldown — prevents OTP-bombing a victim's number (each send costs a
+    // WhatsApp API call and re-annoys the recipient). Checked before any candidate
+    // lookup so a spammed phone doesn't pay for that work either.
+    const cooldownRemaining = await buyerOtpStore.sendCooldownRemainingMs(phone, OTP_SEND_COOLDOWN_MS, OTP_TTL_MS);
+    if (cooldownRemaining > 0) {
+      return NextResponse.json(
+        { error: 'Please wait before requesting another OTP', retry_after_ms: cooldownRemaining },
+        { status: 429 },
+      );
+    }
+
     const allCandidates = await findAllLoginCandidates(phone);
 
     if (allCandidates.length === 0) {

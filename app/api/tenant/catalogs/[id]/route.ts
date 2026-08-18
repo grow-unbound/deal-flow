@@ -836,6 +836,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (error) return NextResponse.json({ error: 'Failed to publish catalog' }, { status: 500 });
 
+    const { error: publishAuditError } = await db.schema('app').from('audit_log').insert({
+      tenant_id: claims.tenant_id,
+      actor_user_id: claims.sub,
+      entity_type: 'campaign',
+      entity_id: id,
+      action: 'status_change',
+      diff: { status: 'published', share_token: shareToken, notify_whatsapp: publishInput.notify_whatsapp },
+      ts: new Date().toISOString(),
+    });
+    if (publishAuditError) console.error('[publish_catalog] audit', publishAuditError);
+
     let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
 
     if (publishInput.notify_whatsapp) {

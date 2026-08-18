@@ -4,6 +4,7 @@ import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { LoginSchema } from '@/lib/zod';
 import { getPostHogClient, seedTenantFeatureFlags } from '@/lib/posthog-server';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
+import { isSigninLocked, recordFailedSignin, clearSigninAttempts } from '@/lib/server/auth-signin-lockout';
 
 function isPhone(value: string) {
   return /^[0-9]{10}$/.test(value.trim());
@@ -40,17 +41,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (await isSigninLocked(identifier)) {
+      return NextResponse.json(
+        { error: 'Too many failed attempts. Try again in a few minutes.' },
+        { status: 429 },
+      );
+    }
+
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: identifier,
       password,
     });
 
     if (authError || !authData.user) {
+      void recordFailedSignin(identifier);
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
+
+    void clearSigninAttempts(identifier);
 
     // Resolve the current tenant from the request subdomain so the JWT hook
     // can embed the correct tenant_id claim on the very first token.

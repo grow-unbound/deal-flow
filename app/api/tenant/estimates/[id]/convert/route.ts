@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeErrorMessage } from '@/lib/server/safe-error-message';
 import { z } from 'zod';
 
 import { FEATURE_FLAGS } from '@/constants';
@@ -111,7 +112,7 @@ export async function PATCH(
       if (msg.includes('invalid_status') || msg.includes('already_') || msg.includes('invalid_line')) {
         return NextResponse.json({ error: error.message }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message ?? 'Convert failed' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Convert failed') }, { status: 500 });
     }
 
     const orderId = (data as Record<string, unknown>)?.order_id as string | undefined;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
-import { buyerOtpStore, writeVerifiedCandidatesRecord, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { buyerOtpStore, writeVerifiedCandidatesRecord, hashOtp, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 
 const MAX_ATTEMPTS = 5;
@@ -52,7 +52,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (record.otp !== otp) {
+    // record.otp holds sha256(otp) for sessions created after the hash-at-rest
+    // migration; the plaintext fallback covers any session still in flight from
+    // just before that deploy (10-minute TTL, so this window is short-lived).
+    if (record.otp !== hashOtp(otp) && record.otp !== otp) {
       // Save updated attempt count before responding
       await buyerOtpStore.set(ref_id, record);
       return NextResponse.json(
