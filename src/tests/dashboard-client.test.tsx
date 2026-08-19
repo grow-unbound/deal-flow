@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const useSellerLandingPeriodMock = vi.fn();
 const useSellerDashboardMock = vi.fn();
 const useSellerDashboardMetricsMock = vi.fn();
+const useSellerDashboardBusinessFlowMock = vi.fn();
+const useSellerDashboardCustomerActivityMock = vi.fn();
+const useSellerDashboardSalesMixMock = vi.fn();
+const useSellerDashboardLocationPerformanceMock = vi.fn();
 const useRetainedValueMock = vi.fn();
 const useRouterMock = vi.fn();
 
@@ -14,6 +18,10 @@ vi.mock('@/hooks/useSellerLandingPeriod', () => ({
 vi.mock('@/hooks/useSellerDashboard', () => ({
   useSellerDashboard: (...args: unknown[]) => useSellerDashboardMock(...args),
   useSellerDashboardMetrics: (...args: unknown[]) => useSellerDashboardMetricsMock(...args),
+  useSellerDashboardBusinessFlow: (...args: unknown[]) => useSellerDashboardBusinessFlowMock(...args),
+  useSellerDashboardCustomerActivity: (...args: unknown[]) => useSellerDashboardCustomerActivityMock(...args),
+  useSellerDashboardSalesMix: (...args: unknown[]) => useSellerDashboardSalesMixMock(...args),
+  useSellerDashboardLocationPerformance: (...args: unknown[]) => useSellerDashboardLocationPerformanceMock(...args),
 }));
 
 vi.mock('@/hooks/useRetainedValue', () => ({
@@ -67,121 +75,7 @@ const adminData: SellerDashboardResponse = {
     plan: 'growth',
     location_names: ['Mumbai HQ'],
   },
-  portfolio: {
-    as_of: '2026-06-15T00:00:00.000Z',
-    commercial_horizon_days: 90,
-    table_period: null,
-    primary_demand_kind: 'orders',
-    calculation_version: 1,
-    source_watermark: '2026-06-15T00:00:00.000Z',
-    freshness: {},
-    availability: {},
-    metrics: [],
-    actions: [],
-    explore: [
-      {
-        id: 'business_flow',
-        label: 'Business flow',
-        time_basis: 'THIS MONTH',
-        feasibility: 'REWORK',
-        available: true,
-        meta: {
-          invoice_value_this_month: 420000,
-          invoice_count_this_month: 9,
-          order_value_this_month: 275000,
-          order_count_this_month: 6,
-          estimate_value_this_month: 115000,
-          estimate_count_this_month: 4,
-          orders_enabled: true,
-          estimates_enabled: true,
-        },
-      },
-      {
-        id: 'sales_mix',
-        label: 'Sales mix',
-        time_basis: '90D',
-        feasibility: 'REWORK',
-        available: true,
-        meta: {
-          brands: [
-            { id: 'brand-1', name: 'Alpha', value: 60000 },
-            { id: 'brand-2', name: 'Beta', value: 40000 },
-            { id: 'brand-3', name: 'Gamma', value: 35000 },
-            { id: 'brand-4', name: 'Delta', value: 30000 },
-            { id: 'brand-5', name: 'Epsilon', value: 25000 },
-            { id: 'brand-6', name: 'Zeta', value: 20000 },
-          ],
-          categories: [
-            { id: 'cat-1', name: 'CCTV', value: 70000 },
-            { id: 'cat-2', name: 'Access', value: 30000 },
-          ],
-          locations: [
-            { location_id: 'loc-1', name: 'Mumbai HQ', invoiced_sales_90d: 55000, open_primary_demand_value: 12000, overdue_amount: 5000 },
-            { location_id: 'loc-2', name: 'Pune Depot', invoiced_sales_90d: 45000, open_primary_demand_value: 9000, overdue_amount: 3000 },
-            { location_id: 'loc-3', name: 'Nagpur Hub', invoiced_sales_90d: 25000, open_primary_demand_value: 6000, overdue_amount: 1000 },
-            { location_id: 'loc-4', name: 'Nashik Hub', invoiced_sales_90d: 15000, open_primary_demand_value: 4000, overdue_amount: 500 },
-            { location_id: 'loc-5', name: 'Goa Hub', invoiced_sales_90d: 10000, open_primary_demand_value: 2000, overdue_amount: 0 },
-            { location_id: 'loc-6', name: 'Aurangabad Hub', invoiced_sales_90d: 7000, open_primary_demand_value: 1000, overdue_amount: 250 },
-          ],
-        },
-      },
-      {
-        id: 'customer_activity',
-        label: 'Customer activity',
-        time_basis: '90D',
-        feasibility: 'REWORK',
-        available: true,
-        meta: {
-          purchasing_customers_90d: 24,
-          repeat_customers_90d: 11,
-          inactive_customers_90d: 3,
-          overdue_customers_now: 2,
-        },
-      },
-      {
-        id: 'location_comparison',
-        label: 'Location comparison',
-        time_basis: '90D',
-        feasibility: 'REWORK',
-        available: true,
-        meta: {
-          locations: [
-            { location_id: 'loc-1', name: 'Mumbai HQ', invoiced_sales_90d: 55000, open_primary_demand_value: 12000, overdue_amount: 5000 },
-            { location_id: 'loc-2', name: 'Pune Depot', invoiced_sales_90d: 45000, open_primary_demand_value: 9000, overdue_amount: 3000 },
-            { location_id: 'loc-3', name: 'Nagpur Hub', invoiced_sales_90d: 25000, open_primary_demand_value: 6000, overdue_amount: 1000 },
-            { location_id: 'loc-4', name: 'Nashik Hub', invoiced_sales_90d: 15000, open_primary_demand_value: 4000, overdue_amount: 500 },
-            { location_id: 'loc-5', name: 'Goa Hub', invoiced_sales_90d: 10000, open_primary_demand_value: 2000, overdue_amount: 0 },
-            { location_id: 'loc-6', name: 'Aurangabad Hub', invoiced_sales_90d: 7000, open_primary_demand_value: 1000, overdue_amount: 250 },
-          ],
-        },
-      },
-    ],
-  },
-  admin: {
-    metrics: [
-      { label: 'Orders · This Week', value: 12 },
-      { label: 'GMV · This Week', value: 420000, tone: 'accent' },
-      { label: 'Active catalogs', value: 3 },
-      { label: 'Low-stock alerts', value: 2, tone: 'warn' },
-    ],
-    callouts: [
-      { id: 'order_execution', kind: 'info', eyebrow: 'Order execution', hint: '12', rows: [] },
-      { id: 'collections', kind: 'risk', eyebrow: 'Collections', hint: '2 overdue', rows: [] },
-      { id: 'buyer_app_activation', kind: 'opportunity', eyebrow: 'Buyer App activation', hint: '1', rows: [] },
-    ],
-    recent_activity: [
-      {
-        id: 'order-1',
-        kind: 'order',
-        href: '/sales-orders/1',
-        document_number: 'SO-001',
-        customer_name: 'Acme',
-        status: { label: 'Confirmed', tone: 'warning' },
-        amount: 10000,
-        updated_at: '2026-06-14T10:00:00.000Z',
-      },
-    ],
-  },
+  admin: {},
 };
 
 const assistantData: SellerDashboardResponse = {
@@ -200,17 +94,48 @@ const assistantData: SellerDashboardResponse = {
       { label: 'Orders to confirm', value: 3, tone: 'warn' },
       { label: 'Overdue invoices', value: 1, tone: 'warn' },
     ],
-    callouts: [
-      { id: 'needs_action', kind: 'risk', eyebrow: 'Needs action', hint: '1 overdue', rows: [] },
-      { id: 'recent_activity', kind: 'info', eyebrow: 'Recent activity', hint: 'Since your last sign-in', rows: [] },
-      { id: 're_engage', kind: 'opportunity', eyebrow: 'Re-engage', hint: 'Dormant for 30+ days', rows: [] },
-    ],
     feeds: [
       { id: 'estimates', title: 'Estimates', href: '/estimates', empty_label: 'No estimates yet', rows: [] },
       { id: 'sales_orders', title: 'Sales Orders', href: '/sales-orders', empty_label: 'No orders yet', rows: [] },
       { id: 'invoices', title: 'Invoices', href: '/invoices', empty_label: 'No invoices yet', rows: [] },
     ],
   },
+};
+
+const businessFlowData = {
+  primary_demand_kind: 'estimates' as const,
+  months: [
+    { period_start: '2026-01-01', invoice_value: 100000, invoice_count: 3, demand_value: 50000, demand_count: 2 },
+    { period_start: '2026-02-01', invoice_value: 150000, invoice_count: 4, demand_value: 60000, demand_count: 3 },
+    { period_start: '2026-03-01', invoice_value: 200000, invoice_count: 5, demand_value: 70000, demand_count: 3 },
+    { period_start: '2026-04-01', invoice_value: 250000, invoice_count: 6, demand_value: 80000, demand_count: 4 },
+    { period_start: '2026-05-01', invoice_value: 300000, invoice_count: 7, demand_value: 90000, demand_count: 4 },
+    { period_start: '2026-06-01', invoice_value: 420000, invoice_count: 9, demand_value: 115000, demand_count: 4 },
+  ],
+};
+
+const customerActivityData = { purchasing: 24, repeat: 11, inactive: 3, overdue: 2 };
+
+const brandMixData = {
+  items: [
+    { id: 'brand-1', name: 'Alpha', current_value: 60000, prior_value: 50000 },
+    { id: 'brand-2', name: 'Beta', current_value: 40000, prior_value: 35000 },
+    { id: 'brand-6', name: 'Zeta', current_value: 20000, prior_value: 18000 },
+  ],
+};
+
+const categoryMixData = {
+  items: [
+    { id: 'cat-1', name: 'CCTV', current_value: 70000, prior_value: 65000 },
+    { id: 'cat-2', name: 'Access', current_value: 30000, prior_value: 28000 },
+  ],
+};
+
+const locationPerformanceData = {
+  locations: [
+    { location_id: 'loc-1', name: 'Mumbai HQ', sales_value: 55000, overdue_amount: 5000, open_demand_value: 12000 },
+    { location_id: 'loc-2', name: 'Pune Depot', sales_value: 45000, overdue_amount: 3000, open_demand_value: 9000 },
+  ],
 };
 
 describe('SellerDashboardClient', () => {
@@ -232,6 +157,14 @@ describe('SellerDashboardClient', () => {
         ],
       },
     });
+    useSellerDashboardBusinessFlowMock.mockReturnValue({ data: businessFlowData, isLoading: false });
+    useSellerDashboardCustomerActivityMock.mockReturnValue({ data: customerActivityData, isLoading: false });
+    useSellerDashboardSalesMixMock.mockImplementation((dimension: 'brands' | 'categories') => ({
+      data: dimension === 'categories' ? categoryMixData : brandMixData,
+      isLoading: false,
+      isSuccess: true,
+    }));
+    useSellerDashboardLocationPerformanceMock.mockReturnValue({ data: locationPerformanceData, isLoading: false });
     useRetainedValueMock.mockImplementation((value: unknown) => value);
   });
 
@@ -243,21 +176,16 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByText('Business flow')).toBeInTheDocument();
     expect(screen.getByText('Sales mix')).toBeInTheDocument();
     expect(screen.getByText('Customer activity')).toBeInTheDocument();
-    expect(screen.getByText('Location comparison')).toBeInTheDocument();
-    expect(screen.getByText('Recent activity')).toBeInTheDocument();
+    expect(screen.getByText('Location performance')).toBeInTheDocument();
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument();
     expect(screen.getAllByText('₹4,20,000').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('₹10,000').length).toBeGreaterThan(0);
 
-    const businessFlowSection = screen.getByText('Business flow').closest('section');
-    expect(businessFlowSection).not.toBeNull();
-    expect(within(businessFlowSection as HTMLElement).getByText('Order value')).toBeInTheDocument();
-    expect(within(businessFlowSection as HTMLElement).getByText('Estimate value')).toBeInTheDocument();
     expect(screen.getByText('Zeta')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: 'Brand' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Location' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'See all' }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByRole('button', { name: 'Location' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'See all' }).length).toBe(1);
   });
 
   it('renders the assistant dashboard variant without admin-only widgets', () => {
@@ -280,17 +208,11 @@ describe('SellerDashboardClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Category' }));
     expect(screen.getByText('CCTV')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Location' }));
-    expect(screen.getAllByText('Aurangabad Hub').length).toBeGreaterThan(0);
-
     const businessFlowSection = screen.getByText('Business flow').closest('section');
     expect(businessFlowSection?.parentElement?.className).toContain('xl:grid-cols-2');
-
-    const purchasingTile = screen.getByText('Purchasing Customers').closest('article');
-    expect(purchasingTile?.parentElement?.className).toContain('sm:grid-cols-2');
   });
 
-  it('opens see all sheets for sales mix and recent activity', () => {
+  it('opens the see all sheet for sales mix', () => {
     useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
 
     render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
@@ -300,9 +222,14 @@ describe('SellerDashboardClient', () => {
     expect(within(salesMixDialog).getByText('Sales mix')).toBeInTheDocument();
     expect(within(salesMixDialog).getByText('Zeta')).toBeInTheDocument();
     fireEvent.click(within(salesMixDialog).getByRole('button', { name: 'Close' }));
+  });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'See all' })[2]!);
-    const recentActivityDialogs = screen.getAllByRole('dialog');
-    expect(within(recentActivityDialogs[recentActivityDialogs.length - 1] as HTMLElement).getByText('SO-001')).toBeInTheDocument();
+  it('does not render a Recent activity card in the admin section', () => {
+    useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
+
+    render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
+
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'See all' }).length).toBe(1);
   });
 });

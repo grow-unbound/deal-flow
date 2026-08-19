@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getFlagMock = vi.fn();
 const loadBuyerCreditSnapshotsMock = vi.fn();
 const getSellerShellFeatureAvailabilityMock = vi.fn();
+// fetchSellerDashboardData should call zero RPCs now -- get_metrics_v2_seller_dashboard
+// and metrics_v2_transaction_landing were removed. Tests assert this mock is never invoked.
+const rpcMock = vi.fn(() => Promise.resolve({ data: null, error: null }));
 
 vi.mock('next/cache', () => ({
   unstable_cache: (fn: () => unknown) => fn,
@@ -118,6 +121,10 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
 
+    gt() {
+      return this;
+    }
+
     lt() {
       return this;
     }
@@ -169,71 +176,7 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: {
       schema: vi.fn(() => ({
         from: vi.fn((table: string) => new QueryBuilder(table)),
-        rpc: vi.fn(function (fnName: string, args?: { p_location_ids?: string[] | null }) {
-          if (fnName === 'get_metrics_v2_seller_dashboard') {
-            return Promise.resolve({
-              data: {
-                as_of: '2026-07-10T00:00:00.000Z',
-                commercial_horizon_days: 90,
-                table_period: null,
-                primary_demand_kind: 'orders',
-                calculation_version: 1,
-                source_watermark: '2026-07-10T00:00:00.000Z',
-                freshness: {},
-                availability: { primary_demand: { available: true, kind: 'orders' } },
-                metrics: [
-                  { id: 'invoiced_sales', label: 'Invoiced sales', time_basis: 'THIS MONTH', feasibility: 'REWORK', available: true, value: 1500, count: 2, unit: 'currency' },
-                  { id: 'open_primary_demand_value', label: 'Open primary demand value', time_basis: 'NOW', feasibility: 'REWORK', available: true, value: 800, count: 2, unit: 'currency' },
-                  { id: 'overdue_receivables', label: 'Overdue receivables', time_basis: 'NOW', feasibility: 'READY', available: true, value: 200, count: 1, unit: 'currency' },
-                  { id: 'recently_sold_products_now_out_of_stock', label: 'Recently sold products now out of stock', time_basis: 'NOW + 90D', feasibility: 'REWORK', available: true, count: 1, unit: 'count' },
-                ],
-                actions: [],
-                explore: [
-                  { id: 'location_comparison', label: 'Location comparison', time_basis: '90D', feasibility: 'REWORK', available: true, meta: { locations: [] } },
-                ],
-              },
-              error: null,
-            });
-          }
-          if (fnName === 'metrics_v2_transaction_landing') {
-            const locationScoped = Array.isArray(args?.p_location_ids) && args.p_location_ids.length > 0;
-            return Promise.resolve({
-              data: {
-                kpis: locationScoped
-                  ? {
-                      invoices_this_period: 1,
-                      invoices_prev_period: 0,
-                      invoices_growth_pct: 100,
-                      gmv_this_period: 400,
-                      gmv_prev_period: 0,
-                      aov: 400,
-                      overdue_count: 1,
-                      overdue_sum: 200,
-                      overdue_customer_count: 1,
-                      outstanding_count: 1,
-                      outstanding_sum: 200,
-                      outstanding_customer_count: 1,
-                    }
-                  : {
-                      invoices_this_period: 3,
-                      invoices_prev_period: 0,
-                      invoices_growth_pct: 100,
-                      gmv_this_period: 1650,
-                      gmv_prev_period: 0,
-                      aov: 550,
-                      overdue_count: 3,
-                      overdue_sum: 1270,
-                      overdue_customer_count: 3,
-                      outstanding_count: 3,
-                      outstanding_sum: 1270,
-                      outstanding_customer_count: 3,
-                    },
-              },
-              error: null,
-            });
-          }
-          return Promise.resolve({ data: null, error: null });
-        }),
+        rpc: rpcMock,
       })),
       auth: {
         admin: {
@@ -252,6 +195,7 @@ describe('seller dashboard aggregation', () => {
     getFlagMock.mockReset();
     loadBuyerCreditSnapshotsMock.mockReset();
     getSellerShellFeatureAvailabilityMock.mockReset();
+    rpcMock.mockClear();
 
     getFlagMock.mockResolvedValue(false);
     loadBuyerCreditSnapshotsMock.mockResolvedValue(new Map([
@@ -267,33 +211,31 @@ describe('seller dashboard aggregation', () => {
     });
   });
 
-  it('uses the Metrics V2 portfolio for admin summary cards and keeps portfolio metadata', async () => {
+  it('returns an empty admin marker and calls zero RPCs for seller_admin', async () => {
+    // admin.metrics/callouts/recent_activity, and the Metrics V2 portfolio
+    // (get_metrics_v2_seller_dashboard + metrics_v2_transaction_landing) are all
+    // gone — confirmed unread by the frontend (the 4 explore cards each have their
+    // own v4 RPC now; the KPI strip reads get_landing_metrics_v4 directly,
+    // including the "as of" timestamp that used to come from portfolio.as_of).
+    // `admin` stays a truthy `{}` marker so the client can still branch on role
+    // via `dashboard.admin`. Zero RPC calls is the direct proof this dashboard
+    // path is v2/v3-RPC-free end to end.
     const period = getSellerLandingPeriodMeta('month', new Date('2026-07-10T00:00:00.000Z'));
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_admin', sub: 'admin-1', location_ids: null }, period);
 
-    expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · Last 90 days');
-    expect(dashboard.admin?.metrics[0]?.value).toBe(1500);
-    expect(dashboard.admin?.metrics[1]?.value).toBe(800);
-    expect(dashboard.admin?.metrics[2]?.value).toBe(1270);
-    expect(dashboard.admin?.metrics[2]?.sub).toBe('3 customers');
-    expect(dashboard.admin?.callouts[0]?.rows?.[0]?.name).toBe('Legacy Retail');
-    expect(dashboard.admin?.callouts[1]?.rows?.map((row) => row.name)).toContain('B Two Retail');
-    expect(dashboard.admin?.callouts[1]?.rows?.[0]?.name).toBe('Ghost Stores');
-    expect(dashboard.portfolio?.metrics.map((metric) => metric.id)).toContain('recently_sold_products_now_out_of_stock');
-    expect(dashboard.portfolio?.explore.map((metric) => metric.id)).toContain('location_comparison');
-    expect(dashboard.admin?.callouts[0]?.hint).toBe('3');
+    expect(dashboard.admin).toEqual({});
+    expect(dashboard.tenant.business_name).toBe('WineYard');
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('keeps assistant metrics scoped to assigned locations', async () => {
+  it('keeps assistant metrics scoped to assigned locations, with zero RPC calls', async () => {
     const period = getSellerLandingPeriodMeta('month', new Date('2026-07-10T00:00:00.000Z'));
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_assistant', sub: 'assistant-1', location_ids: ['loc-1'] }, period);
 
     expect(dashboard.tenant.location_names).toEqual(['North Hub']);
-    expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Overdue invoices')?.value).toBe(1);
     expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Orders to confirm')?.value).toBe(1);
     expect(dashboard.assistant?.metrics.find((metric) => metric.label === 'Open estimates')?.value).toBe(1);
     expect(dashboard.assistant?.feeds.find((feed) => feed.id === 'sales_orders')?.rows.map((row) => row.document_number)).toEqual(['SO-1', 'SO-3']);
-    expect(dashboard.assistant?.callouts.find((callout) => callout.eyebrow === 'Needs action')?.rows.map((row) => row.name)).toEqual(['A One Retail']);
-    expect(dashboard.assistant?.callouts.find((callout) => callout.eyebrow === 'Recent activity')?.hint).toBe('This Month');
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

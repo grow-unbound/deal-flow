@@ -1,8 +1,7 @@
-import type { EntityAvatarHue, StatusTone } from '@/components/seller/layout';
+import type { StatusTone } from '@/components/seller/layout';
 import type { SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type SellerDashboardRole = 'seller_admin' | 'seller_assistant';
-export type SellerDashboardDocKind = 'estimate' | 'sales_order' | 'invoice' | 'order' | 'catalog' | 'customer';
 export type SellerDashboardFeedKind = 'estimates' | 'sales_orders' | 'invoices';
 
 export interface SellerDashboardTenantSummary {
@@ -26,43 +25,58 @@ export interface MetricsV2PortfolioItem {
   meta?: Record<string, unknown>;
 }
 
-export interface SellerDashboardBusinessFlowMeta {
-  primary_demand_kind?: 'orders' | 'estimates' | 'none';
-  invoice_value_this_month?: number;
-  invoice_count_this_month?: number;
-  order_value_this_month?: number;
-  order_count_this_month?: number;
-  estimate_value_this_month?: number;
-  estimate_count_this_month?: number;
-  orders_enabled?: boolean;
-  estimates_enabled?: boolean;
+/** v4: app.get_seller_dashboard_business_flow_v4 -- trailing 6 months, Sales
+ *  + Demand series in one payload (metrics_tenant_period_summary, gap-filled
+ *  to 6 months server-side). Toggle between series is a client-side render
+ *  switch, no separate fetch. */
+export interface SellerDashboardBusinessFlowMonthV4 {
+  period_start: string;
+  invoice_value: number;
+  invoice_count: number;
+  demand_value: number;
+  demand_count: number;
 }
 
-export interface SellerDashboardMixEntry {
+export interface SellerDashboardBusinessFlowV4 {
+  primary_demand_kind: 'orders' | 'estimates' | 'none';
+  months: SellerDashboardBusinessFlowMonthV4[];
+}
+
+/** v4: app.get_seller_dashboard_customer_activity_v4 -- current quarter-to-date. */
+export interface SellerDashboardCustomerActivityV4 {
+  purchasing: number;
+  repeat: number;
+  inactive: number;
+  overdue: number;
+}
+
+/** v4: app.get_seller_dashboard_sales_mix_v4 -- one dimension per call
+ *  (Brand XOR Category), current + prior month values per item. */
+export interface SellerDashboardSalesMixItemV4 {
   id: string;
   name: string;
-  value: number;
+  current_value: number;
+  prior_value: number;
 }
 
-export interface SellerDashboardLocationComparisonEntry {
+export type SellerDashboardSalesMixDimension = 'brands' | 'categories';
+
+export interface SellerDashboardSalesMixV4 {
+  items: SellerDashboardSalesMixItemV4[];
+}
+
+/** v4: app.get_seller_dashboard_location_performance_v4 -- small-multiples
+ *  source, 3 values per location (sales / overdue / open demand). */
+export interface SellerDashboardLocationPerformanceEntryV4 {
   location_id: string;
   name: string;
-  invoiced_sales_90d: number;
-  open_primary_demand_value: number | null;
+  sales_value: number;
   overdue_amount: number;
+  open_demand_value: number;
 }
 
-export interface SellerDashboardSalesMixMeta {
-  brands?: SellerDashboardMixEntry[];
-  categories?: SellerDashboardMixEntry[];
-  locations?: SellerDashboardLocationComparisonEntry[];
-}
-
-export interface SellerDashboardCustomerActivityMeta {
-  purchasing_customers_90d?: number;
-  repeat_customers_90d?: number;
-  inactive_customers_90d?: number;
-  overdue_customers_now?: number;
+export interface SellerDashboardLocationPerformanceV4 {
+  locations: SellerDashboardLocationPerformanceEntryV4[];
 }
 
 export interface MetricsV2DashboardPortfolio {
@@ -111,24 +125,6 @@ export interface SellerDashboardMetricsV4 {
   cards: SellerDashboardKpiCardV4[];
 }
 
-export interface SellerDashboardCalloutRow {
-  id: string;
-  initials: string;
-  hue: EntityAvatarHue;
-  name: string;
-  reason: string;
-  trailing: string;
-  href?: string;
-}
-
-export interface SellerDashboardCalloutItem {
-  id: string;
-  kind: 'risk' | 'info' | 'opportunity';
-  eyebrow: string;
-  hint: string;
-  rows: SellerDashboardCalloutRow[];
-}
-
 export interface SellerDashboardFeedRow {
   id: string;
   href: string;
@@ -150,29 +146,16 @@ export interface SellerDashboardFeed {
   rows: SellerDashboardFeedRow[];
 }
 
-export interface SellerDashboardRecentActivityRow {
-  id: string;
-  kind: SellerDashboardDocKind;
-  href: string;
-  document_number: string;
-  customer_name: string;
-  status: {
-    label: string;
-    tone: StatusTone;
-  };
-  amount: number;
-  updated_at: string;
-}
-
-export interface SellerAdminDashboardSection {
-  metrics: SellerDashboardMetric[];
-  callouts: SellerDashboardCalloutItem[];
-  recent_activity: SellerDashboardRecentActivityRow[];
-}
+/** Admin section carries no data of its own -- the 4 explore cards
+ *  (Business flow, Customer activity, Sales mix, Location performance) are
+ *  each sourced from their own v4 hook, and the old metrics/callouts/
+ *  recent-activity fields here were confirmed unread by the frontend and
+ *  removed. Kept as a truthy marker so `dashboard.admin` still distinguishes
+ *  the seller_admin response shape from the seller_assistant one. */
+export type SellerAdminDashboardSection = Record<string, never>;
 
 export interface SellerAssistantDashboardSection {
   metrics: SellerDashboardMetric[];
-  callouts: SellerDashboardCalloutItem[];
   feeds: SellerDashboardFeed[];
 }
 
@@ -180,7 +163,6 @@ export interface SellerDashboardResponse {
   role: SellerDashboardRole;
   period: SellerLandingPeriodMeta;
   tenant: SellerDashboardTenantSummary;
-  portfolio?: MetricsV2DashboardPortfolio | null;
   admin?: SellerAdminDashboardSection;
   assistant?: SellerAssistantDashboardSection;
 }
