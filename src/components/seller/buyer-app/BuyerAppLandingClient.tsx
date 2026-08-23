@@ -2,14 +2,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -38,6 +31,15 @@ import {
   useProductsAddedToCart,
   useCartSubmits,
 } from '@/hooks/useBuyerAppPostHog';
+
+const BuyerAppWeeklyActiveChart = dynamic(
+  () => import('./BuyerAppWeeklyActiveChart').then((m) => m.BuyerAppWeeklyActiveChart),
+  { ssr: false },
+);
+const BuyerAppDemandChart = dynamic(
+  () => import('./BuyerAppDemandChart').then((m) => m.BuyerAppDemandChart),
+  { ssr: false },
+);
 
 const BUYER_APP_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
@@ -99,7 +101,6 @@ function BuyerAppLandingContent({
   const { data: productsViewed } = useProductsViewed();
   const { data: productsAddedToCart } = useProductsAddedToCart();
   const { data: cartSubmits } = useCartSubmits();
-  const [demandMode, setDemandMode] = useState<'value' | 'count'>('value');
 
   if (isLoading && !landingData) return <BuyerAppSkeleton />;
 
@@ -225,37 +226,9 @@ function BuyerAppLandingContent({
         <PerformanceCard
           title="Weekly active buyers"
           subtitle="Last 90 days"
-          bodyClassName="p-4"
+          bodyClassName="p-0"
         >
-          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
-            {!wauData || wauData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                No activity data yet
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={wauData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: string) => {
-                      const d = new Date(v);
-                      return `${d.getDate()}/${d.getMonth() + 1}`;
-                    }}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
-                  <Tooltip
-                    formatter={(val: number) => [val, 'Active buyers']}
-                    labelFormatter={(label: string) => {
-                      const d = new Date(label);
-                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
-                    }}
-                  />
-                  <Bar dataKey="count" className="fill-primary" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <BuyerAppWeeklyActiveChart data={wauData} loading={false} />
         </PerformanceCard>
 
         {/* Card 3: Products most viewed */}
@@ -302,70 +275,9 @@ function BuyerAppLandingContent({
         <PerformanceCard
           title="App demand"
           subtitle="Last 90 days"
-          bodyClassName="p-4"
-          actions={
-            <div className="flex gap-1">
-              {(['value', 'count'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setDemandMode(mode)}
-                  className={cn(
-                    'rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                    demandMode === mode
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {mode === 'value' ? '₹ Value' : 'Count'}
-                </button>
-              ))}
-            </div>
-          }
+          bodyClassName="p-0"
         >
-          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
-            {!cartSubmits || cartSubmits.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                No demand data yet
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={cartSubmits} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: string) => {
-                      const d = new Date(v);
-                      return `${d.getDate()}/${d.getMonth() + 1}`;
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    width={40}
-                    tickFormatter={(v: number) =>
-                      demandMode === 'value'
-                        ? formatNumberValue(v, 'CURRENCY_THRESHOLD')
-                        : String(v)
-                    }
-                  />
-                  <Tooltip
-                    formatter={(val: number) => [
-                      demandMode === 'value' ? formatNumberValue(val, 'CURRENCY_THRESHOLD') : val,
-                      demandMode === 'value' ? 'Demand value' : 'Demand count',
-                    ]}
-                    labelFormatter={(label: string) => {
-                      const d = new Date(label);
-                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
-                    }}
-                  />
-                  <Bar
-                    dataKey={demandMode}
-                    className="fill-primary"
-                    radius={[2, 2, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <BuyerAppDemandChart data={cartSubmits} loading={false} />
         </PerformanceCard>
       </div>
     </PageWrap>
