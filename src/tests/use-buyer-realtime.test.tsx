@@ -12,17 +12,17 @@ const {
   onNewMock: vi.fn(),
   onPatchMock: vi.fn(),
   onRefreshMock: vi.fn(),
-  realtimeCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
+  realtimeCallbacks: [] as Array<(payload: { payload: Record<string, unknown> }) => void>,
 }));
 
 vi.mock('@/lib/supabase-browser', () => {
   const chain = {
     on: vi.fn((
-      _event: string,
-      config: { table?: string; event?: string },
-      callback: (payload: { new: Record<string, unknown> }) => void,
+      event: string,
+      config: { event?: string },
+      callback: (payload: { payload: Record<string, unknown> }) => void,
     ) => {
-      if (config.table === 'realtime_notifications' && config.event === 'INSERT') {
+      if (event === 'broadcast' && config.event === 'notification') {
         realtimeCallbacks.push(callback);
       }
       return chain;
@@ -63,7 +63,7 @@ describe('useBuyerRealtime', () => {
 
     act(() => {
       realtimeCallbacks[0]?.({
-        new: {
+        payload: {
           entity_type: 'estimates',
           event_type: 'insert',
           buyer_id: 'buyer-1',
@@ -103,7 +103,7 @@ describe('useBuyerRealtime', () => {
 
     act(() => {
       realtimeCallbacks[0]?.({
-        new: {
+        payload: {
           entity_type: 'estimates',
           event_type: 'update',
           buyer_id: 'buyer-1',
@@ -151,7 +151,7 @@ describe('useBuyerRealtime', () => {
 
     act(() => {
       realtimeCallbacks[0]?.({
-        new: {
+        payload: {
           entity_type: 'estimates',
           event_type: 'update',
           buyer_id: 'buyer-1',
@@ -190,7 +190,7 @@ describe('useBuyerRealtime', () => {
     );
 
     const payload = {
-      new: {
+      payload: {
         entity_type: 'estimates',
         event_type: 'update',
         buyer_id: 'buyer-1',
