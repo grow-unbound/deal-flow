@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { FEATURE_FLAGS } from '@/constants';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 
@@ -12,12 +13,12 @@ interface FeatureGateProps {
 export function FeatureDisabledState() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center bg-cream-50">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src="/illustrations/illustration-empty-catalog.svg"
         alt=""
         width={160}
         height={120}
+        unoptimized
         className="mb-6 opacity-70"
       />
       <h2 className="font-display text-2xl text-cream-900 mb-3">

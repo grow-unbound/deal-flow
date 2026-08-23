@@ -1,4 +1,5 @@
 import { generateEntityVariants } from '@/lib/client/image-variants';
+import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 
 export type UploadEntityResponse = {
   success: true;
@@ -39,7 +40,7 @@ async function putVariantToR2(uploadUrl: string, blob: Blob, contentType: string
   const res = await fetch(uploadUrl, {
     method: 'PUT',
     body: blob,
-    headers: { 'Content-Type': contentType },
+    headers: { 'Content-Type': contentType, 'Cache-Control': R2_UPLOAD_CACHE_CONTROL },
   });
   if (!res.ok) throw new Error(`R2 upload failed: ${res.status} ${res.statusText}`);
 }

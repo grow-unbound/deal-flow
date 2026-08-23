@@ -11,13 +11,7 @@ const {
   selectMock,
   eqMock,
   maybeSingleMock,
-  estimateInsertCallbacks,
-  estimateUpdateCallbacks,
-  orderInsertCallbacks,
-  orderUpdateCallbacks,
-  invoiceInsertCallbacks,
-  invoiceUpdateCallbacks,
-  broadcastUpdateCallbacks,
+  realtimeCallbacks,
 } = vi.hoisted(() => ({
   invalidateQueriesMock: vi.fn(),
   onNewMock: vi.fn(),
@@ -28,13 +22,7 @@ const {
   selectMock: vi.fn(),
   eqMock: vi.fn(),
   maybeSingleMock: vi.fn(),
-  estimateInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
-  estimateUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
-  orderInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
-  orderUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
-  invoiceInsertCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
-  invoiceUpdateCallbacks: [] as Array<(payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void>,
-  broadcastUpdateCallbacks: [] as Array<(payload: { new: Record<string, unknown> }) => void>,
+  realtimeCallbacks: [] as Array<(payload: { payload: Record<string, unknown> }) => void>,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -47,23 +35,11 @@ vi.mock('@/lib/supabase-browser', () => {
   const chain = {
     on: vi.fn((
       event: string,
-      config: { table?: string; event?: string },
-      callback: (payload: { new: Record<string, unknown>; old?: Record<string, unknown> }) => void,
+      config: { event?: string },
+      callback: (payload: { payload: Record<string, unknown> }) => void,
     ) => {
-      if (config.table === 'estimates' && config.event === 'UPDATE') {
-        estimateUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
-      } else if (config.table === 'estimates') {
-        estimateInsertCallbacks.push(callback);
-      } else if (config.table === 'orders' && config.event === 'UPDATE') {
-        orderUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
-      } else if (config.table === 'orders') {
-        orderInsertCallbacks.push(callback);
-      } else if (config.table === 'invoices' && config.event === 'UPDATE') {
-        invoiceUpdateCallbacks.push(callback as (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => void);
-      } else if (config.table === 'invoices') {
-        invoiceInsertCallbacks.push(callback);
-      } else if (config.table === 'whatsapp_broadcasts' && config.event === 'UPDATE') {
-        broadcastUpdateCallbacks.push(callback);
+      if (event === 'broadcast' && config.event === 'notification') {
+        realtimeCallbacks.push(callback);
       }
       return chain;
     }),
@@ -97,19 +73,33 @@ vi.mock('@/lib/supabase-browser', () => {
 
 import { useSellerRealtime } from '@/hooks/useSellerRealtime';
 
+// Simulates a broadcast delivery of an app.realtime_notifications row (see
+// 20260823141106_realtime_notifications_broadcast_cutover.sql) — the hook now
+// subscribes to one shared per-tenant Broadcast topic instead of per-table
+// postgres_changes, branching internally on entity_type/event_type.
+function emitNotification(overrides: {
+  entity_type: 'estimates' | 'orders' | 'invoices';
+  event_type: 'insert' | 'update';
+  payload: Record<string, unknown>;
+  old_payload?: Record<string, unknown> | null;
+}) {
+  realtimeCallbacks[0]?.({
+    payload: {
+      entity_type: overrides.entity_type,
+      event_type: overrides.event_type,
+      payload: overrides.payload,
+      old_payload: overrides.old_payload ?? null,
+    },
+  });
+}
+
 describe('useSellerRealtime', () => {
   beforeEach(() => {
     invalidateQueriesMock.mockReset();
     onNewMock.mockReset();
     onPatchMock.mockReset();
     removeChannelMock.mockReset();
-    estimateInsertCallbacks.length = 0;
-    estimateUpdateCallbacks.length = 0;
-    orderInsertCallbacks.length = 0;
-    orderUpdateCallbacks.length = 0;
-    invoiceInsertCallbacks.length = 0;
-    invoiceUpdateCallbacks.length = 0;
-    broadcastUpdateCallbacks.length = 0;
+    realtimeCallbacks.length = 0;
     schemaMock.mockClear();
     fromMock.mockClear();
     selectMock.mockClear();
@@ -129,8 +119,10 @@ describe('useSellerRealtime', () => {
     );
 
     act(() => {
-      estimateInsertCallbacks[0]?.({
-        new: {
+      emitNotification({
+        entity_type: 'estimates',
+        event_type: 'insert',
+        payload: {
           id: 'est-1',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
@@ -157,12 +149,11 @@ describe('useSellerRealtime', () => {
     );
 
     act(() => {
-      estimateUpdateCallbacks[0]?.({
-        old: {
-          id: 'est-1',
-          estimate_number: null,
-        },
-        new: {
+      emitNotification({
+        entity_type: 'estimates',
+        event_type: 'update',
+        old_payload: { id: 'est-1', estimate_number: null },
+        payload: {
           id: 'est-1',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
@@ -199,8 +190,10 @@ describe('useSellerRealtime', () => {
     );
 
     act(() => {
-      estimateInsertCallbacks[0]?.({
-        new: {
+      emitNotification({
+        entity_type: 'estimates',
+        event_type: 'insert',
+        payload: {
           id: 'est-2',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
@@ -229,9 +222,11 @@ describe('useSellerRealtime', () => {
     );
 
     await act(async () => {
-      orderUpdateCallbacks[0]?.({
-        old: { id: 'ord-1', order_number: null },
-        new: {
+      emitNotification({
+        entity_type: 'orders',
+        event_type: 'update',
+        old_payload: { id: 'ord-1', order_number: null },
+        payload: {
           id: 'ord-1',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
@@ -271,8 +266,10 @@ describe('useSellerRealtime', () => {
     );
 
     await act(async () => {
-      invoiceInsertCallbacks[0]?.({
-        new: {
+      emitNotification({
+        entity_type: 'invoices',
+        event_type: 'insert',
+        payload: {
           id: 'inv-1',
           tenant_id: 'tenant-1',
           location_id: 'loc-1',
@@ -310,9 +307,11 @@ describe('useSellerRealtime', () => {
     );
 
     await act(async () => {
-      invoiceUpdateCallbacks[0]?.({
-        old: { id: 'inv-2', invoice_number: null },
-        new: {
+      emitNotification({
+        entity_type: 'invoices',
+        event_type: 'update',
+        old_payload: { id: 'inv-2', invoice_number: null },
+        payload: {
           id: 'inv-2',
           tenant_id: 'tenant-1',
           location_id: null,
@@ -346,8 +345,10 @@ describe('useSellerRealtime', () => {
     );
 
     await act(async () => {
-      invoiceInsertCallbacks[0]?.({
-        new: {
+      emitNotification({
+        entity_type: 'invoices',
+        event_type: 'insert',
+        payload: {
           id: 'inv-3',
           tenant_id: 'tenant-1',
           location_id: 'loc-2',
@@ -359,48 +360,5 @@ describe('useSellerRealtime', () => {
     });
 
     expect(onNewMock).not.toHaveBeenCalled();
-  });
-
-  it('invalidates broadcast queries and patches grouped broadcast progress notifications', () => {
-    renderHook(() =>
-      useSellerRealtime({
-        tenantId: 'tenant-1',
-        locationIds: null,
-        locationNamesById: {},
-        onNew: onNewMock,
-        onPatch: onPatchMock,
-      }),
-    );
-
-    act(() => {
-      broadcastUpdateCallbacks[0]?.({
-        new: {
-          id: 'broadcast-1',
-          tenant_id: 'tenant-1',
-          name: 'July payment reminder',
-          status: 'sending',
-          actual_recipient_count: 3,
-          estimated_recipient_count: 3,
-          sent_count: 2,
-          delivered_count: 0,
-          failed_count: 0,
-          updated_at: '2026-07-18T16:45:00.000Z',
-        },
-      });
-    });
-
-    expect(onPatchMock).toHaveBeenCalledWith('broadcast', 'broadcast-1', {
-      title: 'Broadcast update · July payment reminder',
-      body: '2/3 sent',
-    });
-    expect(onNewMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'broadcast:broadcast-1',
-        kind: 'broadcast_updated',
-        entityType: 'broadcast',
-        body: '2/3 sent',
-      }),
-    );
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['whatsapp-broadcasts'] });
   });
 });

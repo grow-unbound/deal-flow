@@ -2,14 +2,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -38,6 +31,15 @@ import {
   useProductsAddedToCart,
   useCartSubmits,
 } from '@/hooks/useBuyerAppPostHog';
+
+const BuyerAppWeeklyActiveChart = dynamic(
+  () => import('./BuyerAppWeeklyActiveChart').then((m) => m.BuyerAppWeeklyActiveChart),
+  { ssr: false },
+);
+const BuyerAppDemandChart = dynamic(
+  () => import('./BuyerAppDemandChart').then((m) => m.BuyerAppDemandChart),
+  { ssr: false },
+);
 
 const BUYER_APP_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
@@ -146,14 +148,23 @@ function BuyerAppLandingContent({
     return `${card.value ?? 0}`;
   };
 
-  // True funnel drop-off: each pct relative to previous stage
+  // Bar width/in-bar % = each stage's absolute share of the top-of-funnel
+  // stage (enabled), so the shape actually narrows monotonically like a
+  // real funnel. Stage-over-stage conversion rate (opened/enabled, etc.) is
+  // shown as supporting text instead -- that's the meaningful "did this
+  // step convert well" number, but it isn't monotonically decreasing (a
+  // later stage can have a higher conversion rate than an earlier one) so
+  // it's wrong to drive bar width with it.
   const funnelEnabled = snap.enabled_buyers;
   const funnelOpened = snap.opened_app_mtd;
   const funnelOrdered = snap.ordered_mtd;
   const funnelRepeat = snap.repeat_mtd;
-  const openedPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
-  const orderedPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
-  const repeatPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
+  const openedSharePct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
+  const orderedSharePct = funnelEnabled > 0 ? Math.round((funnelOrdered / funnelEnabled) * 100) : 0;
+  const repeatSharePct = funnelEnabled > 0 ? Math.round((funnelRepeat / funnelEnabled) * 100) : 0;
+  const openedConversionPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
+  const orderedConversionPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
+  const repeatConversionPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
 
   return (
     <PageWrap>
@@ -199,19 +210,22 @@ function BuyerAppLandingContent({
                   id: 'opened',
                   label: 'Opened app',
                   value: funnelOpened,
-                  pct: openedPct,
+                  pct: openedSharePct,
+                  supporting: `${openedConversionPct}% of enabled customers`,
                 },
                 {
                   id: 'ordered',
                   label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`,
                   value: funnelOrdered,
-                  pct: orderedPct,
+                  pct: orderedSharePct,
+                  supporting: `${orderedConversionPct}% of those who opened the app`,
                 },
                 {
                   id: 'repeat',
                   label: `Repeat (2+ ${primaryDemandNoun})`,
                   value: funnelRepeat,
-                  pct: repeatPct,
+                  pct: repeatSharePct,
+                  supporting: `${repeatConversionPct}% of ${primaryDemandNoun} ${primaryDemandVerb}`,
                 },
               ],
               emptyTitle: 'No enabled buyers yet',
@@ -225,37 +239,9 @@ function BuyerAppLandingContent({
         <PerformanceCard
           title="Weekly active buyers"
           subtitle="Last 90 days"
-          bodyClassName="p-4"
+          bodyClassName="p-0"
         >
-          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
-            {!wauData || wauData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                No activity data yet
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={wauData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: string) => {
-                      const d = new Date(v);
-                      return `${d.getDate()}/${d.getMonth() + 1}`;
-                    }}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
-                  <Tooltip
-                    formatter={(val: number) => [val, 'Active buyers']}
-                    labelFormatter={(label: string) => {
-                      const d = new Date(label);
-                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
-                    }}
-                  />
-                  <Bar dataKey="count" className="fill-primary" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <BuyerAppWeeklyActiveChart data={wauData} loading={false} />
         </PerformanceCard>
 
         {/* Card 3: Products most viewed */}
@@ -302,70 +288,30 @@ function BuyerAppLandingContent({
         <PerformanceCard
           title="App demand"
           subtitle="Last 90 days"
-          bodyClassName="p-4"
-          actions={
-            <div className="flex gap-1">
-              {(['value', 'count'] as const).map((mode) => (
+          bodyClassName="p-0"
+          actions={(
+            <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
+              {([
+                { id: 'value' as const, label: '₹ Value' },
+                { id: 'count' as const, label: 'Count' },
+              ]).map((option) => (
                 <button
-                  key={mode}
-                  onClick={() => setDemandMode(mode)}
+                  key={option.id}
+                  type="button"
+                  onClick={() => setDemandMode(option.id)}
                   className={cn(
-                    'rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                    demandMode === mode
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
+                    'rounded-full px-3 py-1.5 text-sm font-semibold transition',
+                    demandMode === option.id ? 'bg-white text-teal-700 shadow-sm' : 'text-cream-700 hover:text-cream-900',
                   )}
+                  aria-pressed={demandMode === option.id}
                 >
-                  {mode === 'value' ? '₹ Value' : 'Count'}
+                  {option.label}
                 </button>
               ))}
             </div>
-          }
+          )}
         >
-          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
-            {!cartSubmits || cartSubmits.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                No demand data yet
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={cartSubmits} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: string) => {
-                      const d = new Date(v);
-                      return `${d.getDate()}/${d.getMonth() + 1}`;
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    width={40}
-                    tickFormatter={(v: number) =>
-                      demandMode === 'value'
-                        ? formatNumberValue(v, 'CURRENCY_THRESHOLD')
-                        : String(v)
-                    }
-                  />
-                  <Tooltip
-                    formatter={(val: number) => [
-                      demandMode === 'value' ? formatNumberValue(val, 'CURRENCY_THRESHOLD') : val,
-                      demandMode === 'value' ? 'Demand value' : 'Demand count',
-                    ]}
-                    labelFormatter={(label: string) => {
-                      const d = new Date(label);
-                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
-                    }}
-                  />
-                  <Bar
-                    dataKey={demandMode}
-                    className="fill-primary"
-                    radius={[2, 2, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <BuyerAppDemandChart data={cartSubmits} loading={false} mode={demandMode} />
         </PerformanceCard>
       </div>
     </PageWrap>

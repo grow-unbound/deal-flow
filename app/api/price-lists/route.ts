@@ -219,7 +219,7 @@ export async function GET(request: NextRequest) {
   const [priceListsRes, aggregateRes] = await Promise.all([
     priceListsQuery,
     db.schema('app').rpc(
-      'get_seller_price_list_landing_aggregates',
+      'get_seller_price_list_landing_aggregates_v4',
       {
         p_tenant_id: claims.tenant_id,
         p_page_ids: pageIds,

@@ -5,6 +5,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import { batchUpsertLineItems } from '@/lib/server/batch-upsert-line-items';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getBuyerDocumentSendState } from '@/lib/server/whatsapp-document-send';
 import {
@@ -204,54 +205,35 @@ export async function PATCH(
 
     if (payload.items) {
       const existingItemIds = new Set(existing.composerPayload.items.map((row) => row.id));
-      const nextIds = new Set(payload.items.map((row) => row.id).filter((value): value is string => Boolean(value)));
 
-      for (const staleId of existingItemIds) {
-        if (!nextIds.has(staleId)) {
-          await (db as any)
-            .schema('app')
-            .from('estimate_items')
-            .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub, updated_at: new Date().toISOString() })
-            .eq('id', staleId)
-            .eq('estimate_id', id);
-        }
-      }
+      const { error: itemsError } = await batchUpsertLineItems({
+        db,
+        table: 'estimate_items',
+        parentColumn: 'estimate_id',
+        parentId: id,
+        existingItemIds,
+        items: payload.items,
+        actorId: claims.sub,
+        buildPatch: (item) => {
+          const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
+          return {
+            tenant_product_id: item.tenant_product_id,
+            qty: item.qty,
+            unit_price: item.unit_price,
+            discount_pct: item.disc_pct,
+            disc_pct: item.disc_pct,
+            tax_rate: item.tax_pct,
+            tax_pct: item.tax_pct,
+            line_total: discounted + discounted * (item.tax_pct / 100),
+            item_order: item.item_order ?? null,
+            scheme_tag: item.scheme_tag ?? null,
+          };
+        },
+      });
 
-      for (const item of payload.items) {
-        const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
-        const patch = {
-          estimate_id: id,
-          tenant_product_id: item.tenant_product_id,
-          qty: item.qty,
-          unit_price: item.unit_price,
-          discount_pct: item.disc_pct,
-          disc_pct: item.disc_pct,
-          tax_rate: item.tax_pct,
-          tax_pct: item.tax_pct,
-          line_total: discounted + discounted * (item.tax_pct / 100),
-          item_order: item.item_order ?? null,
-          scheme_tag: item.scheme_tag ?? null,
-          updated_at: new Date().toISOString(),
-          updated_by: claims.sub,
-          deleted_at: null,
-        };
-
-        if (item.id && existingItemIds.has(item.id)) {
-          await (db as any)
-            .schema('app')
-            .from('estimate_items')
-            .update(patch)
-            .eq('id', item.id)
-            .eq('estimate_id', id);
-        } else {
-          await (db as any)
-            .schema('app')
-            .from('estimate_items')
-            .insert({
-              ...patch,
-              created_by: claims.sub,
-            });
-        }
+      if (itemsError) {
+        console.error('[PATCH /api/tenant/estimates/[id]] items save error', itemsError);
+        return NextResponse.json({ error: 'Failed to save estimate line items' }, { status: 500 });
       }
     }
 

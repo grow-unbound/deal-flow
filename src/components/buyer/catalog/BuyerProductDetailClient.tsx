@@ -80,6 +80,17 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     }, item.campaign_id ?? campaignId, {
       source_surface: 'product_detail',
     });
+    // Same event name/shape as the reco-widget add-to-cart captures
+    // (ProductCard.tsx, CartGapWidget.tsx) so the existing "products added
+    // to cart" PostHog endpoint picks this up too -- previously only the
+    // two narrow recommendation-widget paths fired this event, so the main
+    // add-to-cart flow (this one) was invisible to that dashboard card.
+    posthog?.capture('reco_add_to_cart', {
+      ...analyticsIds,
+      widget: 'product_detail',
+      product_id: item.tenant_product_id,
+      source_product_id: null,
+    });
   }
 
   function handleDecrement(): void {
