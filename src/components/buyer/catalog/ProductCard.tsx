@@ -133,14 +133,17 @@ export function ProductCard({
       source_widget: recoCtx?.widget ?? null,
       source_product_id: recoCtx?.sourceProductId ?? null,
     });
-    if (recoCtx) {
-      posthog?.capture('reco_add_to_cart', {
-        ...analyticsIds,
-        widget: recoCtx.widget,
-        product_id: item.tenant_product_id,
-        source_product_id: recoCtx.sourceProductId ?? null,
-      });
-    }
+    // Previously only fired when recoCtx was set, so the main catalog grid's
+    // quick-add button -- the highest-volume add-to-cart path in the app --
+    // never reached PostHog at all, only the narrow recommendation-card path
+    // did. Fire for both, keeping `widget` null for the non-reco case so the
+    // distinction is still visible in the data.
+    posthog?.capture('reco_add_to_cart', {
+      ...analyticsIds,
+      widget: recoCtx?.widget ?? null,
+      product_id: item.tenant_product_id,
+      source_product_id: recoCtx?.sourceProductId ?? null,
+    });
   }
 
   function handleDecrement(e: React.MouseEvent): void {

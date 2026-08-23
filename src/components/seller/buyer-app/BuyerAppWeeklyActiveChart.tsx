@@ -22,7 +22,7 @@ export function BuyerAppWeeklyActiveChart({ data, loading }: { data: Array<{ wee
       emptyDescription="Weekly active buyers will appear here once buyers use the app."
       summary={(
         <div>
-          <p className="font-display text-3xl leading-none text-cream-950">
+          <p className="font-display text-xl font-medium leading-[1.05] text-[#4A3F35] tabular-nums">
             {formatNumberValue(latest?.count ?? 0, 'COUNT')}
           </p>
           <p className="mt-1 text-sm text-cream-600">active buyers this week</p>

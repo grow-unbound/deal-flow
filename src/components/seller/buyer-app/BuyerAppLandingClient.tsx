@@ -101,6 +101,7 @@ function BuyerAppLandingContent({
   const { data: productsViewed } = useProductsViewed();
   const { data: productsAddedToCart } = useProductsAddedToCart();
   const { data: cartSubmits } = useCartSubmits();
+  const [demandMode, setDemandMode] = useState<'value' | 'count'>('value');
 
   if (isLoading && !landingData) return <BuyerAppSkeleton />;
 
@@ -147,14 +148,23 @@ function BuyerAppLandingContent({
     return `${card.value ?? 0}`;
   };
 
-  // True funnel drop-off: each pct relative to previous stage
+  // Bar width/in-bar % = each stage's absolute share of the top-of-funnel
+  // stage (enabled), so the shape actually narrows monotonically like a
+  // real funnel. Stage-over-stage conversion rate (opened/enabled, etc.) is
+  // shown as supporting text instead -- that's the meaningful "did this
+  // step convert well" number, but it isn't monotonically decreasing (a
+  // later stage can have a higher conversion rate than an earlier one) so
+  // it's wrong to drive bar width with it.
   const funnelEnabled = snap.enabled_buyers;
   const funnelOpened = snap.opened_app_mtd;
   const funnelOrdered = snap.ordered_mtd;
   const funnelRepeat = snap.repeat_mtd;
-  const openedPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
-  const orderedPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
-  const repeatPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
+  const openedSharePct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
+  const orderedSharePct = funnelEnabled > 0 ? Math.round((funnelOrdered / funnelEnabled) * 100) : 0;
+  const repeatSharePct = funnelEnabled > 0 ? Math.round((funnelRepeat / funnelEnabled) * 100) : 0;
+  const openedConversionPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
+  const orderedConversionPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
+  const repeatConversionPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
 
   return (
     <PageWrap>
@@ -200,19 +210,22 @@ function BuyerAppLandingContent({
                   id: 'opened',
                   label: 'Opened app',
                   value: funnelOpened,
-                  pct: openedPct,
+                  pct: openedSharePct,
+                  supporting: `${openedConversionPct}% of enabled customers`,
                 },
                 {
                   id: 'ordered',
                   label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`,
                   value: funnelOrdered,
-                  pct: orderedPct,
+                  pct: orderedSharePct,
+                  supporting: `${orderedConversionPct}% of those who opened the app`,
                 },
                 {
                   id: 'repeat',
                   label: `Repeat (2+ ${primaryDemandNoun})`,
                   value: funnelRepeat,
-                  pct: repeatPct,
+                  pct: repeatSharePct,
+                  supporting: `${repeatConversionPct}% of ${primaryDemandNoun} ${primaryDemandVerb}`,
                 },
               ],
               emptyTitle: 'No enabled buyers yet',
@@ -276,8 +289,29 @@ function BuyerAppLandingContent({
           title="App demand"
           subtitle="Last 90 days"
           bodyClassName="p-0"
+          actions={(
+            <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
+              {([
+                { id: 'value' as const, label: '₹ Value' },
+                { id: 'count' as const, label: 'Count' },
+              ]).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setDemandMode(option.id)}
+                  className={cn(
+                    'rounded-full px-3 py-1.5 text-sm font-semibold transition',
+                    demandMode === option.id ? 'bg-white text-teal-700 shadow-sm' : 'text-cream-700 hover:text-cream-900',
+                  )}
+                  aria-pressed={demandMode === option.id}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
         >
-          <BuyerAppDemandChart data={cartSubmits} loading={false} />
+          <BuyerAppDemandChart data={cartSubmits} loading={false} mode={demandMode} />
         </PerformanceCard>
       </div>
     </PageWrap>

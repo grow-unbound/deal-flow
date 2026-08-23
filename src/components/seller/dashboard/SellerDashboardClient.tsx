@@ -23,7 +23,7 @@ import {
   SeeAllSheet,
   StatusTag,
 } from '@/components/seller/layout';
-import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
+import { PerformanceCard, RankedList } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
@@ -36,6 +36,7 @@ import type {
   SellerDashboardSalesMixDimension,
   SellerDashboardSalesMixItemV4,
 } from '@/types/seller-dashboard';
+import type { BusinessFlowToggle } from './BusinessFlowChart';
 
 const BusinessFlowChart = dynamic(
   () => import('./BusinessFlowChart').then((m) => m.BusinessFlowChart),
@@ -45,12 +46,14 @@ const CustomerActivityDonut = dynamic(
   () => import('./CustomerActivityDonut').then((m) => m.CustomerActivityDonut),
   { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
 );
-const LocationPerformanceGrid = dynamic(
-  () => import('./LocationPerformanceGrid').then((m) => m.LocationPerformanceGrid),
+const LocationPerformanceChart = dynamic(
+  () => import('./LocationPerformanceChart').then((m) => m.LocationPerformanceChart),
   { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
 );
-
-const DASHBOARD_SCROLL_CARD_HEIGHT = 'h-[320px]';
+const SalesMixDonut = dynamic(
+  () => import('./SalesMixDonut').then((m) => m.SalesMixDonut),
+  { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
+);
 
 function formatDashboardMetricCard(card: SellerDashboardMetricsV4['cards'][number]) {
   const idLabel = card.id.toLowerCase();
@@ -129,6 +132,7 @@ function normalizeSalesMixItems(items: SellerDashboardSalesMixItemV4[]) {
       label: item.name,
       pct: total > 0 ? Number(((item.current_value / total) * 100).toFixed(1)) : 0,
       value: formatNumberValue(item.current_value, 'CURRENCY_THRESHOLD'),
+      raw_value: item.current_value,
       supporting: formatMonthDelta(item.current_value, item.prior_value),
     })),
     total,
@@ -145,6 +149,7 @@ function AdminSection({
   const admin = data.admin;
   const [salesMixDimension, setSalesMixDimension] = useState<SellerDashboardSalesMixDimension>('brands');
   const [salesMixSheetOpen, setSalesMixSheetOpen] = useState(false);
+  const [businessFlowToggle, setBusinessFlowToggle] = useState<BusinessFlowToggle>('sales');
   const { data: businessFlowData, isLoading: businessFlowLoading } = useSellerDashboardBusinessFlow();
   const { data: customerActivityData, isLoading: customerActivityLoading } = useSellerDashboardCustomerActivity();
   const { data: salesMixData } = useSellerDashboardSalesMix(salesMixDimension);
@@ -169,14 +174,41 @@ function AdminSection({
         <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
       ) : null}
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <PerformanceCard title="Business flow" subtitle="Trailing 6 months" bodyClassName="p-0">
-          <BusinessFlowChart data={businessFlowData} loading={businessFlowLoading} />
+        <PerformanceCard
+          title="Business flow"
+          subtitle="Trailing 6 months"
+          bodyClassName="p-0"
+          actions={(
+            <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
+              {([
+                { id: 'sales' as const, label: 'Sales' },
+                { id: 'demand' as const, label: businessFlowData?.primary_demand_kind === 'orders' ? 'Demand (Orders)' : 'Demand' },
+              ]).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setBusinessFlowToggle(option.id)}
+                  className={cn(
+                    'rounded-full px-3 py-1.5 text-sm font-semibold transition',
+                    businessFlowToggle === option.id ? 'bg-white text-teal-700 shadow-sm' : 'text-cream-700 hover:text-cream-900',
+                  )}
+                  aria-pressed={businessFlowToggle === option.id}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        >
+          <BusinessFlowChart data={businessFlowData} loading={businessFlowLoading} toggle={businessFlowToggle} />
         </PerformanceCard>
         <PerformanceCard title="Customer activity" subtitle="Current quarter" bodyClassName="p-0">
           <CustomerActivityDonut data={customerActivityData} loading={customerActivityLoading} />
         </PerformanceCard>
-        <DetailCardRenderer
-          bodyClassName={cn(DASHBOARD_SCROLL_CARD_HEIGHT, 'dashboard-vscroll overflow-y-auto p-0')}
+        <PerformanceCard
+          title="Sales mix"
+          subtitle={salesMixSubtitle}
+          bodyClassName="p-0"
           actions={(
             <div className="flex items-center gap-3">
               <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
@@ -209,25 +241,20 @@ function AdminSection({
               </button>
             </div>
           )}
-          card={{
-            id: 'dashboard-sales-mix',
-            representation: 'mix',
-            title: 'Sales mix',
-            subtitle: salesMixSubtitle,
-            body: {
-              items: mixResult.items,
-              emptyTitle: `No ${salesMixDimensionLabel.toLowerCase()} data yet`,
-              emptyDescription: 'Revenue share will appear here once invoiced sales are available for this view.',
-              mode: 'mix',
-            },
-          }}
-        />
+        >
+          <SalesMixDonut
+            items={mixResult.items.map((item) => ({ id: item.id, label: item.label, value: item.raw_value, pct: item.pct, supporting: item.supporting }))}
+            loading={false}
+            emptyTitle={`No ${salesMixDimensionLabel.toLowerCase()} data yet`}
+            emptyDescription="Revenue share will appear here once invoiced sales are available for this view."
+          />
+        </PerformanceCard>
         <PerformanceCard
           title="Location performance"
           subtitle="Sales, overdue, and open demand by location"
           bodyClassName="p-0"
         >
-          <LocationPerformanceGrid locations={locationPerformanceData?.locations} loading={locationPerformanceLoading} />
+          <LocationPerformanceChart locations={locationPerformanceData?.locations} loading={locationPerformanceLoading} />
         </PerformanceCard>
       </div>
       <SeeAllSheet

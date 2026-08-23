@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 import { TrendFrame } from '@/components/seller/detail';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 
-type DemandMode = 'value' | 'count';
+export type DemandMode = 'value' | 'count';
 
 function weekTick(isoDate: string): string {
   const date = new Date(isoDate);
@@ -17,11 +16,12 @@ function weekTick(isoDate: string): string {
 export function BuyerAppDemandChart({
   data,
   loading,
+  mode,
 }: {
   data: Array<{ week: string; value: number; count: number }> | undefined;
   loading: boolean;
+  mode: DemandMode;
 }) {
-  const [mode, setMode] = useState<DemandMode>('value');
   const weeks = data ?? [];
   const latest = weeks[weeks.length - 1];
 
@@ -32,31 +32,10 @@ export function BuyerAppDemandChart({
       emptyDescription="App demand will appear here once buyers submit orders or estimates."
       summary={(
         <div>
-          <p className="font-display text-3xl leading-none text-cream-950">
+          <p className="font-display text-xl font-medium leading-[1.05] text-[#4A3F35] tabular-nums">
             {mode === 'value' ? formatNumberValue(latest?.value ?? 0, 'CURRENCY_THRESHOLD') : formatNumberValue(latest?.count ?? 0, 'COUNT')}
           </p>
           <p className="mt-1 text-sm text-cream-600">this week</p>
-        </div>
-      )}
-      controls={(
-        <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
-          {([
-            { id: 'value' as const, label: '₹ Value' },
-            { id: 'count' as const, label: 'Count' },
-          ]).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setMode(option.id)}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-sm font-semibold transition',
-                mode === option.id ? 'bg-white text-teal-700 shadow-sm' : 'text-cream-700 hover:text-cream-900',
-              )}
-              aria-pressed={mode === option.id}
-            >
-              {option.label}
-            </button>
-          ))}
         </div>
       )}
       chart={weeks.length > 0 ? (
