@@ -71,47 +71,6 @@ vi.mock('@/lib/api-fetch', () => ({
   apiPost: (...args: unknown[]) => apiPostMock(...args),
 }));
 
-vi.mock('@supabase/auth-helpers-nextjs', () => {
-  class QueryMock {
-    select() {
-      return this;
-    }
-    eq() {
-      return this;
-    }
-    ilike() {
-      return this;
-    }
-    order() {
-      return this;
-    }
-    limit() {
-      return this;
-    }
-    then(resolve: (value: { data: unknown; error: null }) => void) {
-      resolve({
-        data: [
-          {
-            id: 'buyer-1',
-            business_name: 'Acme Retail',
-            geography: { state: 'Delhi' },
-            credit_limit: 5000,
-          },
-        ],
-        error: null,
-      });
-    }
-  }
-
-  return {
-    createClientComponentClient: () => ({
-      schema: () => ({
-        from: () => new QueryMock(),
-      }),
-    }),
-  };
-});
-
 function baseBuyer(overrides: Partial<EstimateComposerBuyerContext> = {}): EstimateComposerBuyerContext {
   return {
     id: 'buyer-1',

@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const uploadUrl = await getPresignedUploadUrl(key, contentType);
     const publicUrl = getPublicUrl(key);
 
-    return NextResponse.json({ uploadUrl, publicUrl });
+    return NextResponse.json({ uploadUrl, publicUrl, key });
   } catch (err) {
     console.error('[R2 logo presign]', err);
     return NextResponse.json({ error: 'Failed to generate upload URL' }, { status: 500 });
