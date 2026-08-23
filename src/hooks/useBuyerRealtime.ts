@@ -110,8 +110,12 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
     // nullable/shared across campaigns), so this buyer's own rows are still
     // picked out client-side same as the cohort/buyer scope check already
     // did under postgres_changes.
+    //
+    // { config: { private: true } } required -- the DB trigger sends
+    // realtime.send(..., private=true); without this the channel opens in
+    // public/non-RLS mode and never receives the private broadcast.
     const channel = supabaseBrowser
-      .channel(`tenant-notifications:${tenantId}`)
+      .channel(`tenant-notifications:${tenantId}`, { config: { private: true } })
       .on(
         'broadcast',
         { event: 'notification' },

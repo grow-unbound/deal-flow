@@ -290,8 +290,16 @@ export function useSellerRealtime({ tenantId, locationIds, locationNamesById, on
     // client-side filtering below is unchanged) — same security boundary,
     // different transport. entity_type/event_type/payload/old_payload are the
     // app.realtime_notifications row, delivered as the broadcast payload.
+    //
+    // { config: { private: true } } is required here -- the DB trigger calls
+    // realtime.send(..., private=true), and Supabase only delivers a private
+    // broadcast to a channel explicitly opened as private (confirmed against
+    // Supabase's own docs after the client received zero messages without
+    // this: a raw-protocol test with private:true in the join payload worked
+    // immediately). Omitting it silently subscribes to the public/non-RLS
+    // channel instead, which the private broadcast never reaches.
     const channel = supabaseBrowser
-      .channel(`tenant-notifications:${tenantId}`)
+      .channel(`tenant-notifications:${tenantId}`, { config: { private: true } })
       .on(
         'broadcast',
         { event: 'notification' },
