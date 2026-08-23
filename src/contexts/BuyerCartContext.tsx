@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { usePostHog } from 'posthog-js/react';
 
+import { useAuth } from '@/contexts/AuthContext';
 import {
   BUYER_CART_CAMPAIGN_STORAGE_KEY,
   resolveBuyerCartCampaignId,
@@ -193,6 +194,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
   const posthog = usePostHog();
+  const { currentTenantId } = useAuth();
   const hasClientMutationRef = useRef(false);
 
   // Always start from an empty, server-matching state — reading localStorage in the
@@ -250,6 +252,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     const nextItems = getItemsAfterAdd(currentState.items, stampedItem, effectiveCampaignId);
     dispatch({ type: 'ADD_ITEM', item: stampedItem });
     posthog?.capture('catalog_item_added_to_cart', {
+      tenant_id: currentTenantId,
       tenant_product_id: item.tenant_product_id,
       product_name: item.name,
       brand: item.brand,

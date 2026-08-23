@@ -138,6 +138,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       location_ids: claims.locationIds,
     });
 
+    // Super properties — auto-included in every subsequent event as event properties,
+    // enabling per-tenant filtering in PostHog custom endpoints and queries.
+    posthog.register({
+      tenant_id: claims.tenantId ?? undefined,
+      buyer_id: claims.buyerId ?? undefined,
+      role: claims.role ?? undefined,
+    });
+
     if (claims.tenantId) {
       posthog.group('tenant', claims.tenantId);
     }

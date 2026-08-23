@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
         properties: {
           user_type: workspace.workspace_type,
           role: workspace.role,
+          ...(workspace.tenant_id ? { tenant_id: workspace.tenant_id } : {}),
           ...(workspace.tenant_slug ? { tenant_slug: workspace.tenant_slug } : {}),
           $session_id: request.headers.get('X-POSTHOG-SESSION-ID') ?? undefined,
         },
