@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { batchUpsertLineItems } from '@/lib/server/batch-upsert-line-items';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
   canAccessDocumentLocation,
@@ -192,18 +193,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (payload.items) {
     const existingItemIds = new Set(existing.items.map((row) => row.id));
-    const nextIds = new Set(payload.items.map((row) => row.id).filter((value): value is string => Boolean(value)));
-
-    for (const staleId of existingItemIds) {
-      if (!nextIds.has(staleId)) {
-        await db
-          .schema('app')
-          .from('order_items')
-          .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub, updated_at: new Date().toISOString() })
-          .eq('id', staleId)
-          .eq('order_id', id);
-      }
-    }
 
     const onHandByProduct = await loadInventoryAvailabilityMap(
       db,
@@ -211,32 +200,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       nextLocationId,
     );
 
-    for (const item of payload.items) {
-      const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
-      const patch = {
-        order_id: id,
-        tenant_product_id: item.tenant_product_id,
-        qty: item.qty,
-        unit_price: item.unit_price,
-        tax_rate: item.tax_pct,
-        tax_pct: item.tax_pct,
-        disc_pct: item.disc_pct,
-        line_total: discounted + discounted * (item.tax_pct / 100),
-        scheme_tag: item.scheme_tag ?? null,
-        on_hand_at_confirm: onHandByProduct.get(item.tenant_product_id) ?? 0,
-        updated_at: new Date().toISOString(),
-        updated_by: claims.sub,
-        deleted_at: null,
-      };
+    const { error: itemsError } = await batchUpsertLineItems({
+      db,
+      table: 'order_items',
+      parentColumn: 'order_id',
+      parentId: id,
+      existingItemIds,
+      items: payload.items,
+      actorId: claims.sub,
+      buildPatch: (item) => {
+        const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
+        return {
+          tenant_product_id: item.tenant_product_id,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          tax_rate: item.tax_pct,
+          tax_pct: item.tax_pct,
+          disc_pct: item.disc_pct,
+          line_total: discounted + discounted * (item.tax_pct / 100),
+          scheme_tag: item.scheme_tag ?? null,
+          on_hand_at_confirm: onHandByProduct.get(item.tenant_product_id) ?? 0,
+        };
+      },
+    });
 
-      if (item.id && existingItemIds.has(item.id)) {
-        await db.schema('app').from('order_items').update(patch).eq('id', item.id).eq('order_id', id);
-      } else {
-        await db.schema('app').from('order_items').insert({
-          ...patch,
-          created_by: claims.sub,
-        });
-      }
+    if (itemsError) {
+      console.error('[PATCH /api/tenant/orders/[id]] items save error', itemsError);
+      return NextResponse.json({ error: 'Failed to save order line items' }, { status: 500 });
     }
   }
 

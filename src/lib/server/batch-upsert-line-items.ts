@@ -6,7 +6,7 @@ export interface BatchUpsertLineItemsParams<T extends { id?: string }> {
   existingItemIds: Set<string>;
   items: T[];
   buildPatch: (item: T) => Record<string, unknown>;
-  actorId: string;
+  actorId: string | null;
   now?: string;
 }
 

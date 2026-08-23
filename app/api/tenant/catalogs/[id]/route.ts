@@ -1320,35 +1320,40 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         }
       }
 
-      for (const [index, tenantProductId] of payload.selected_product_ids.entries()) {
+      const nowIso = new Date().toISOString();
+      const itemsToReactivate: Array<{
+        id: string;
+        campaign_id: string;
+        tenant_product_id: string;
+        display_order: number;
+        deleted_at: null;
+        updated_at: string;
+        updated_by: string | null;
+      }> = [];
+      const itemsToInsert: Array<{
+        campaign_id: string;
+        tenant_product_id: string;
+        display_order: number;
+        price_override: null;
+        created_by: string | null;
+        updated_by: string | null;
+        deleted_at: null;
+      }> = [];
+
+      payload.selected_product_ids.forEach((tenantProductId, index) => {
         const existingItem = existingByProductId.get(tenantProductId);
         if (existingItem) {
-          const { error: updateItemError } = await db
-            .schema('app')
-            .from('campaign_items')
-            .update({
-              display_order: index,
-              deleted_at: null,
-              updated_at: new Date().toISOString(),
-              updated_by: claims.sub,
-            })
-            .eq('id', existingItem.id);
-          if (updateItemError) {
-            logCatalogPatchDbError('reactivate simple campaign item', {
-              campaignId: id,
-              tenantId: claims.tenant_id,
-              campaignItemId: existingItem.id,
-              tenantProductId,
-            }, updateItemError);
-            return NextResponse.json({ error: 'Failed to update selected products' }, { status: 500 });
-          }
-          continue;
-        }
-
-        const { error: insertItemError } = await db
-          .schema('app')
-          .from('campaign_items')
-          .insert({
+          itemsToReactivate.push({
+            id: existingItem.id,
+            campaign_id: id,
+            tenant_product_id: tenantProductId,
+            display_order: index,
+            deleted_at: null,
+            updated_at: nowIso,
+            updated_by: claims.sub,
+          });
+        } else {
+          itemsToInsert.push({
             campaign_id: id,
             tenant_product_id: tenantProductId,
             display_order: index,
@@ -1357,12 +1362,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             updated_by: claims.sub,
             deleted_at: null,
           });
-        if (insertItemError) {
-          logCatalogPatchDbError('insert simple campaign item', {
+        }
+      });
+
+      if (itemsToReactivate.length > 0) {
+        const { error: updateItemsError } = await db
+          .schema('app')
+          .from('campaign_items')
+          .upsert(itemsToReactivate, { onConflict: 'id' });
+        if (updateItemsError) {
+          logCatalogPatchDbError('reactivate simple campaign items', {
             campaignId: id,
             tenantId: claims.tenant_id,
-            tenantProductId,
-          }, insertItemError);
+            reactivateCount: itemsToReactivate.length,
+          }, updateItemsError);
+          return NextResponse.json({ error: 'Failed to update selected products' }, { status: 500 });
+        }
+      }
+
+      if (itemsToInsert.length > 0) {
+        const { error: insertItemsError } = await db
+          .schema('app')
+          .from('campaign_items')
+          .insert(itemsToInsert);
+        if (insertItemsError) {
+          logCatalogPatchDbError('insert simple campaign items', {
+            campaignId: id,
+            tenantId: claims.tenant_id,
+            insertCount: itemsToInsert.length,
+          }, insertItemsError);
           return NextResponse.json({ error: 'Failed to add selected products' }, { status: 500 });
         }
       }

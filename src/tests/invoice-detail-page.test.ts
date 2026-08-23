@@ -216,17 +216,33 @@ function defaultFromImpl(table: string) {
     };
   }
   if (table === 'invoice_items') {
+    let nextId = 1;
     return {
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
           is: vi.fn(() => chainArray(savedInvoiceItems)),
         })),
       })),
-      insert: vi.fn((payload: Record<string, unknown>) => {
-        savedInvoiceItems.push({ id: 'ii-1', ...payload });
+      insert: vi.fn((payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
+        const rows = Array.isArray(payload) ? payload : [payload];
+        for (const row of rows) {
+          savedInvoiceItems.push({ id: `ii-${nextId++}`, ...row });
+        }
         return Promise.resolve({ error: null });
       }),
-      update: vi.fn(() => Promise.resolve({ error: null })),
+      upsert: vi.fn((payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
+        const rows = Array.isArray(payload) ? payload : [payload];
+        for (const row of rows) {
+          savedInvoiceItems.push(row);
+        }
+        return Promise.resolve({ error: null });
+      }),
+      update: vi.fn(() => ({
+        in: vi.fn(() => ({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        })),
+        eq: vi.fn(() => Promise.resolve({ error: null })),
+      })),
     };
   }
   if (table === 'tenant_products') {

@@ -343,13 +343,18 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    const [{ data: orderRows }, { data: estimateRows }] = await Promise.all([
+    const pageBuyerIds = Array.from(new Set(calloutLookupRows.map((r) => r.buyer_id)));
+
+    const [{ data: orderRows }, { data: estimateRows }, { data: buyerRows }] = await Promise.all([
       linkedOrderIds.length > 0
         ? db.schema('app').from('orders').select('id, order_number, source, campaign_id').in('id', linkedOrderIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as OrderRow[], error: null }),
       linkedEstimateIds.length > 0
         ? db.schema('app').from('estimates').select('id, estimate_number, campaign_id').in('id', linkedEstimateIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as EstimateRow[], error: null }),
+      pageBuyerIds.length > 0
+        ? db.schema('app').from('buyers').select('id, business_name, geography').in('id', pageBuyerIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as BuyerRow[], error: null }),
     ]);
 
     // Detect next page and slice to reqLimit
@@ -359,13 +364,6 @@ export async function GET(request: NextRequest) {
     const nextCursor = hasNextPage && lastRow
       ? encodeCursor({ created_at: getInvoiceDocumentTimestamp(lastRow), id: lastRow.id })
       : null;
-
-    const pageBuyerIds = Array.from(new Set(calloutLookupRows.map((r) => r.buyer_id)));
-    const [{ data: buyerRows }] = await Promise.all([
-      pageBuyerIds.length > 0
-        ? db.schema('app').from('buyers').select('id, business_name, geography').in('id', pageBuyerIds).is('deleted_at', null)
-        : Promise.resolve({ data: [] as BuyerRow[], error: null }),
-    ]);
 
     const buyers = (buyerRows ?? []) as BuyerRow[];
     const orders = (orderRows ?? []) as OrderRow[];
@@ -379,25 +377,24 @@ export async function GET(request: NextRequest) {
         ...estimates.map((e) => e.campaign_id).filter((value): value is string => Boolean(value)),
       ]),
     );
-    const campaignsRes = campaignIds.length > 0
-      ? await db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
-      : { data: [] as Array<{ id: string; name: string }>, error: null };
+    const invoiceIds = calloutLookupRows.map((row) => row.id);
+    const creatorIds = Array.from(new Set(calloutLookupRows.map((row) => row.created_by).filter((value): value is string => Boolean(value))));
+
+    const [campaignsRes, invoiceItemsRes, creatorMap] = await Promise.all([
+      campaignIds.length > 0
+        ? db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
+      invoiceIds.length > 0
+        ? db.schema('app').from('invoice_items').select('invoice_id').in('invoice_id', invoiceIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as InvoiceItemRow[], error: null }),
+      getAuthUserDisplayNameMap(creatorIds),
+    ]);
     if (campaignsRes.error) {
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
     const catalogsById = new Map(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
 
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
-
-    const invoiceIds = calloutLookupRows.map((row) => row.id);
-    const creatorIds = Array.from(new Set(calloutLookupRows.map((row) => row.created_by).filter((value): value is string => Boolean(value))));
-
-    const [invoiceItemsRes, creatorMap] = await Promise.all([
-      invoiceIds.length > 0
-        ? db.schema('app').from('invoice_items').select('invoice_id').in('invoice_id', invoiceIds).is('deleted_at', null)
-        : Promise.resolve({ data: [] as InvoiceItemRow[], error: null }),
-      getAuthUserDisplayNameMap(creatorIds),
-    ]);
 
     if (invoiceItemsRes.error) {
       console.error('[GET /api/tenant/invoices] invoice_items error:', invoiceItemsRes.error);
