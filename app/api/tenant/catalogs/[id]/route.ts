@@ -436,9 +436,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const tagOverrides = composerScopeValue.composer?.tag_overrides ?? {};
   const composerDraft = composerScopeValue.composer_draft ?? null;
 
+  type BuyerRow = { id: string; business_name: string; geography: unknown; tier: string | null };
+
   let scopedBuyerIds: string[] = [];
   let selectedCohortId: string | null = null;
   let selectedCohortName = 'All buyers';
+  // buyers[] in the response below is only a pre-hydration fallback -- the real
+  // paginated/filterable Buyers-tab table is served by GET .../buyers
+  // (app.search_catalog_buyers, already bounded and already automatic-mode-aware).
+  // So the automatic/all-buyers branches below only need a small sample for that
+  // fallback, not the full membership list.
+  const FALLBACK_BUYER_SAMPLE_LIMIT = 50;
 
   if (catalog.scope_type === 'cohort' && scopeValue.cohort_id) {
     selectedCohortId = scopeValue.cohort_id;
@@ -457,29 +465,79 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } else if (catalog.scope_type === 'buyer' && scopeValue.buyer_ids && scopeValue.buyer_ids.length > 0) {
     scopedBuyerIds = scopeValue.buyer_ids;
     selectedCohortName = 'Selected buyers';
-  } else {
-    const allBuyersRes = await db
-      .schema('app')
-      .from('buyers')
-      .select('id')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('is_active', true)
-      .is('deleted_at', null);
+  }
 
-    if (allBuyersRes.error) return NextResponse.json({ error: 'Failed to load buyers' }, { status: 500 });
-    scopedBuyerIds = ((allBuyersRes.data ?? []) as Array<{ id: string }>).map((row) => row.id);
+  // Automatic-mode / legacy-all-buyers fallback: a 'buyer' scope with no buyer_id/
+  // buyer_ids in scope_value is a rule-based (buyer_target_mode='automatic') campaign
+  // -- its true membership lives in app.campaign_buyer_members, not "every buyer in the
+  // tenant". Only scope_type 'geography'/'all' (or a genuinely static-empty legacy
+  // scope) actually means "all active buyers". Both branches fetch an exact count
+  // separately from a small bounded sample, instead of collecting every matching id
+  // and re-fetching via `.in()` -- on a tenant with thousands of buyers that id list
+  // blows the request's URL/size limit (PostgREST default 1000-row cap silently
+  // truncated this before).
+  let allBuyersData: BuyerRow[] | null = null;
+  let targetBuyerCount: number | null = null;
+
+  const isAutomaticOrAllBuyersFallback =
+    scopedBuyerIds.length === 0 &&
+    !(catalog.scope_type === 'cohort' && scopeValue.cohort_id) &&
+    !(catalog.scope_type === 'buyer' && scopeValue.buyer_id);
+
+  if (isAutomaticOrAllBuyersFallback && catalog.buyer_target_mode === 'automatic') {
+    const [countRes, sampleRes] = await Promise.all([
+      db.schema('app').from('campaign_buyer_members').select('id', { count: 'exact', head: true }).eq('campaign_id', catalog.id).is('valid_until', null),
+      db
+        .schema('app')
+        .from('campaign_buyer_members')
+        .select('buyers!inner(id, business_name, geography, tier)')
+        .eq('campaign_id', catalog.id)
+        .is('valid_until', null)
+        .limit(FALLBACK_BUYER_SAMPLE_LIMIT),
+    ]);
+
+    if (countRes.error) return NextResponse.json({ error: 'Failed to load campaign buyer members' }, { status: 500 });
+    if (sampleRes.error) return NextResponse.json({ error: 'Failed to load campaign buyer members' }, { status: 500 });
+
+    allBuyersData = (sampleRes.data ?? []).map((row) => (row as unknown as { buyers: BuyerRow }).buyers);
+    targetBuyerCount = countRes.count ?? 0;
+    scopedBuyerIds = allBuyersData.map((row) => row.id);
+    selectedCohortName = 'Targeted buyers';
+  } else if (isAutomaticOrAllBuyersFallback) {
+    const [countRes, sampleRes] = await Promise.all([
+      db.schema('app').from('buyers').select('id', { count: 'exact', head: true }).eq('tenant_id', claims.tenant_id).eq('is_active', true).is('deleted_at', null),
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, geography, tier')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .limit(FALLBACK_BUYER_SAMPLE_LIMIT),
+    ]);
+
+    if (countRes.error) return NextResponse.json({ error: 'Failed to load buyers' }, { status: 500 });
+    if (sampleRes.error) return NextResponse.json({ error: 'Failed to load buyers' }, { status: 500 });
+
+    allBuyersData = sampleRes.data as BuyerRow[];
+    targetBuyerCount = countRes.count ?? 0;
+    scopedBuyerIds = allBuyersData.map((row) => row.id);
     selectedCohortName = catalog.scope_type === 'all' ? 'All buyers' : 'Targeted buyers';
   }
 
   const cohortMemberIds = Array.from(new Set(scopedBuyerIds));
-  const buyersRes = cohortMemberIds.length
-    ? await db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography, tier')
-        .in('id', cohortMemberIds)
-        .is('deleted_at', null)
-    : { data: [], error: null };
+  if (targetBuyerCount === null) targetBuyerCount = cohortMemberIds.length;
+
+  const buyersRes = allBuyersData
+    ? { data: allBuyersData, error: null }
+    : cohortMemberIds.length
+      ? await db
+          .schema('app')
+          .from('buyers')
+          .select('id, business_name, geography, tier')
+          .in('id', cohortMemberIds)
+          .is('deleted_at', null)
+      : { data: [], error: null };
 
   if (buyersRes.error) return NextResponse.json({ error: 'Failed to load buyers' }, { status: 500 });
 
@@ -652,17 +710,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       selected_cohort: {
         id: selectedCohortId,
         name: selectedCohortName,
-        member_count: cohortMemberIds.length,
+        member_count: targetBuyerCount,
         scope_type: catalog.scope_type,
         display_label: selectedCohortName,
       },
     },
     meta_strip_4: {
-      target_buyer_count: cohortMemberIds.length,
+      target_buyer_count: targetBuyerCount,
       viewed_buyer_count: campaignQuarter?.viewed_buyer_count ?? 0,
       view_count: campaignQuarter?.view_count ?? 0,
-      view_rate_pct: cohortMemberIds.length > 0
-        ? Math.round(((campaignQuarter?.viewed_buyer_count ?? 0) / cohortMemberIds.length) * 1000) / 10
+      view_rate_pct: targetBuyerCount > 0
+        ? Math.round(((campaignQuarter?.viewed_buyer_count ?? 0) / targetBuyerCount) * 1000) / 10
         : 0,
       demand_buyer_count: campaignQuarter?.demand_buyer_count ?? 0,
       demand_value: (campaignQuarter?.estimate_value ?? 0) + (campaignQuarter?.order_value ?? 0),
@@ -1201,14 +1259,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (buyerTargetMode === 'automatic' || productMembershipMode === 'automatic') {
       // Mode switch or rule edit -- recompute now (requirement 4).
-      const refreshCalls: PromiseLike<unknown>[] = [];
+      const refreshCalls: Array<{ entityType: 'campaign_buyers' | 'campaign_products'; promise: PromiseLike<{ error: { message: string } | null }> }> = [];
       if (buyerTargetMode === 'automatic') {
-        refreshCalls.push(db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: id }));
+        refreshCalls.push({ entityType: 'campaign_buyers', promise: db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: id }) });
       }
       if (productMembershipMode === 'automatic') {
-        refreshCalls.push(db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: id }));
+        refreshCalls.push({ entityType: 'campaign_products', promise: db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: id }) });
       }
-      await Promise.all(refreshCalls);
+      const refreshResults = await Promise.all(refreshCalls.map((call) => call.promise));
+      await Promise.all(
+        refreshResults.map(async ({ error }, index) => {
+          if (!error) return;
+          const entityType = refreshCalls[index].entityType;
+          console.error(`[PATCH /api/tenant/catalogs/[id]] ${entityType} refresh error:`, error.message);
+          await db.schema('app').rpc('membership_mark_dirty', {
+            p_tenant_id: claims.tenant_id,
+            p_entity_type: entityType,
+            p_entity_id: id,
+            p_reason: `sync_refresh_failed:${error.message.slice(0, 200)}`,
+          });
+        }),
+      );
     } else if (productMembershipMode === 'manual') {
       const { data: existingItems, error: existingItemsError } = await db
         .schema('app')
