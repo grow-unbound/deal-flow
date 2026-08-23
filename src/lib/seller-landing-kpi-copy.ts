@@ -132,10 +132,10 @@ export const WAREHOUSES_KPI_COPY: KpiCopyMap = {
 };
 
 export const BUYER_APP_KPI_COPY: KpiCopyMap = {
-  customers_with_access: { label: 'Customers with app access', supportingText: entityOnly('enabled customers') },
-  customers_submitting_app_demand: { label: 'Customers submitting App Demand', supportingText: entityOnly('enabled customers') },
-  app_sourced_demand: { label: 'App-sourced Demand', supportingText: entityAndDocs('customers', 'demand docs') },
-  repeat_app_customers: { label: 'Repeat App Customers', supportingText: entityOnly('enabled customers') },
+  customers_with_access: { label: 'Customers with app access', supportingText: () => '% of total customers' },
+  app_sourced_demand_qtd: { label: 'App-sourced demand · this quarter', supportingText: entityAndDocs('customers', 'demand docs') },
+  app_sourced_invoiced_sales_qtd: { label: 'App-sourced invoiced sales · this quarter', supportingText: entityAndDocs('customers', 'invoices') },
+  app_no_order_customers_qtd: { label: 'App access · no order this quarter', supportingText: () => '% of enabled customers' },
 };
 
 /** Campaigns landing page (frontend dir: catalogs). */

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getVerifiedClaims, type JWTClaims } from '@/lib/auth';
+import { getObjectSize, deleteObject } from '@/lib/r2';
 import {
   r2Urls,
   type AvatarVariantKeySet,
@@ -8,6 +9,13 @@ import {
   type MediaVariantKeySet,
   type ProductVariantKeySet,
 } from '@/lib/r2-url';
+
+// "original" is the untouched client upload; every other variant is generated
+// client-side at capped canvas dimensions (see src/lib/client/image-variants.ts)
+// so it should never legitimately be large — 3MB gives headroom without allowing
+// storage-cost abuse via oversized uploads through the R2 presigned URL.
+const MAX_ORIGINAL_BYTES = 10 * 1024 * 1024;
+const MAX_VARIANT_BYTES = 3 * 1024 * 1024;
 
 const UUID_SCHEMA = z.string().uuid('Invalid entity ID');
 
@@ -74,6 +82,24 @@ export async function requireSellerUploadContext(req: NextRequest): Promise<Uplo
   };
 }
 
+async function assertVariantSizesWithinLimit(variantMap: Record<string, string>): Promise<void> {
+  const checks = await Promise.all(
+    Object.entries(variantMap).map(async ([name, key]) => {
+      const size = await getObjectSize(key);
+      const limit = name === 'original' ? MAX_ORIGINAL_BYTES : MAX_VARIANT_BYTES;
+      return { name, key, size, limit };
+    }),
+  );
+
+  const oversized = checks.filter((c) => c.size !== null && c.size > c.limit);
+  if (oversized.length === 0) return;
+
+  // Clean up before rejecting — don't leave oversized objects (or any sibling
+  // variants from the same upload) sitting in the bucket.
+  await Promise.all(checks.map((c) => (c.size !== null ? deleteObject(c.key) : Promise.resolve())));
+  throw new UploadRouteError(413, `Uploaded ${oversized[0]!.name} exceeds the maximum allowed size.`);
+}
+
 export async function parseVariantKeysPayload(req: NextRequest): Promise<VariantKeysPayload> {
   let body: unknown;
   try {
@@ -107,6 +133,8 @@ export async function parseVariantKeysPayload(req: NextRequest): Promise<Variant
       throw new UploadRouteError(400, `variants.${k} must be a non-empty string.`);
     }
   }
+
+  await assertVariantSizesWithinLimit(variantMap as Record<string, string>);
 
   const normalizedImageType = ((): 'icon' | 'banner' | 'logo' => {
     if (image_type === 'banner') return 'banner';

@@ -146,6 +146,17 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update member' }, { status: 500 });
   }
 
+  const { error: auditError } = await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'tenant_user',
+    entity_id: id,
+    action: 'update',
+    diff: { role: { from: member.role, to: validation.data.role }, location_ids: locationIds },
+    ts: new Date().toISOString(),
+  });
+  if (auditError) console.error('[PUT team member] audit', auditError);
+
   return NextResponse.json({ success: true });
 }
 
@@ -185,6 +196,17 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: 'Failed to deactivate member' }, { status: 500 });
   }
+
+  const { error: auditError } = await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'tenant_user',
+    entity_id: id,
+    action: 'deactivate',
+    diff: { is_active: false },
+    ts: new Date().toISOString(),
+  });
+  if (auditError) console.error('[DELETE team member] audit', auditError);
 
   return NextResponse.json({ success: true });
 }

@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/usePriceLists', () => ({
   usePriceListsLanding: () => usePriceListsLandingMock(),
   useCreatePriceList: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTenantPriceListsMetrics: () => ({ data: undefined }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({

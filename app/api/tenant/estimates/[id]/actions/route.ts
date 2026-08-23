@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeErrorMessage } from '@/lib/server/safe-error-message';
 import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
@@ -126,7 +127,7 @@ export async function POST(
       if (msg.includes('invalid_status') || msg.includes('already_')) {
         return NextResponse.json({ error: error.message }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message ?? 'Action failed' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Action failed') }, { status: 500 });
     }
 
     return NextResponse.json({ data: (data ?? {}) as Record<string, unknown> });

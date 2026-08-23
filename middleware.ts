@@ -27,7 +27,6 @@ const PUBLIC_PREFIXES = [
   '/favicon.ico',
   '/brand', // Static brand assets (logo SVGs etc) — must be public for auth pages
   '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
-  '/api/debug', // Diagnostic endpoint — remove from PUBLIC_PREFIXES before going to production
   '/manifest.webmanifest', // PWA manifest — browsers fetch it unauthenticated
   '/buyer-sw.js', // PWA service worker — must be reachable before any buyer session exists
 ];
@@ -52,6 +51,19 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hostname = request.headers.get('host') ?? '';
   const requestHeaders = new Headers(request.headers);
+  // Strip any client-supplied x-verified-* headers unconditionally before anything
+  // downstream can read them. These are trust boundary headers this middleware sets
+  // from cryptographically verified JWT claims below — if a claim is falsy (e.g. an
+  // unprovisioned/newly-signed-up session with no tenant_id yet), the conditional
+  // .set() calls further down would otherwise leave an attacker-supplied value in
+  // place, letting a client spoof tenant_id/role/buyer_id for every downstream route
+  // handler and Server Component. Must happen even on the public-route early return
+  // below, since requestHeaders is cloned from the raw request either way.
+  requestHeaders.delete('x-verified-tenant-id');
+  requestHeaders.delete('x-verified-role');
+  requestHeaders.delete('x-verified-buyer-id');
+  requestHeaders.delete('x-verified-location-ids');
+  requestHeaders.delete('x-verified-user-id');
   const subdomain = extractSubdomain(hostname);
   requestHeaders.set('x-tenant-subdomain', subdomain ?? '');
   const res = NextResponse.next({ request: { headers: requestHeaders } });

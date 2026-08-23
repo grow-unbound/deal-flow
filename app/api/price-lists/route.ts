@@ -10,6 +10,7 @@ import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { safeErrorMessage } from '@/lib/server/safe-error-message';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -396,7 +397,7 @@ export async function POST(request: NextRequest) {
     try {
       validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Failed to validate selected products') }, { status: 500 });
     }
 
     if (validProductIds.size !== tenantProductIds.length) {
@@ -407,7 +408,7 @@ export async function POST(request: NextRequest) {
     try {
       validProductIds = await ensureTenantProducts(db, claims.tenant_id, data.selected_product_ids);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Failed to validate selected products') }, { status: 500 });
     }
 
     if (validProductIds.size !== data.selected_product_ids.length) {
@@ -487,7 +488,7 @@ export async function POST(request: NextRequest) {
     try {
       selectedProducts = await getTenantProductBasePrices(db, claims.tenant_id, data.selected_product_ids);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to load selected products' }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(error, 'Failed to load selected products') }, { status: 500 });
     }
 
     if (selectedProducts.some((product) => Number(product.base_selling_price ?? 0) <= 0)) {

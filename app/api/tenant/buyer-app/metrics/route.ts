@@ -12,11 +12,11 @@ function emptyBuyerAppLandingMetricsV4(): BuyerAppLandingMetricsV4 {
   return {
     page_key: 'buyer_app',
     period: {
-      period_key: 'this_month',
-      grain: 'month',
+      period_key: 'this_quarter',
+      grain: 'quarter',
       period_start: '',
       period_end_exclusive: '',
-      label: 'This Month',
+      label: 'This Quarter',
     },
     computed_at: null,
     source_watermark: null,
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabaseAdmin.schema('app').rpc('get_landing_metrics_v4', {
       p_tenant_id: claims.tenant_id,
       p_page_key: 'buyer_app',
-      p_period_key: 'this_month',
+      p_period_key: 'this_quarter',
       p_scope_kind: 'tenant',
       p_scope_id: null,
       p_as_of: new Date().toISOString(),

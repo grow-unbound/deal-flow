@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getPresignedUploadUrl, getPublicUrl } from '@/lib/r2';
+import { supabaseAdmin } from '@/lib/supabase';
 import {
   ENTITY_VARIANT_CONFIG,
   buildOriginalKey,
@@ -8,6 +9,29 @@ import {
   type VariantName,
 } from '@/lib/image-entity-config';
 import { z } from 'zod';
+
+// Platform-shared catalog entities have no tenant to scope to by design — instead,
+// verify entity_id actually references an existing row before handing out a
+// presigned upload URL, so any seller can't overwrite arbitrary/guessed catalog
+// image keys for products/brands/categories they don't own.
+const CATALOG_ENTITY_TABLE: Record<string, string> = {
+  catalog_product: 'products',
+  catalog_brand: 'brands',
+  catalog_category: 'categories',
+};
+
+async function assertCatalogEntityExists(entityType: string, entityId: string): Promise<boolean> {
+  const table = CATALOG_ENTITY_TABLE[entityType];
+  if (!table || !supabaseAdmin) return true;
+  const { data } = await supabaseAdmin
+    .schema('catalog')
+    .from(table)
+    .select('id')
+    .eq('id', entityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  return Boolean(data);
+}
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
@@ -51,6 +75,10 @@ export async function POST(req: NextRequest) {
     const config = ENTITY_VARIANT_CONFIG[entity_type];
     if (!config) {
       return NextResponse.json({ error: `Unknown entity type: ${entity_type}` }, { status: 400 });
+    }
+
+    if (!(await assertCatalogEntityExists(entity_type, entity_id))) {
+      return NextResponse.json({ error: 'Entity not found' }, { status: 404 });
     }
 
     const baseKey = config.buildBaseKey(entity_id, tenantId);

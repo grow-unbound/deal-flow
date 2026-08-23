@@ -16,6 +16,7 @@ import { inferCampaignIdForBuyerCart } from '@/lib/server/campaign-attribution';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 import { resolveBuyerInventoryWarehouseId } from '@/lib/server/buyer-product-data';
 import { validateBuyerCartStock } from '@/lib/server/buyer-cart-stock';
+import { resolveAuthoritativePrices } from '@/lib/server/buyer-price-resolution';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
@@ -152,7 +153,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         { status: stockValidation.status },
       );
     }
-    const acceptedItems = stockValidation.items;
+    const priceResolution = await resolveAuthoritativePrices(db as any, {
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      items: stockValidation.items,
+    });
+    if (!priceResolution.ok) {
+      return NextResponse.json(
+        { success: false, error: priceResolution.error },
+        { status: priceResolution.status },
+      );
+    }
+    const acceptedItems = priceResolution.items;
 
     const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
       tenantId: tenant_id,

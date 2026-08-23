@@ -677,14 +677,30 @@ export async function POST(request: NextRequest) {
 
   if (buyerTargetMode === 'automatic' || productMembershipMode === 'automatic') {
     // Recompute now (requirement 4), not left frozen until the next scheduled refresh.
-    const refreshCalls: PromiseLike<unknown>[] = [];
+    const refreshCalls: Array<{ entityType: 'campaign_buyers' | 'campaign_products'; promise: PromiseLike<{ error: { message: string } | null }> }> = [];
     if (buyerTargetMode === 'automatic') {
-      refreshCalls.push(db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: insertedCatalog.id }));
+      refreshCalls.push({ entityType: 'campaign_buyers', promise: db.schema('app').rpc('refresh_campaign_buyers_by_id', { p_campaign_id: insertedCatalog.id }) });
     }
     if (productMembershipMode === 'automatic') {
-      refreshCalls.push(db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: insertedCatalog.id }));
+      refreshCalls.push({ entityType: 'campaign_products', promise: db.schema('app').rpc('refresh_campaign_products_by_id', { p_campaign_id: insertedCatalog.id }) });
     }
-    await Promise.all(refreshCalls);
+    const refreshResults = await Promise.all(refreshCalls.map((call) => call.promise));
+    await Promise.all(
+      refreshResults.map(async ({ error }, index) => {
+        if (!error) return;
+        const entityType = refreshCalls[index].entityType;
+        console.error(`[POST /api/tenant/catalogs] ${entityType} refresh error:`, error.message);
+        // Sync refresh failed (timeout, transient error) -- guarantee the async
+        // backstop picks this up rather than relying solely on the trigger's
+        // independent insert, so membership never ends up silently unresolved.
+        await db.schema('app').rpc('membership_mark_dirty', {
+          p_tenant_id: claims.tenant_id,
+          p_entity_type: entityType,
+          p_entity_id: insertedCatalog.id,
+          p_reason: `sync_refresh_failed:${error.message.slice(0, 200)}`,
+        });
+      }),
+    );
   }
 
   if (!isSimpleForm && !payload.is_dynamic && payload.items.length > 0) {

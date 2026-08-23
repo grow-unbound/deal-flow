@@ -210,12 +210,33 @@ ORDER BY function_name;
 -- ---------------------------------------------------------------------------
 --
 -- -- 7a. v2 read RPCs (safe once the frontend is on get_landing_metrics_v4)
--- DROP FUNCTION IF EXISTS app.get_metrics_v2_seller_dashboard(uuid, text, uuid[], timestamptz);
+--
+-- UPDATE 2026-08-19 (later same day): get_metrics_v2_seller_dashboard and
+-- metrics_v2_transaction_landing are RESOLVED -- DROPPED for real in
+-- supabase/migrations/20260819034841_metrics_v4_drop_dashboard_v2_rpcs.sql.
+-- The Seller Dashboard's `portfolio` object (which only wrapped
+-- get_metrics_v2_seller_dashboard's response) and `invoiceLandingKpis`
+-- (which only wrapped metrics_v2_transaction_landing's response) were both
+-- fully removed from src/lib/server/seller-dashboard.ts -- their one
+-- remaining live consumer (`portfolio.as_of`, the header's "as of" label)
+-- was re-pointed at the v4 KPI-strip hook's `computed_at` instead, and the
+-- other (`invoiceLandingKpis.overdue_count`, an already-unread assistant
+-- tile) was deleted outright rather than reimplemented with raw JS
+-- aggregation. Confirmed zero remaining app-code callers of either function
+-- via a full app/+src/+supabase/functions grep before dropping. Do not
+-- re-add either DROP line below -- they're superseded by the dated
+-- migration above, kept here (commented, struck through in spirit) purely
+-- as a paper trail.
+-- DROPPED (see 20260819034841): app.get_metrics_v2_seller_dashboard(uuid, text, uuid[], timestamptz)
+-- DROPPED (see 20260819034841): app.metrics_v2_transaction_landing(uuid, text, uuid[], timestamptz)
+--
+-- metrics_v2_customers_landing: also already DROPPED, separately, in
+-- 20260818122516_metrics_v4_drop_dead_v2_landing_functions.sql.
+--
+-- Still commented / still live callers elsewhere -- re-verify before touching:
 -- DROP FUNCTION IF EXISTS app.get_metrics_v2_buyer_app_dashboard(uuid, text, uuid[], timestamptz);
 -- DROP FUNCTION IF EXISTS app.get_metrics_v2_customer_summary(uuid, uuid[], timestamptz);
--- DROP FUNCTION IF EXISTS app.metrics_v2_customers_landing(uuid, uuid[], text, text[], text[], integer, text, uuid, timestamptz, text);
 -- DROP FUNCTION IF EXISTS app.metrics_v2_products_landing(uuid, uuid[], text, text[], text[], text[], text[], integer, timestamptz, uuid, timestamptz);
--- DROP FUNCTION IF EXISTS app.metrics_v2_transaction_landing(uuid, text, uuid[], timestamptz);
 -- DROP FUNCTION IF EXISTS app.metrics_v2_detail_card(text, text, text, text, text, text, jsonb);
 -- DROP FUNCTION IF EXISTS app.metrics_v2_empty_card_body(text, text, text);
 -- DROP FUNCTION IF EXISTS app.metrics_v2_foundation_item(text, text, text, text, numeric, bigint, text, boolean, text, jsonb);
