@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
+import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -51,7 +52,11 @@ async function uploadLogo(file: File): Promise<string> {
   }
   const { uploadUrl, publicUrl, key } = (await res.json()) as { uploadUrl: string; publicUrl: string; key: string };
   if (uploadUrl && !uploadUrl.includes('undefined')) {
-    const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    const put = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type, 'Cache-Control': R2_UPLOAD_CACHE_CONTROL },
+    });
     if (!put.ok) throw new Error(`Upload failed: ${put.status}`);
 
     const finalize = await fetch('/api/uploads/r2/logo/finalize', {
