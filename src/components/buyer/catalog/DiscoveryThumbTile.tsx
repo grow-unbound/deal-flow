@@ -60,7 +60,7 @@ export function DiscoveryThumbTile({
             src={imageUrl!}
             alt={label}
             fill
-            className="object-contain p-1.5"
+            className={cn(isBrand ? 'object-cover' : 'object-contain', !isBrand && 'p-1.5')}
             sizes={variant === 'grid' && !isBrand ? BUYER_CARD_IMAGE_SIZES : variant === 'grid' ? '120px' : '88px'}
             onError={() => setImgError(true)}
             unoptimized
