@@ -181,7 +181,7 @@ describe('GET /api/price-lists', () => {
       total: PRICE_LISTS.length,
     }));
     rpcMock.mockImplementation(async (name: string, params: { p_include_summary: boolean; p_page_ids: string[] }) => {
-      expect(name).toBe('get_seller_price_list_landing_aggregates');
+      expect(name).toBe('get_seller_price_list_landing_aggregates_v4');
       return {
         data: {
           row_metrics: AGGREGATE_PAYLOAD.row_metrics.filter((row) => params.p_page_ids.includes(row.id)),
@@ -242,7 +242,7 @@ describe('GET /api/price-lists', () => {
     expect(fromMock).toHaveBeenCalledWith('price_lists');
     expect(getAuthUserEmailMapMock).toHaveBeenCalledWith(['user-1']);
     expect(rpcMock).toHaveBeenCalledWith(
-      'get_seller_price_list_landing_aggregates',
+      'get_seller_price_list_landing_aggregates_v4',
       expect.objectContaining({
         p_tenant_id: 'tenant-1',
         p_page_ids: ['pl-1'],
@@ -267,7 +267,7 @@ describe('GET /api/price-lists', () => {
       offset: 1,
     });
     expect(rpcMock).toHaveBeenCalledWith(
-      'get_seller_price_list_landing_aggregates',
+      'get_seller_price_list_landing_aggregates_v4',
       expect.objectContaining({ p_page_ids: ['pl-2'], p_include_summary: false }),
     );
     expect(getAuthUserEmailMapMock).toHaveBeenCalledWith(['user-2']);
