@@ -109,52 +109,71 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const db = supabaseAdmin;
-  const { data: invoiceRow, error } = await db
-    .schema('app')
-    .from('invoices')
-    .select(
-      [
-        'id',
-        'tenant_id',
-        'location_id',
-        'buyer_id',
-        'order_id',
-        'estimate_id',
-        'invoice_number',
-        'version',
-        'status',
-        'invoice_date',
-        'due_date',
-        'sent_at',
-        'paid_at',
-        'payment_reference',
-        'payment_method',
-        'subtotal',
-        'tax_amount',
-        'total_amount',
-        'outstanding_balance',
-        'amount_paid',
-        'discount_flat',
-        'freight',
-        'round_off',
-        'buyer_po_ref',
-        'gstin_locked',
-        'hsn_locked',
-        'voided_at',
-        'viewed_at',
-        'viewed_by_name',
-        'last_reminder_at',
-        'intra_state_tax',
-        'notes',
-        'sent_channel',
-        'is_buyer_app_invoice',
-        'created_at',
-        'updated_at',
-      ].join(', '),
-    )
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+
+  // invoiceRow needs `id`; tenant only needs claims.tenant_id (known from the
+  // start); lineRows only needs `id` too -- all three are independent, so
+  // they run together instead of invoiceRow -> location -> buyer -> tenant
+  // -> lineRows one at a time.
+  const [{ data: invoiceRow, error }, { data: tenant }, { data: lineRowsRaw, error: linesErr }] = await Promise.all([
+    db
+      .schema('app')
+      .from('invoices')
+      .select(
+        [
+          'id',
+          'tenant_id',
+          'location_id',
+          'buyer_id',
+          'order_id',
+          'estimate_id',
+          'invoice_number',
+          'version',
+          'status',
+          'invoice_date',
+          'due_date',
+          'sent_at',
+          'paid_at',
+          'payment_reference',
+          'payment_method',
+          'subtotal',
+          'tax_amount',
+          'total_amount',
+          'outstanding_balance',
+          'amount_paid',
+          'discount_flat',
+          'freight',
+          'round_off',
+          'buyer_po_ref',
+          'gstin_locked',
+          'hsn_locked',
+          'voided_at',
+          'viewed_at',
+          'viewed_by_name',
+          'last_reminder_at',
+          'intra_state_tax',
+          'notes',
+          'sent_channel',
+          'is_buyer_app_invoice',
+          'created_at',
+          'updated_at',
+        ].join(', '),
+      )
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('tenants')
+      .select('business_name, gstin, primary_state, settings')
+      .eq('id', claims.tenant_id)
+      .maybeSingle(),
+    db
+      .schema('app')
+      .from('invoice_items')
+      .select('id, tenant_product_id, sku, hsn_code, qty, unit_price, disc_pct, tax_pct, line_total, scheme_tag')
+      .eq('invoice_id', id)
+      .is('deleted_at', null),
+  ]);
 
   if (error || !invoiceRow) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const inv = invoiceRow as unknown as Record<string, unknown>;
@@ -162,59 +181,47 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!canAccessDocumentLocation(claims, inv.location_id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-
-  const buyerId = inv.buyer_id as string | null;
-  const locationId = inv.location_id as string | null;
-  const locationRes = locationId
-    ? await db.schema('app').from('locations').select('name').eq('tenant_id', claims.tenant_id).eq('id', locationId).is('deleted_at', null).maybeSingle()
-    : { data: null, error: null };
-  if (locationRes.error) {
-    return NextResponse.json({ error: 'Failed to load invoice location' }, { status: 500 });
-  }
-  const { data: buyer } = buyerId
-    ? await db
-      .schema('app')
-      .from('buyers')
-      .select('id, business_name, contact_name, gstin, geography, credit_limit, payment_terms_days, phone, email')
-      .eq('id', buyerId)
-      .is('deleted_at', null)
-      .maybeSingle()
-    : { data: null };
-
-  const { data: tenant } = await db
-    .schema('app')
-    .from('tenants')
-    .select('business_name, gstin, primary_state, settings')
-    .eq('id', claims.tenant_id)
-    .maybeSingle();
-
-  const { data: lineRowsRaw, error: linesErr } = await db
-    .schema('app')
-    .from('invoice_items')
-    .select('id, tenant_product_id, sku, hsn_code, qty, unit_price, disc_pct, tax_pct, line_total, scheme_tag')
-    .eq('invoice_id', id)
-    .is('deleted_at', null);
-
   if (linesErr) {
     console.error('[GET /api/tenant/invoices/[id]] lines', linesErr);
     return NextResponse.json({ error: 'Failed to load invoice' }, { status: 500 });
   }
 
+  const buyerId = inv.buyer_id as string | null;
+  const locationId = inv.location_id as string | null;
   const lineRows = (lineRowsRaw ?? []) as Array<Record<string, unknown>>;
   const productIds = Array.from(
     new Set(lineRows.map((row) => row.tenant_product_id).filter((value): value is string => typeof value === 'string')),
   );
 
-  const { data: tenantProducts } =
+  // locationRes/buyer depend on invoiceRow's fields (now known); tenantProducts
+  // depends on productIds (from lineRows, now known) -- three independent
+  // fetches, run together instead of location -> buyer -> tenantProducts.
+  const [locationRes, { data: buyer }, { data: tenantProducts }] = await Promise.all([
+    locationId
+      ? db.schema('app').from('locations').select('name').eq('tenant_id', claims.tenant_id).eq('id', locationId).is('deleted_at', null).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    buyerId
+      ? db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, contact_name, gstin, geography, credit_limit, payment_terms_days, phone, email')
+        .eq('id', buyerId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      : Promise.resolve({ data: null }),
     productIds.length > 0
-      ? await db
+      ? db
           .schema('app')
           .from('tenant_products')
           .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, mrp, image_urls')
           .in('id', productIds)
           .eq('tenant_id', claims.tenant_id)
           .is('deleted_at', null)
-      : { data: [] as Array<Record<string, unknown>> };
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+  ]);
+  if (locationRes.error) {
+    return NextResponse.json({ error: 'Failed to load invoice location' }, { status: 500 });
+  }
 
   const masterProductIds = Array.from(
     new Set(

@@ -133,19 +133,25 @@ export async function loadWarehouseInventoryRows(
   }
 
   const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
+  // Chunked purely for PostgREST's .in() URL-length limit (see
+  // POSTGREST_IN_CHUNK_SIZE above) -- the chunks are otherwise independent,
+  // so they run in parallel instead of one at a time. A warehouse with a few
+  // hundred SKUs was paying 5-6+ sequential round trips here alone.
+  const productChunkResults = await Promise.all(
+    chunkArray(productIds, POSTGREST_IN_CHUNK_SIZE).map((productChunk) =>
+      db
+        .schema('app')
+        .from('tenant_products')
+        .select('id, name_override, internal_sku, tenant_brand_id, image_urls')
+        .in('id', productChunk)
+        .is('deleted_at', null),
+    ),
+  );
   const products: Array<Record<string, unknown>> = [];
-  for (const productChunk of chunkArray(productIds, POSTGREST_IN_CHUNK_SIZE)) {
-    const { data, error } = await db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, name_override, internal_sku, tenant_brand_id, image_urls')
-      .in('id', productChunk)
-      .is('deleted_at', null);
-
+  for (const { data, error } of productChunkResults) {
     if (error) {
       throw error;
     }
-
     products.push(...((data ?? []) as Array<Record<string, unknown>>));
   }
 
@@ -159,19 +165,21 @@ export async function loadWarehouseInventoryRows(
 
   let brandNameById = new Map<string, string>();
   if (tenantBrandIds.length > 0) {
+    const tenantBrandChunkResults = await Promise.all(
+      chunkArray(tenantBrandIds, POSTGREST_IN_CHUNK_SIZE).map((brandChunk) =>
+        db
+          .schema('app')
+          .from('tenant_brands')
+          .select('id, display_name_override, master_brand_id')
+          .in('id', brandChunk)
+          .is('deleted_at', null),
+      ),
+    );
     const tenantBrands: Array<Record<string, unknown>> = [];
-    for (const brandChunk of chunkArray(tenantBrandIds, POSTGREST_IN_CHUNK_SIZE)) {
-      const { data, error } = await db
-        .schema('app')
-        .from('tenant_brands')
-        .select('id, display_name_override, master_brand_id')
-        .in('id', brandChunk)
-        .is('deleted_at', null);
-
+    for (const { data, error } of tenantBrandChunkResults) {
       if (error) {
         throw error;
       }
-
       tenantBrands.push(...((data ?? []) as Array<Record<string, unknown>>));
     }
 
@@ -185,18 +193,16 @@ export async function loadWarehouseInventoryRows(
 
     let masterBrandNameById = new Map<string, string>();
     if (masterBrandIds.length > 0) {
+      const masterBrandChunkResults = await Promise.all(
+        chunkArray(masterBrandIds, POSTGREST_IN_CHUNK_SIZE).map((brandChunk) =>
+          db.schema('catalog').from('brands').select('id, name').in('id', brandChunk),
+        ),
+      );
       const masterBrands: Array<Record<string, unknown>> = [];
-      for (const brandChunk of chunkArray(masterBrandIds, POSTGREST_IN_CHUNK_SIZE)) {
-        const { data, error } = await db
-          .schema('catalog')
-          .from('brands')
-          .select('id, name')
-          .in('id', brandChunk);
-
+      for (const { data, error } of masterBrandChunkResults) {
         if (error) {
           throw error;
         }
-
         masterBrands.push(...((data ?? []) as Array<Record<string, unknown>>));
       }
 
