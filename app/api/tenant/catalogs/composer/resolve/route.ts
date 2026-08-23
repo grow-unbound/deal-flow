@@ -18,7 +18,8 @@ const ResolveBodySchema = z.object({
  */
 export async function POST(req: NextRequest) {
   const claims = await getVerifiedClaims(req);
-  if (!claims) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   let body: unknown;
   try {

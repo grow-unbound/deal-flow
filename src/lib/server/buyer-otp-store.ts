@@ -1,4 +1,9 @@
+import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
+
+export function hashOtp(otp: string): string {
+  return createHash('sha256').update(otp).digest('hex');
+}
 
 export type CandidateKind = 'seller' | 'buyer';
 
@@ -33,6 +38,11 @@ export type BuyerOtpCandidate = LoginOtpCandidate;
 
 type OtpPendingRecord = {
   kind: 'pending';
+  // Plaintext when constructed fresh by the send route (needed to dispatch via
+  // WhatsApp); once round-tripped through the store, holds sha256(otp) — insert()/
+  // set() hash it on write, get() returns the hash under this same field name, and
+  // verify compares hashOtp(userInput) against it. Kept as one field rather than
+  // splitting plaintext/hash types to avoid touching every call site.
   otp: string;
   phone: string;
   expiresAt: number;
@@ -65,7 +75,7 @@ export const buyerOtpStore = {
 
       return {
         kind: data.kind as 'pending' | 'verified',
-        otp: data.otp,
+        otp: data.otp_hash ?? data.otp,
         phone: data.phone,
         expiresAt: data.expires_at,
         attempts: data.attempts,
@@ -88,7 +98,11 @@ export const buyerOtpStore = {
         candidates: record.candidates,
       };
       if (record.kind === 'pending') {
-        payload.otp = record.otp;
+        // record.otp here is always already-hashed — set() is only ever called
+        // with a record previously returned by get() (verify route re-persisting
+        // an updated attempt count), never with a freshly-generated plaintext OTP.
+        // Only insert() (send route, brand-new record) hashes plaintext input.
+        payload.otp_hash = record.otp;
         payload.attempts = record.attempts;
       }
       await supabaseAdmin.schema('app')
@@ -111,6 +125,34 @@ export const buyerOtpStore = {
     }
   },
 
+  /**
+   * Returns milliseconds remaining before a new OTP may be sent to this phone, or 0
+   * if none is pending / the cooldown has elapsed. Backs the OTP-send rate limit —
+   * one indexed lookup (idx_otp_sessions_phone_kind) against the table already read
+   * on every send, no separate infra.
+   */
+  async sendCooldownRemainingMs(phone: string, cooldownMs: number, otpTtlMs: number): Promise<number> {
+    if (!supabaseAdmin) return 0;
+    try {
+      const { data } = await supabaseAdmin.schema('app')
+        .from('otp_sessions')
+        .select('expires_at')
+        .eq('phone', phone)
+        .eq('kind', 'pending')
+        .is('deleted_at', null)
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!data) return 0;
+      const issuedAt = Number(data.expires_at) - otpTtlMs;
+      const remaining = issuedAt + cooldownMs - Date.now();
+      return remaining > 0 ? remaining : 0;
+    } catch (err) {
+      console.error('[otp_store.sendCooldownRemainingMs] error:', err);
+      return 0;
+    }
+  },
+
   async insert(record: BuyerOtpRecord): Promise<string | null> {
     if (!supabaseAdmin) return null;
     try {
@@ -121,7 +163,9 @@ export const buyerOtpStore = {
         candidates: record.candidates,
       };
       if (record.kind === 'pending') {
-        payload.otp = record.otp;
+        // Only insert() ever receives a freshly-generated plaintext OTP (from the
+        // send route) — hash it before it touches the DB.
+        payload.otp_hash = hashOtp(record.otp);
         payload.attempts = record.attempts;
       }
       const { data } = await supabaseAdmin.schema('app')

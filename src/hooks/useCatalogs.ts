@@ -785,6 +785,7 @@ export function useSaveSimpleCatalog(catalogId?: string) {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       if (catalogId) {
         queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+        queryClient.invalidateQueries({ queryKey: ['tenant-catalog-buyers', catalogId] });
       }
       toast.success(catalogId ? 'Campaign updated' : 'Campaign created');
     },

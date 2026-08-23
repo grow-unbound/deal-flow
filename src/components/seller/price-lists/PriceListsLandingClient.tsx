@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
+import { usePriceListsLanding, useTenantPriceListsMetrics, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { cn, formatDate, formatNumberValue } from '@/lib/utils';
@@ -95,6 +95,8 @@ function PriceListsLandingContent({
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [] };
   const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = usePriceListsLanding({ search, status: filters.status }, initialData);
+  const { data: metricsData } = useTenantPriceListsMetrics();
+  const kpiCard = (id: string) => metricsData?.cards.find((card) => card.id === id);
   useRouteScrollRestoration({
     storageKey: 'seller-price-lists-landing',
     pathnameOverride: '/price-lists',
@@ -161,25 +163,25 @@ function PriceListsLandingContent({
     {
       id: 'products-with-custom-prices',
       label: 'Products with custom prices',
-      value: `${data?.kpis.products_with_custom_prices ?? data?.kpis.products_with_overrides ?? 0}`,
+      value: `${kpiCard('custom_price_products')?.value ?? data?.kpis.products_with_custom_prices ?? data?.kpis.products_with_overrides ?? 0}`,
       sub: 'products',
     },
     {
       id: 'customers-with-custom-pricing',
       label: 'Customers with active custom pricing',
-      value: `${data?.kpis.customers_with_custom_prices ?? 0}`,
+      value: `${kpiCard('custom_price_customers')?.value ?? data?.kpis.customers_with_custom_prices ?? 0}`,
       sub: 'customers',
     },
     {
       id: 'products-below-base-rate',
       label: 'Products priced below base rate',
-      value: `${data?.kpis.products_below_base_rate ?? 0}`,
+      value: `${kpiCard('below_base_products')?.value ?? data?.kpis.products_below_base_rate ?? 0}`,
       sub: 'products',
     },
     {
       id: 'expiring-soon',
       label: 'Pricelists expiring soon',
-      value: `${data?.kpis.expiring_soon ?? 0}`,
+      value: `${kpiCard('expiring_7d')?.value ?? data?.kpis.expiring_soon ?? 0}`,
       sub: 'within 7 days',
     },
   ];

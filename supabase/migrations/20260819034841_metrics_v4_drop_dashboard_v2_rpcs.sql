@@ -1,0 +1,41 @@
+-- Drop the last 2 v2 RPCs called by the Seller Dashboard, confirmed fully
+-- dead after today's cleanup:
+--
+-- app.get_metrics_v2_seller_dashboard(uuid, text, uuid[], timestamptz)
+--   -- was called from src/lib/server/seller-dashboard.ts to build the
+--   -- `portfolio` object. Every field of that object was already unread by
+--   -- the frontend (metrics/actions/explore were confirmed dead in the two
+--   -- prior sessions today) except `portfolio.as_of`, used only to render
+--   -- the "as of HH:MM IST" header label. That label now reads
+--   -- `computed_at` from the v4 KPI-strip hook (useSellerDashboardMetrics,
+--   -- backed by get_landing_metrics_v4) instead -- same information,
+--   -- already being fetched for the KPI strip regardless. The RPC call and
+--   -- the `portfolio` field were removed from SellerDashboardResponse in
+--   -- the same change as this migration.
+--
+-- app.metrics_v2_transaction_landing(uuid, text, uuid[], timestamptz)
+--   -- was called from the same file to build `invoiceLandingKpis`, whose
+--   -- only consumer was the assistant role's "Overdue invoices" operational
+--   -- metric tile -- itself confirmed unread by the frontend (the assistant
+--   -- section only ever renders `assistant.feeds`, never `assistant.metrics`).
+--   -- That tile was removed rather than re-implemented via raw JS
+--   -- aggregation, since the point of this pass was eliminating both v2 RPC
+--   -- calls and raw aggregation, not swapping one for the other.
+--
+-- Full-repo grep (app/, src/, supabase/functions/) confirms zero remaining
+-- callers of either function outside code comments. Three landing-page test
+-- files (estimates/sales-orders/invoices) still mock
+-- metrics_v2_transaction_landing, but their real routes
+-- (app/api/tenant/{estimates,orders,invoices}/route.ts) make no RPC calls
+-- at all today -- those are stale test mocks for an already-completed
+-- earlier cutover of those pages, not a live caller; flagged separately,
+-- not a blocker for this drop.
+--
+-- Safety gate re-run live before this migration: no other app.* function
+-- body references either name (checked via pg_get_functiondef ILIKE scan).
+-- Neither appears in scripts/sql/metrics-v4-drop-legacy-v1-v2.sql's KEEP
+-- list (capture triggers, refresh_tick, snapshot tables the tick reads for
+-- source_watermark).
+
+DROP FUNCTION IF EXISTS app.get_metrics_v2_seller_dashboard(uuid, text, uuid[], timestamptz);
+DROP FUNCTION IF EXISTS app.metrics_v2_transaction_landing(uuid, text, uuid[], timestamptz);

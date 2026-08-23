@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const r2Client = new S3Client({
@@ -34,6 +34,24 @@ export async function putObjectJson(key: string, value: unknown): Promise<void> 
 
 export function getPublicUrl(key: string): string {
   return `${R2_PUBLIC_URL}/${key}`;
+}
+
+/**
+ * Presigned PUT URLs (unlike presigned POST policies) can't carry a
+ * Content-Length-Range condition, so max-size enforcement happens here instead —
+ * one HeadObjectCommand per finalized variant key, called from the shared
+ * finalize-payload parser (image-upload.ts) right after the client claims the
+ * upload is done. Oversized objects are deleted before any DB row references
+ * them. Returns null if the object doesn't exist (finalize will fail downstream
+ * with its own "not found"-style error anyway).
+ */
+export async function getObjectSize(key: string): Promise<number | null> {
+  try {
+    const res = await r2Client.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return res.ContentLength ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {

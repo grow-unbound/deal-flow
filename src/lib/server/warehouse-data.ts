@@ -255,17 +255,6 @@ export async function loadWarehouseInventoryRows(
   });
 }
 
-export interface WarehouseSnapshotRow {
-  warehouse_id: string;
-  tenant_id: string;
-  tracked_skus: number;
-  sellable_units: number;
-  low_stock_skus: number;
-  stockout_skus: number;
-  idle_stock_skus: number;
-  refreshed_at: string;
-}
-
 export interface WarehouseStockPageResult {
   items: WarehouseDetailInventoryItem[];
   total: number;
@@ -310,51 +299,6 @@ export function bucketWarehouseInventoryTrend(
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-6)
     .map(([, value]) => value);
-}
-
-export async function loadWarehouseSnapshot(
-  db: any,
-  tenantId: string,
-  warehouseId: string,
-): Promise<WarehouseSnapshotRow | null> {
-  // `get_seller_warehouse_detail_v2` (supabase/migrations/20260716135550_..._phase_7_detail_bootstrap_rpcs.sql)
-  // stubs its 'current-inventory-posture' card as permanently 'unavailable' with no `items` — reading
-  // it here always returned null. `get_seller_warehouse_landing_row_metrics_v2` (Metrics V2 Phase 6 wave C)
-  // computes the same tracked/sellable/low-stock/stockout/idle-stock figures directly from
-  // app.tenant_inventory and is already the source of truth for the Warehouses landing table row for
-  // this same warehouse — reused here as-is instead of the stubbed RPC.
-  const { data, error } = await db
-    .schema('app')
-    .rpc('get_seller_warehouse_landing_row_metrics_v2', {
-      p_tenant_id: tenantId,
-      p_warehouse_ids: [warehouseId],
-    });
-
-  if (error) throw error;
-
-  const row = (Array.isArray(data) ? data[0] : null) as Record<string, unknown> | null;
-  if (!row) return null;
-
-  const trackedSkus = Number(row.tracked_skus ?? 0);
-  const sellableUnits = Math.round(Number(row.sellable_units ?? 0));
-  const lowStockSkus = Number(row.low_stock_skus ?? 0);
-  const stockoutSkus = Number(row.stockout_skus ?? 0);
-  const idleStockSkus = Number(row.idle_stock_skus ?? 0);
-
-  if (trackedSkus <= 0 && lowStockSkus <= 0 && stockoutSkus <= 0 && sellableUnits <= 0) {
-    return null;
-  }
-
-  return {
-    warehouse_id: warehouseId,
-    tenant_id: tenantId,
-    tracked_skus: trackedSkus,
-    sellable_units: sellableUnits,
-    low_stock_skus: lowStockSkus,
-    stockout_skus: stockoutSkus,
-    idle_stock_skus: idleStockSkus,
-    refreshed_at: new Date().toISOString(),
-  };
 }
 
 async function hydrateInventoryItems(
@@ -504,15 +448,14 @@ export async function loadWarehouseSummary(
     sold_units: number;
   } | null;
 
-  // Opportunistic fallback: only hit the RPC when metrics_warehouse_now_summary has no row
-  // yet for this warehouse (table is new, backfill not guaranteed) — not on every load.
-  const snapshot = warehouseNow ? null : await loadWarehouseSnapshot(db, tenantId, warehouseId);
-
-  const trackedSkus = warehouseNow?.in_stock_product_count ?? snapshot?.tracked_skus ?? 0;
-  const sellableUnits = warehouseNow?.sellable_units ?? snapshot?.sellable_units ?? 0;
-  const lowStockSkus = warehouseNow?.low_stock_product_count ?? snapshot?.low_stock_skus ?? 0;
-  const stockoutSkus = warehouseNow?.out_of_stock_product_count ?? snapshot?.stockout_skus ?? 0;
-  const idleStockSkus = warehouseNow?.idle_stock_product_count ?? snapshot?.idle_stock_skus ?? 0;
+  // v4 metrics_warehouse_now_summary is the sole source now — no v2 RPC fallback. A
+  // brand-new warehouse shows zeroed KPIs until the next metrics tick populates its row,
+  // same tradeoff every other v4-migrated landing/detail page already accepts.
+  const trackedSkus = warehouseNow?.in_stock_product_count ?? 0;
+  const sellableUnits = warehouseNow?.sellable_units ?? 0;
+  const lowStockSkus = warehouseNow?.low_stock_product_count ?? 0;
+  const stockoutSkus = warehouseNow?.out_of_stock_product_count ?? 0;
+  const idleStockSkus = warehouseNow?.idle_stock_product_count ?? 0;
   const reorderTriggeredSkus = lowStockSkus + stockoutSkus;
 
   return {

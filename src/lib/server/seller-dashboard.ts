@@ -1,35 +1,26 @@
 import { unstable_cache } from 'next/cache';
 
 import { FEATURE_FLAGS, ROLES } from '@/constants';
-import { effectiveInvoiceStatus, isInvoiceOverdue } from '@/lib/invoice-status';
+import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { getFlag } from '@/lib/flags';
 import type { JWTClaims } from '@/lib/auth';
-import { sellerLandingPeriodLabel, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { SellerLandingPeriodMeta } from '@/lib/seller-period';
 import {
   applySellerLocationScope,
   getSellerLocationScope,
   loadAccessibleSellerLocations,
   locationScopeCacheKey,
 } from '@/lib/server/seller-location-access';
-import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
-import { formatNumberValue } from '@/lib/utils';
 import type {
   SellerDashboardResponse,
   SellerDashboardMetric,
-  SellerDashboardCalloutItem,
-  SellerDashboardCalloutRow,
   SellerDashboardFeed,
   SellerDashboardFeedRow,
-  SellerDashboardRecentActivityRow,
   SellerDashboardRole,
   SellerDashboardTenantSummary,
-  MetricsV2DashboardPortfolio,
-  SellerDashboardBusinessFlowMeta,
-  SellerDashboardCustomerActivityMeta,
 } from '@/types/seller-dashboard';
-import type { InvoicesKpis } from '@/types/tenant-invoices';
 
 type BuyerRow = {
   id: string;
@@ -37,13 +28,6 @@ type BuyerRow = {
   credit_limit: number | null;
   geography: Record<string, unknown> | null;
   buyer_app_enabled: boolean | null;
-};
-
-type BuyerSnapshotRow = {
-  buyer_id: string;
-  invoice_count_90d: number | string | null;
-  invoice_value_90d: number | string | null;
-  app_invoice_value_90d: number | string | null;
 };
 
 type OrderRow = {
@@ -119,36 +103,6 @@ type TenantRow = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function sumNumbers<T>(rows: T[], getter: (row: T) => number) {
-  return rows.reduce((total, row) => total + getter(row), 0);
-}
-
-function formatInitials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function hueByIndex(index: number): 'teal' | 'ember' | 'cream' {
-  if (index % 3 === 0) return 'teal';
-  if (index % 3 === 1) return 'ember';
-  return 'cream';
-}
-
-function formatTimeAgo(iso: string) {
-  const deltaMs = Date.now() - new Date(iso).getTime();
-  const deltaHours = Math.max(0, Math.round(deltaMs / (60 * 60 * 1000)));
-  if (deltaHours < 1) return 'Just now';
-  if (deltaHours < 24) return `${deltaHours}h ago`;
-  const deltaDays = Math.round(deltaHours / 24);
-  if (deltaDays < 7) return `${deltaDays}d ago`;
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-}
-
 function buyerNameFor(
   row: { buyer_id: string; buyers?: { business_name: string | null } | Array<{ business_name: string | null }> | null },
   buyersById: Map<string, BuyerRow>,
@@ -170,10 +124,6 @@ function orderStatusLabel(status: string) {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (char: string) => char.toUpperCase());
 }
 
-function estimateStatusLabel(status: string) {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (char: string) => char.toUpperCase());
-}
-
 function estimateStatusTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (status === 'draft' || status === 'sent') return 'warning';
   if (status === 'expired' || status === 'rejected' || status === 'void') return 'danger';
@@ -190,18 +140,8 @@ function invoicePresentation(row: Pick<InvoiceRow, 'status' | 'due_date'>) {
   return { label: 'Draft', tone: 'neutral' as const };
 }
 
-function inPeriod(iso: string | null, startIso: string, endExclusiveIso: string) {
-  if (!iso) return false;
-  const time = new Date(iso).getTime();
-  return time >= new Date(startIso).getTime() && time < new Date(endExclusiveIso).getTime();
-}
-
 function orderEventAt(row: Pick<OrderRow, 'order_date' | 'placed_at' | 'created_at'>) {
   return row.order_date ?? row.placed_at ?? row.created_at;
-}
-
-function invoiceEventAt(row: Pick<InvoiceRow, 'invoice_date' | 'created_at'>) {
-  return row.invoice_date ?? row.created_at;
 }
 
 function buildRecentFeedRows<T extends {
@@ -236,105 +176,11 @@ function buildTenantSummary(tenant: TenantRow | null, locationNames: string[]): 
   };
 }
 
-function normalizeDashboardPortfolio(raw: unknown): MetricsV2DashboardPortfolio | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const data = raw as Partial<MetricsV2DashboardPortfolio>;
-  return {
-    as_of: typeof data.as_of === 'string' ? data.as_of : new Date().toISOString(),
-    commercial_horizon_days: Number(data.commercial_horizon_days ?? 90),
-    table_period: null,
-    primary_demand_kind: data.primary_demand_kind === 'estimates' || data.primary_demand_kind === 'none' ? data.primary_demand_kind : 'orders',
-    calculation_version: Number(data.calculation_version ?? 1),
-    source_watermark: typeof data.source_watermark === 'string' ? data.source_watermark : null,
-    freshness: typeof data.freshness === 'object' && data.freshness ? data.freshness as Record<string, unknown> : {},
-    availability: typeof data.availability === 'object' && data.availability ? data.availability as Record<string, unknown> : {},
-    metrics: Array.isArray(data.metrics) ? data.metrics : [],
-    actions: Array.isArray(data.actions) ? data.actions : [],
-    explore: Array.isArray(data.explore) ? data.explore : [],
-  };
-}
-
-function portfolioItem(portfolio: MetricsV2DashboardPortfolio | null, section: 'metrics' | 'actions' | 'explore', id: string) {
-  return portfolio?.[section]?.find((item) => item.id === id) ?? null;
-}
-
-function withDashboardAvailabilityMeta(
-  portfolio: MetricsV2DashboardPortfolio | null,
-  featureAvailability: Awaited<ReturnType<typeof getSellerShellFeatureAvailability>>,
-) {
-  if (!portfolio) return portfolio;
-
-  return {
-    ...portfolio,
-    explore: portfolio.explore.map((item) => {
-      if (item.id !== 'business_flow') return item;
-
-      const meta = ((item.meta as SellerDashboardBusinessFlowMeta | undefined) ?? {});
-      return {
-        ...item,
-        meta: {
-          ...meta,
-          orders_enabled: featureAvailability.salesOrders,
-          estimates_enabled: featureAvailability.estimates,
-        },
-      };
-    }),
-  };
-}
-
-function withInvoiceAlignmentMeta(
-  portfolio: MetricsV2DashboardPortfolio | null,
-  invoiceKpis: InvoicesKpis,
-  overdueCustomerCount: number,
-) {
-  if (!portfolio) return portfolio;
-
-  return {
-    ...portfolio,
-    metrics: portfolio.metrics.map((item) => {
-      if (item.id !== 'overdue_receivables') return item;
-      return {
-        ...item,
-        value: invoiceKpis.overdue_sum,
-        count: invoiceKpis.overdue_count,
-      };
-    }),
-    actions: portfolio.actions.map((item) => {
-      if (item.id !== 'collections') return item;
-      return {
-        ...item,
-        value: invoiceKpis.overdue_sum,
-        count: invoiceKpis.overdue_count,
-      };
-    }),
-    explore: portfolio.explore.map((item) => {
-      if (item.id !== 'customer_activity') return item;
-      const meta = ((item.meta as SellerDashboardCustomerActivityMeta | undefined) ?? {});
-      return {
-        ...item,
-        meta: {
-          ...meta,
-          overdue_customers_now: overdueCustomerCount,
-        },
-      };
-    }),
-  };
-}
-
-function portfolioNumber(portfolio: MetricsV2DashboardPortfolio | null, section: 'metrics' | 'actions' | 'explore', id: string, key: 'value' | 'count', fallback: number) {
-  const value = portfolioItem(portfolio, section, id)?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
 async function fetchSellerDashboardData(
   tenantId: string,
   claims: Pick<JWTClaims, 'sub' | 'role' | 'location_ids'>,
   period: SellerLandingPeriodMeta,
-  options: { fullCalloutId?: string } = {},
 ): Promise<SellerDashboardResponse> {
-  const previewRows = <T,>(calloutId: string, rows: T[]) => (
-    options.fullCalloutId === calloutId ? rows : rows.slice(0, 3)
-  );
   const role = (claims.role === ROLES.SELLER_ASSISTANT ? ROLES.SELLER_ASSISTANT : ROLES.SELLER_ADMIN) as SellerDashboardRole;
 
   if (!supabaseAdmin) {
@@ -342,8 +188,8 @@ async function fetchSellerDashboardData(
       role,
       period,
       tenant: buildTenantSummary(null, []),
-      admin: role === ROLES.SELLER_ADMIN ? { metrics: [], callouts: [], recent_activity: [] } : undefined,
-      assistant: role === ROLES.SELLER_ASSISTANT ? { metrics: [], callouts: [], feeds: [] } : undefined,
+      admin: role === ROLES.SELLER_ADMIN ? {} : undefined,
+      assistant: role === ROLES.SELLER_ASSISTANT ? { metrics: [], feeds: [] } : undefined,
     };
   }
 
@@ -373,120 +219,8 @@ async function fetchSellerDashboardData(
     inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
   }
 
-  // Overdue-customer count: always sourced from metrics_v2 buyer snapshots (never from a raw,
-  // unbounded app.invoices fetch — Supabase's db-max-rows cap silently truncates those to 1000
-  // rows, which previously undercounted this tenant's 60 overdue customers down to 7).
-  const overdueCustomerCountQuery = scope.mode === 'subset'
-    ? db
-        .schema('app')
-        .from('metrics_buyer_location_snapshot')
-        .select('buyer_id')
-        .eq('tenant_id', tenantId)
-        .in('location_id', scopedLocationIds)
-        .is('deleted_at', null)
-        .gt('overdue_amount', 0)
-        .limit(5000)
-    : db
-        .schema('app')
-        .from('metrics_buyer_snapshot')
-        .select('buyer_id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('overdue_amount', 0);
-  // Per-buyer overdue rows for the "Collections" callout — same metrics_v2 source as the
-  // count above, so the callout's own hint count and row list can never drift from the
-  // "Overdue receivables" KPI tile the way the old truncated-invoices-derived version did.
-  // Ordered by amount so a generous bound never drops the buyers that matter most.
-  // metrics_buyer_location_snapshot has no oldest_due_at column (only the tenant-wide
-  // metrics_buyer_snapshot tracks that) — subset mode omits it and the row simply
-  // carries oldest_due_at: null downstream.
-  const overdueBuyerRowsQuery = scope.mode === 'subset'
-    ? db
-        .schema('app')
-        .from('metrics_buyer_location_snapshot')
-        .select('buyer_id, overdue_amount')
-        .eq('tenant_id', tenantId)
-        .in('location_id', scopedLocationIds)
-        .is('deleted_at', null)
-        .gt('overdue_amount', 0)
-        .order('overdue_amount', { ascending: false })
-        .limit(500)
-    : db
-        .schema('app')
-        .from('metrics_buyer_snapshot')
-        .select('buyer_id, overdue_amount, oldest_due_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('overdue_amount', 0)
-        .order('overdue_amount', { ascending: false })
-        .limit(500);
 
-  // Trailing-90d invoiced-customers count for the "Invoiced sales" tile's sub-label —
-  // same metrics_v2-snapshot-not-raw-table rule as the overdue queries above, and same
-  // location-scope split (assistants must only see their scoped locations' figures
-  // here too). Uses count:'exact', head:true (no rows transferred) so it isn't subject
-  // to PostgREST's default 1000-row cap the way a row-fetch-then-.length would be —
-  // that cap is exactly what silently turned this into "1000 customers" when this was
-  // first written as a plain row select.
-  // Subset mode fetches rows (a buyer can have one row per scoped location, so the
-  // distinct count needs a client-side dedupe) — 'all' mode uses a head-only exact
-  // count since there's exactly one row per buyer there, no dedupe needed.
-  const invoiceCustomerCount90dQuery = scope.mode === 'subset'
-    ? db
-        .schema('app')
-        .from('metrics_buyer_location_snapshot')
-        .select('buyer_id')
-        .eq('tenant_id', tenantId)
-        .in('location_id', scopedLocationIds)
-        .is('deleted_at', null)
-        .gt('invoice_count_90d', 0)
-        .limit(5000)
-    : db
-        .schema('app')
-        .from('metrics_buyer_snapshot')
-        .select('buyer_id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('invoice_count_90d', 0);
-
-  // GMV sum still needs actual rows (PostgREST has no server-side SUM aggregate) — this
-  // remains subject to the 1000-row cap, but it's fallback-only: the tile's rendered
-  // dollar value reads the snapshot-driven RPC's portfolio value first, this is only
-  // the default if that's missing.
-  const invoiceGmv90dQuery = scope.mode === 'subset'
-    ? db
-        .schema('app')
-        .from('metrics_buyer_location_snapshot')
-        .select('buyer_id, invoice_value_90d')
-        .eq('tenant_id', tenantId)
-        .in('location_id', scopedLocationIds)
-        .is('deleted_at', null)
-        .gt('invoice_count_90d', 0)
-        .limit(1000)
-    : db
-        .schema('app')
-        .from('metrics_buyer_snapshot')
-        .select('buyer_id, invoice_value_90d')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gt('invoice_count_90d', 0)
-        .limit(1000);
-
-  const [portfolioRes, invoiceLandingRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes, overdueCustomerCountRes, overdueBuyerRowsRes, invoiceCustomerCount90dRes, invoiceGmv90dRes] = await Promise.all([
-    db
-      .schema('app')
-      .rpc('get_metrics_v2_seller_dashboard', {
-        p_tenant_id: tenantId,
-        p_role: claims.role ?? null,
-        p_location_ids: scope.mode === 'subset' ? scopedLocationIds : null,
-      }),
-    db
-      .schema('app')
-      .rpc('metrics_v2_transaction_landing', {
-        p_tenant_id: tenantId,
-        p_kind: 'invoices',
-        p_location_ids: scope.mode === 'subset' ? scopedLocationIds : null,
-      }),
+  const [buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -500,13 +234,11 @@ async function fetchSellerDashboardData(
         .select('id, location_id, buyer_id, order_number, status, total_amount, order_date, placed_at, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        // Bounded to the most recently touched rows — this feeds "recent activity"
-        // callouts (previewRows only ever shows 3 unless a specific full-callout is
-        // requested via a separate, already-bounded path) plus a fallback-only 90d
-        // GMV computation; the primary "Invoiced sales" tile reads the snapshot-driven
-        // RPC (portfolioNumber) first. Was previously unbounded — for a tenant with
-        // thousands of orders this transferred and JS-sorted the entire table on
-        // every dashboard load.
+        // Bounded to the most recently touched rows — feeds the seller_assistant
+        // section's feeds/callouts (previewRows only ever shows 3 unless a specific
+        // full-callout is requested via a separate, already-bounded path). Was
+        // previously unbounded — for a tenant with thousands of orders this
+        // transferred and JS-sorted the entire table on every dashboard load.
         .order('updated_at', { ascending: false })
         .limit(300),
       claims,
@@ -533,39 +265,7 @@ async function fetchSellerDashboardData(
         .limit(300),
       claims,
     ),
-    db
-      .schema('app')
-      .from('metrics_buyer_snapshot')
-      .select('buyer_id, invoice_count_90d, invoice_value_90d, app_invoice_value_90d')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
-    overdueCustomerCountQuery,
-    overdueBuyerRowsQuery,
-    invoiceCustomerCount90dQuery,
-    invoiceGmv90dQuery,
   ]);
-
-  if (overdueCustomerCountRes.error) throw overdueCustomerCountRes.error;
-  if (overdueBuyerRowsRes.error) throw overdueBuyerRowsRes.error;
-  if (invoiceCustomerCount90dRes.error) throw invoiceCustomerCount90dRes.error;
-  if (invoiceGmv90dRes.error) throw invoiceGmv90dRes.error;
-  const overdueCustomerCountAll = scope.mode === 'subset'
-    ? new Set(((overdueCustomerCountRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id)).size
-    : Number(overdueCustomerCountRes.count ?? 0);
-  // For subset scope, the same buyer can appear once per scoped location — dedupe and keep
-  // the largest overdue_amount seen (the metrics_buyer_snapshot / 'all' scope path is already
-  // one row per buyer, so this collapses to a no-op there).
-  const overdueBuyerRows = (() => {
-    const byBuyer = new Map<string, { buyer_id: string; overdue_amount: number; oldest_due_at: string | null }>();
-    for (const row of (overdueBuyerRowsRes.data ?? []) as Array<{ buyer_id: string; overdue_amount: number | string | null; oldest_due_at: string | null }>) {
-      const amount = Number(row.overdue_amount ?? 0);
-      const existing = byBuyer.get(row.buyer_id);
-      if (!existing || amount > existing.overdue_amount) {
-        byBuyer.set(row.buyer_id, { buyer_id: row.buyer_id, overdue_amount: amount, oldest_due_at: row.oldest_due_at });
-      }
-    }
-    return Array.from(byBuyer.values()).sort((a, b) => b.overdue_amount - a.overdue_amount);
-  })();
 
   const rawBuyers = (buyersRes.data ?? []) as BuyerRow[];
   const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
@@ -590,227 +290,27 @@ async function fetchSellerDashboardData(
     return reorder > 0 && qty <= reorder;
   }).length;
 
-  const currentOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.current_start, period.current_end_exclusive));
-  const currentOrdersCount = currentOrders.length;
-  // "Invoiced sales" is always trailing-90d per specs/kpi-callout-audit-2026-07-23.md
-  // §6 rule 1 — computed here independent of `period` (which the dashboard route
-  // hardcodes to calendar 'month' for other, non-headline uses) so this JS-side
-  // fallback/sub-label never reverts to calendar-MTD even though `period` itself is MTD.
-  const ninetyDaysAgoMs = Date.now() - 90 * DAY_MS;
-  const invoices90d = invoices.filter((row) => new Date(invoiceEventAt(row)).getTime() >= ninetyDaysAgoMs);
-  // Sourced from the (scope-aware) metrics_v2 snapshot queries above rather than the
-  // now-300-capped `invoices` array — a raw-array-based count/sum here would silently
-  // undercount for any tenant with >300 invoices touched in the last 90 days.
-  const invoicedCustomers90d = scope.mode === 'subset'
-    ? new Set(((invoiceCustomerCount90dRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id)).size
-    : Number(invoiceCustomerCount90dRes.count ?? 0);
-  const currentGmv90d = sumNumbers(
-    (invoiceGmv90dRes.data ?? []) as BuyerSnapshotRow[],
-    (row) => Number(row.invoice_value_90d ?? 0),
-  );
-  const overdueInvoicesAll = invoices.filter((invoice) => isInvoiceOverdue(invoice));
-  const invoiceLandingKpis = ((invoiceLandingRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
-    invoices_this_period: 0,
-    invoices_prev_period: 0,
-    invoices_growth_pct: 0,
-    gmv_this_period: 0,
-    gmv_prev_period: 0,
-    aov: 0,
-    overdue_count: overdueInvoicesAll.length,
-    overdue_sum: overdueInvoicesAll.reduce((sum, invoice) => sum + Number(invoice.outstanding_balance ?? 0), 0),
-    overdue_customer_count: overdueCustomerCountAll,
-    outstanding_count: 0,
-    outstanding_sum: 0,
-    outstanding_customer_count: 0,
-  }) as InvoicesKpis;
-  const portfolio = withInvoiceAlignmentMeta(
-    withDashboardAvailabilityMeta(normalizeDashboardPortfolio(portfolioRes.data), featureAvailability),
-    invoiceLandingKpis,
-    overdueCustomerCountAll,
-  );
-
   const allOrdersSorted = [...orders].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
   const allEstimatesSorted = [...estimates].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
   const allInvoicesSorted = [...invoices].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
 
   if (role === ROLES.SELLER_ADMIN) {
-    const overdueInvoices = overdueInvoicesAll;
-    const overdueCustomerCount = overdueCustomerCountAll;
-    const primaryKind = portfolio?.primary_demand_kind ?? 'orders';
-
-    const adminMetrics: SellerDashboardMetric[] = [
-      {
-        label: 'Invoiced sales · Last 90 days',
-        value: portfolioNumber(portfolio, 'metrics', 'invoiced_sales', 'value', currentGmv90d),
-        sub: `${invoicedCustomers90d} customer${invoicedCustomers90d === 1 ? '' : 's'}`,
-      },
-      {
-        label: 'Open demand',
-        value: portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'value', currentOrdersCount),
-        sub: `${portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'count', 0)} open ${primaryKind === 'estimates' ? 'estimates' : 'orders'}`,
-      },
-      {
-        label: 'Overdue receivables',
-        value: portfolioNumber(portfolio, 'metrics', 'overdue_receivables', 'value', invoiceLandingKpis.overdue_sum),
-        sub: `${overdueCustomerCount} customer${overdueCustomerCount === 1 ? '' : 's'}`,
-        tone: overdueInvoices.length > 0 ? 'warn' : undefined,
-      },
-      {
-        label: 'Recently sold products out of stock',
-        value: portfolioNumber(portfolio, 'metrics', 'recently_sold_products_now_out_of_stock', 'count', lowStockAlerts),
-        sub: 'Products sold in the last 90 days',
-        tone: lowStockAlerts > 0 ? 'warn' : undefined,
-      },
-    ];
-
-    // Primary demand action: Estimate follow-up when Estimates are primary,
-    // Order execution otherwise — ranked by value (proxy for value+age).
-    const primaryDemandRowsAll: SellerDashboardCalloutRow[] = primaryKind === 'estimates'
-      ? estimates
-          .filter((row) => row.status === 'draft' || row.status === 'sent')
-          .sort((a, b) => Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0))
-          .map((row, index) => ({
-            id: row.id,
-            initials: formatInitials(buyerNameFor(row, buyersById) || 'Buyer'),
-            hue: hueByIndex(index),
-            name: buyerNameFor(row, buyersById),
-            reason: `${row.estimate_number ?? 'Draft estimate'} · ${estimateStatusLabel(row.status)}`,
-            trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-            href: `/estimates/${row.id}`,
-          }))
-      : orders
-          .filter((row) => row.status === 'received' || row.status === 'confirmed')
-          .sort((a, b) => Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0))
-          .map((row, index) => ({
-            id: row.id,
-            initials: formatInitials(buyerNameFor(row, buyersById) || 'Buyer'),
-            hue: hueByIndex(index),
-            name: buyerNameFor(row, buyersById),
-            reason: `${row.order_number} · ${orderStatusLabel(row.status)}`,
-            trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-            href: `/sales-orders/${row.id}`,
-          }));
-
-    // Collections: overdue amount per buyer, sourced from metrics_buyer_snapshot (see
-    // overdueBuyerRowsQuery above) rather than aggregating the raw, truncation-prone
-    // invoices fetch — keeps this callout's hint count and row list from drifting away
-    // from the "Overdue receivables" KPI tile, which reads the same table.
-    const collectionsRowsAll: SellerDashboardCalloutRow[] = overdueBuyerRows.map((agg, index) => {
-      const daysOverdue = agg.oldest_due_at ? Math.max(0, Math.round((Date.now() - new Date(agg.oldest_due_at).getTime()) / DAY_MS)) : null;
-      const buyerName = buyersById.get(agg.buyer_id)?.business_name ?? 'Unknown buyer';
-      return {
-        id: agg.buyer_id,
-        initials: formatInitials(buyerName === 'Unknown buyer' ? 'Buyer' : buyerName),
-        hue: hueByIndex(index),
-        name: buyerName,
-        reason: daysOverdue != null ? `${daysOverdue}d overdue` : 'Overdue',
-        trailing: formatNumberValue(agg.overdue_amount, 'CURRENCY_THRESHOLD'),
-        href: `/customers/${agg.buyer_id}`,
-      };
-    });
-
-    // Buyer App activation: valuable customers (real invoiced value in the
-    // last 90 days) who are either not on the Buyer App or enabled but not
-    // ordering through it — ranked by their commercial value.
-    const buyerSnapshotByBuyer = new Map(((buyerSnapshotRes.data ?? []) as BuyerSnapshotRow[]).map((row) => [row.buyer_id, row]));
-    const buyerAppRowsAll: SellerDashboardCalloutRow[] = buyers
-      .map((buyer) => {
-        const snapshot = buyerSnapshotByBuyer.get(buyer.id);
-        return {
-          buyer,
-          invoiceValue90d: Number(snapshot?.invoice_value_90d ?? 0),
-          invoiceCount90d: Number(snapshot?.invoice_count_90d ?? 0),
-          appValue90d: Number(snapshot?.app_invoice_value_90d ?? 0),
-        };
-      })
-      .filter((row) => row.invoiceValue90d > 0 && (!row.buyer.buyer_app_enabled || row.appValue90d === 0))
-      .sort((a, b) => b.invoiceValue90d - a.invoiceValue90d)
-      .map((row, index) => ({
-        id: row.buyer.id,
-        initials: formatInitials(row.buyer.business_name),
-        hue: hueByIndex(index),
-        name: row.buyer.business_name,
-        reason: `${row.buyer.buyer_app_enabled ? 'App enabled, unused' : 'Not on Buyer App'} · ${formatNumberValue(row.invoiceCount90d, 'COUNT')} invoices 90d`,
-        trailing: formatNumberValue(row.invoiceValue90d, 'CURRENCY_THRESHOLD'),
-        href: `/customers/${row.buyer.id}`,
-      }));
-
-    const adminCallouts: SellerDashboardCalloutItem[] = [
-      {
-        id: primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution',
-        kind: 'info',
-        eyebrow: primaryKind === 'estimates' ? 'Estimate follow-up' : 'Order execution',
-        hint: formatNumberValue(primaryDemandRowsAll.length, 'COUNT'),
-        rows: previewRows(primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution', primaryDemandRowsAll),
-      },
-      {
-        id: 'collections',
-        kind: 'risk',
-        eyebrow: 'Collections',
-        hint: `${formatNumberValue(overdueCustomerCountAll, 'COUNT')}`,
-        rows: previewRows('collections', collectionsRowsAll),
-      },
-      {
-        id: 'buyer_app_activation',
-        kind: 'opportunity',
-        eyebrow: 'Buyer App activation',
-        hint: formatNumberValue(buyerAppRowsAll.length, 'COUNT'),
-        rows: previewRows('buyer_app_activation', buyerAppRowsAll),
-      },
-    ];
-
-    const recentActivity: SellerDashboardRecentActivityRow[] = [
-      ...allOrdersSorted.slice(0, 5).map((row) => ({
-        id: `order-${row.id}`,
-        kind: 'order' as const,
-        href: `/sales-orders/${row.id}`,
-        document_number: row.order_number,
-        customer_name: buyerNameFor(row, buyersById),
-        status: { label: orderStatusLabel(row.status), tone: statusToneForOrder(row.status) },
-        amount: Number(row.total_amount ?? 0),
-        updated_at: row.updated_at ?? row.created_at,
-      })),
-      ...allEstimatesSorted.slice(0, 5).map((row) => ({
-        id: `estimate-${row.id}`,
-        kind: 'estimate' as const,
-        href: `/estimates/${row.id}`,
-        document_number: row.estimate_number ?? 'Draft estimate',
-        customer_name: buyerNameFor(row, buyersById),
-        status: { label: estimateStatusLabel(row.status), tone: estimateStatusTone(row.status) },
-        amount: Number(row.total_amount ?? 0),
-        updated_at: row.updated_at ?? row.created_at,
-      })),
-      ...allInvoicesSorted.slice(0, 5).map((row) => {
-        const presentation = invoicePresentation(row);
-        return {
-          id: `invoice-${row.id}`,
-          kind: 'invoice' as const,
-          href: `/invoices/${row.id}`,
-          document_number: row.invoice_number,
-          customer_name: buyerNameFor(row, buyersById),
-          status: presentation,
-          amount: Number(row.total_amount ?? 0),
-          updated_at: row.updated_at ?? row.created_at,
-        };
-      }),
-    ]
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, 8);
-
+    // admin.metrics/callouts/recent_activity, the Metrics V2 portfolio (both
+    // get_metrics_v2_seller_dashboard and metrics_v2_transaction_landing), and
+    // every query/computation that fed only those are gone -- confirmed unread
+    // by the frontend (the 4 explore cards are each sourced from their own v4
+    // RPC; the KPI strip reads get_landing_metrics_v4 via useSellerDashboardMetrics,
+    // including the "as of" timestamp, which used to come from portfolio.as_of).
+    // `admin` stays a truthy empty marker so the frontend can still branch on
+    // role via `dashboard.admin`.
     return {
       role,
       period,
       tenant,
-      portfolio,
-      admin: {
-        metrics: adminMetrics,
-        callouts: adminCallouts,
-        recent_activity: recentActivity,
-      },
+      admin: {},
     };
   }
 
-  const recentSinceIso = period.current_start;
   const lowStockFeatureEnabled = zohoEnabled || featureAvailability.tallyExport;
 
   const lastOrderByBuyer = new Map<string, OrderRow>();
@@ -819,19 +319,6 @@ async function fetchSellerDashboardData(
       lastOrderByBuyer.set(order.buyer_id, order);
     }
   }
-
-  const overdueInvoices = invoices.filter((invoice) => {
-    if (!isInvoiceOverdue(invoice) || !invoice.due_date) return false;
-    return (Date.now() - new Date(invoice.due_date).getTime()) / DAY_MS > 15;
-  });
-
-  const creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
-    tenantId,
-    buyerIds: buyers.map((buyer) => buyer.id),
-    creditLimitByBuyerId: new Map(
-      buyers.map((buyer) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
-    ),
-  });
 
   const operationalMetrics: SellerDashboardMetric[] = [];
   if (featureAvailability.estimates) {
@@ -849,15 +336,6 @@ async function fetchSellerDashboardData(
       sub: 'Received and pending confirmation',
       tone: 'warn',
       href: '/sales-orders',
-    });
-  }
-  if (featureAvailability.invoices) {
-    operationalMetrics.push({
-      label: 'Overdue invoices',
-      value: invoiceLandingKpis.overdue_count,
-      sub: 'Needs collection follow-up',
-      tone: 'warn',
-      href: '/invoices',
     });
   }
   if (lowStockFeatureEnabled) {
@@ -905,93 +383,6 @@ async function fetchSellerDashboardData(
       },
     );
   }
-
-  const needsActionRows = buyers
-    .map((buyer) => {
-      const creditLimit = Number(buyer.credit_limit ?? 0);
-      const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
-      const utilization = creditLimit > 0 ? Math.round((dues / creditLimit) * 100) : 0;
-      const lastOrder = lastOrderByBuyer.get(buyer.id);
-      return {
-        buyer,
-        dues,
-        utilization,
-        lastOrder,
-      };
-    })
-    .filter((row) => row.dues > 0 || row.utilization >= 100)
-    .sort((a, b) => Math.max(b.dues, b.utilization) - Math.max(a.dues, a.utilization))
-    .slice(0, 4)
-    .map((row, index): SellerDashboardCalloutRow => ({
-      id: row.buyer.id,
-      initials: formatInitials(row.buyer.business_name),
-      hue: hueByIndex(index),
-      name: row.buyer.business_name,
-      reason: row.dues > 0
-        ? `Overdue ${formatNumberValue(row.dues, 'CURRENCY_THRESHOLD')} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
-        : `Credit usage ${row.utilization}% · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`,
-      trailing: row.utilization > 0 ? `${row.utilization}% used` : 'Needs follow-up',
-      href: '/customers',
-    }));
-
-  const recentActivityRows = [
-    ...allOrdersSorted
-      .filter((row) => new Date(row.updated_at ?? row.created_at).getTime() >= new Date(recentSinceIso).getTime())
-      .map((row, index) => ({
-        id: `order-${row.id}`,
-        at: row.updated_at ?? row.created_at,
-        initials: formatInitials(row.order_number),
-        hue: hueByIndex(index),
-        name: row.order_number,
-        reason: `${buyerNameFor(row, buyersById)} · ${orderStatusLabel(row.status)}`,
-        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-        href: `/sales-orders/${row.id}`,
-      })),
-    ...allEstimatesSorted
-      .filter((row) => new Date(row.updated_at ?? row.created_at).getTime() >= new Date(recentSinceIso).getTime())
-      .map((row, index) => ({
-        id: `estimate-${row.id}`,
-        at: row.updated_at ?? row.created_at,
-        initials: formatInitials(row.estimate_number ?? 'EST'),
-        hue: hueByIndex(index + 1),
-        name: row.estimate_number ?? 'Draft estimate',
-        reason: `${buyerNameFor(row, buyersById)} · ${estimateStatusLabel(row.status)}`,
-        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-        href: `/estimates/${row.id}`,
-      })),
-    ...allInvoicesSorted
-      .filter((row) => new Date(row.updated_at ?? row.created_at).getTime() >= new Date(recentSinceIso).getTime())
-      .map((row, index) => ({
-        id: `invoice-${row.id}`,
-        at: row.updated_at ?? row.created_at,
-        initials: formatInitials(row.invoice_number),
-        hue: hueByIndex(index + 2),
-        name: row.invoice_number,
-        reason: `${buyerNameFor(row, buyersById)} · ${invoicePresentation(row).label}`,
-        trailing: formatNumberValue(Number(row.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-        href: `/invoices/${row.id}`,
-      })),
-  ]
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 4)
-    .map(({ at: _at, ...row }): SellerDashboardCalloutRow => row);
-
-  const reengageRows = buyers
-    .map((buyer) => {
-      const lastOrder = lastOrderByBuyer.get(buyer.id);
-      return { buyer, lastOrder };
-    })
-    .filter((row) => row.lastOrder && (Date.now() - new Date(orderEventAt(row.lastOrder)).getTime()) / DAY_MS > 30)
-    .slice(0, 4)
-    .map((row, index): SellerDashboardCalloutRow => ({
-        id: row.buyer.id,
-        initials: formatInitials(row.buyer.business_name),
-        hue: hueByIndex(index),
-        name: row.buyer.business_name,
-        reason: `Last order ${new Date(orderEventAt(row.lastOrder!)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
-        trailing: formatNumberValue(Number(row.lastOrder?.total_amount ?? 0), 'CURRENCY_THRESHOLD'),
-        href: '/customers',
-      }));
 
   const feeds: SellerDashboardFeed[] = [];
   if (featureAvailability.estimates) {
@@ -1049,38 +440,12 @@ async function fetchSellerDashboardData(
     });
   }
 
-    const assistantCallouts: SellerDashboardCalloutItem[] = [
-      {
-        id: 'needs_action',
-        kind: 'risk',
-        eyebrow: 'Needs action',
-        hint: `${overdueInvoices.length} overdue`,
-        rows: previewRows('needs_action', needsActionRows),
-      },
-      {
-        id: 'recent_activity',
-        kind: 'info',
-        eyebrow: 'Recent activity',
-        hint: sellerLandingPeriodLabel(period.selected),
-        rows: previewRows('recent_activity', recentActivityRows),
-      },
-      {
-        id: 're_engage',
-        kind: 'opportunity',
-        eyebrow: 'Re-engage',
-        hint: 'Dormant for 30+ days',
-        rows: previewRows('re_engage', reengageRows),
-      },
-    ];
-
   return {
     role,
     period,
     tenant,
-    portfolio,
     assistant: {
       metrics: limitedMetrics,
-      callouts: assistantCallouts,
       feeds,
     },
   };
@@ -1090,7 +455,6 @@ export async function getSellerDashboardData(
   tenantId: string,
   claims: Pick<JWTClaims, 'sub' | 'role' | 'location_ids'>,
   period: SellerLandingPeriodMeta,
-  options: { fullCalloutId?: string } = {},
 ) {
   const cacheKey = [
     'seller-dashboard',
@@ -1103,11 +467,10 @@ export async function getSellerDashboardData(
     period.current_end_exclusive.slice(0, 10),
     period.previous_start.slice(0, 10),
     period.previous_end_exclusive.slice(0, 10),
-    options.fullCalloutId ?? 'preview',
   ];
 
   return unstable_cache(
-    () => fetchSellerDashboardData(tenantId, claims, period, options),
+    () => fetchSellerDashboardData(tenantId, claims, period),
     cacheKey,
     { revalidate: 30, tags: [`seller-dashboard:${tenantId}`] },
   )();

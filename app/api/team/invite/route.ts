@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   }
 
   // The auth user now exists or has been updated by Supabase; create the tenant link row.
-  const { error: insertError } = await db
+  const { data: newMember, error: insertError } = await db
     .schema('app')
     .from('tenant_users')
     .insert({
@@ -133,7 +133,9 @@ export async function POST(request: NextRequest) {
       invited_at: new Date().toISOString(),
       created_by: claims.tenant_id,
       updated_by: claims.tenant_id,
-    });
+    })
+    .select('id')
+    .single();
 
   if (insertError) {
     return NextResponse.json(
@@ -141,6 +143,17 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  const { error: auditError } = await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'tenant_user',
+    entity_id: newMember?.id ?? userId,
+    action: 'invite',
+    diff: { role, email: normalizedEmail, phone: normalizedPhone },
+    ts: new Date().toISOString(),
+  });
+  if (auditError) console.error('[team/invite] audit', auditError);
 
   const { data: tenantRow, error: tenantError } = await db
     .schema('app')

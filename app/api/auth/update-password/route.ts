@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { safeErrorMessage } from '@/lib/server/safe-error-message';
 
 export async function PATCH(request: NextRequest) {
   const supabase = await getRequestSupabaseClient();
@@ -30,7 +31,7 @@ export async function PATCH(request: NextRequest) {
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: safeErrorMessage(error, 'Failed to update password') }, { status: 400 });
   }
 
   return NextResponse.json({ success: true });

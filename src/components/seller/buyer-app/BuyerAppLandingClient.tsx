@@ -2,6 +2,14 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -24,6 +32,12 @@ import {
 } from '@/hooks/useBuyerApp';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import {
+  useWAU,
+  useProductsViewed,
+  useProductsAddedToCart,
+  useCartSubmits,
+} from '@/hooks/useBuyerAppPostHog';
 
 const BUYER_APP_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
@@ -76,11 +90,16 @@ function BuyerAppLandingContent({
   const captureCta = useSellerCtaCapture();
   const period = initialPeriod;
   const horizonLabel = 'Trailing 90 days';
-  const metricSuffix = '90D';
   const { data, isLoading, isError } = useBuyerAppLanding(period, initialData);
   const { data: metricsData } = useBuyerAppMetrics(initialMetrics);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
+
+  const { data: wauData } = useWAU();
+  const { data: productsViewed } = useProductsViewed();
+  const { data: productsAddedToCart } = useProductsAddedToCart();
+  const { data: cartSubmits } = useCartSubmits();
+  const [demandMode, setDemandMode] = useState<'value' | 'count'>('value');
 
   if (isLoading && !landingData) return <BuyerAppSkeleton />;
 
@@ -106,17 +125,19 @@ function BuyerAppLandingContent({
     top_locations: [], contribution_over_time: [], refreshed_at: '',
   };
 
-  // % of ENABLED buyers who are repeat (2+ primary-demand documents).
-  const repeatShareOfEnabledPct =
-    snap && snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0;
   const primaryDemandKind = landingData.portfolio?.primary_demand_kind ?? 'orders';
   const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
-  const primaryDemandNounSingular = primaryDemandKind === 'estimates' ? 'enquiry' : 'order';
   const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
   const metricCards = metricsData?.cards ?? [];
   const formatMetricValue = (card: NonNullable<typeof metricCards>[number]) => {
     const idLabel = card.id.toLowerCase();
-    if (idLabel.includes('value') || idLabel.includes('sales') || idLabel.includes('revenue') || idLabel.includes('gmv') || idLabel === 'app_sourced_demand') {
+    if (
+      idLabel.includes('value') ||
+      idLabel.includes('sales') ||
+      idLabel.includes('revenue') ||
+      idLabel.includes('gmv') ||
+      idLabel === 'app_sourced_demand_qtd'
+    ) {
       return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
     }
     if (idLabel.includes('rate') || idLabel.includes('share') || idLabel.includes('pct')) {
@@ -124,6 +145,15 @@ function BuyerAppLandingContent({
     }
     return `${card.value ?? 0}`;
   };
+
+  // True funnel drop-off: each pct relative to previous stage
+  const funnelEnabled = snap.enabled_buyers;
+  const funnelOpened = snap.opened_app_mtd;
+  const funnelOrdered = snap.ordered_mtd;
+  const funnelRepeat = snap.repeat_mtd;
+  const openedPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
+  const orderedPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
+  const repeatPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
 
   return (
     <PageWrap>
@@ -149,6 +179,7 @@ function BuyerAppLandingContent({
       />
 
       <div className="buyer-app-cards mt-6 grid grid-cols-2 gap-6">
+        {/* Card 1: Adoption funnel — true drop-off pct at each stage */}
         <DetailCardRenderer
           card={{
             id: 'buyer-app-adoption',
@@ -157,10 +188,31 @@ function BuyerAppLandingContent({
             subtitle: 'Trailing 90 days',
             body: {
               items: [
-                { id: 'enabled', label: 'Access enabled', value: snap.enabled_buyers, pct: 100, supporting: `${snap.enabled_buyers} customers can use the app` },
-                { id: 'opened', label: 'Opened app', value: snap.opened_app_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.opened_app_mtd / snap.enabled_buyers) * 100) : 0 },
-                { id: 'ordered', label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`, value: snap.ordered_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.ordered_mtd / snap.enabled_buyers) * 100) : 0 },
-                { id: 'repeat', label: `Repeat (2+ ${primaryDemandNoun})`, value: snap.repeat_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0 },
+                {
+                  id: 'enabled',
+                  label: 'Access enabled',
+                  value: funnelEnabled,
+                  pct: 100,
+                  supporting: `${funnelEnabled} customers can use the app`,
+                },
+                {
+                  id: 'opened',
+                  label: 'Opened app',
+                  value: funnelOpened,
+                  pct: openedPct,
+                },
+                {
+                  id: 'ordered',
+                  label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`,
+                  value: funnelOrdered,
+                  pct: orderedPct,
+                },
+                {
+                  id: 'repeat',
+                  label: `Repeat (2+ ${primaryDemandNoun})`,
+                  value: funnelRepeat,
+                  pct: repeatPct,
+                },
               ],
               emptyTitle: 'No enabled buyers yet',
               emptyDescription: 'Adoption will appear once buyers are enabled for the app.',
@@ -168,93 +220,152 @@ function BuyerAppLandingContent({
             },
           }}
         />
-        <DetailCardRenderer
-          card={{
-            id: 'buyer-app-business-through-app',
-            representation: 'posture',
-            title: 'Business through app',
-            subtitle: 'Trailing 90 days',
-            body: {
-              tiles: [
-                {
-                  label: primaryDemandKind === 'estimates' ? 'App enquiries' : 'App orders',
-                  value: formatNumberValue(primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd, 'CURRENCY_THRESHOLD'),
-                  sub: `${snap.total_gmv_mtd > 0 ? Math.round(((primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd) / snap.total_gmv_mtd) * 100) : 0}% of total demand · ${
-                    primaryDemandKind === 'estimates'
-                      ? `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'enquiry' : 'enquiries'}`
-                      : `${snap.converted_order_count_mtd} ${snap.converted_order_count_mtd === 1 ? 'order' : 'orders'}`
-                  }`,
-                },
-                primaryDemandKind === 'estimates'
-                  ? {
-                      label: 'Converted to order',
-                      value: formatNumberValue(snap.converted_order_value_mtd, 'CURRENCY_THRESHOLD'),
-                      sub: `${snap.app_gmv_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.app_gmv_mtd) * 100) : 0}% of app enquiries · ${snap.converted_order_count_mtd} orders`,
-                    }
-                  : {
-                      label: 'Repeat demand',
-                      value: `${snap.repeat_mtd}`,
-                      sub: `${repeatShareOfEnabledPct}% of enabled customers · repeat buyers`,
-                    },
-                {
-                  label: 'Invoiced sales',
-                  value: formatNumberValue(snap.invoiced_app_value_mtd, 'CURRENCY_THRESHOLD'),
-                  sub: `${snap.invoiced_share_of_total_pct}% of total invoiced sales`,
-                },
-              ],
-            },
-          }}
-        />
+
+        {/* Card 2: Weekly active buyers — last 90 days */}
         <PerformanceCard
-          title="App contribution over time"
-          subtitle="Monthly primary demand vs. converted invoices · Trailing 12 months"
+          title="Weekly active buyers"
+          subtitle="Last 90 days"
+          bodyClassName="p-4"
+        >
+          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
+            {!wauData || wauData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No activity data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={wauData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                  <XAxis
+                    dataKey="week"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v: string) => {
+                      const d = new Date(v);
+                      return `${d.getDate()}/${d.getMonth() + 1}`;
+                    }}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
+                  <Tooltip
+                    formatter={(val: number) => [val, 'Active buyers']}
+                    labelFormatter={(label: string) => {
+                      const d = new Date(label);
+                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
+                    }}
+                  />
+                  <Bar dataKey="count" className="fill-primary" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </PerformanceCard>
+
+        {/* Card 3: Products most viewed */}
+        <PerformanceCard
+          title="Products most viewed"
+          subtitle="Last 90 days"
           bodyClassName="p-0"
         >
           <ScrollCardBody>
             <RankedList
               compact
-              items={[...snap.contribution_over_time].reverse().map((month) => {
-                const conversionPct = month.app_demand_value > 0
-                  ? Math.round((month.app_invoice_value / month.app_demand_value) * 100)
-                  : 0;
-                return {
-                  id: month.month,
-                  label: new Date(month.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
-                  meta: `${month.app_demand_count} ${month.app_demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${formatNumberValue(month.app_demand_value, 'CURRENCY_THRESHOLD')} demand`,
-                  value: formatNumberValue(month.app_invoice_value, 'CURRENCY_THRESHOLD'),
-                  valueSupporting: `${month.app_invoice_count} invoice${month.app_invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
-                };
-              })}
-              emptyTitle="No app contribution history yet"
-              emptyDescription="Monthly app-sourced demand and invoiced sales will appear here once orders start invoicing through."
+              items={(productsViewed ?? []).map((item) => ({
+                id: item.tenant_product_id,
+                label: item.product_name,
+                value: `${item.view_count} views`,
+              }))}
+              emptyTitle="No product view data yet"
+              emptyDescription="Product views will appear here once buyers browse the app."
             />
           </ScrollCardBody>
         </PerformanceCard>
+
+        {/* Card 4: Products most added to cart */}
         <PerformanceCard
-          title="Adoption by location"
-          subtitle="Buyer App demand and converted invoices"
+          title="Products most added to cart"
+          subtitle="Last 90 days"
           bodyClassName="p-0"
-          actions={<StatusTag label="Trailing 90 days" tone="neutral" />}
         >
           <ScrollCardBody>
             <RankedList
               compact
-              items={snap.top_locations.map((location) => {
-                const conversionPct = location.demand_value > 0
-                  ? Math.round((location.invoice_value / location.demand_value) * 100)
-                  : 0;
-                return {
-                  id: location.location_id,
-                  label: location.name,
-                  meta: `${location.demand_count} ${location.demand_count === 1 ? primaryDemandNounSingular : primaryDemandNoun} · ${location.demand_value > 0 ? formatNumberValue(location.demand_value, 'CURRENCY_THRESHOLD') : '—'} demand`,
-                  value: location.invoice_value > 0 ? formatNumberValue(location.invoice_value, 'CURRENCY_THRESHOLD') : '—',
-                  valueSupporting: `${location.invoice_count} invoice${location.invoice_count !== 1 ? 's' : ''} · ${conversionPct}% converted`,
-                };
-              })}
-              emptyTitle="No location usage yet"
-              emptyDescription="Location-level buyer app activity will show here once orders are placed."
+              items={(productsAddedToCart ?? []).map((item) => ({
+                id: item.tenant_product_id,
+                label: item.product_name,
+                value: `${item.add_count} adds`,
+              }))}
+              emptyTitle="No cart data yet"
+              emptyDescription="Products added to cart will appear here as buyers use the app."
             />
           </ScrollCardBody>
+        </PerformanceCard>
+
+        {/* Card 5: App demand over time — Value / Count toggle */}
+        <PerformanceCard
+          title="App demand"
+          subtitle="Last 90 days"
+          bodyClassName="p-4"
+          actions={
+            <div className="flex gap-1">
+              {(['value', 'count'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setDemandMode(mode)}
+                  className={cn(
+                    'rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                    demandMode === mode
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {mode === 'value' ? '₹ Value' : 'Count'}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <div className={BUYER_APP_SCROLL_CARD_HEIGHT}>
+            {!cartSubmits || cartSubmits.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No demand data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={cartSubmits} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                  <XAxis
+                    dataKey="week"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v: string) => {
+                      const d = new Date(v);
+                      return `${d.getDate()}/${d.getMonth() + 1}`;
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    width={40}
+                    tickFormatter={(v: number) =>
+                      demandMode === 'value'
+                        ? formatNumberValue(v, 'CURRENCY_THRESHOLD')
+                        : String(v)
+                    }
+                  />
+                  <Tooltip
+                    formatter={(val: number) => [
+                      demandMode === 'value' ? formatNumberValue(val, 'CURRENCY_THRESHOLD') : val,
+                      demandMode === 'value' ? 'Demand value' : 'Demand count',
+                    ]}
+                    labelFormatter={(label: string) => {
+                      const d = new Date(label);
+                      return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
+                    }}
+                  />
+                  <Bar
+                    dataKey={demandMode}
+                    className="fill-primary"
+                    radius={[2, 2, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </PerformanceCard>
       </div>
     </PageWrap>
