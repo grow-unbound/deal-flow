@@ -323,12 +323,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsError(false);
           setError(null);
           identifyForAnalytics(newSession, claims);
-          if (event === 'SIGNED_IN' || previousClaimsKey !== nextClaimsKey || shouldHydrateWorkspace(claims)) {
+          if (previousClaimsKey !== nextClaimsKey || shouldHydrateWorkspace(claims)) {
             // A different identity/tenant/role is now active — any cached query data
             // was fetched under the PREVIOUS claims and would render as stale/wrong
             // content until a hard refresh. Ordinary TOKEN_REFRESHED events for the
             // same claims never reach here, so this doesn't cause refetch churn during
             // normal background token refresh.
+            //
+            // Deliberately NOT gated on event === 'SIGNED_IN' anymore -- that branch
+            // was redundant for a genuine first sign-in (claimsKeyRef starts null, so
+            // previousClaimsKey !== nextClaimsKey already catches it) and was the
+            // actual cause of a real, reported bug: Supabase's GoTrue client can
+            // re-emit SIGNED_IN around session-recovery checks it runs on tab
+            // visibility/focus and near token expiry, even when the session's
+            // identity hasn't changed at all. That unconditional branch was nuking
+            // every cached query on ordinary tab-switches and idle periods, forcing
+            // every visible detail pane back to its loading skeleton -- ordinary
+            // TanStack Query background revalidation (the whole point of caching)
+            // never got a chance to just quietly serve stale-then-fresh data. The
+            // claims-key/workspace check alone still catches every real identity
+            // change, including true first sign-in.
             queryClient.clear();
             maybeHydrateWorkspace(newSession, claims);
           }
