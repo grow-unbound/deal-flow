@@ -103,20 +103,20 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
   useEffect(() => {
     if (!tenantId || !buyerId) return;
 
-    // Single consolidated channel — app.realtime_notifications is the only table left
-    // in the supabase_realtime publication. entity_type/event_type/payload/old_payload
-    // replace direct postgres_changes on campaigns/orders/estimates/invoices; the
-    // notification logic below is unchanged, just re-plumbed. Realtime's column filter
-    // is tenant-wide (buyer_id is nullable/shared across campaigns), so this buyer's
-    // own rows are picked out client-side same as campaigns' cohort/buyer scope check
-    // already was.
+    // Shared per-tenant Broadcast topic (not postgres_changes) — see
+    // 20260823141106_realtime_notifications_broadcast_cutover.sql. Same
+    // shared tenant-wide topic useSellerRealtime/useDocumentWhatsAppRealtime
+    // use — the server-side scope was always tenant-wide (buyer_id is
+    // nullable/shared across campaigns), so this buyer's own rows are still
+    // picked out client-side same as the cohort/buyer scope check already
+    // did under postgres_changes.
     const channel = supabaseBrowser
-      .channel(`buyer:${tenantId}:${buyerId}`)
+      .channel(`tenant-notifications:${tenantId}`)
       .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'app', table: 'realtime_notifications', filter: `tenant_id=eq.${tenantId}` },
+        'broadcast',
+        { event: 'notification' },
         (payload) => {
-          const row = payload.new as {
+          const row = payload.payload as {
             entity_type: string;
             event_type: string;
             buyer_id: string | null;

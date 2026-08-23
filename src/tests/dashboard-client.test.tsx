@@ -180,7 +180,7 @@ describe('SellerDashboardClient', () => {
     expect(screen.queryByText('Recent activity')).not.toBeInTheDocument();
     expect(screen.getAllByText('₹4,20,000').length).toBeGreaterThan(0);
 
-    expect(screen.getByText('Zeta')).toBeInTheDocument();
+    expect(await screen.findByText('Zeta')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: 'Brand' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
@@ -200,13 +200,13 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByText('Invoices')).toBeInTheDocument();
   });
 
-  it('switches the sales mix dimension and keeps the admin card grid in two columns', () => {
+  it('switches the sales mix dimension and keeps the admin card grid in two columns', async () => {
     useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
 
     render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Category' }));
-    expect(screen.getByText('CCTV')).toBeInTheDocument();
+    expect(await screen.findByText('CCTV')).toBeInTheDocument();
 
     const businessFlowSection = screen.getByText('Business flow').closest('section');
     expect(businessFlowSection?.parentElement?.className).toContain('xl:grid-cols-2');

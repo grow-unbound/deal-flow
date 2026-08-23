@@ -281,18 +281,22 @@ export function useSellerRealtime({ tenantId, locationIds, locationNamesById, on
       void queryClient.invalidateQueries({ queryKey: ['seller-dashboard'] });
     };
 
-    // Single consolidated channel — app.realtime_notifications is the only table left
-    // in the supabase_realtime publication. Each row's entity_type/event_type/payload/
-    // old_payload replace what used to be direct postgres_changes on estimates/orders/
-    // invoices/whatsapp_broadcasts; the notification-building/dedupe logic below is
-    // unchanged from before, just re-plumbed to read from payload instead of payload.new.
+    // Shared per-tenant Broadcast topic (not postgres_changes) — see
+    // 20260823141106_realtime_notifications_broadcast_cutover.sql for why:
+    // postgres_changes' underlying WAL-poll ran continuously regardless of
+    // subscriber count, the single biggest DB-time consumer found in the
+    // 2026-08-23 perf audit. Broadcast only costs on actual message volume.
+    // The server-side scope is tenant-wide either way (this hook's own
+    // client-side filtering below is unchanged) — same security boundary,
+    // different transport. entity_type/event_type/payload/old_payload are the
+    // app.realtime_notifications row, delivered as the broadcast payload.
     const channel = supabaseBrowser
-      .channel(`seller:${tenantId}`)
+      .channel(`tenant-notifications:${tenantId}`)
       .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'app', table: 'realtime_notifications', filter: `tenant_id=eq.${tenantId}` },
+        'broadcast',
+        { event: 'notification' },
         (payload) => {
-          const row = payload.new as { entity_type: string; event_type: string; payload: Record<string, unknown>; old_payload: Record<string, unknown> | null };
+          const row = payload.payload as { entity_type: string; event_type: string; payload: Record<string, unknown>; old_payload: Record<string, unknown> | null };
           const isUpdate = row.event_type === 'update';
 
           if (row.entity_type === 'estimates') {

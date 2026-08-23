@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 import { TrendFrame } from '@/components/seller/detail';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { formatNumberValue } from '@/lib/utils';
 import type { SellerDashboardBusinessFlowV4 } from '@/types/seller-dashboard';
 
-type BusinessFlowToggle = 'sales' | 'demand';
+export type BusinessFlowToggle = 'sales' | 'demand';
 
 function monthTick(isoDate: string): string {
   const date = new Date(isoDate);
@@ -15,8 +14,15 @@ function monthTick(isoDate: string): string {
   return date.toLocaleDateString('en-IN', { month: 'short' });
 }
 
-export function BusinessFlowChart({ data, loading }: { data: SellerDashboardBusinessFlowV4 | undefined; loading: boolean }) {
-  const [toggle, setToggle] = useState<BusinessFlowToggle>('sales');
+export function BusinessFlowChart({
+  data,
+  loading,
+  toggle,
+}: {
+  data: SellerDashboardBusinessFlowV4 | undefined;
+  loading: boolean;
+  toggle: BusinessFlowToggle;
+}) {
   const months = data?.months ?? [];
   const demandLabel = data?.primary_demand_kind === 'orders' ? 'Orders' : 'Estimates';
 
@@ -42,27 +48,6 @@ export function BusinessFlowChart({ data, loading }: { data: SellerDashboardBusi
           <p className="mt-1 text-sm text-cream-600">
             {formatNumberValue(latest?.count ?? 0, 'COUNT')} {toggle === 'sales' ? 'invoices' : demandLabel.toLowerCase()} this month
           </p>
-        </div>
-      )}
-      controls={(
-        <div className="inline-flex rounded-full border border-cream-300 bg-cream-50 p-1">
-          {([
-            { id: 'sales' as const, label: 'Sales' },
-            { id: 'demand' as const, label: demandLabel === 'Orders' ? 'Demand (Orders)' : 'Demand' },
-          ]).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setToggle(option.id)}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-sm font-semibold transition',
-                toggle === option.id ? 'bg-white text-teal-700 shadow-sm' : 'text-cream-700 hover:text-cream-900',
-              )}
-              aria-pressed={toggle === option.id}
-            >
-              {option.label}
-            </button>
-          ))}
         </div>
       )}
       chart={chartData.length > 0 ? (

@@ -117,18 +117,18 @@ export function useDocumentWhatsAppRealtime({
   useEffect(() => {
     if (!enabled || !tenantId || !documentId) return;
 
+    // Shared per-tenant Broadcast topic (not postgres_changes) — see
+    // 20260823141106_realtime_notifications_broadcast_cutover.sql. Same
+    // shared tenant-wide topic the other two realtime hooks use; this
+    // hook's own entity_type/entity_id filtering below (client-side) is
+    // unchanged, only the transport and channel name changed.
     const channel = supabaseBrowser
-      .channel(`document-whatsapp:${kind}:${documentId}`)
+      .channel(`tenant-notifications:${tenantId}`)
       .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'app',
-          table: 'realtime_notifications',
-          filter: `tenant_id=eq.${tenantId}`,
-        },
+        'broadcast',
+        { event: 'notification' },
         (payload) => {
-          const row = payload.new as { entity_type: string; entity_id: string; payload: Record<string, unknown> };
+          const row = payload.payload as { entity_type: string; entity_id: string; payload: Record<string, unknown> };
           if (row.entity_type !== DOCUMENT_CONFIG[kind].table) return;
           if (row.entity_id !== documentId) return;
           handleDocumentRowUpdate(qc, kind, documentId, tenantId, row.payload);

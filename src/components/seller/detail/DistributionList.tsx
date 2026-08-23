@@ -65,35 +65,38 @@ export function DistributionList({
       : ['#346A5C', '#7EA89A', '#D9C6B4', '#C26E3A', '#E7D8CB'];
 
   if (mode === 'funnel') {
+    const funnelPalette = ['#204A41', '#3B6659', '#57816F', '#7EA89A', '#A8C7BC'];
     return (
       <div className={cn(compact ? 'p-4' : 'p-5', className)}>
-        <div className="space-y-4">
+        <div className="flex flex-col items-center">
           {items.map((item, index) => {
-            const width = Math.max(item.pct ?? 0, 0);
-            const color = item.tone ?? palette[index % palette.length];
+            const width = Math.max(Math.min(item.pct ?? 0, 100), 4);
+            const color = item.tone ?? funnelPalette[index % funnelPalette.length];
+            const isLast = index === items.length - 1;
             return (
-              <div key={item.id} className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: color }} />
-                    <span className="truncate text-base text-cream-900">{item.label}</span>
-                  </div>
-                  <div className="text-right">
-                    {item.pct != null ? <span className="font-mono text-sm text-cream-700">{item.pct}%</span> : null}
-                    {item.value ? <div className="text-sm text-cream-900">{item.value}</div> : null}
-                  </div>
-                </div>
+              <div key={item.id} className="w-full">
                 <div
-                  className="h-3 overflow-hidden rounded-full border border-cream-300 bg-cream-100"
+                  className={cn('flex items-center justify-center px-3 py-2.5 text-center', !isLast && 'border-b border-white/40')}
+                  style={{ width: `${width}%`, minWidth: '40%', backgroundColor: color, marginLeft: 'auto', marginRight: 'auto' }}
                   role="img"
-                  aria-label={`${item.label}: ${width}%`}
+                  aria-label={`${item.label}: ${item.pct ?? 0}%`}
                 >
-                  <div className="h-full rounded-full" style={{ width: `${width}%`, backgroundColor: color }} />
+                  <span className="truncate text-sm font-semibold text-white">{item.label}</span>
+                  <span className="ml-2 shrink-0 font-mono text-sm text-white/85">{item.pct != null ? `${item.pct}%` : null}</span>
                 </div>
-                {item.supporting ? <p className="text-sm text-cream-600">{item.supporting}</p> : null}
               </div>
             );
           })}
+        </div>
+        <div className="mt-4 space-y-1.5">
+          {items.map((item) => (
+            item.supporting || item.value ? (
+              <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate text-cream-700">{item.label}</span>
+                <span className="text-right text-cream-900">{item.value}{item.supporting ? <span className="ml-2 text-cream-600">{item.supporting}</span> : null}</span>
+              </div>
+            ) : null
+          ))}
         </div>
       </div>
     );

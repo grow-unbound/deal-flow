@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { Package, Minus, Plus } from 'lucide-react';
 import { triggerHaptic } from '@/lib/haptics';
 import { cn, formatNumberValue } from '@/lib/utils';
@@ -44,15 +45,18 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
       {/* Image */}
       <button
         type="button"
-        className="flex aspect-square w-full touch-manipulation items-center justify-center overflow-hidden bg-cream-100 transition-transform duration-fast ease-standard active:scale-[0.98]"
+        className="relative flex aspect-square w-full touch-manipulation items-center justify-center overflow-hidden bg-cream-100 transition-transform duration-fast ease-standard active:scale-[0.98]"
         onClick={() => onClick?.(product.id)}
         aria-label={`View ${product.name}`}
       >
         {product.imageUrl ? (
-          <img
+          <Image
             src={product.imageUrl}
             alt={product.name}
-            className="w-full h-full object-cover"
+            fill
+            unoptimized
+            className="object-cover"
+            sizes="(max-width: 768px) 50vw, 200px"
           />
         ) : (
           <Package className="h-8 w-8 text-cream-400" />

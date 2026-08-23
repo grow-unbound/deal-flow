@@ -402,9 +402,9 @@ export async function GET(req: NextRequest) {
     ]);
     const identities = await fetchProductIdentities(db, tenantId, searchIds);
     const masterIds = [...new Set(identities.map((row) => row.master_product_id).filter((id): id is string => Boolean(id)))];
-    const masterById = await fetchMasterProducts(db, masterIds);
     const productIds = identities.map((row) => row.id);
-    const [metricsByProduct, inventoryByProduct] = await Promise.all([
+    const [masterById, metricsByProduct, inventoryByProduct] = await Promise.all([
+      fetchMasterProducts(db, masterIds),
       fetchProductMetrics(db, tenantId, productIds, period),
       fetchInventoryByProduct(db, productIds),
     ]);
