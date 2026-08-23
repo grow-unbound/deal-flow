@@ -77,33 +77,41 @@ export async function loadEstimateDocument(
 ): Promise<null | 'forbidden' | LoadEstimateResult> {
   const d = db as any;
 
-  const estimateRes = await d
-    .schema('app')
-    .from('estimates')
-    .select(
-    'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, estimate_date, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by, source, is_buyer_app_estimate',
-    )
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  // tenantRes only needs tenantId (a function param, not derived from the
+  // estimate row) -- starts alongside estimateRes instead of waiting for it.
+  const [estimateRes, tenantRes] = await Promise.all([
+    d
+      .schema('app')
+      .from('estimates')
+      .select(
+      'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, estimate_date, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by, source, is_buyer_app_estimate',
+      )
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    d.schema('app').from('tenants').select('id, primary_state').eq('id', tenantId).maybeSingle(),
+  ]);
 
   if (estimateRes.error) throw estimateRes.error;
   if (!estimateRes.data) return null;
   if (estimateRes.data.tenant_id !== tenantId) return 'forbidden';
   if (viewerClaims && !canAccessDocumentLocation(viewerClaims, estimateRes.data.location_id)) return 'forbidden';
+  if (tenantRes.error) throw tenantRes.error;
 
   const estimate = estimateRes.data as Record<string, unknown>;
   const buyerId = typeof estimate.buyer_id === 'string' ? estimate.buyer_id : null;
   const locationId = typeof estimate.location_id === 'string' ? estimate.location_id : null;
   const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
-  const availableLocations = await loadAccessibleSellerLocations(d, tenantId, effectiveClaims);
-  const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
-  const locationRes = locationId
-    ? await d.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
-    : { data: null, error: null };
-  if (locationRes.error) throw locationRes.error;
 
-  const [buyerRes, itemsRes, auditRes, tenantRes] = await Promise.all([
+  // availableLocations/locationRes/buyerRes/itemsRes/auditRes are mutually
+  // independent (each depends only on tenantId/id/buyerId/locationId, all
+  // already known) -- one merged Promise.all instead of an
+  // availableLocations -> locationRes -> [buyer,items,audit] chain.
+  const [availableLocations, locationRes, buyerRes, itemsRes, auditRes] = await Promise.all([
+    loadAccessibleSellerLocations(d, tenantId, effectiveClaims),
+    locationId
+      ? d.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     buyerId
       ? d.schema('app').from('buyers')
           .select('id, business_name, contact_name, phone, email, gstin, geography, credit_limit, payment_terms_days')
@@ -116,11 +124,12 @@ export async function loadEstimateDocument(
       .select('id, ts, action, diff')
       .eq('tenant_id', tenantId).eq('entity_type', 'estimate').eq('entity_id', id)
       .order('ts', { ascending: false }).limit(50),
-    d.schema('app').from('tenants').select('id, primary_state').eq('id', tenantId).maybeSingle(),
   ]);
+  const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
 
-  if (buyerRes.error || itemsRes.error || auditRes.error || tenantRes.error) {
-    throw buyerRes.error || itemsRes.error || auditRes.error || tenantRes.error;
+  if (locationRes.error) throw locationRes.error;
+  if (buyerRes.error || itemsRes.error || auditRes.error) {
+    throw buyerRes.error || itemsRes.error || auditRes.error;
   }
 
   const buyer = buyerRes.data as Record<string, unknown> | null;
@@ -130,14 +139,18 @@ export async function loadEstimateDocument(
     new Set(itemRows.map((row) => row.tenant_product_id).filter((v): v is string => typeof v === 'string')),
   );
 
-  const { data: tenantProducts } = productIds.length > 0
-    ? await d.schema('app').from('tenant_products')
-        .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp, image_urls')
-        .in('id', productIds).eq('tenant_id', tenantId)
-    : { data: [] as Array<Record<string, unknown>> };
+  // tenantProducts and inventoryMap both only need productIds/locationId --
+  // run together instead of sequentially.
+  const [{ data: tenantProducts }, inventoryMap] = await Promise.all([
+    productIds.length > 0
+      ? d.schema('app').from('tenant_products')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp, image_urls')
+          .in('id', productIds).eq('tenant_id', tenantId)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    loadInventoryAvailabilityMap(d, productIds, locationId),
+  ]);
 
   const productMap = new Map((tenantProducts ?? []).map((row: Record<string, unknown>) => [row.id as string, row]));
-  const inventoryMap = await loadInventoryAvailabilityMap(d, productIds, locationId);
 
   const masterProductIds = Array.from(new Set(
     (tenantProducts ?? []).map((row: Record<string, unknown>) => row.master_product_id).filter((v: unknown): v is string => typeof v === 'string'),

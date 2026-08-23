@@ -130,44 +130,49 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [itemsRes, assignmentsRes, activityRes, priceListNowRes] = await Promise.all([
-    db
-      .schema('app')
-      .from('price_list_items')
-      .select(
-        `id, price_list_id, tenant_product_id, price, min_qty, max_qty, created_at, updated_at,
-         tenant_product:tenant_products(
-           id, internal_sku, name_override, mrp, base_selling_price, cost_price, is_active, master_product_id,
-           tenant_brand:tenant_brands(id, display_name_override, master_brand_id)
-         )`,
-      )
-      .eq('price_list_id', id)
-      .is('deleted_at', null)
-      .order('min_qty', { ascending: true }),
-    db
-      .schema('app')
-      .from('price_list_assignments')
-      .select('id, price_list_id, target_type, target_id, created_at')
-      .eq('price_list_id', id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true }),
-    db
-      .schema('app')
-      .from('audit_log')
-      .select('id, ts, action, entity_type, entity_id, actor_user_id, diff')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('entity_type', 'price_list')
-      .eq('entity_id', id)
-      .order('ts', { ascending: false })
-      .limit(100),
-    db
-      .schema('app')
-      .from('metrics_price_lists_now_summary')
-      .select('member_product_count, assigned_cohort_count, assigned_buyer_count, avg_discount_pct, avg_margin_pct')
-      .eq('price_list_id', id)
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
-      .maybeSingle(),
+  // userMap only depends on priceList (already resolved above), not on any of
+  // the four queries below -- runs alongside them instead of after.
+  const [[itemsRes, assignmentsRes, activityRes, priceListNowRes], userMap] = await Promise.all([
+    Promise.all([
+      db
+        .schema('app')
+        .from('price_list_items')
+        .select(
+          `id, price_list_id, tenant_product_id, price, min_qty, max_qty, created_at, updated_at,
+           tenant_product:tenant_products(
+             id, internal_sku, name_override, mrp, base_selling_price, cost_price, is_active, master_product_id,
+             tenant_brand:tenant_brands(id, display_name_override, master_brand_id)
+           )`,
+        )
+        .eq('price_list_id', id)
+        .is('deleted_at', null)
+        .order('min_qty', { ascending: true }),
+      db
+        .schema('app')
+        .from('price_list_assignments')
+        .select('id, price_list_id, target_type, target_id, created_at')
+        .eq('price_list_id', id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true }),
+      db
+        .schema('app')
+        .from('audit_log')
+        .select('id, ts, action, entity_type, entity_id, actor_user_id, diff')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('entity_type', 'price_list')
+        .eq('entity_id', id)
+        .order('ts', { ascending: false })
+        .limit(100),
+      db
+        .schema('app')
+        .from('metrics_price_lists_now_summary')
+        .select('member_product_count, assigned_cohort_count, assigned_buyer_count, avg_discount_pct, avg_margin_pct')
+        .eq('price_list_id', id)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle(),
+    ]),
+    getAuthUserEmailMap([priceList.created_by, priceList.updated_by].filter(Boolean)),
   ]);
 
   if (itemsRes.error || assignmentsRes.error || activityRes.error || priceListNowRes.error) {
@@ -188,7 +193,6 @@ export async function GET(
   const items = itemsRes.data ?? [];
   const assignments = assignmentsRes.data ?? [];
   const events = activityRes.data ?? [];
-  const userMap = await getAuthUserEmailMap([priceList.created_by, priceList.updated_by].filter(Boolean));
 
   const masterProductIds = Array.from(
     new Set(
@@ -211,21 +215,64 @@ export async function GET(
     ),
   );
 
-  const [masterProductsRes, masterBrandsRes] = await Promise.all([
+  const cohortIds = Array.from(
+    new Set(
+      assignments
+        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
+        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+    ),
+  );
+
+  const buyerIds = Array.from(
+    new Set(
+      assignments
+        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
+        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+    ),
+  );
+
+  // masterProducts/masterBrands derive from items, cohorts/buyers/cohortMembers
+  // derive from assignments -- both already resolved above and mutually
+  // independent, so all five queries run in one merged Promise.all instead of
+  // two sequential ones.
+  const [masterProductsRes, masterBrandsRes, cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
     masterProductIds.length > 0
       ? db.schema('catalog').from('products').select('id, name').in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
     masterBrandIds.length > 0
       ? db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
       : Promise.resolve({ data: [], error: null }),
+    cohortIds.length > 0
+      ? db
+          .schema('app')
+          .from('cohorts')
+          .select('id, name')
+          .in('id', cohortIds)
+          .eq('tenant_id', claims.tenant_id)
+      : Promise.resolve({ data: [], error: null }),
+    buyerIds.length > 0
+      ? db
+          .schema('app')
+          .from('buyers')
+          .select('id, business_name')
+          .in('id', buyerIds)
+          .eq('tenant_id', claims.tenant_id)
+      : Promise.resolve({ data: [], error: null }),
+    cohortIds.length > 0
+      ? db
+          .schema('app')
+          .from('cohort_members_active')
+          .select('cohort_id, buyer_id')
+          .in('cohort_id', cohortIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (masterProductsRes.error || masterBrandsRes.error) {
+  if (masterProductsRes.error || masterBrandsRes.error || cohortsRes.error || buyersRes.error || cohortMembersRes.error) {
     console.error(
-      '[GET /api/price-lists/[id]] catalog denorm error:',
-      masterProductsRes.error || masterBrandsRes.error,
+      '[GET /api/price-lists/[id]] denorm error:',
+      masterProductsRes.error || masterBrandsRes.error || cohortsRes.error || buyersRes.error || cohortMembersRes.error,
     );
-    return NextResponse.json({ error: 'Failed to fetch product details' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
   }
 
   const masterProductNameMap = new Map(
@@ -282,53 +329,6 @@ export async function GET(
         : null,
     }),
   );
-
-  const cohortIds = Array.from(
-    new Set(
-      assignments
-        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
-        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
-    ),
-  );
-
-  const buyerIds = Array.from(
-    new Set(
-      assignments
-        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
-        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
-    ),
-  );
-
-  const [cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
-    cohortIds.length > 0
-      ? db
-          .schema('app')
-          .from('cohorts')
-          .select('id, name')
-          .in('id', cohortIds)
-          .eq('tenant_id', claims.tenant_id)
-      : Promise.resolve({ data: [], error: null }),
-    buyerIds.length > 0
-      ? db
-          .schema('app')
-          .from('buyers')
-          .select('id, business_name')
-          .in('id', buyerIds)
-          .eq('tenant_id', claims.tenant_id)
-      : Promise.resolve({ data: [], error: null }),
-    cohortIds.length > 0
-      ? db
-          .schema('app')
-          .from('cohort_members_active')
-          .select('cohort_id, buyer_id')
-          .in('cohort_id', cohortIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  if (cohortsRes.error || buyersRes.error || cohortMembersRes.error) {
-    console.error('[GET /api/price-lists/[id]] assignment denorm error:', cohortsRes.error || buyersRes.error || cohortMembersRes.error);
-    return NextResponse.json({ error: 'Failed to fetch assignment details' }, { status: 500 });
-  }
 
   const cohorts = cohortsRes.data ?? [];
   const buyers = buyersRes.data ?? [];
