@@ -29,6 +29,7 @@ const PUBLIC_PREFIXES = [
   '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
   '/manifest.webmanifest', // PWA manifest — browsers fetch it unauthenticated
   '/buyer-sw.js', // PWA service worker — must be reachable before any buyer session exists
+  '/api/health', // warmup-ping target (external pinger) — must return a clean 200 unauthenticated
 ];
 
 // NOTE: the matcher's extension-based exclusions below (e.g. `\.js`) only match paths
