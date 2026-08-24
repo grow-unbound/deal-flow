@@ -12,16 +12,16 @@ type BuyerDbRow = {
   geography: { city?: string; state?: string; zone?: string } | null;
 };
 
-type OrderDbRow = {
+type NowSummaryRow = {
   buyer_id: string;
-  total_amount: number | null;
-  placed_at: string | null;
+  receivable_amount: number | null;
+  overdue_amount: number | null;
+  last_invoice_date: string | null;
 };
 
-type InvoiceDbRow = {
+type PeriodSummaryRow = {
   buyer_id: string;
-  status: string | null;
-  outstanding_balance: number | null;
+  invoice_value: number | null;
 };
 
 type CohortRow = {
@@ -83,89 +83,78 @@ function formatCity(geography: BuyerDbRow['geography']) {
   return city || 'Unknown';
 }
 
-function isInvoicesTableMissing(error: { code?: string; message?: string } | null | undefined) {
-  if (!error) return false;
-  return error.code === 'PGRST205'
-    || error.code === '42P01'
-    || (error.message ?? '').toLowerCase().includes('invoices');
+function currentQuarterStart(): string {
+  const now = new Date();
+  const quarterMonth = Math.floor(now.getUTCMonth() / 3) * 3;
+  return new Date(Date.UTC(now.getUTCFullYear(), quarterMonth, 1)).toISOString().slice(0, 10);
 }
 
-async function buildPickerRows(db: any, tenantId: string, buyers: BuyerDbRow[], monthStart: string, thirtyDaysAgo: string) {
-  const buyerIds = buyers.map((buyer) => buyer.id);
+function thirtyDaysAgoDate(): string {
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+async function buildPickerRows(
+  db: any,
+  tenantId: string,
+  buyers: BuyerDbRow[],
+  quarterStart: string,
+  cutoff30d: string,
+): Promise<PickerBuyerRow[]> {
+  const buyerIds = buyers.map((b) => b.id);
   if (buyerIds.length === 0) return [];
 
-  const [mtdOrdersRes, recentOrdersRes, invoicesRes] = await Promise.all([
+  const [nowRes, periodRes] = await Promise.all([
     db
       .schema('app')
-      .from('orders')
-      .select('buyer_id, total_amount')
+      .from('metrics_buyer_now_summary')
+      .select('buyer_id, receivable_amount, overdue_amount, last_invoice_date')
       .eq('tenant_id', tenantId)
-      .in('buyer_id', buyerIds)
       .is('deleted_at', null)
-      .neq('status', 'cancelled')
-      .gte('placed_at', monthStart),
+      .in('buyer_id', buyerIds),
     db
       .schema('app')
-      .from('orders')
-      .select('buyer_id, placed_at')
+      .from('metrics_buyer_period_summary')
+      .select('buyer_id, invoice_value')
       .eq('tenant_id', tenantId)
-      .in('buyer_id', buyerIds)
+      .eq('grain', 'quarter')
+      .eq('period_start', quarterStart)
       .is('deleted_at', null)
-      .neq('status', 'cancelled')
-      .gte('placed_at', thirtyDaysAgo)
-      .order('placed_at', { ascending: false }),
-    db
-      .schema('app')
-      .from('invoices')
-      .select('buyer_id, status, outstanding_balance')
-      .eq('tenant_id', tenantId)
-      .in('buyer_id', buyerIds)
-      .is('deleted_at', null)
-      .in('status', ['sent', 'overdue']),
+      .in('buyer_id', buyerIds),
   ]);
 
-  const invoicesMissing = isInvoicesTableMissing(invoicesRes.error);
-  if (mtdOrdersRes.error || recentOrdersRes.error || (invoicesRes.error && !invoicesMissing)) {
+  if (nowRes.error || periodRes.error) {
     throw new Error('Failed to load buyer metrics');
   }
 
-  const spendMtdByBuyer = new Map<string, number>();
-  for (const row of (mtdOrdersRes.data ?? []) as OrderDbRow[]) {
-    spendMtdByBuyer.set(row.buyer_id, (spendMtdByBuyer.get(row.buyer_id) ?? 0) + Number(row.total_amount ?? 0));
+  const nowByBuyer = new Map<string, NowSummaryRow>();
+  for (const row of (nowRes.data ?? []) as NowSummaryRow[]) {
+    nowByBuyer.set(row.buyer_id, row);
   }
 
-  const orders30dCountByBuyer = new Map<string, number>();
-  const lastOrderAtByBuyer = new Map<string, string>();
-  for (const row of (recentOrdersRes.data ?? []) as OrderDbRow[]) {
-    orders30dCountByBuyer.set(row.buyer_id, (orders30dCountByBuyer.get(row.buyer_id) ?? 0) + 1);
-    if (row.placed_at && !lastOrderAtByBuyer.has(row.buyer_id)) {
-      lastOrderAtByBuyer.set(row.buyer_id, row.placed_at);
-    }
+  const periodByBuyer = new Map<string, PeriodSummaryRow>();
+  for (const row of (periodRes.data ?? []) as PeriodSummaryRow[]) {
+    periodByBuyer.set(row.buyer_id, row);
   }
 
-  const outstandingDueByBuyer = new Map<string, number>();
-  const overdueBuyerIds = new Set<string>();
-  for (const row of ((invoicesMissing ? [] : invoicesRes.data) ?? []) as InvoiceDbRow[]) {
-    const outstanding = Number(row.outstanding_balance ?? 0);
-    if (outstanding <= 0) continue;
-    outstandingDueByBuyer.set(row.buyer_id, (outstandingDueByBuyer.get(row.buyer_id) ?? 0) + outstanding);
-    if (row.status === 'overdue') overdueBuyerIds.add(row.buyer_id);
-  }
-
-  return buyers.map((buyer, index) => ({
-    id: buyer.id,
-    business_name: buyer.business_name,
-    city: formatCity(buyer.geography),
-    spend_mtd: spendMtdByBuyer.get(buyer.id) ?? 0,
-    outstanding_due: outstandingDueByBuyer.get(buyer.id) ?? 0,
-    last_order_at: lastOrderAtByBuyer.get(buyer.id) ?? null,
-    ordered_30d: (orders30dCountByBuyer.get(buyer.id) ?? 0) > 0,
-    overdue: overdueBuyerIds.has(buyer.id),
-    avatar: {
-      initials: getInitials(buyer.business_name),
-      hue: buyerAvatarHue(index),
-    },
-  } satisfies PickerBuyerRow));
+  return buyers.map((buyer, index) => {
+    const now = nowByBuyer.get(buyer.id);
+    const period = periodByBuyer.get(buyer.id);
+    const lastInvoiceDate = now?.last_invoice_date ?? null;
+    return {
+      id: buyer.id,
+      business_name: buyer.business_name,
+      city: formatCity(buyer.geography),
+      spend_mtd: Number(period?.invoice_value ?? 0),
+      outstanding_due: Number(now?.receivable_amount ?? 0),
+      last_order_at: lastInvoiceDate,
+      ordered_30d: lastInvoiceDate !== null && lastInvoiceDate >= cutoff30d,
+      overdue: Number(now?.overdue_amount ?? 0) > 0,
+      avatar: {
+        initials: getInitials(buyer.business_name),
+        hue: buyerAvatarHue(index),
+      },
+    } satisfies PickerBuyerRow;
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -195,9 +184,8 @@ export async function GET(request: NextRequest) {
       ? Math.max(1, Math.min(Math.floor(parsedLimit), PAGE_SIZE.MAX))
       : PAGE_SIZE.COMPOSER;
 
-    const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const quarterStart = currentQuarterStart();
+    const cutoff30d = thirtyDaysAgoDate();
 
     const [selectedBuyersRes, cityOptionsRes, cohortRowsRes, cohortMembersRes] = await Promise.all([
       selectedIds.length > 0
@@ -305,7 +293,7 @@ export async function GET(request: NextRequest) {
         break;
       }
 
-      const pickerRows = await buildPickerRows(db, tenantId, batchRows, monthStart, thirtyDaysAgo);
+      const pickerRows = await buildPickerRows(db, tenantId, batchRows, quarterStart, cutoff30d);
 
       for (let index = 0; index < pickerRows.length; index += 1) {
         const buyer = pickerRows[index];
@@ -338,7 +326,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const selectedBuyers = await buildPickerRows(db, tenantId, selectedBuyerRows, monthStart, thirtyDaysAgo);
+    const selectedBuyers = await buildPickerRows(db, tenantId, selectedBuyerRows, quarterStart, cutoff30d);
 
     const cityCounts = new Map<string, number>();
     for (const row of (cityOptionsRes.data ?? []) as Array<{ geography: BuyerDbRow['geography'] }>) {

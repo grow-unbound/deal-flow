@@ -1,5 +1,6 @@
 import { randomInt } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
 import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
 import { findPendingSellerActivationsByPhone } from '@/lib/server/seller-team-activation';
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
       await sendActivationOtpWhatsapp(phone, otp);
     } catch (error) {
       console.error('[auth/activate/send] activation OTP send failed:', error);
+      Sentry.captureException(error, { tags: { area: 'whatsapp_otp' } });
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Failed to send activation OTP' },
         { status: 500 },

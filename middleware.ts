@@ -1,5 +1,20 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+
+// Dynamic (not static) import — bundling @sentry/nextjs into middleware's
+// compile graph is what pushed its dev compile from ~1s to 7s+. Sentry's
+// server/edge SDK is skipped entirely in dev (see instrumentation.ts) so
+// these tag calls would be no-ops there anyway; the dynamic import also lets
+// Turbopack defer/skip compiling this chunk in dev instead of eagerly
+// bundling it on every middleware compile.
+const isDev = process.env.NODE_ENV === 'development';
+async function tagSentryRequestContext(tenantId: string | null, role: string | null, pathname: string) {
+  if (isDev) return;
+  const Sentry = await import('@sentry/nextjs');
+  Sentry.setTag('tenant_id', tenantId ?? 'unknown');
+  if (role) Sentry.setTag('role', role);
+  Sentry.setTag('route_group', pathname.startsWith('/buy') ? 'buyer' : 'seller');
+}
 import {
   TENANT_FLAGS_COOKIE,
   TENANT_FLAGS_HEADER,
@@ -9,6 +24,7 @@ import {
   verifyTenantFlagsToken,
   type TenantCreateFlags,
 } from '@/lib/server/tenant-flags-token';
+import { resolveTenantFlags } from '@/lib/server/tenant-flags-resolve';
 import type { Database } from '@/types/database';
 
 // Routes that don't require an authenticated session
@@ -134,6 +150,11 @@ export async function middleware(request: NextRequest) {
     ? claims.location_ids.filter((value): value is string => typeof value === 'string')
     : null;
 
+  // Attach the four highest-value Sentry tags here since this is the one place
+  // every authenticated request already resolves verified tenant/role claims —
+  // avoids threading tagging logic through every route handler individually.
+  await tagSentryRequestContext(tenantId, role, pathname);
+
   // Forward verified claims as headers; server components read these instead
   // of trusting any client-supplied tenant_id values.
   if (tenantId) requestHeaders.set('x-verified-tenant-id', tenantId);
@@ -152,38 +173,21 @@ export async function middleware(request: NextRequest) {
   // Resolve tenant feature flags once per (long) session instead of per navigation.
   // Cookie is httpOnly + HMAC-signed (df_flags) so a tampered/edited cookie is
   // rejected and falls back to a fresh resolve — never trusted blindly, since these
-  // flags gate paid-tier features. The fresh resolve calls posthog-node, which is
-  // NOT Edge-Runtime compatible (middleware only runs on Edge) — so instead of
-  // calling resolveTenantFlags() directly, self-fetch a Node-runtime Route Handler
-  // that does, same pattern as fetchSellerPageBootstrap.
+  // flags gate paid-tier features. Middleware runs on the Node.js runtime (below),
+  // so resolveTenantFlags() (which needs posthog-node) can be called in-process —
+  // no self-fetch hop.
   let freshTenantFlags: { flags: Record<string, boolean>; createFlags: TenantCreateFlags } | null = null;
-  // Skip for the flags-refresh route itself — its self-fetch re-enters this same
-  // middleware, and now that cookies are forwarded to it, resolving flags for that
-  // inner request too would recurse into another self-fetch indefinitely.
-  if (tenantId && role?.startsWith('seller_') && pathname !== '/api/tenant/flags-refresh') {
+  if (tenantId && role?.startsWith('seller_')) {
     const flagsCookie = request.cookies.get(TENANT_FLAGS_COOKIE)?.value;
     const verified = flagsCookie ? await verifyTenantFlagsToken(flagsCookie, tenantId) : null;
     let flagsData: { flags: Record<string, boolean>; createFlags: TenantCreateFlags } | null = verified;
     if (!flagsData) {
       try {
-        const proto = hostname.includes('localhost') ? 'http' : 'https';
-        const flagsRes = await fetch(`${proto}://${hostname}/api/tenant/flags-refresh`, {
-          headers: {
-            // Forward the request's own cookies — fetch() does not attach them
-            // automatically. The route sits behind this same middleware, which
-            // re-validates via getClaims() from these forwarded cookies and
-            // populates x-verified-* headers for it directly, so no separate
-            // Authorization bearer is needed here.
-            cookie: request.headers.get('cookie') ?? '',
-          },
-        });
-        if (flagsRes.ok) {
-          freshTenantFlags = (await flagsRes.json()) as { flags: Record<string, boolean>; createFlags: TenantCreateFlags };
-          flagsData = freshTenantFlags;
-        }
+        freshTenantFlags = await resolveTenantFlags(tenantId);
+        flagsData = freshTenantFlags;
       } catch {
-        // Flags refresh unreachable — leave header unset, getFlag()'s own fallback
-        // resolves directly (Node runtime, safe) when a Server Component calls it.
+        // Flags resolve failed — leave header unset, getFlag()'s own fallback
+        // resolves directly when a Server Component calls it.
       }
     }
     if (flagsData) {
@@ -226,6 +230,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Node.js runtime (not Edge): lets this run in the pinned `regions` (vercel.json,
+  // bom1) instead of wherever Vercel's edge network resolves it, and lets it call
+  // resolveTenantFlags() (posthog-node) in-process instead of self-fetching a
+  // separate Node route handler.
+  runtime: 'nodejs',
   matcher: [
     '/((?!_next/static|_next/image|_next/webpack-hmr|favicon.ico|robots.txt|sitemap.xml|\\.png|\\.jpg|\\.jpeg|\\.gif|\\.svg|\\.webp|\\.ico|\\.css|\\.js|\\.map|\\.txt|\\.woff|\\.woff2|\\.ttf).*)',
   ],

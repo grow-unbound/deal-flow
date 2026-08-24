@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { assertTenantClaim, AuthorizationError, getVerifiedClaims } from '@/lib/auth';
 import { assembleTenantSettingsPayload } from '@/lib/tenant-settings/assemble-tenant-settings-payload';
 import { syncTenantFeatureFlags } from '@/lib/posthog-server';
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: payload, error: null }, { status: 200, headers: SELLER_CACHE_PERSONAL });
   } catch (e) {
     if (e instanceof AuthorizationError) {
+      Sentry.captureException(e, { tags: { security: 'cross_tenant_denied' } });
       return NextResponse.json({ data: null, error: { code: 'FORBIDDEN', message: e.message } }, { status: 403 });
     }
     return NextResponse.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } }, { status: 401 });
@@ -182,6 +184,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: payload, error: null }, { status: 200 });
   } catch (e) {
     if (e instanceof AuthorizationError) {
+      Sentry.captureException(e, { tags: { security: 'cross_tenant_denied' } });
       return NextResponse.json({ data: null, error: { code: 'FORBIDDEN', message: e.message } }, { status: 403 });
     }
     return NextResponse.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } }, { status: 401 });

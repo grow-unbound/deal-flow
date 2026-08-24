@@ -15,8 +15,12 @@ describe('legacy buyer pickers use bounded server search', () => {
   ])('%s avoids the unbounded customer universe', (path) => {
     const contents = source(path);
 
-    expect(contents).toContain('/api/tenant/buyers/search?');
-    expect(contents).toContain('limit: String(BUYER_SEARCH_LIMIT)');
+    // AssignmentsPanel now calls the shared cohort-composer buyer picker (same
+    // endpoint used by the Customer Group and Campaign forms) instead of its own
+    // /api/tenant/buyers/search call, but the bound (small page size, debounced
+    // search) is preserved via useCohortComposerBuyers.
+    expect(contents).toContain('useCohortComposerBuyers');
+    expect(contents).toContain('limit: BUYER_SEARCH_LIMIT');
     expect(contents).toContain('useDebounce');
     expect(contents).not.toContain("apiFetch('/api/customers')");
     expect(contents).not.toContain("fetch('/api/customers'");
@@ -27,5 +31,12 @@ describe('legacy buyer pickers use bounded server search', () => {
 
     expect(contents).toContain('buyerCache');
     expect(contents).toContain('const selectedBuyer = targetId ? buyerCache[targetId]');
+  });
+
+  it('the shared cohort-composer buyer hook hard-caps selected-buyer preload ids, never an unbounded list', () => {
+    const contents = source('src/hooks/useCohorts.ts');
+
+    expect(contents).toContain('SELECTED_BUYERS_LIMIT = 250');
+    expect(contents).toContain('selectedIds.slice(0, SELECTED_BUYERS_LIMIT)');
   });
 });

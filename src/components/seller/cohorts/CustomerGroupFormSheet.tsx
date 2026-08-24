@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { BuyerPickerRow } from '@/components/seller/shared/BuyerPickerRow';
 import {
   MembershipModeSwitchDialog,
   type MembershipModeSwitchDirection,
@@ -131,6 +132,7 @@ export function CustomerGroupFormSheet({
   );
   const buyerQuery = useCohortComposerBuyers({
     query: buyerSearch,
+    selectedIds: selectedBuyerIds,
     limit: 30,
     enabled: buyerPickerOpen && membershipMode === 'manual',
   });
@@ -138,7 +140,14 @@ export function CustomerGroupFormSheet({
     () => buyerQuery.data?.pages.flatMap((page) => page.buyers) ?? [],
     [buyerQuery.data?.pages],
   );
-  const buyerCache = useMemo(() => new Map(buyerRows.map((buyer) => [buyer.id, buyer])), [buyerRows]);
+  const selectedBuyerRows = useMemo(
+    () => buyerQuery.data?.pages.flatMap((page) => page.selected_buyers) ?? [],
+    [buyerQuery.data?.pages],
+  );
+  const buyerCache = useMemo(
+    () => new Map([...selectedBuyerRows, ...buyerRows].map((buyer) => [buyer.id, buyer])),
+    [buyerRows, selectedBuyerRows],
+  );
   const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
   const selectedBuyerSummary = useMemo(() => {
     if (selectedBuyerIds.length === 0) return 'Select buyers';
@@ -415,31 +424,14 @@ export function CustomerGroupFormSheet({
                             </div>
                           ) : buyerRows.length > 0 ? (
                             <div className="space-y-0.5">
-                              {buyerRows.map((buyer) => {
-                                const selected = selectedBuyerSet.has(buyer.id);
-                                return (
-                                  <button
-                                    key={buyer.id}
-                                    type="button"
-                                    onClick={() => toggleBuyer(buyer.id)}
-                                    className={[
-                                      'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-                                      selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
-                                    ].join(' ')}
-                                  >
-                                    <div className="min-w-0">
-                                      <p className="text-base font-medium text-cream-900">{buyer.business_name}</p>
-                                      <p className="mt-0.5 text-sm text-cream-700">
-                                        {buyer.geography_label}
-                                        {buyer.tier ? ` · Tier ${buyer.tier}` : ''}
-                                      </p>
-                                    </div>
-                                    <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
-                                      {selected ? 'Selected' : 'Add'}
-                                    </span>
-                                  </button>
-                                );
-                              })}
+                              {buyerRows.map((buyer) => (
+                                <BuyerPickerRow
+                                  key={buyer.id}
+                                  buyer={buyer}
+                                  selected={selectedBuyerSet.has(buyer.id)}
+                                  onClick={() => toggleBuyer(buyer.id)}
+                                />
+                              ))}
                               {buyerQuery.hasNextPage ? <div ref={sentinelRef} className="h-4" /> : null}
                             </div>
                           ) : (

@@ -58,7 +58,7 @@ export default function RootLayout({
             </AuthProvider>
           </ReactQueryProvider>
         </PostHogProvider>
-        <SpeedInsights />
+        <SpeedInsights sampleRate={0.8} />
         <Analytics />
       </body>
     </html>

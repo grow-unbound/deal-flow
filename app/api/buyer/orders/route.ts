@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
@@ -361,6 +362,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     });
   } catch (error) {
     console.error('[POST /api/buyer/orders] unexpected error:', error);
+    Sentry.captureException(error, { tags: { area: 'order_placement' } });
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

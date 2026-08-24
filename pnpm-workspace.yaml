@@ -1,5 +1,6 @@
 allowBuilds:
   '@ampproject/toolbox-optimizer': set this to true or false
+  '@sentry/cli': true
   core-js: true
   es5-ext: set this to true or false
   esbuild: true
