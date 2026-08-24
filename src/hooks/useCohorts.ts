@@ -252,6 +252,8 @@ export interface CohortComposerBuyer {
   gmv_90d: number;
   initials: string;
   hue: 'teal' | 'ember' | 'cream';
+  buyer_app_enabled?: boolean;
+  overdue_amount?: number;
 }
 
 export interface CohortComposerResponse {
@@ -271,6 +273,7 @@ export interface CohortComposerResponse {
 
 export interface CohortComposerBuyerResultsetResponse {
   buyers: CohortComposerBuyer[];
+  selected_buyers: CohortComposerBuyer[];
   total: number;
   nextCursor: string | null;
 }
@@ -280,9 +283,12 @@ export interface CohortComposerBuyerFilters {
   geographies?: string[];
   lastOrderBucket?: string;
   gmvBuckets?: string[];
+  selectedIds?: string[];
   limit?: number;
   enabled?: boolean;
 }
+
+const SELECTED_BUYERS_LIMIT = 250;
 
 export interface CohortMembersResponse {
   members: Array<{
@@ -430,11 +436,12 @@ export function useCohortComposerBuyers({
   geographies = [],
   lastOrderBucket = 'anytime',
   gmvBuckets = [],
+  selectedIds = [],
   limit = 50,
   enabled = true,
 }: CohortComposerBuyerFilters) {
   return useInfiniteQuery({
-    queryKey: ['cohort-composer-buyers', query?.trim() ?? '', geographies, lastOrderBucket, gmvBuckets, limit],
+    queryKey: ['cohort-composer-buyers', query?.trim() ?? '', geographies, lastOrderBucket, gmvBuckets, selectedIds, limit],
     queryFn: async ({ pageParam, signal }): Promise<CohortComposerBuyerResultsetResponse> => {
       const params = new URLSearchParams();
       params.set('limit', String(limit));
@@ -443,6 +450,8 @@ export function useCohortComposerBuyers({
       if (pageParam) params.set('cursor', pageParam as string);
       appendArrayParam(params, 'geography', geographies);
       appendArrayParam(params, 'gmv', gmvBuckets);
+      // Hard-capped: never send an unbounded id list (one tenant already has ~11k buyers).
+      appendArrayParam(params, 'selected_id', selectedIds.slice(0, SELECTED_BUYERS_LIMIT));
       const res = await apiFetch(`/api/cohorts/composer/buyers?${params.toString()}`, { signal });
       if (!res.ok) {
         throw new Error('Failed to fetch customer group buyers');

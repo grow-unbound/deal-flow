@@ -321,8 +321,9 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                                     <div className="min-w-0">
                                       <p className="text-base font-medium text-cream-900">{product.display_name}</p>
                                       <p className="mt-0.5 text-sm text-cream-700">
-                                        {product.brand_name}
-                                        {product.internal_sku ? ` · ${product.internal_sku}` : ''}
+                                        {product.internal_sku ?? '—'}
+                                        {product.category_name ? ` · ${product.category_name}` : ''}
+                                        {product.base_selling_price != null ? ` · ₹${Math.round(product.base_selling_price).toLocaleString('en-IN')}` : ''}
                                       </p>
                                     </div>
                                     <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">

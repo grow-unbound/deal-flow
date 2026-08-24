@@ -26,6 +26,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch } from '@/lib/api-fetch';
+import { useCohortComposerBuyers, type CohortComposerBuyer } from '@/hooks/useCohorts';
+import { BuyerRowContent } from '@/components/seller/shared/BuyerPickerRow';
 import {
   usePriceListAssignments,
   useAddAssignment,
@@ -39,10 +41,7 @@ interface AssignmentsPanelProps {
 
 type TargetType = 'cohort' | 'buyer' | 'all_buyers';
 
-interface Buyer {
-  id: string;
-  business_name: string;
-}
+type Buyer = CohortComposerBuyer;
 
 interface Cohort {
   id: string;
@@ -50,22 +49,6 @@ interface Cohort {
 }
 
 const BUYER_SEARCH_LIMIT = 8;
-
-function useBuyers(query: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ['price-list-assignment-buyers', query.trim()],
-    queryFn: async (): Promise<{ buyers: Buyer[] }> => {
-      const params = new URLSearchParams({ limit: String(BUYER_SEARCH_LIMIT) });
-      if (query.trim()) params.set('q', query.trim());
-      const res = await apiFetch(`/api/tenant/buyers/search?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to search buyers');
-      return res.json();
-    },
-    enabled,
-    staleTime: 30_000,
-    placeholderData: (previous) => previous,
-  });
-}
 
 function useCohorts() {
   return useQuery({
@@ -111,13 +94,17 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
 
   const { data: assignmentsData, isLoading: assignmentsLoading } =
     usePriceListAssignments(priceListId);
-  const buyersQuery = useBuyers(debouncedBuyerSearch, targetType === 'buyer' && buyerPickerOpen);
+  const buyersQuery = useCohortComposerBuyers({
+    query: debouncedBuyerSearch,
+    limit: BUYER_SEARCH_LIMIT,
+    enabled: targetType === 'buyer' && buyerPickerOpen,
+  });
   const { data: cohortsData } = useCohorts();
   const addAssignment = useAddAssignment(priceListId);
   const deleteAssignment = useDeleteAssignment(priceListId);
 
   const assignments = assignmentsData?.assignments ?? [];
-  const buyers = buyersQuery.data?.buyers ?? [];
+  const buyers = buyersQuery.data?.pages[0]?.buyers ?? [];
   const cohorts = cohortsData?.cohorts ?? [];
   const selectedBuyer = targetId ? buyerCache[targetId] : undefined;
   const buyerResultsUpdating = buyerSearch.trim() !== debouncedBuyerSearch.trim()
@@ -247,10 +234,10 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
                               setTargetId(buyer.id);
                               setBuyerPickerOpen(false);
                             }}
-                            className="flex cursor-pointer items-center justify-between"
+                            className="flex cursor-pointer items-center justify-between gap-2"
                           >
-                            <span>{buyer.business_name}</span>
-                            {targetId === buyer.id && <Check size={14} className="text-teal-600" />}
+                            <BuyerRowContent buyer={buyer} size="compact" />
+                            {targetId === buyer.id && <Check size={14} className="shrink-0 text-teal-600" />}
                           </CommandItem>
                         ))}
                       </CommandGroup>
