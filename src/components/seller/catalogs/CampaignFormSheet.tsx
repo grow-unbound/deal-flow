@@ -23,9 +23,10 @@ import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { CampaignFormPayloadSchema, type CampaignFormPayload } from '@/lib/zod';
 import { isoDateString } from '@/lib/date-utils';
-import { useTenantCohortOptions } from '@/hooks/useCohorts';
-import { useCatalogComposerBuyerPicker, useCatalogComposerProducts, useSaveSimpleCatalog } from '@/hooks/useCatalogs';
+import { useCohortComposerBuyers, useTenantCohortOptions } from '@/hooks/useCohorts';
+import { useCatalogComposerProducts, useSaveSimpleCatalog } from '@/hooks/useCatalogs';
 import { usePriceLists } from '@/hooks/usePriceLists';
+import { BuyerPickerRow } from '@/components/seller/shared/BuyerPickerRow';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { uploadEntityFile } from '@/lib/upload-client';
 import {
@@ -158,9 +159,10 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
   const selectedProductIds = form.watch('selected_product_ids') ?? [];
   const initialBuyerTargetMode = defaultValues?.buyer_target_mode ?? 'customer_group';
   const initialProductMembershipMode = defaultValues?.product_membership_mode ?? 'manual';
-  const buyerPickerQuery = useCatalogComposerBuyerPicker({
+  const buyerPickerQuery = useCohortComposerBuyers({
     query: buyerSearch,
     selectedIds: selectedBuyerIds,
+    limit: 30,
     enabled: buyerTargetMode === 'manual' && (buyerPickerOpen || selectedBuyerIds.length > 0),
   });
   const buyerRows = useMemo(
@@ -601,37 +603,20 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                 </div>
                               ) : buyerRows.length > 0 ? (
                                 <div className="space-y-0.5">
-                                  {buyerRows.map((buyer) => {
-                                    const selected = selectedBuyerSet.has(buyer.id);
-                                    return (
-                                      <button
-                                        key={buyer.id}
-                                        type="button"
-                                        onClick={() => form.setValue(
-                                          'buyer_ids',
-                                          selected
-                                            ? selectedBuyerIds.filter((id) => id !== buyer.id)
-                                            : [...selectedBuyerIds, buyer.id],
-                                          { shouldDirty: true, shouldTouch: true, shouldValidate: true },
-                                        )}
-                                        className={[
-                                          'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-                                          selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
-                                        ].join(' ')}
-                                      >
-                                        <div className="min-w-0">
-                                          <p className="text-base font-medium text-cream-900">{buyer.business_name}</p>
-                                          <p className="mt-0.5 text-sm text-cream-700">
-                                            {buyer.city ?? 'Unknown city'}
-                                            {` · ₹${Math.round(buyer.spend_mtd).toLocaleString('en-IN')} spend MTD`}
-                                          </p>
-                                        </div>
-                                        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
-                                          {selected ? 'Selected' : 'Add'}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                                  {buyerRows.map((buyer) => (
+                                    <BuyerPickerRow
+                                      key={buyer.id}
+                                      buyer={buyer}
+                                      selected={selectedBuyerSet.has(buyer.id)}
+                                      onClick={() => form.setValue(
+                                        'buyer_ids',
+                                        selectedBuyerSet.has(buyer.id)
+                                          ? selectedBuyerIds.filter((id) => id !== buyer.id)
+                                          : [...selectedBuyerIds, buyer.id],
+                                        { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                      )}
+                                    />
+                                  ))}
                                   {buyerPickerQuery.hasNextPage ? <div ref={buyerSentinelRef} className="h-4" /> : null}
                                 </div>
                               ) : (
@@ -776,8 +761,9 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                         <div className="min-w-0">
                                           <p className="text-base font-medium text-cream-900">{product.display_name}</p>
                                           <p className="mt-0.5 text-sm text-cream-700">
-                                            {product.brand_name}
-                                            {product.internal_sku ? ` · ${product.internal_sku}` : ''}
+                                            {product.internal_sku ?? '—'}
+                                            {product.category_name ? ` · ${product.category_name}` : ''}
+                                            {product.base_selling_price != null ? ` · ₹${Math.round(product.base_selling_price).toLocaleString('en-IN')}` : ''}
                                           </p>
                                         </div>
                                         <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">

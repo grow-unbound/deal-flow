@@ -489,4 +489,63 @@ describe('composer resultset APIs', () => {
     expect(result.total).toBe(1);
     expect(result.nextCursor).toBeNull();
   });
+
+  it('maps buyer_app_enabled and overdue_amount, and passes p_ids through for a selected-buyer lookup', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{
+        buyer_id: '88888888-8888-4888-8888-888888888888',
+        business_name: 'Overdue Traders',
+        contact_name: null,
+        external_ref: 'B-OVERDUE',
+        geography: { city: 'Pune', state: 'MH' },
+        tier: 'A',
+        payment_terms_days: 30,
+        last_order_at: '2026-06-01T00:00:00.000Z',
+        outstanding_dues: 5000,
+        gmv_90d: 12000,
+        mtd_spend: 0,
+        orders_mtd: 0,
+        total_count: 1,
+        buyer_app_enabled: true,
+        overdue_amount: 5000,
+      }],
+      error: null,
+    });
+    const db = {
+      schema: () => ({
+        from: (table: string) => new BuyerResultsetQueryBuilder(table),
+        rpc,
+      }),
+    };
+
+    const result = await getCohortComposerBuyerResultset(db, 'tenant-1', {
+      ids: ['88888888-8888-4888-8888-888888888888'],
+    });
+
+    expect(rpc).toHaveBeenCalledWith('search_cohort_composer_buyers', expect.objectContaining({
+      p_tenant_id: 'tenant-1',
+      p_ids: ['88888888-8888-4888-8888-888888888888'],
+    }));
+    expect(result.buyers[0]).toMatchObject({
+      buyer_app_enabled: true,
+      overdue_amount: 5000,
+    });
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('hard-caps the ids option at 250 before it reaches the RPC (never an unbounded id list)', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    const db = {
+      schema: () => ({
+        from: (table: string) => new BuyerResultsetQueryBuilder(table),
+        rpc,
+      }),
+    };
+    const hugeIdList = Array.from({ length: 500 }, (_, i) => `id-${i}`);
+
+    await getCohortComposerBuyerResultset(db, 'tenant-1', { ids: hugeIdList });
+
+    const calledArgs = rpc.mock.calls[0][1] as { p_ids: string[] };
+    expect(calledArgs.p_ids).toHaveLength(250);
+  });
 });

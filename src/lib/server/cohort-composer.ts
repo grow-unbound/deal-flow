@@ -50,6 +50,9 @@ export type CohortComposerBuyerRow = {
   gmv_90d: number;
   initials: string;
   hue: 'teal' | 'ember' | 'cream';
+  /** Only populated by getCohortComposerBuyerResultset (the shared buyer-picker path). */
+  buyer_app_enabled?: boolean;
+  overdue_amount?: number;
 };
 
 export type CohortComposerFilterOption = {
@@ -515,14 +518,23 @@ export async function getCohortComposerBuyerResultset(
     gmvBuckets?: Array<'gmv_0' | 'gmv_1_50000' | 'gmv_50001_200000' | 'gmv_200001_500000' | 'gmv_500001_plus'>;
     limit?: number;
     cursor?: string | null;
+    /**
+     * Bypass query/geography/bucket filtering and return exactly these buyers (still
+     * tenant/active-scoped). Used only to preload selected-buyer rows for the picker —
+     * always hard-capped at 250 by the caller (route + hook), never an unbounded list.
+     */
+    ids?: string[];
   } = {},
 ): Promise<CohortComposerBuyerResultset> {
   const { currentStartIso, nextStartIso } = getIstMonthBounds();
   const ninetyDaysAgoDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentMonthDate = currentStartIso.slice(0, 10);
   const nextMonthDate = nextStartIso.slice(0, 10);
-  const limit = Math.max(1, Math.min(options.limit ?? PAGE_SIZE.COMPOSER, PAGE_SIZE.MAX));
-  const offset = parseOffsetCursor(options.cursor);
+  const ids = options.ids?.slice(0, 250);
+  const limit = ids?.length
+    ? ids.length
+    : Math.max(1, Math.min(options.limit ?? PAGE_SIZE.COMPOSER, PAGE_SIZE.MAX));
+  const offset = ids?.length ? 0 : parseOffsetCursor(options.cursor);
   const { data, error } = await db.schema('app').rpc('search_cohort_composer_buyers', {
     p_tenant_id: tenantId,
     p_query: options.q?.trim() || null,
@@ -536,6 +548,7 @@ export async function getCohortComposerBuyerResultset(
     p_next_month_start: nextMonthDate,
     p_limit: limit,
     p_offset: offset,
+    p_ids: ids?.length ? ids : null,
   });
 
   if (error) throw error;
@@ -554,6 +567,8 @@ export async function getCohortComposerBuyerResultset(
     mtd_spend: number | null;
     orders_mtd: number | null;
     total_count: number | null;
+    buyer_app_enabled: boolean | null;
+    overdue_amount: number | null;
   }>;
   const total = Number(pageRows[0]?.total_count ?? 0);
 
@@ -578,12 +593,14 @@ export async function getCohortComposerBuyerResultset(
         gmv_90d: Number(Number(buyer.gmv_90d ?? 0).toFixed(2)),
         initials: getInitials(buyer.business_name),
         hue: (offset + index) % 3 === 0 ? 'teal' : (offset + index) % 3 === 1 ? 'ember' : 'cream',
+        buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
+        overdue_amount: Number(buyer.overdue_amount ?? 0),
       } satisfies CohortComposerBuyerRow;
     }),
     total,
-    nextCursor: offset + pageRows.length < total
-      ? String(offset + pageRows.length)
-      : null,
+    nextCursor: ids?.length || offset + pageRows.length >= total
+      ? null
+      : String(offset + pageRows.length),
   };
 }
 

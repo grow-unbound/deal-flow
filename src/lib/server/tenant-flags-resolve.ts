@@ -1,7 +1,6 @@
 // Node-only: calls posthog-node (not Edge-Runtime compatible) and Supabase.
 // Only import this from Node-runtime contexts (Route Handlers, Server Components,
-// API routes) — never from middleware.ts, which runs on Edge and can't bundle
-// posthog-node. middleware.ts self-fetches app/api/tenant/flags-refresh instead.
+// middleware.ts — which runs on the Node.js runtime, not Edge).
 import { PostHog } from 'posthog-node';
 import { FEATURE_FLAGS } from '@/constants';
 import type { TenantCreateFlags, TenantFlagsData } from '@/lib/server/tenant-flags-token';

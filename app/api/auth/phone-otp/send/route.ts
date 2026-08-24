@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
 import { findAllLoginCandidates, findBuyerLoginCandidates } from '@/lib/server/buyer-access';
 import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
@@ -129,6 +130,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseBody);
   } catch (err) {
     console.error('[phone-otp/send] unexpected error:', err);
+    Sentry.captureException(err, { tags: { area: 'whatsapp_otp' } });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
