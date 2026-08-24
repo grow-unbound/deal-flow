@@ -1,5 +1,20 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+
+// Dynamic (not static) import — bundling @sentry/nextjs into middleware's
+// compile graph is what pushed its dev compile from ~1s to 7s+. Sentry's
+// server/edge SDK is skipped entirely in dev (see instrumentation.ts) so
+// these tag calls would be no-ops there anyway; the dynamic import also lets
+// Turbopack defer/skip compiling this chunk in dev instead of eagerly
+// bundling it on every middleware compile.
+const isDev = process.env.NODE_ENV === 'development';
+async function tagSentryRequestContext(tenantId: string | null, role: string | null, pathname: string) {
+  if (isDev) return;
+  const Sentry = await import('@sentry/nextjs');
+  Sentry.setTag('tenant_id', tenantId ?? 'unknown');
+  if (role) Sentry.setTag('role', role);
+  Sentry.setTag('route_group', pathname.startsWith('/buy') ? 'buyer' : 'seller');
+}
 import {
   TENANT_FLAGS_COOKIE,
   TENANT_FLAGS_HEADER,
@@ -133,6 +148,11 @@ export async function middleware(request: NextRequest) {
   const locationIds = Array.isArray(claims.location_ids)
     ? claims.location_ids.filter((value): value is string => typeof value === 'string')
     : null;
+
+  // Attach the four highest-value Sentry tags here since this is the one place
+  // every authenticated request already resolves verified tenant/role claims —
+  // avoids threading tagging logic through every route handler individually.
+  await tagSentryRequestContext(tenantId, role, pathname);
 
   // Forward verified claims as headers; server components read these instead
   // of trusting any client-supplied tenant_id values.

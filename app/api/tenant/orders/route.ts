@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
@@ -739,6 +740,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[POST /api/tenant/orders]', error);
+    Sentry.captureException(error, { tags: { area: 'order_placement' } });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
