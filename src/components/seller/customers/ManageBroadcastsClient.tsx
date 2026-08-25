@@ -250,15 +250,33 @@ function ManageBroadcastsInner({
           {broadcasts.map((broadcast) => (
             <tr
               key={broadcast.id}
-              className="border-b border-cream-300 bg-white"
+              className="cursor-pointer border-b border-cream-300 bg-white hover:bg-cream-50"
             >
-              <td className="px-3 py-3 text-sm text-cream-800">{formatBroadcastDate(broadcast)}</td>
-              <td className="px-3 py-3 text-sm font-medium text-cream-900">{broadcast.name}</td>
               <td className="px-3 py-3 text-sm text-cream-800">
-                {broadcast.template_name ?? '—'}
+                <Link href={`/customers/broadcasts/${broadcast.id}`} className="block">
+                  {formatBroadcastDate(broadcast)}
+                </Link>
               </td>
-              <td className="px-3 py-3 text-sm text-cream-800">{broadcast.target_label}</td>
-              <td className="px-3 py-3 text-sm text-cream-800">{formatDeliveryStatus(broadcast)}</td>
+              <td className="px-3 py-3 text-sm font-medium text-cream-900">
+                <Link href={`/customers/broadcasts/${broadcast.id}`} className="block">
+                  {broadcast.name}
+                </Link>
+              </td>
+              <td className="px-3 py-3 text-sm text-cream-800">
+                <Link href={`/customers/broadcasts/${broadcast.id}`} className="block">
+                  {broadcast.template_name ?? '—'}
+                </Link>
+              </td>
+              <td className="px-3 py-3 text-sm text-cream-800">
+                <Link href={`/customers/broadcasts/${broadcast.id}`} className="block">
+                  {broadcast.target_label}
+                </Link>
+              </td>
+              <td className="px-3 py-3 text-sm text-cream-800">
+                <Link href={`/customers/broadcasts/${broadcast.id}`} className="block">
+                  {formatDeliveryStatus(broadcast)}
+                </Link>
+              </td>
             </tr>
           ))}
         </LandingTable>

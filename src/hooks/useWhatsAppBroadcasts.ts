@@ -92,6 +92,35 @@ export interface AudiencePreviewResponse {
   credits_per_message: number;
   estimated_credits: number;
   estimated_inr: number;
+  daily_cap: number;
+  sent_today: number;
+  remaining_quota_today: number;
+}
+
+export type BroadcastMessageStatusBucket = 'all' | 'notified' | 'not_notified' | 'failed' | 'opted_out';
+
+export interface BroadcastMessageRow {
+  id: string;
+  buyer_id: string | null;
+  buyer_name: string | null;
+  recipient_phone: string;
+  status: string;
+  failure_reason: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface BroadcastMessagesResponse {
+  broadcast_id: string;
+  broadcast_name: string;
+  bucket_counts: Record<BroadcastMessageStatusBucket, number>;
+  messages: BroadcastMessageRow[];
+  total: number;
+  next_offset: number | null;
+  limit: number;
+  offset: number;
 }
 
 export interface WhatsAppPlatformStatus {
@@ -254,6 +283,51 @@ export function useCreateWhatsAppBroadcast() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not create broadcast');
+    },
+  });
+}
+
+export function useBroadcastMessages(
+  broadcastId: string,
+  bucket: BroadcastMessageStatusBucket,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: [...BROADCASTS_QUERY_KEY, 'messages', broadcastId, bucket],
+    queryFn: async (): Promise<BroadcastMessagesResponse> => {
+      const searchParams = new URLSearchParams({ status: bucket, limit: '200' });
+      const res = await apiFetch(`/api/whatsapp/broadcasts/${broadcastId}/messages?${searchParams.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch broadcast recipients');
+      return res.json() as Promise<BroadcastMessagesResponse>;
+    },
+    enabled: enabled && Boolean(broadcastId),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useRetargetBroadcast(broadcastId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (includeFailed: boolean) => {
+      const res = await apiPost(`/api/whatsapp/broadcasts/${broadcastId}/retarget`, { include_failed: includeFailed });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to re-target broadcast');
+      }
+      return res.json() as Promise<{
+        broadcast: { id: string; name: string; status: string };
+        recipient_count: number;
+      }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: BROADCASTS_QUERY_KEY });
+      toast.success('Follow-up broadcast created for not-notified buyers');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not re-target broadcast');
     },
   });
 }

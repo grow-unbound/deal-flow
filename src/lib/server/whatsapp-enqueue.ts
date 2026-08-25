@@ -222,3 +222,32 @@ export async function triggerWhatsAppDispatch(
 export function triggerWhatsAppDispatchSoon(messageIds: Array<string | null | undefined>): void {
   void triggerWhatsAppDispatch(messageIds);
 }
+
+/**
+ * Fire-and-forget kick of the queue-sweep worker, for the overflow beyond
+ * whatsapp-dispatch-worker's initial batch (broadcasts larger than one
+ * dispatch batch). Event-triggered, not polled: this is what lets the
+ * standing sweep cron stay a rare low-frequency backstop (see
+ * app.ensure_whatsapp_queue_sweep_cron_scheduled) instead of a tight poll —
+ * the common case (a broadcast just got created) drains immediately here,
+ * not on the next cron tick.
+ */
+export function triggerWhatsAppQueueSweepSoon(): void {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!supabaseUrl) return;
+
+  const url = `${supabaseUrl}/functions/v1/whatsapp-queue-sweep-worker`;
+  void fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(anonKey ? { 'Authorization': `Bearer ${anonKey}` } : {}),
+    },
+    body: '{}',
+  }).catch((err) => {
+    console.error('[whatsapp-enqueue] queue sweep trigger failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
