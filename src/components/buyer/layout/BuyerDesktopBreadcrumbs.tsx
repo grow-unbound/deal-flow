@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { useBuyerBrands, useBuyerCategories, useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import { useBuyerEffectivePathname } from '@/hooks/useBuyerRailPathnameOverride';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+import { isBuyerCampaignShareRoute, shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
 
 interface Crumb {
   label: string;
@@ -15,10 +15,12 @@ interface Crumb {
 
 function buildCrumbs(
   pathname: string,
+  hasShareToken: boolean,
   labels: { category?: string; categoryId?: string; brand?: string; product?: string },
 ): Crumb[] {
   const crumbs: Crumb[] = [{ label: 'Home', href: '/buy/home' }];
 
+  if (isBuyerCampaignShareRoute(pathname, hasShareToken)) return [...crumbs, { label: 'Campaign browse' }];
   if (pathname === '/buy/orders') return [...crumbs, { label: 'Orders' }];
   if (pathname.startsWith('/buy/orders/')) return [...crumbs, { label: 'Orders', href: '/buy/orders' }, { label: 'Order details' }];
   if (pathname.startsWith('/buy/estimates/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=enquiries' }, { label: 'Enquiry details' }];
@@ -44,7 +46,9 @@ function buildCrumbs(
 
 export function BuyerDesktopBreadcrumbs() {
   const pathname = useBuyerEffectivePathname(usePathname());
-  if (!shouldShowBuyerDesktopBreadcrumbs(pathname)) return null;
+  const searchParams = useSearchParams();
+  const hasShareToken = Boolean(searchParams?.get('share_token'));
+  if (!shouldShowBuyerDesktopBreadcrumbs(pathname) && !isBuyerCampaignShareRoute(pathname, hasShareToken)) return null;
 
   const categoryId = pathname.startsWith('/buy/home/category/') ? pathname.split('/').at(-1) ?? '' : '';
   const brandId = pathname.startsWith('/buy/home/brand/') ? pathname.split('/').at(-1) ?? '' : '';
@@ -52,7 +56,7 @@ export function BuyerDesktopBreadcrumbs() {
   const { data: categories } = useBuyerCategories();
   const { data: brands } = useBuyerBrands();
   const productDetail = useBuyerProductDetail(productId);
-  const crumbs = buildCrumbs(pathname, {
+  const crumbs = buildCrumbs(pathname, hasShareToken, {
     category:
       categories?.find((category) => category.id === categoryId)?.name
       ?? productDetail.item?.category_name

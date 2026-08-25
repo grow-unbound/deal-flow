@@ -25,7 +25,7 @@ export async function GET(
   const { data: catalog, error: catalogError } = await db
     .schema('app')
     .from('campaigns')
-    .select('id, name, tenant_id, status, valid_to')
+    .select('id, name, message, tenant_id, status, valid_to')
     .eq('share_token', share_token)
     .eq('status', 'published')
     .is('deleted_at', null)
@@ -71,6 +71,7 @@ export async function GET(
     return NextResponse.json({
       campaign_id: catalog.id,
       name: catalog.name,
+      message: catalog.message,
       products_count: 0,
       items: [],
     }, { headers: BUYER_CACHE_PRICED });
@@ -112,6 +113,7 @@ export async function GET(
   return NextResponse.json({
     campaign_id: catalog.id,
     name: catalog.name,
+    message: catalog.message,
     valid_until: catalog.valid_to,
     products_count: guestItems.length,
     items: guestItems,
