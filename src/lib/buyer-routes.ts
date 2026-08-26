@@ -44,6 +44,16 @@ export function isBuyerLandingRoute(pathname: string): boolean {
   return (BUYER_LANDING_ROUTES as readonly string[]).includes(pathname);
 }
 
+/**
+ * `/buy/home?share_token=...` is pathname-identical to the plain Home landing
+ * tab, but it's a single-campaign deep view (WhatsApp/shared-link entry
+ * point), not the browse-everything landing — desktop breadcrumbs should
+ * treat it like `/buy/home/list/[id]`.
+ */
+export function isBuyerCampaignShareRoute(pathname: string, hasShareToken: boolean): boolean {
+  return pathname === '/buy/home' && hasShareToken;
+}
+
 /** Desktop breadcrumbs appear on deep buyer pages, plus the Orders/Profile landing tabs (never Home). */
 const BUYER_BREADCRUMB_LANDING_ROUTES = ['/buy/orders', '/buy/profile'] as const;
 

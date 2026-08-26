@@ -91,5 +91,8 @@ verify_jwt = false
 [functions.whatsapp-dispatch-worker]
 verify_jwt = false
 
+[functions.whatsapp-queue-sweep-worker]
+verify_jwt = false
+
 [functions.whatsapp-inbound-webhook]
 verify_jwt = false

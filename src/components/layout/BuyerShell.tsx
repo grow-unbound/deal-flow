@@ -1,9 +1,10 @@
 'use client';
 
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  isBuyerCampaignShareRoute,
   isBuyerCartPillRoute,
   isBuyerChromelessRoute,
   isBuyerDeepRoute,
@@ -33,12 +34,15 @@ function BuyerShellMain({
   scrollRootRef: React.RefCallback<HTMLDivElement>;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hasShareToken = Boolean(searchParams?.get('share_token'));
   const router = useRouter();
   const queryClient = useQueryClient();
   const isDeep = isBuyerDeepRoute(pathname);
   const isLanding = isBuyerLandingRoute(pathname);
   const isChromeless = isBuyerChromelessRoute(pathname);
-  const showDesktopBreadcrumbs = shouldShowBuyerDesktopBreadcrumbs(pathname);
+  const showDesktopBreadcrumbs =
+    shouldShowBuyerDesktopBreadcrumbs(pathname) || isBuyerCampaignShareRoute(pathname, hasShareToken);
   const { tabBarVisible } = useBuyerScrollChromeState();
   const { triggerRefresh } = useBuyerRealtimeContext();
   const showTabBarPadding = !isChromeless && (!isLanding || tabBarVisible);

@@ -5,10 +5,8 @@ import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { WhatsAppBroadcastCreateSchema } from '@/lib/zod';
 import { getPostHogClient } from '@/lib/posthog-server';
-import { resolveBroadcastAudience } from '@/lib/server/whatsapp-broadcast-audience';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { buildBroadcastMessageQueue } from '@/lib/server/whatsapp-broadcast-send';
-import { enqueueWhatsAppMessage, triggerWhatsAppDispatch } from '@/lib/server/whatsapp-enqueue';
+import { createBroadcastRow } from '@/lib/server/whatsapp-broadcast-create';
 
 const BROADCAST_LIST_LIMIT_DEFAULT = 50;
 const BROADCAST_LIST_LIMIT_MAX = 100;
@@ -387,48 +385,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const eligibleBuyerIds = await resolveBroadcastAudience(db, {
+    const { broadcast, recipientCount, messageIds } = await createBroadcastRow(db, {
       tenantId: claims.tenant_id,
-      targetType: input.target_type,
-      targetCohortId: input.target_cohort_id,
-      targetFilter: input.target_filter,
-      targetBuyerIds: input.target_buyer_ids,
-    });
-
-    const { data: broadcast, error: insertError } = await db
-      .schema('app')
-      .from('whatsapp_broadcasts')
-      .insert({
-        tenant_id: claims.tenant_id,
-        name: input.name,
-        whatsapp_template_id: input.whatsapp_template_id,
-        use_case: input.use_case,
-        target_type: input.target_type,
-        target_cohort_id: input.target_cohort_id ?? null,
-        target_filter: input.target_filter ?? null,
-        target_buyer_ids: input.target_buyer_ids ?? null,
-        linked_campaign_id: input.linked_campaign_id ?? null,
-        variable_bindings: input.variable_bindings ?? {},
-        status: input.scheduled_for ? 'scheduled' : 'sending',
-        scheduled_for: input.scheduled_for ?? null,
-        estimated_recipient_count: eligibleBuyerIds.length,
-        actual_recipient_count: 0,
-        daily_cap_at_creation: null,
-        created_by: claims.sub,
-        updated_by: claims.sub,
-      })
-      .select('id, name, status, estimated_recipient_count, actual_recipient_count, scheduled_for, created_at')
-      .single();
-
-    if (insertError) {
-      console.error('[POST /api/whatsapp/broadcasts] insert error:', insertError.code, insertError.message);
-      return NextResponse.json({ error: 'Failed to create broadcast' }, { status: 500 });
-    }
-
-    const queueInputs = await buildBroadcastMessageQueue(db, {
-      tenantId: claims.tenant_id,
-      whatsappBroadcastId: broadcast.id as string,
-      buyerIds: eligibleBuyerIds,
+      createdBy: claims.sub,
+      name: input.name,
       template: template as {
         id: string;
         meta_template_name: string;
@@ -439,33 +399,15 @@ export async function POST(request: NextRequest) {
         variables: Array<{ key: string; description?: string }>;
         button_config: { type?: 'url'; variable_source?: string } | null;
       },
+      useCase: input.use_case,
+      targetType: input.target_type,
+      targetCohortId: input.target_cohort_id,
+      targetFilter: input.target_filter,
+      targetBuyerIds: input.target_buyer_ids,
+      linkedCampaignId: input.linked_campaign_id,
       variableBindings: input.variable_bindings ?? {},
-      linkedCampaignId: input.linked_campaign_id ?? null,
-      scheduledSendAt: input.scheduled_for ?? null,
+      scheduledFor: input.scheduled_for,
     });
-
-    const messageIds: string[] = [];
-    for (const queueInput of queueInputs) {
-      const result = await enqueueWhatsAppMessage(queueInput);
-      if (!result.enqueued) {
-        throw new Error('Failed to enqueue one or more broadcast messages');
-      }
-      if (result.messageId) messageIds.push(result.messageId);
-    }
-
-    await db
-      .schema('app')
-      .from('whatsapp_broadcasts')
-      .update({
-        actual_recipient_count: queueInputs.length,
-        estimated_recipient_count: queueInputs.length,
-        updated_by: claims.sub,
-      })
-      .eq('id', broadcast.id);
-
-    if (!input.scheduled_for) {
-      await triggerWhatsAppDispatch(messageIds);
-    }
 
     getPostHogClient()?.capture({
       distinctId: claims.sub ?? claims.tenant_id,
@@ -480,7 +422,7 @@ export async function POST(request: NextRequest) {
         linked_campaign_id: input.linked_campaign_id ?? null,
         template_id: input.whatsapp_template_id,
         scheduled: Boolean(input.scheduled_for),
-        recipient_count: queueInputs.length,
+        recipient_count: recipientCount,
         message_count: messageIds.length,
         status: input.scheduled_for ? 'scheduled' : 'sending',
         role: claims.role,
@@ -488,12 +430,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      broadcast: {
-        ...broadcast,
-        actual_recipient_count: queueInputs.length,
-        estimated_recipient_count: queueInputs.length,
-      },
-      recipient_count: queueInputs.length,
+      broadcast,
+      recipient_count: recipientCount,
       note: input.scheduled_for
         ? 'Broadcast scheduled. Messages are queued and will start sending at the selected time.'
         : 'Broadcast queued. Messages are now in the WhatsApp dispatch pipeline.',
