@@ -288,6 +288,13 @@ export const BuyerMembershipRulesSchema = z.object({
   buyer_app_status: BuyerAppStatusSchema.optional(),
   demand_status_this_quarter: DemandThisQuarterStatusSchema.optional(),
   invoice_status_this_quarter: InvoiceThisQuarterStatusSchema.optional(),
+  // Picker quick-filter vocabulary (src/lib/picker-filters.ts) -- additive. The 3 fields above
+  // stay untouched for already-saved rules.
+  quick_filters: z.array(z.string()).optional(),
+  status: z.enum(['active', 'dormant', 'inactive']).optional(),
+  buyer_app: z.enum(['enabled', 'not_enabled']).optional(),
+  outstanding: z.enum(['has_dues', 'overdue']).optional(),
+  sales_location_id: z.string().uuid().optional(),
 });
 export type BuyerMembershipRules = z.infer<typeof BuyerMembershipRulesSchema>;
 
@@ -297,17 +304,14 @@ export const ProductMembershipRulesSchema = z.object({
   category_names: z.array(z.string()).nullable().optional().transform((value) => value ?? []),
   stock_status: StockStatusSchema.optional(),
   sales_status_this_quarter: SalesThisQuarterStatusSchema.optional(),
+  // Picker quick-filter vocabulary -- additive, see note above.
+  quick_filters: z.array(z.string()).optional(),
+  stock: z.enum(['in_stock', 'low_stock', 'out_of_stock']).optional(),
+  status: z.enum(['active', 'dormant', 'inactive']).optional(),
+  brand_ids: z.array(z.string().uuid()).optional(),
+  category_ids: z.array(z.string().uuid()).optional(),
 });
 export type ProductMembershipRules = z.infer<typeof ProductMembershipRulesSchema>;
-
-export const MembershipEntityTypeSchema = z.enum(['cohort', 'price_list', 'campaign_buyers', 'campaign_products']);
-export type MembershipEntityType = z.infer<typeof MembershipEntityTypeSchema>;
-
-export const MembershipPreviewRequestSchema = z.object({
-  entity_type: MembershipEntityTypeSchema,
-  rules: z.union([BuyerMembershipRulesSchema, ProductMembershipRulesSchema]),
-});
-export type MembershipPreviewRequest = z.infer<typeof MembershipPreviewRequestSchema>;
 
 export const CustomerGroupFormPayloadSchema = z
   .object({
@@ -417,6 +421,9 @@ export const PriceListComposerPayloadSchema = z
   );
 export type PriceListComposerPayload = z.infer<typeof PriceListComposerPayloadSchema>;
 
+export const PriceListSimplePricingStrategySchema = z.enum(['edit_each', 'flat_off_base', 'percentage']);
+export type PriceListSimplePricingStrategy = z.infer<typeof PriceListSimplePricingStrategySchema>;
+
 export const PriceListFormPayloadSchema = z
   .object({
     form_mode: z.literal('simple'),
@@ -425,6 +432,8 @@ export const PriceListFormPayloadSchema = z
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),
     priority: z.coerce.number().int().min(0).default(0),
+    pricing_strategy: PriceListSimplePricingStrategySchema.default('edit_each'),
+    strategy_value: z.coerce.number().nonnegative().nullable().optional(),
     membership_mode: MembershipModeSchema.default('manual'),
     selected_product_ids: z.array(z.string().uuid('Invalid product ID')).default([]),
     rules: ProductMembershipRulesSchema.optional(),
@@ -448,6 +457,10 @@ export const PriceListFormPayloadSchema = z
   .refine((data) => data.membership_mode !== 'automatic' || Boolean(data.rules), {
     message: 'Select at least one filter for automatic membership',
     path: ['rules'],
+  })
+  .refine((data) => data.pricing_strategy === 'edit_each' || data.strategy_value != null, {
+    message: 'Enter a value for the selected pricing mode',
+    path: ['strategy_value'],
   });
 export type PriceListFormPayload = z.infer<typeof PriceListFormPayloadSchema>;
 
@@ -588,6 +601,8 @@ export const CampaignFormPayloadSchema = z
     buyer_ids: z.array(z.string().uuid('Invalid buyer ID')).default([]),
     pricing_mode: z.enum(['pricelist', 'individual_prices']).default('individual_prices'),
     price_list_id: z.string().uuid('Select a pricelist').nullable().optional(),
+    pricing_strategy: PriceListSimplePricingStrategySchema.default('edit_each'),
+    strategy_value: z.coerce.number().nonnegative().nullable().optional(),
     // Two independent membership axes (requirement 2), on top of the legacy target_mode/
     // pricing_mode fields above -- optional so existing UI (not yet updated) keeps working;
     // when omitted, the route infers buyer_target_mode from target_mode and defaults
@@ -606,6 +621,13 @@ export const CampaignFormPayloadSchema = z
     message: 'Select a pricelist',
     path: ['price_list_id'],
   })
+  .refine(
+    (data) => data.pricing_mode !== 'individual_prices' || data.pricing_strategy === 'edit_each' || data.strategy_value != null,
+    {
+      message: 'Enter a value for the selected pricing mode',
+      path: ['strategy_value'],
+    },
+  )
   .refine((data) => data.buyer_target_mode !== 'automatic' || Boolean(data.buyer_rules), {
     message: 'Select at least one filter for automatic buyer targeting',
     path: ['buyer_rules'],

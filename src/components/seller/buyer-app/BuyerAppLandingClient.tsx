@@ -14,6 +14,7 @@ import {
 import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
 import { BUYER_APP_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
@@ -42,6 +43,14 @@ const BuyerAppDemandChart = dynamic(
 );
 
 const BUYER_APP_SCROLL_CARD_HEIGHT = 'h-[320px]';
+
+function productInitials(name: string) {
+  return name.split(' ').map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase();
+}
+
+function productMeta(item: { sku?: string | null; brand_name?: string | null; category_name?: string | null }) {
+  return [item.sku, item.brand_name, item.category_name].filter((part) => part && part.trim().length > 0).join(' · ');
+}
 
 function ScrollCardBody({ children }: { children: ReactNode }) {
   const [scrollActive, setScrollActive] = useState(false);
@@ -91,16 +100,16 @@ function BuyerAppLandingContent({
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
   const period = initialPeriod;
-  const horizonLabel = 'Trailing 90 days';
+  const horizonLabel = 'Last 90 days';
   const { data, isLoading, isError } = useBuyerAppLanding(period, initialData);
   const { data: metricsData } = useBuyerAppMetrics(initialMetrics);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
 
-  const { data: wauData } = useWAU();
-  const { data: productsViewed } = useProductsViewed();
-  const { data: productsAddedToCart } = useProductsAddedToCart();
-  const { data: cartSubmits } = useCartSubmits();
+  const { data: wauData, isLoading: wauLoading } = useWAU();
+  const { data: productsViewed, isLoading: productsViewedLoading } = useProductsViewed();
+  const { data: productsAddedToCart, isLoading: productsAddedToCartLoading } = useProductsAddedToCart();
+  const { data: cartSubmits, isLoading: cartSubmitsLoading } = useCartSubmits();
   const [demandMode, setDemandMode] = useState<'value' | 'count'>('value');
 
   if (isLoading && !landingData) return <BuyerAppSkeleton />;
@@ -150,11 +159,7 @@ function BuyerAppLandingContent({
 
   // Bar width/in-bar % = each stage's absolute share of the top-of-funnel
   // stage (enabled), so the shape actually narrows monotonically like a
-  // real funnel. Stage-over-stage conversion rate (opened/enabled, etc.) is
-  // shown as supporting text instead -- that's the meaningful "did this
-  // step convert well" number, but it isn't monotonically decreasing (a
-  // later stage can have a higher conversion rate than an earlier one) so
-  // it's wrong to drive bar width with it.
+  // real funnel.
   const funnelEnabled = snap.enabled_buyers;
   const funnelOpened = snap.opened_app_mtd;
   const funnelOrdered = snap.ordered_mtd;
@@ -162,9 +167,6 @@ function BuyerAppLandingContent({
   const openedSharePct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
   const orderedSharePct = funnelEnabled > 0 ? Math.round((funnelOrdered / funnelEnabled) * 100) : 0;
   const repeatSharePct = funnelEnabled > 0 ? Math.round((funnelRepeat / funnelEnabled) * 100) : 0;
-  const openedConversionPct = funnelEnabled > 0 ? Math.round((funnelOpened / funnelEnabled) * 100) : 0;
-  const orderedConversionPct = funnelOpened > 0 ? Math.round((funnelOrdered / funnelOpened) * 100) : 0;
-  const repeatConversionPct = funnelOrdered > 0 ? Math.round((funnelRepeat / funnelOrdered) * 100) : 0;
 
   return (
     <PageWrap>
@@ -196,7 +198,7 @@ function BuyerAppLandingContent({
             id: 'buyer-app-adoption',
             representation: 'distribution',
             title: 'Adoption funnel',
-            subtitle: 'Trailing 90 days',
+            subtitle: 'Last 90 days',
             body: {
               items: [
                 {
@@ -204,28 +206,24 @@ function BuyerAppLandingContent({
                   label: 'Access enabled',
                   value: funnelEnabled,
                   pct: 100,
-                  supporting: `${funnelEnabled} customers can use the app`,
                 },
                 {
                   id: 'opened',
                   label: 'Opened app',
                   value: funnelOpened,
                   pct: openedSharePct,
-                  supporting: `${openedConversionPct}% of enabled customers`,
                 },
                 {
                   id: 'ordered',
                   label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`,
                   value: funnelOrdered,
                   pct: orderedSharePct,
-                  supporting: `${orderedConversionPct}% of those who opened the app`,
                 },
                 {
                   id: 'repeat',
                   label: `Repeat (2+ ${primaryDemandNoun})`,
                   value: funnelRepeat,
                   pct: repeatSharePct,
-                  supporting: `${repeatConversionPct}% of ${primaryDemandNoun} ${primaryDemandVerb}`,
                 },
               ],
               emptyTitle: 'No enabled buyers yet',
@@ -241,7 +239,7 @@ function BuyerAppLandingContent({
           subtitle="Last 90 days"
           bodyClassName="p-0"
         >
-          <BuyerAppWeeklyActiveChart data={wauData} loading={false} />
+          <BuyerAppWeeklyActiveChart data={wauData} loading={wauLoading} />
         </PerformanceCard>
 
         {/* Card 3: Products most viewed */}
@@ -253,9 +251,13 @@ function BuyerAppLandingContent({
           <ScrollCardBody>
             <RankedList
               compact
+              loading={productsViewedLoading}
               items={(productsViewed ?? []).map((item) => ({
                 id: item.tenant_product_id,
                 label: item.product_name,
+                meta: productMeta(item),
+                initials: productInitials(item.product_name),
+                imageUrl: getBuyerProductPrimaryImageUrl({ image_urls: item.image_urls }),
                 value: `${item.view_count} views`,
               }))}
               emptyTitle="No product view data yet"
@@ -273,9 +275,13 @@ function BuyerAppLandingContent({
           <ScrollCardBody>
             <RankedList
               compact
+              loading={productsAddedToCartLoading}
               items={(productsAddedToCart ?? []).map((item) => ({
                 id: item.tenant_product_id,
                 label: item.product_name,
+                meta: productMeta(item),
+                initials: productInitials(item.product_name),
+                imageUrl: getBuyerProductPrimaryImageUrl({ image_urls: item.image_urls }),
                 value: `${item.add_count} adds`,
               }))}
               emptyTitle="No cart data yet"
@@ -311,7 +317,7 @@ function BuyerAppLandingContent({
             </div>
           )}
         >
-          <BuyerAppDemandChart data={cartSubmits} loading={false} mode={demandMode} />
+          <BuyerAppDemandChart data={cartSubmits} loading={cartSubmitsLoading} mode={demandMode} />
         </PerformanceCard>
       </div>
     </PageWrap>

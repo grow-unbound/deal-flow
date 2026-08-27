@@ -212,7 +212,7 @@ export function BuyerPullToRefresh({
     <div
       ref={setViewportRef}
       className={cn(
-        'dashboard-vscroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain',
+        'dashboard-vscroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[var(--bg-page)]',
         scrollActive && 'dashboard-vscroll--active',
         className,
       )}

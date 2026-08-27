@@ -51,8 +51,8 @@ function entityWithPercentOfTotal(entityNoun: string, totalNoun: string) {
     const entity = countText(card.entity_count, entityNoun);
     if (card.secondary_value == null || Number(card.secondary_value) <= 0) return entity ?? '—';
     const pct = card.entity_count == null ? 0 : (Number(card.entity_count) / Number(card.secondary_value)) * 100;
-    const pctText = `${formatNumberValue(pct, 'PERCENTAGE')} of all ${totalNoun}`;
-    return entity ? `${entity} · ${pctText}` : pctText;
+    const pctText = `${formatNumberValue(pct, 'PERCENTAGE')} of all ${formatNumberValue(card.secondary_value, 'COUNT')} ${totalNoun}`;
+    return pctText;
   };
 }
 
@@ -119,7 +119,7 @@ export const BRANDS_KPI_COPY: KpiCopyMap = {
 
 export const LOCATIONS_KPI_COPY: KpiCopyMap = {
   invoiced_sales: { label: 'Invoiced Sales', supportingText: entityAndDocs('locations', 'invoices') },
-  open_demand: { label: 'Open demand', supportingText: entityAndDocs('locations', 'demand docs') },
+  open_demand: { label: 'Open demand', supportingText: entityAndDocs('locations', 'estimates') },
   overdue_receivables: { label: 'Overdue receivables', supportingText: entityOnly('locations') },
   top80_locations: { label: 'Top 80% locations', supportingText: () => 'locations in revenue concentration set' },
 };
@@ -132,17 +132,17 @@ export const WAREHOUSES_KPI_COPY: KpiCopyMap = {
 };
 
 export const BUYER_APP_KPI_COPY: KpiCopyMap = {
-  customers_with_access: { label: 'Customers with app access', supportingText: () => '% of total customers' },
-  app_sourced_demand_qtd: { label: 'App-sourced demand · this quarter', supportingText: entityAndDocs('customers', 'demand docs') },
-  app_sourced_invoiced_sales_qtd: { label: 'App-sourced invoiced sales · this quarter', supportingText: entityAndDocs('customers', 'invoices') },
-  app_no_order_customers_qtd: { label: 'App access · no order this quarter', supportingText: () => '% of enabled customers' },
+  customers_with_access: { label: 'Customers with app access', supportingText: entityWithPercentOfTotal('customers', 'customers') },
+  app_sourced_demand_qtd: { label: 'App-sourced demand', supportingText: entityAndDocs('customers', 'estimates') },
+  app_sourced_invoiced_sales_qtd: { label: 'App-sourced invoiced sales', supportingText: entityAndDocs('customers', 'invoices') },
+  app_no_order_customers_qtd: { label: 'App access but no orders', supportingText: entityWithPercentOfTotal('customers', 'enabled customers') },
 };
 
 /** Campaigns landing page (frontend dir: catalogs). */
 export const CAMPAIGNS_KPI_COPY: KpiCopyMap = {
   live_campaigns: { label: 'Live Campaigns', supportingText: () => 'expiring in 7 days' },
   campaign_open_rate: { label: 'Campaign Open rate', supportingText: () => 'customers viewed' },
-  campaign_demand: { label: 'Campaign demand', supportingText: entityAndDocs('customers', 'demand docs') },
+  campaign_demand: { label: 'Campaign demand', supportingText: entityAndDocs('customers', 'estimates') },
   campaign_revenue: { label: 'Campaign revenue', supportingText: entityAndDocs('customers', 'invoices') },
 };
 

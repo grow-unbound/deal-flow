@@ -15,6 +15,7 @@ import {
   useDirtyCloseGuard,
 } from '@/components/ui/form-overlay';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -23,10 +24,17 @@ import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { CampaignFormPayloadSchema, type CampaignFormPayload } from '@/lib/zod';
 import { isoDateString } from '@/lib/date-utils';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { useCohortComposerBuyers, useTenantCohortOptions } from '@/hooks/useCohorts';
-import { useCatalogComposerProducts, useSaveSimpleCatalog } from '@/hooks/useCatalogs';
+import { useSaveSimpleCatalog } from '@/hooks/useCatalogs';
+import { useProductPickerSearch } from '@/hooks/useProductPicker';
 import { usePriceLists } from '@/hooks/usePriceLists';
+import { useTenantLocationOptions } from '@/hooks/useLocations';
 import { BuyerPickerRow } from '@/components/seller/shared/BuyerPickerRow';
+import { ProductPickerRow } from '@/components/seller/shared/ProductPickerRow';
+import { PickerFiltersPanel } from '@/components/seller/shared/PickerFiltersPanel';
+import { SelectedItemsChipsPanel } from '@/components/seller/shared/SelectedItemsChipsPanel';
+import { SelectAllCheckbox } from '@/components/seller/shared/SelectableMembershipTable';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { uploadEntityFile } from '@/lib/upload-client';
 import {
@@ -36,12 +44,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { AutomaticBuyerMembershipPanel, AutomaticProductMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
 import {
   MembershipModeSwitchDialog,
   type MembershipModeSwitchDirection,
 } from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { usePickerSelection, getLoadedSelectionState } from '@/hooks/usePickerSelection';
+import { usePickerFilterState } from '@/hooks/usePickerFilterState';
+import {
+  BUYER_ADVANCED_FILTERS,
+  BUYER_QUICK_ADVANCED_LINKS,
+  BUYER_QUICK_FILTERS,
+  PRODUCT_ADVANCED_FILTERS,
+  PRODUCT_QUICK_ADVANCED_LINKS,
+  PRODUCT_QUICK_FILTERS,
+} from '@/lib/picker-filters';
 
 interface CampaignFormSheetProps {
   open: boolean;
@@ -95,6 +113,8 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
       hero_image_url: '',
       target_mode: 'customer_group',
       pricing_mode: 'individual_prices',
+      pricing_strategy: 'edit_each',
+      strategy_value: null,
       buyer_target_mode: 'customer_group',
       buyer_ids: [],
       product_membership_mode: 'manual',
@@ -153,17 +173,32 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
   });
 
   const pricingMode = form.watch('pricing_mode');
+  const pricingStrategy = form.watch('pricing_strategy');
   const buyerTargetMode = form.watch('buyer_target_mode') ?? 'customer_group';
   const selectedBuyerIds = form.watch('buyer_ids') ?? [];
   const productMembershipMode = form.watch('product_membership_mode') ?? 'manual';
   const selectedProductIds = form.watch('selected_product_ids') ?? [];
   const initialBuyerTargetMode = defaultValues?.buyer_target_mode ?? 'customer_group';
   const initialProductMembershipMode = defaultValues?.product_membership_mode ?? 'manual';
+  const buyerFilterState = usePickerFilterState(BUYER_QUICK_ADVANCED_LINKS);
+  const { data: buyerLocationOptions = [] } = useTenantLocationOptions(buyerPickerOpen);
+  const buyerAdvancedFilters = useMemo(
+    () => [
+      ...BUYER_ADVANCED_FILTERS,
+      { key: 'sales_location', label: 'Sales location', options: buyerLocationOptions.map((loc) => ({ value: loc.id, label: loc.label })) },
+    ],
+    [buyerLocationOptions],
+  );
   const buyerPickerQuery = useCohortComposerBuyers({
     query: buyerSearch,
     selectedIds: selectedBuyerIds,
     limit: 30,
     enabled: buyerTargetMode === 'manual' && (buyerPickerOpen || selectedBuyerIds.length > 0),
+    quickFilters: buyerFilterState.quickFilters as any,
+    status: (buyerFilterState.advancedValues.status ?? null) as any,
+    buyerAppFilter: (buyerFilterState.advancedValues.buyer_app ?? null) as any,
+    outstandingFilter: (buyerFilterState.advancedValues.outstanding ?? null) as any,
+    locationId: buyerFilterState.advancedValues.sales_location ?? null,
   });
   const buyerRows = useMemo(
     () => buyerPickerQuery.data?.pages.flatMap((page) => page.buyers) ?? [],
@@ -174,18 +209,37 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
     [buyerPickerQuery.data?.pages],
   );
   const buyerMap = useMemo(() => new Map([...selectedBuyerRows, ...buyerRows].map((buyer) => [buyer.id, buyer])), [buyerRows, selectedBuyerRows]);
-  const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
+  const buyerSelection = usePickerSelection(selectedBuyerIds, (ids) =>
+    form.setValue('buyer_ids', ids, { shouldDirty: true, shouldTouch: true, shouldValidate: true }),
+  );
+  const selectedBuyerSet = buyerSelection.selectedSet;
+  const buyerLoadedState = getLoadedSelectionState(buyerRows.map((b) => b.id), selectedBuyerSet);
   const selectedBuyerSummary = useMemo(() => {
     if (selectedBuyerIds.length === 0) return 'Select buyers';
     const first = buyerMap.get(selectedBuyerIds[0]);
     return `${first?.business_name ?? 'Selected buyer'}${selectedBuyerIds.length > 1 ? ` +${selectedBuyerIds.length - 1} more` : ''}`;
   }, [buyerMap, selectedBuyerIds]);
-  const productQuery = useCatalogComposerProducts({
+  const productFilterState = usePickerFilterState(PRODUCT_QUICK_ADVANCED_LINKS);
+  const productQuery = useProductPickerSearch({
     query: productSearch,
     selectedIds: selectedProductIds,
     limit: 30,
     enabled: productMembershipMode === 'manual' && (productPickerOpen || selectedProductIds.length > 0),
+    brandIds: (productFilterState.advancedValues.brand ? [productFilterState.advancedValues.brand] : []),
+    categoryIds: (productFilterState.advancedValues.category ? [productFilterState.advancedValues.category] : []),
+    stockBucket: (productFilterState.advancedValues.stock ?? null) as any,
+    status: (productFilterState.advancedValues.status ?? null) as any,
+    quickFilters: productFilterState.quickFilters,
   });
+  const productFilterLookups = productQuery.data?.pages[0]?.filters ?? { brands: [], categories: [] };
+  const productAdvancedFilters = useMemo(
+    () => [
+      ...PRODUCT_ADVANCED_FILTERS,
+      { key: 'brand', label: 'Brand', options: productFilterLookups.brands.map((b) => ({ value: b.id, label: b.label })) },
+      { key: 'category', label: 'Category', options: productFilterLookups.categories.map((c) => ({ value: c.id, label: c.label })) },
+    ],
+    [productFilterLookups],
+  );
   const productRows = useMemo(
     () => productQuery.data?.pages.flatMap((page) => page.products) ?? [],
     [productQuery.data?.pages],
@@ -195,7 +249,11 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
     [productQuery.data?.pages],
   );
   const productMap = useMemo(() => new Map([...selectedProductRows, ...productRows].map((product) => [product.id, product])), [productRows, selectedProductRows]);
-  const selectedProductSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
+  const productSelection = usePickerSelection(selectedProductIds, (ids) =>
+    form.setValue('selected_product_ids', ids, { shouldDirty: true, shouldTouch: true, shouldValidate: true }),
+  );
+  const selectedProductSet = productSelection.selectedSet;
+  const productLoadedState = getLoadedSelectionState(productRows.map((p) => p.id), selectedProductSet);
   const selectedProductSummary = useMemo(() => {
     if (selectedProductIds.length === 0) return 'Select products';
     const first = productMap.get(selectedProductIds[0]);
@@ -458,7 +516,55 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                         )}
                       />
                     ) : (
-                      <p className="text-sm text-cream-600">Select products and set individual prices from the campaign detail tabs after this campaign is saved.</p>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <FormField control={form.control} name="pricing_strategy" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Pricing mode</FormLabel>
+                              <Select
+                                value={field.value}
+                                onValueChange={(value) => {
+                                  form.setValue('pricing_strategy', value as 'edit_each' | 'flat_off_base' | 'percentage', { shouldDirty: true });
+                                  if (value === 'edit_each') form.setValue('strategy_value', null, { shouldDirty: true });
+                                }}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select pricing mode" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="edit_each">Manual pricing</SelectItem>
+                                  <SelectItem value="flat_off_base">Flat ₹ off base rate</SelectItem>
+                                  <SelectItem value="percentage">% off base rate</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                          {pricingStrategy !== 'edit_each' ? (
+                            <FormField control={form.control} name="strategy_value" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{pricingStrategy === 'percentage' ? '% off' : 'Flat ₹ off'}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={field.value ?? ''}
+                                    onChange={(event) => field.onChange(event.target.valueAsNumber || 0)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                          ) : null}
+                        </div>
+                        <p className="text-sm text-cream-600">
+                          {pricingStrategy === 'edit_each'
+                            ? 'Select products and set individual prices from the campaign detail tabs after this campaign is saved.'
+                            : `${formatStrategySummary(pricingStrategy, form.watch('strategy_value'))} — applied to selected products.`}
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -532,8 +638,7 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                         name="buyer_rules"
                         render={({ field }) => (
                           <FormItem>
-                            <MembershipFilterPanel
-                              entityType="campaign_buyers"
+                            <AutomaticBuyerMembershipPanel
                               rules={field.value ?? {}}
                               onRulesChange={field.onChange}
                             />
@@ -562,6 +667,52 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                               searchValue={buyerSearch}
                               onSearchValueChange={setBuyerSearch}
                               searchPlaceholder="Search buyers…"
+                              selectedItemsSummary={(
+                                <SelectedItemsChipsPanel
+                                  label="Selected buyers"
+                                  items={selectedBuyerIds.map((buyerId) => ({
+                                    id: buyerId,
+                                    label: buyerMap.get(buyerId)?.business_name ?? 'Selected buyer',
+                                  }))}
+                                  onRemove={(buyerId) => form.setValue(
+                                    'buyer_ids',
+                                    selectedBuyerIds.filter((id) => id !== buyerId),
+                                    { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                  )}
+                                />
+                              )}
+                              filtersPanel={(
+                                <PickerFiltersPanel
+                                  quickFilters={BUYER_QUICK_FILTERS}
+                                  activeQuickFilters={buyerFilterState.quickFilters}
+                                  onToggleQuickFilter={buyerFilterState.toggleQuickFilter}
+                                  advancedFilters={buyerAdvancedFilters}
+                                  advancedValues={buyerFilterState.advancedValues}
+                                  onAdvancedChange={buyerFilterState.setAdvancedFilter}
+                                />
+                              )}
+                              selectionSummary={(
+                                <div className="flex items-center justify-between gap-2">
+                                  <label className="flex items-center gap-2 text-sm text-cream-700">
+                                    <SelectAllCheckbox
+                                      checked={buyerLoadedState.allLoadedSelected}
+                                      indeterminate={buyerLoadedState.someLoadedSelected}
+                                      onChange={() => buyerSelection.toggleAllLoaded(buyerRows.map((b) => b.id))}
+                                      label="Select all loaded buyers"
+                                    />
+                                    Select all
+                                  </label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={selectedBuyerIds.length === 0}
+                                    onClick={buyerSelection.clearAll}
+                                  >
+                                    Clear selection
+                                  </Button>
+                                </div>
+                              )}
                               footer={(
                                 <div className="flex items-center justify-end gap-2">
                                   <Button type="button" variant="ghost" onClick={() => setBuyerPickerOpen(false)}>
@@ -574,27 +725,6 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                 </div>
                               )}
                             >
-                              {selectedBuyerIds.length > 0 ? (
-                                <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected buyers</p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {selectedBuyerIds.map((buyerId) => {
-                                      const buyer = buyerMap.get(buyerId);
-                                      return (
-                                        <button
-                                          key={buyerId}
-                                          type="button"
-                                          onClick={() => form.setValue('buyer_ids', selectedBuyerIds.filter((id) => id !== buyerId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
-                                          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
-                                        >
-                                          <span>{buyer?.business_name ?? 'Selected buyer'}</span>
-                                          <span aria-hidden="true" className="text-teal-700">×</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ) : null}
                               {buyerPickerQuery.isFetching && buyerRows.length === 0 ? (
                                 <div className="space-y-1">
                                   {Array.from({ length: 4 }).map((_, idx) => (
@@ -669,8 +799,7 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                         name="product_rules"
                         render={({ field }) => (
                           <FormItem>
-                            <MembershipFilterPanel
-                              entityType="campaign_products"
+                            <AutomaticProductMembershipPanel
                               rules={field.value ?? { brand_names: [], category_names: [] }}
                               onRulesChange={field.onChange}
                             />
@@ -699,6 +828,52 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                               searchValue={productSearch}
                               onSearchValueChange={setProductSearch}
                               searchPlaceholder="Search products, SKU, or brand…"
+                              selectedItemsSummary={(
+                                <SelectedItemsChipsPanel
+                                  label="Selected products"
+                                  items={selectedProductIds.map((productId) => ({
+                                    id: productId,
+                                    label: productMap.get(productId)?.display_name ?? 'Selected product',
+                                  }))}
+                                  onRemove={(productId) => form.setValue(
+                                    'selected_product_ids',
+                                    selectedProductIds.filter((id) => id !== productId),
+                                    { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                  )}
+                                />
+                              )}
+                              filtersPanel={(
+                                <PickerFiltersPanel
+                                  quickFilters={PRODUCT_QUICK_FILTERS}
+                                  activeQuickFilters={productFilterState.quickFilters}
+                                  onToggleQuickFilter={productFilterState.toggleQuickFilter}
+                                  advancedFilters={productAdvancedFilters}
+                                  advancedValues={productFilterState.advancedValues}
+                                  onAdvancedChange={productFilterState.setAdvancedFilter}
+                                />
+                              )}
+                              selectionSummary={(
+                                <div className="flex items-center justify-between gap-2">
+                                  <label className="flex items-center gap-2 text-sm text-cream-700">
+                                    <SelectAllCheckbox
+                                      checked={productLoadedState.allLoadedSelected}
+                                      indeterminate={productLoadedState.someLoadedSelected}
+                                      onChange={() => productSelection.toggleAllLoaded(productRows.map((p) => p.id))}
+                                      label="Select all loaded products"
+                                    />
+                                    Select all
+                                  </label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={selectedProductIds.length === 0}
+                                    onClick={productSelection.clearAll}
+                                  >
+                                    Clear selection
+                                  </Button>
+                                </div>
+                              )}
                               footer={(
                                 <div className="flex items-center justify-end gap-2">
                                   <Button type="button" variant="ghost" onClick={() => setProductPickerOpen(false)}>
@@ -711,27 +886,6 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                 </div>
                               )}
                             >
-                              {selectedProductIds.length > 0 ? (
-                                <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected products</p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {selectedProductIds.map((productId) => {
-                                      const product = productMap.get(productId);
-                                      return (
-                                        <button
-                                          key={productId}
-                                          type="button"
-                                          onClick={() => form.setValue('selected_product_ids', selectedProductIds.filter((id) => id !== productId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
-                                          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
-                                        >
-                                          <span>{product?.display_name ?? 'Selected product'}</span>
-                                          <span aria-hidden="true" className="text-teal-700">×</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ) : null}
                               {productQuery.isFetching && productRows.length === 0 ? (
                                 <div className="space-y-1">
                                   {Array.from({ length: 4 }).map((_, idx) => (
@@ -740,38 +894,20 @@ export function CampaignFormSheet({ open, onOpenChange, mode, campaignId, defaul
                                 </div>
                               ) : productRows.length > 0 ? (
                                 <div className="space-y-0.5">
-                                  {productRows.map((product) => {
-                                    const selected = selectedProductSet.has(product.id);
-                                    return (
-                                      <button
-                                        key={product.id}
-                                        type="button"
-                                        onClick={() => form.setValue(
-                                          'selected_product_ids',
-                                          selected
-                                            ? selectedProductIds.filter((id) => id !== product.id)
-                                            : [...selectedProductIds, product.id],
-                                          { shouldDirty: true, shouldTouch: true, shouldValidate: true },
-                                        )}
-                                        className={[
-                                          'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-                                          selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
-                                        ].join(' ')}
-                                      >
-                                        <div className="min-w-0">
-                                          <p className="text-base font-medium text-cream-900">{product.display_name}</p>
-                                          <p className="mt-0.5 text-sm text-cream-700">
-                                            {product.internal_sku ?? '—'}
-                                            {product.category_name ? ` · ${product.category_name}` : ''}
-                                            {product.base_selling_price != null ? ` · ₹${Math.round(product.base_selling_price).toLocaleString('en-IN')}` : ''}
-                                          </p>
-                                        </div>
-                                        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
-                                          {selected ? 'Selected' : 'Add'}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                                  {productRows.map((product) => (
+                                    <ProductPickerRow
+                                      key={product.id}
+                                      product={product}
+                                      selected={selectedProductSet.has(product.id)}
+                                      onClick={() => form.setValue(
+                                        'selected_product_ids',
+                                        selectedProductSet.has(product.id)
+                                          ? selectedProductIds.filter((id) => id !== product.id)
+                                          : [...selectedProductIds, product.id],
+                                        { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                      )}
+                                    />
+                                  ))}
                                   {productQuery.hasNextPage ? <div ref={productSentinelRef} className="h-4" /> : null}
                                 </div>
                               ) : (

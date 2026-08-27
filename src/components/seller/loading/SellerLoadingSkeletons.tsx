@@ -228,7 +228,7 @@ export function DashboardSkeleton() {
 }
 
 export function BuyerAppSkeleton() {
-  return <SellerDashboardLoadingSkeleton ariaLabel="Loading buyer app" widgetCount={4} hero />;
+  return <SellerDashboardLoadingSkeleton ariaLabel="Loading buyer app" widgetCount={5} />;
 }
 
 export function WorkboardLandingSkeleton({
@@ -467,6 +467,23 @@ export function CustomerDetailSkeleton() {
       tabCount={8}
       tabWidth="w-28"
       contentHeightClassName="h-[24rem] rounded-[14px]"
+    />
+  );
+}
+
+export function BroadcastDetailSkeleton() {
+  return (
+    <SellerEntityDetailSkeleton
+      ariaLabel="Loading broadcast detail"
+      titleWidth="h-7 w-64"
+      subtitleWidth="h-4 w-72"
+      actionWidths={['h-9 w-40 rounded-[8px]']}
+      avatarClassName="h-12 w-12 rounded-[14px]"
+      kpiCardClassName="h-24 rounded-[14px]"
+      kpiCount={4}
+      tabCount={0}
+      tabWidth="w-28"
+      contentHeightClassName="h-[28rem] rounded-[14px]"
     />
   );
 }

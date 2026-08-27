@@ -17,14 +17,12 @@ import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteSc
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import {
   useBuyerBrands,
-  useBuyerCatalogs,
   useBuyerCatalogSearchInfinite,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
 import {
   BUYER_LOOKBOOK_ASPECT_CLASS,
-  BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS,
   BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
 } from '@/lib/buyer-lookbook';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
@@ -79,12 +77,6 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
   });
   const {
-    data: catalogsData,
-    isLoading: catalogsLoading,
-    isError: catalogsError,
-    refetch: refetchCatalogs,
-  } = useBuyerCatalogs();
-  const {
     data: brandsData,
     isLoading: brandsLoading,
     isError: brandsError,
@@ -108,19 +100,17 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
   const promotions = promotionsData?.latest_promotions_preview ?? [];
   const orderAgainItems = recoData?.order_again_preview ?? [];
   const bestsellers = recoData?.bestsellers ?? [];
-  const catalogs = catalogsData ?? [];
   const brands = brandsData ?? [];
   const categories = categoriesData ?? [];
 
   const showPromotionsSkeleton = promotionsLoading && promotionsData === undefined;
   const showRecoSkeleton = recoLoading && recoData === undefined;
-  const showCatalogsSkeleton = catalogsLoading && catalogsData === undefined;
   const showBrandsSkeleton = brandsLoading && brandsData === undefined;
   const showCategoriesSkeleton = categoriesLoading && categoriesData === undefined;
   const isSearching = debouncedSearch.length > 0;
   const allSectionsFailed =
-    promotionsError && recoError && catalogsError && brandsError && categoriesError
-    && !showPromotionsSkeleton && !showRecoSkeleton && !showCatalogsSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton;
+    promotionsError && recoError && brandsError && categoriesError
+    && !showPromotionsSkeleton && !showRecoSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton;
 
   const searchSentinelIndex = getSentinelInsertIndex(searchItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef: searchSentinelRef } = useInfiniteScroll({
@@ -139,13 +129,12 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
       await Promise.all([
         refetchPromotions(),
         refetchReco(),
-        refetchCatalogs(),
         refetchBrands(),
         refetchCategories(),
       ]);
     });
     return () => setRefreshFn(null);
-  }, [refetchBrands, refetchCatalogs, refetchCategories, refetchPromotions, refetchReco, setRefreshFn]);
+  }, [refetchBrands, refetchCategories, refetchPromotions, refetchReco, setRefreshFn]);
 
   React.useEffect(() => {
     if (!posthog || debouncedSearch.length === 0 || searchQueryResult.isFetching) return;
@@ -201,7 +190,6 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                         heroImageUrl={promotion.hero_image_url}
                         hueIndex={index}
                         priority={index === 0}
-                        size="compact"
                       />
                     ))}
                   </BuyerHorizontalScroll>
@@ -246,31 +234,6 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                     ))
                   )}
                 </BuyerHorizontalScroll>
-              </section>
-            ) : null}
-
-            {showCatalogsSkeleton || catalogs.length > 0 ? (
-              <section className="pt-12">
-                <BuyerSectionRow title="Catalogs" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
-                {showCatalogsSkeleton ? (
-                  <CatalogRailSkeleton />
-                ) : (
-                  <BuyerHorizontalScroll className="gap-3 px-1">
-                    {catalogs.map((catalog, index) => (
-                      <CatalogLookbookCard
-                        key={catalog.id}
-                        id={catalog.id}
-                        name={catalog.name}
-                        productCount={catalog.product_count}
-                        href={`/buy/home/list/${catalog.id}`}
-                        validUntil={catalog.valid_until}
-                        heroImageUrl={catalog.hero_image_url}
-                        hueIndex={index}
-                        priority={index === 0}
-                      />
-                    ))}
-                  </BuyerHorizontalScroll>
-                )}
               </section>
             ) : null}
 
@@ -375,28 +338,6 @@ function CatalogSearchResults({
 function CampaignTilesSkeleton() {
   return (
     <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading campaigns">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div
-          key={index}
-          className={cn(
-            BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS,
-            'shrink-0 overflow-hidden border border-cream-200 bg-cream-50',
-            BUYER_CARD_RADIUS_CLASS,
-          )}
-        >
-          <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
-          <div className="space-y-2 bg-white px-3.5 py-3">
-            <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CatalogRailSkeleton() {
-  return (
-    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading catalogs">
       {Array.from({ length: 2 }).map((_, index) => (
         <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-cream-50', BUYER_CARD_RADIUS_CLASS)}>
           <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />

@@ -7,7 +7,7 @@ import { BuyerCatalogDesktopLayout } from '@/components/buyer/catalog/BuyerCatal
 import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
-import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
+import { CampaignSummaryBlock, CampaignTitleRow } from '@/components/buyer/catalog/CampaignSummaryBlock';
 import { CatalogSearchState } from '@/components/buyer/catalog/CatalogSearchState';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
@@ -25,6 +25,7 @@ import {
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
@@ -38,6 +39,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const { setCampaignId } = useCart();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
+  const [campaignImageUrl, setCampaignImageUrl] = React.useState<string | null>(null);
   const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [search, setSearch] = React.useState('');
@@ -119,6 +121,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     const page = pages[0];
     if (!page?.selected_campaign_name) return;
     setCampaignTitle(page.selected_campaign_name);
+    setCampaignImageUrl(page.selected_campaign_image_url ?? null);
     setCampaignTitleResolved(true);
     if (page.selected_campaign_id) {
       setCampaignId(page.selected_campaign_id);
@@ -128,6 +131,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   React.useEffect(() => {
     if (mode !== 'list') return;
     setCampaignTitle('Catalog');
+    setCampaignImageUrl(null);
     setCampaignTitleResolved(false);
   }, [mode, id, retryNonce]);
 
@@ -182,7 +186,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
       ? `Search ${selectedBrandName ?? 'brand'} products`
       : mode === 'category'
         ? `Search products in ${selectedCategoryName ?? 'this category'}`
-      : 'Search products in this catalog';
+      : 'Search products in this campaign';
 
   const handleRailSelect = React.useCallback((nextId: string) => {
     setActiveId(nextId);
@@ -248,8 +252,13 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
               >
                 {title}
               </h1>
+            ) : (
+              <CampaignTitleRow name={title} imageUrl={campaignImageUrl} />
+            )}
+            {mode === 'list' ? (
+              <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
             ) : null}
-            <div className="flex items-center gap-3">
+            <div className={cn('flex items-center gap-3', mode === 'list' ? 'mt-4' : '')}>
               <BuyerCatalogSearchInput
                 value={search}
                 onChange={setSearch}
@@ -260,7 +269,9 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
           </div>
 
           {mode === 'list' ? (
-            <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
+            <div className="md:hidden">
+              <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
+            </div>
           ) : null}
 
           {mode === 'category' && !debouncedSearch && (showCategoryRecosSkeleton || (categoryRecos?.length ?? 0) > 0) ? (

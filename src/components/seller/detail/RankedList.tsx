@@ -13,6 +13,7 @@ export interface RankedListItem {
   valueSupporting?: ReactNode;
   initials?: string;
   hue?: 'teal' | 'ember' | 'cream';
+  imageUrl?: string | null;
 }
 
 export interface RankedListProps {
@@ -75,7 +76,12 @@ export function RankedList({
           <div className="flex items-center gap-3">
             <span className="w-4 shrink-0 font-mono text-xs text-cream-600">{index + 1}</span>
             {item.initials ? (
-              <EntityAvatar initials={item.initials} hue={item.hue ?? 'teal'} size={compact ? 28 : 32} />
+              <EntityAvatar
+                initials={item.initials}
+                hue={item.hue ?? 'teal'}
+                size={compact ? 28 : 32}
+                imageUrl={item.imageUrl}
+              />
             ) : null}
           </div>
           <div className="min-w-0">

@@ -53,6 +53,7 @@ export type CohortComposerBuyerRow = {
   /** Only populated by getCohortComposerBuyerResultset (the shared buyer-picker path). */
   buyer_app_enabled?: boolean;
   overdue_amount?: number;
+  invoice_count?: number;
 };
 
 export type CohortComposerFilterOption = {
@@ -508,6 +509,15 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   };
 }
 
+export type BuyerPickerQuickFilter =
+  | 'has_dues'
+  | 'overdue'
+  | 'app_enabled'
+  | 'dormant_qtr'
+  | 'buying_qtr'
+  | 'enquire_no_sales'
+  | 'top20';
+
 export async function getCohortComposerBuyerResultset(
   db: DbClient,
   tenantId: string,
@@ -524,12 +534,22 @@ export async function getCohortComposerBuyerResultset(
      * always hard-capped at 250 by the caller (route + hook), never an unbounded list.
      */
     ids?: string[];
+    /** Picker quick filters (toggle chips) — OR'd together server-side. */
+    quickFilters?: BuyerPickerQuickFilter[];
+    /** Picker advanced filters (single-select dropdowns, null/undefined = "All"). */
+    status?: 'active' | 'dormant' | 'inactive' | null;
+    buyerAppFilter?: 'enabled' | 'not_enabled' | null;
+    outstandingFilter?: 'has_dues' | 'overdue' | null;
+    locationId?: string | null;
   } = {},
 ): Promise<CohortComposerBuyerResultset> {
   const { currentStartIso, nextStartIso } = getIstMonthBounds();
   const ninetyDaysAgoDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentMonthDate = currentStartIso.slice(0, 10);
   const nextMonthDate = nextStartIso.slice(0, 10);
+  const quarterMeta = getSellerLandingPeriodMeta('quarter');
+  const currentQuarterStart = quarterMeta.current_start.slice(0, 10);
+  const previousQuarterStart = quarterMeta.previous_start.slice(0, 10);
   const ids = options.ids?.slice(0, 250);
   const limit = ids?.length
     ? ids.length
@@ -549,6 +569,13 @@ export async function getCohortComposerBuyerResultset(
     p_limit: limit,
     p_offset: offset,
     p_ids: ids?.length ? ids : null,
+    p_quarter_start: currentQuarterStart,
+    p_prev_quarter_start: previousQuarterStart,
+    p_quick_filters: options.quickFilters?.length ? options.quickFilters : null,
+    p_status: options.status ?? null,
+    p_buyer_app_filter: options.buyerAppFilter ?? null,
+    p_outstanding_filter: options.outstandingFilter ?? null,
+    p_location_id: options.locationId ?? null,
   });
 
   if (error) throw error;
@@ -569,6 +596,7 @@ export async function getCohortComposerBuyerResultset(
     total_count: number | null;
     buyer_app_enabled: boolean | null;
     overdue_amount: number | null;
+    invoice_count: number | null;
   }>;
   const total = Number(pageRows[0]?.total_count ?? 0);
 
@@ -595,6 +623,7 @@ export async function getCohortComposerBuyerResultset(
         hue: (offset + index) % 3 === 0 ? 'teal' : (offset + index) % 3 === 1 ? 'ember' : 'cream',
         buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
         overdue_amount: Number(buyer.overdue_amount ?? 0),
+        invoice_count: Number(buyer.invoice_count ?? 0),
       } satisfies CohortComposerBuyerRow;
     }),
     total,

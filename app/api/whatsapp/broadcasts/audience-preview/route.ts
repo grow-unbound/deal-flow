@@ -107,12 +107,36 @@ export async function POST(request: NextRequest) {
     const estimatedCredits = recipientCount * creditsPerMessage;
     const estimatedInr = Math.round(estimatedCredits * creditPriceInr * 100) / 100;
 
+    // Same cap + "sent today" definition app.prepare_whatsapp_message_for_send
+    // enforces at dispatch time — surfaced here so the composer can show
+    // "X/Y sent today, ~N days to reach everyone" before the seller commits.
+    const { data: limitsRow } = await db
+      .schema('app')
+      .from('tenant_broadcast_limits')
+      .select('daily_broadcast_cap')
+      .eq('tenant_id', claims.tenant_id)
+      .maybeSingle();
+    const dailyCap = limitsRow?.daily_broadcast_cap ?? 100;
+
+    const { count: sentTodayCount } = await db
+      .schema('app')
+      .from('whatsapp_send_queue')
+      .select('id, whatsapp_messages!inner(status, sent_at)', { count: 'exact', head: true })
+      .eq('tenant_id', claims.tenant_id)
+      .gt('priority', 1)
+      .eq('whatsapp_messages.status', 'sent')
+      .gte('whatsapp_messages.sent_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
+    const sentToday = sentTodayCount ?? 0;
+
     return NextResponse.json({
       recipient_count: recipientCount,
       opted_out_excluded: optedOutExcluded,
       credits_per_message: creditsPerMessage,
       estimated_credits: estimatedCredits,
       estimated_inr: estimatedInr,
+      daily_cap: dailyCap,
+      sent_today: sentToday,
+      remaining_quota_today: Math.max(0, dailyCap - sentToday),
     });
   } catch (error) {
     console.error('[POST /api/whatsapp/broadcasts/audience-preview] error:', error);

@@ -72,6 +72,7 @@ export interface BuyerCatalogResponse {
   selected_campaign_name?: string | null;
   selected_campaign_valid_until?: string | null;
   selected_campaign_message?: string | null;
+  selected_campaign_image_url?: string | null;
 }
 
 export interface BuyerCategoriesResponse {

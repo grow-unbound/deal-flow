@@ -17,13 +17,14 @@ import { formatNumberValue } from '@/lib/utils';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
+import { LocationBuyersTab } from './LocationBuyersTab';
 import { LocationDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 const LocationPerformanceTab = dynamic(
   () => import('./LocationPerformanceTab').then((m) => m.LocationPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'performance' | 'orders' | 'estimates' | 'invoices';
+type TabId = 'performance' | 'orders' | 'estimates' | 'invoices' | 'buyers';
 
 interface LocationDetailPageProps {
   id: string;
@@ -105,6 +106,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     ...(featureVisibility.salesOrders ? [{ id: 'orders', label: 'Orders' }] : []),
     ...(featureVisibility.estimates ? [{ id: 'estimates', label: 'Estimates' }] : []),
     ...(featureVisibility.invoices ? [{ id: 'invoices', label: 'Invoices' }] : []),
+    { id: 'buyers', label: 'Buyers' },
   ];
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'orders';
 
@@ -217,6 +219,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       {activeTab === 'orders' ? <LocationOrdersTab locationId={id} locationName={data?.name} /> : null}
       {activeTab === 'estimates' ? <LocationEstimatesTab locationId={id} locationName={data?.name} /> : null}
       {activeTab === 'invoices' ? <LocationInvoicesTab locationId={id} locationName={data?.name} /> : null}
+      {activeTab === 'buyers' ? <LocationBuyersTab locationId={id} /> : null}
 
       <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={editingLocation} />
     </div>

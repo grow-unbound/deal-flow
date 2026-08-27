@@ -10,7 +10,7 @@ import type {
   CampaignWorkflowStatusTone,
   RawCampaignStatus,
 } from '@/lib/campaign-workflow-status';
-import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type {
@@ -23,10 +23,13 @@ import type {
   CatalogComposerPricingStrategy,
   CatalogComposerTag,
   MembershipMode,
+  PriceListSimplePricingStrategy,
   ProductMembershipRules,
 } from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
+import type { CatalogProductDetailRow } from '@/hooks/useDetailTabSearch';
+import { computeStrategyPrice } from '@/lib/price-list-strategy';
 
 export type CatalogDisplayStatus = CampaignWorkflowStatusLabel;
 export type CatalogStatusTone = CampaignWorkflowStatusTone;
@@ -215,6 +218,11 @@ export interface CatalogDetailResponse {
     price_source?: CatalogComposerPriceSource;
     price_list_id?: string | null;
     pricing_strategy?: CatalogComposerPricingStrategy;
+    // DB-backed campaign-specific bulk pricing (flat/percent/manual), distinct from the
+    // legacy `pricing_strategy` object above (unstructured composer-draft metadata).
+    pricing_source: 'pricelist' | 'individual_prices';
+    bulk_pricing_strategy: PriceListSimplePricingStrategy;
+    bulk_pricing_strategy_value: number | null;
     filters: CatalogComposerFilterState;
     is_dynamic?: boolean;
     buyer_target_mode?: CampaignBuyerTargetMode;
@@ -333,38 +341,6 @@ export interface CatalogComposerProductFilters {
   enabled?: boolean;
 }
 
-export interface CatalogComposerBuyerPickerRow {
-  id: string;
-  business_name: string;
-  city: string;
-  spend_mtd: number;
-  outstanding_due: number;
-  last_order_at: string | null;
-  ordered_30d: boolean;
-  overdue: boolean;
-  avatar: {
-    initials: string;
-    hue: 'teal' | 'ember' | 'cream';
-  };
-}
-
-export interface CatalogComposerBuyerPickerResponse {
-  buyers: CatalogComposerBuyerPickerRow[];
-  selected_buyers: CatalogComposerBuyerPickerRow[];
-  filters: LandingFilterMeta;
-  nextCursor: string | null;
-}
-
-export interface CatalogComposerBuyerPickerFilters {
-  query?: string;
-  city?: string[];
-  cohort?: string[];
-  orders?: string[];
-  dues?: string[];
-  selectedIds?: string[];
-  limit?: number;
-}
-
 export interface ExtendValidityRequest {
   valid_until: string;
 }
@@ -409,7 +385,7 @@ export function useTenantCatalogs(
       if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
         params.set('filter_preset', JSON.stringify(filters.filter_preset));
       }
-      const res = await apiFetch(`/api/tenant/catalogs?${params.toString()}`, { signal });
+      const res = await apiFetch(`/api/tenant/catalogs?${params.toString()}`, { signal, fresh: true });
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },
@@ -445,7 +421,7 @@ export function useTenantCatalogDetail(id: string, options?: { includePerformanc
     queryFn: async (): Promise<CatalogDetailResponse> => {
       const params = new URLSearchParams();
       params.set('include_performance', String(options?.includePerformance ?? true));
-      const res = await apiFetch(`/api/tenant/catalogs/${id}?${params.toString()}`);
+      const res = await apiFetch(`/api/tenant/catalogs/${id}?${params.toString()}`, { fresh: true });
       if (!res.ok) throw new Error('Failed to fetch catalog detail');
       return res.json();
     },
@@ -464,14 +440,13 @@ export function useCatalogBuyers(id: string, filters: {
   demandThisQuarter?: string[];
   buyerApp?: string[];
   sort?: string;
-  page?: number;
 }, enabled = true) {
-  return useQuery<CatalogBuyerPage>({
+  return useInfiniteQuery({
     queryKey: ['tenant-catalog-buyers', id, filters],
     enabled: Boolean(id) && enabled,
-    queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ limit: '50' });
-      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<CatalogBuyerPage> => {
+      const params = new URLSearchParams({ limit: '50', offset: String(pageParam) });
       if (filters.query?.trim()) params.set('q', filters.query.trim());
       if (filters.member) params.set('member', filters.member);
       filters.status?.forEach((value) => params.append('status', value));
@@ -479,11 +454,12 @@ export function useCatalogBuyers(id: string, filters: {
       filters.demandThisQuarter?.forEach((value) => params.append('demand_this_quarter', value));
       filters.buyerApp?.forEach((value) => params.append('buyer_app', value));
       if (filters.sort) params.set('sort', filters.sort);
-      const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal });
+      const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal, fresh: true });
       if (!res.ok) throw new Error('Failed to fetch catalog buyers');
       return res.json();
     },
-    placeholderData: (previous) => previous,
+    getNextPageParam: (lastPage) => (lastPage.offset + lastPage.rows.length < lastPage.total ? lastPage.offset + lastPage.limit : undefined),
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
@@ -541,42 +517,6 @@ export function useCatalogComposerProducts({
       appendArrayParam(params, 'selected_id', selectedIds);
       const res = await apiFetch(`/api/tenant/catalogs/composer/products?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch campaign products');
-      return res.json();
-    },
-    enabled,
-    placeholderData: keepPreviousData,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    staleTime: 30_000,
-    gcTime: NAVIGATION_QUERY_GC_TIME,
-    refetchOnWindowFocus: false,
-  });
-}
-
-export function useCatalogComposerBuyerPicker({
-  query,
-  city = [],
-  cohort = [],
-  orders = [],
-  dues = [],
-  selectedIds = [],
-  limit = 30,
-  enabled = true,
-}: CatalogComposerBuyerPickerFilters & { enabled?: boolean }) {
-  return useInfiniteQuery({
-    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, selectedIds, limit],
-    queryFn: async ({ pageParam, signal }): Promise<CatalogComposerBuyerPickerResponse> => {
-      const params = new URLSearchParams();
-      if (query?.trim()) params.set('q', query.trim());
-      params.set('limit', String(limit));
-      if (pageParam) params.set('cursor', pageParam as string);
-      appendArrayParam(params, 'city', city);
-      appendArrayParam(params, 'cohort', cohort);
-      appendArrayParam(params, 'orders', orders);
-      appendArrayParam(params, 'dues', dues);
-      appendArrayParam(params, 'selected_id', selectedIds);
-      const res = await apiFetch(`/api/tenant/catalogs/buyer-picker?${params.toString()}`, { signal });
-      if (!res.ok) throw new Error('Failed to fetch campaign buyers');
       return res.json();
     },
     enabled,
@@ -786,8 +726,80 @@ export function useSaveSimpleCatalog(catalogId?: string) {
       if (catalogId) {
         queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
         queryClient.invalidateQueries({ queryKey: ['tenant-catalog-buyers', catalogId] });
+        queryClient.invalidateQueries({ queryKey: ['catalog-products-detail'] });
       }
       toast.success(catalogId ? 'Campaign updated' : 'Campaign created');
+    },
+  });
+}
+
+export function useApplyCampaignPricingStrategy(catalogId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pricingStrategy, strategyValue }: { pricingStrategy: string; strategyValue: number | null }) => {
+      const res = await apiFetch(`/api/tenant/catalogs/${catalogId}/pricing`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pricing_strategy: pricingStrategy, strategy_value: strategyValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to update pricing mode');
+      }
+      return res.json() as Promise<{ ok: boolean; updated_count: number }>;
+    },
+    onMutate: async ({ pricingStrategy, strategyValue }) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', catalogId]]);
+
+      queryClient.setQueriesData<CatalogDetailResponse>({ queryKey: ['tenant-catalog-detail', catalogId] }, (old) => {
+        if (!old?.composer) return old;
+        return {
+          ...old,
+          composer: {
+            ...old.composer,
+            bulk_pricing_strategy: pricingStrategy as PriceListSimplePricingStrategy,
+            bulk_pricing_strategy_value: strategyValue,
+          },
+        };
+      });
+
+      if (pricingStrategy !== 'edit_each') {
+        queryClient.getQueriesData<InfiniteData<{ rows: CatalogProductDetailRow[]; total: number; nextOffset: number | null }>>({
+          queryKey: ['catalog-products-detail'],
+        }).forEach(([queryKey, old]) => {
+          if (!old) return;
+          queryClient.setQueryData(queryKey, {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              rows: page.rows.map((row) =>
+                row.is_member
+                  ? {
+                      ...row,
+                      override_price: computeStrategyPrice(
+                        { base_selling_price: row.base_selling_price, mrp: row.mrp },
+                        pricingStrategy as PriceListSimplePricingStrategy,
+                        String(strategyValue ?? 0),
+                      ),
+                    }
+                  : row,
+              ),
+            })),
+          });
+        });
+      }
+
+      return { snapshots };
+    },
+    onError: (error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Could not update pricing mode');
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-products-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      toast.success(result.updated_count > 0 ? `Repriced ${result.updated_count} products` : 'Pricing mode updated');
     },
   });
 }

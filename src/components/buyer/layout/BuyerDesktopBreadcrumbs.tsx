@@ -1,12 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
-import { useBuyerBrands, useBuyerCategories, useBuyerProductDetail } from '@/hooks/useBuyerProducts';
+import {
+  useBuyerBrands,
+  useBuyerCampaignName,
+  useBuyerCampaignShareName,
+  useBuyerCategories,
+  useBuyerProductDetail,
+} from '@/hooks/useBuyerProducts';
 import { useBuyerEffectivePathname } from '@/hooks/useBuyerRailPathnameOverride';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+import { isBuyerCampaignShareRoute, shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
 
 interface Crumb {
   label: string;
@@ -15,10 +21,12 @@ interface Crumb {
 
 function buildCrumbs(
   pathname: string,
-  labels: { category?: string; categoryId?: string; brand?: string; product?: string },
+  hasShareToken: boolean,
+  labels: { category?: string; categoryId?: string; brand?: string; product?: string; campaign?: string },
 ): Crumb[] {
   const crumbs: Crumb[] = [{ label: 'Home', href: '/buy/home' }];
 
+  if (isBuyerCampaignShareRoute(pathname, hasShareToken)) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
   if (pathname === '/buy/orders') return [...crumbs, { label: 'Orders' }];
   if (pathname.startsWith('/buy/orders/')) return [...crumbs, { label: 'Orders', href: '/buy/orders' }, { label: 'Order details' }];
   if (pathname.startsWith('/buy/estimates/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=enquiries' }, { label: 'Enquiry details' }];
@@ -26,7 +34,7 @@ function buildCrumbs(
   if (pathname === '/buy/profile') return [...crumbs, { label: 'Profile' }];
   if (pathname.startsWith('/buy/home/category/')) return [...crumbs, { label: labels.category ?? 'Category browse' }];
   if (pathname.startsWith('/buy/home/brand/')) return [...crumbs, { label: labels.brand ?? 'Brand browse' }];
-  if (pathname.startsWith('/buy/home/list/')) return [...crumbs, { label: 'Campaign browse' }];
+  if (pathname.startsWith('/buy/home/list/')) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
   if (pathname.startsWith('/buy/product/')) {
     if (labels.product && labels.category) {
       return [
@@ -44,15 +52,23 @@ function buildCrumbs(
 
 export function BuyerDesktopBreadcrumbs() {
   const pathname = useBuyerEffectivePathname(usePathname());
-  if (!shouldShowBuyerDesktopBreadcrumbs(pathname)) return null;
+  const searchParams = useSearchParams();
+  const hasShareToken = Boolean(searchParams?.get('share_token'));
+  if (!shouldShowBuyerDesktopBreadcrumbs(pathname) && !isBuyerCampaignShareRoute(pathname, hasShareToken)) return null;
 
   const categoryId = pathname.startsWith('/buy/home/category/') ? pathname.split('/').at(-1) ?? '' : '';
   const brandId = pathname.startsWith('/buy/home/brand/') ? pathname.split('/').at(-1) ?? '' : '';
   const productId = pathname.startsWith('/buy/product/') ? pathname.split('/').at(-1) ?? '' : '';
+  const campaignId = pathname.startsWith('/buy/home/list/') ? pathname.split('/').at(-1) ?? '' : '';
+  const shareToken = searchParams?.get('share_token') ?? '';
   const { data: categories } = useBuyerCategories();
   const { data: brands } = useBuyerBrands();
   const productDetail = useBuyerProductDetail(productId);
-  const crumbs = buildCrumbs(pathname, {
+  const { data: campaignName } = useBuyerCampaignName(campaignId);
+  const { data: campaignShareName } = useBuyerCampaignShareName(
+    isBuyerCampaignShareRoute(pathname, hasShareToken) ? shareToken : '',
+  );
+  const crumbs = buildCrumbs(pathname, hasShareToken, {
     category:
       categories?.find((category) => category.id === categoryId)?.name
       ?? productDetail.item?.category_name
@@ -60,6 +76,7 @@ export function BuyerDesktopBreadcrumbs() {
     categoryId: categoryId || (productDetail.item?.category_id ?? undefined),
     brand: brands?.find((brand) => brand.id === brandId)?.name ?? undefined,
     product: productDetail.item?.display_name ?? undefined,
+    campaign: campaignName ?? campaignShareName,
   });
 
   return (

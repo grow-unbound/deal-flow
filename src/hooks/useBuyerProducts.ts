@@ -209,6 +209,35 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
   });
 }
 
+/** Campaign name for `/buy/home/list/[id]` breadcrumb. */
+export function useBuyerCampaignName(id: string) {
+  return useQuery<string | undefined>({
+    queryKey: ['buyer-catalog-list-name', id],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '20', offset: '0', campaign_id: id });
+      const body = await fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`);
+      return body.selected_campaign_name ?? undefined;
+    },
+    enabled: Boolean(id),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
+/** Campaign name for the share_token guest breadcrumb. */
+export function useBuyerCampaignShareName(shareToken: string) {
+  return useQuery<string | undefined>({
+    queryKey: ['buyer-catalog-share-token-meta', shareToken],
+    queryFn: async () => {
+      const body = await fetchJson<{ name?: string }>(`/api/buyer/catalog/${encodeURIComponent(shareToken)}`);
+      return body.name ?? undefined;
+    },
+    enabled: Boolean(shareToken),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+}
+
 export function useBuyerProductRecommendations(tenantProductId: string) {
   return useQuery<BuyerProductPageRecos>({
     queryKey: buyerProductRecommendationsQueryKey(tenantProductId),

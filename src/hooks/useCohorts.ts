@@ -254,6 +254,7 @@ export interface CohortComposerBuyer {
   hue: 'teal' | 'ember' | 'cream';
   buyer_app_enabled?: boolean;
   overdue_amount?: number;
+  invoice_count?: number;
 }
 
 export interface CohortComposerResponse {
@@ -286,6 +287,13 @@ export interface CohortComposerBuyerFilters {
   selectedIds?: string[];
   limit?: number;
   enabled?: boolean;
+  /** Picker quick filters (toggle chips). */
+  quickFilters?: string[];
+  /** Picker advanced filters (single-select, undefined/null = "All"). */
+  status?: 'active' | 'dormant' | 'inactive' | null;
+  buyerAppFilter?: 'enabled' | 'not_enabled' | null;
+  outstandingFilter?: 'has_dues' | 'overdue' | null;
+  locationId?: string | null;
 }
 
 const SELECTED_BUYERS_LIMIT = 250;
@@ -325,7 +333,7 @@ export function useCohortsLanding(
       if (filters.filter_preset && Object.keys(filters.filter_preset).length > 0) {
         params.set('filter_preset', JSON.stringify(filters.filter_preset));
       }
-      const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`, { signal });
+      const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`, { signal, fresh: true });
       if (!res.ok) throw new Error('Failed to fetch cohorts landing');
       return res.json();
     },
@@ -385,7 +393,7 @@ export function useCohortDetail(id: string, options?: { includePerformance?: boo
     queryFn: async (): Promise<CohortDetailResponse> => {
       const params = new URLSearchParams();
       params.set('include_performance', String(options?.includePerformance ?? true));
-      const res = await apiFetch(`/api/cohorts/${id}?${params.toString()}`);
+      const res = await apiFetch(`/api/cohorts/${id}?${params.toString()}`, { fresh: true });
       if (!res.ok) {
         throw new Error('Failed to fetch customer group detail');
       }
@@ -439,9 +447,27 @@ export function useCohortComposerBuyers({
   selectedIds = [],
   limit = 50,
   enabled = true,
+  quickFilters = [],
+  status = null,
+  buyerAppFilter = null,
+  outstandingFilter = null,
+  locationId = null,
 }: CohortComposerBuyerFilters) {
   return useInfiniteQuery({
-    queryKey: ['cohort-composer-buyers', query?.trim() ?? '', geographies, lastOrderBucket, gmvBuckets, selectedIds, limit],
+    queryKey: [
+      'cohort-composer-buyers',
+      query?.trim() ?? '',
+      geographies,
+      lastOrderBucket,
+      gmvBuckets,
+      selectedIds,
+      limit,
+      quickFilters,
+      status,
+      buyerAppFilter,
+      outstandingFilter,
+      locationId,
+    ],
     queryFn: async ({ pageParam, signal }): Promise<CohortComposerBuyerResultsetResponse> => {
       const params = new URLSearchParams();
       params.set('limit', String(limit));
@@ -450,6 +476,11 @@ export function useCohortComposerBuyers({
       if (pageParam) params.set('cursor', pageParam as string);
       appendArrayParam(params, 'geography', geographies);
       appendArrayParam(params, 'gmv', gmvBuckets);
+      appendArrayParam(params, 'quick', quickFilters);
+      if (status) params.set('status', status);
+      if (buyerAppFilter) params.set('buyer_app', buyerAppFilter);
+      if (outstandingFilter) params.set('outstanding', outstandingFilter);
+      if (locationId) params.set('location_id', locationId);
       // Hard-capped: never send an unbounded id list (one tenant already has ~11k buyers).
       appendArrayParam(params, 'selected_id', selectedIds.slice(0, SELECTED_BUYERS_LIMIT));
       const res = await apiFetch(`/api/cohorts/composer/buyers?${params.toString()}`, { signal });
@@ -786,6 +817,7 @@ export function useSaveSimpleCustomerGroup(cohortId?: string) {
       queryClient.invalidateQueries({ queryKey: ['tenant-cohort-options'] });
       if (cohortId) {
         queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+        queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
       }
       toast.success(cohortId ? 'Customer group updated' : 'Customer group created');
     },
@@ -940,6 +972,7 @@ export function useRefreshCohort(id: string) {
       });
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['cohort-members', id] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-buyers-detail'] });
       toast.success('Membership refreshed');
     },
     onError: (error) => {

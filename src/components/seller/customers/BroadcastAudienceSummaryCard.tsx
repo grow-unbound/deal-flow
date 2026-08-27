@@ -92,22 +92,40 @@ export function BroadcastAudienceSummaryCard({
       </div>
 
       {preview ? (
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Recipients</p>
-            <p className="mt-1 font-medium text-cream-900">{preview.recipient_count}</p>
+        <>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
+              <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Recipients</p>
+              <p className="mt-1 font-medium text-cream-900">{preview.recipient_count}</p>
+            </div>
+            <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
+              <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Opted out</p>
+              <p className="mt-1 font-medium text-cream-900">{preview.opted_out_excluded}</p>
+            </div>
+            <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
+              <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Est. cost</p>
+              <p className="mt-1 font-medium text-cream-900">
+                {preview.estimated_credits} cr · ₹{preview.estimated_inr.toFixed(2)}
+              </p>
+            </div>
           </div>
-          <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Opted out</p>
-            <p className="mt-1 font-medium text-cream-900">{preview.opted_out_excluded}</p>
-          </div>
-          <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Est. cost</p>
-            <p className="mt-1 font-medium text-cream-900">
-              {preview.estimated_credits} cr · ₹{preview.estimated_inr.toFixed(2)}
-            </p>
-          </div>
-        </div>
+
+          {preview.daily_cap != null ? (
+            <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5 text-sm">
+              <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Daily send quota</p>
+              <p className="mt-1 font-medium text-cream-900">
+                {preview.remaining_quota_today} of {preview.daily_cap} left today
+              </p>
+              {preview.recipient_count > (preview.remaining_quota_today ?? 0) ? (
+                <p className="mt-0.5 text-xs text-cream-600">
+                  This broadcast will take ~{Math.ceil(preview.recipient_count / Math.max(1, preview.daily_cap))} day
+                  {Math.ceil(preview.recipient_count / Math.max(1, preview.daily_cap)) === 1 ? '' : 's'} to reach everyone —
+                  the rest send automatically once today&apos;s quota resets.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {previewError ? (
