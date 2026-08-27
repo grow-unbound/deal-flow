@@ -28,7 +28,7 @@ const baloo2 = Baloo_2({
 });
 
 export const metadata: Metadata = {
-  title: 'yukti — Distributor Command Center',
+  title: 'Yukti | Distributor Command Center',
   description: 'Manage multibrand catalogs, publish cohort pricing, capture orders.',
   icons: {
     icon: [

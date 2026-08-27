@@ -125,16 +125,39 @@ const nextConfig = {
   },
 };
 
+// A copy-pasted-but-unfilled .env.local (still holding the literal
+// placeholder from .env.example) must not attempt a source map upload or
+// release creation — the Sentry CLI would hit the API with a bogus token
+// and fail loudly (401) on every local build. `sourcemaps.disable` and
+// `release.create: false` are the plugin's own documented switches for
+// this — more reliable than trying to unset SENTRY_AUTH_TOKEN from within
+// next.config.js, since Next spawns separate workers per build target
+// (Node.js/Edge/Client) and each independently re-reads the OS env rather
+// than inheriting this module's in-memory mutations.
+if (process.env.SENTRY_AUTH_TOKEN === 'your_sentry_auth_token_here') {
+  delete process.env.SENTRY_AUTH_TOKEN;
+}
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN || undefined;
+
 export default withSentryConfig(withBundleAnalyzer(nextConfig), {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  // Only upload source maps / run the Sentry build step when a token is
-  // present (Vercel prod/preview) — keeps local `npm run build` unaffected.
-  silent: !process.env.SENTRY_AUTH_TOKEN,
-  widenClientFileUpload: true,
+  authToken: sentryAuthToken,
+  // Only upload source maps / create a release when a real token is present
+  // (Vercel prod/preview) — keeps local `npm run build` unaffected.
+  silent: !sentryAuthToken,
+  sourcemaps: { disable: !sentryAuthToken },
+  release: { create: !!sentryAuthToken, finalize: !!sentryAuthToken },
+  // Default (false) — only uploads source maps for chunks actually referenced
+  // by build output, not every emitted file. `true` widens the scan to catch
+  // dynamically-loaded chunks Sentry's plugin might otherwise miss, at the
+  // cost of scanning/uploading far more files. This app has no such edge
+  // case, so leave it narrow — it's the difference between uploading dozens
+  // of chunks vs. every .js.map in the output tree.
+  widenClientFileUpload: false,
+  // No Vercel Cron routes in this repo — automaticVercelMonitors would just
+  // be an unused Sentry API call at build time for zero benefit.
   webpack: {
     treeshake: { removeDebugLogging: true },
-    automaticVercelMonitors: true,
   },
 });

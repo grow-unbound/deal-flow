@@ -219,6 +219,10 @@ export default function PriceListDetailPage() {
                 valid_from: priceList.valid_from ? new Date(priceList.valid_from) : new Date(),
                 valid_to: priceList.valid_to ? new Date(priceList.valid_to) : undefined,
                 priority: priceList.priority,
+                pricing_strategy: priceList.pricing_strategy === 'flat_off_base' || priceList.pricing_strategy === 'percentage'
+                  ? priceList.pricing_strategy
+                  : 'edit_each',
+                strategy_value: priceList.strategy_value ?? null,
                 membership_mode: priceList.membership_mode ?? 'manual',
                 rules: priceList.membership_mode === 'automatic' ? (priceList.filters as unknown as ProductMembershipRules) : undefined,
               }}

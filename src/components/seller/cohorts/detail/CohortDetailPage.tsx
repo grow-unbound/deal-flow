@@ -24,6 +24,9 @@ const CohortPerformanceTab = dynamic(
 
 const COHORT_DETAIL_TAB_SNAPSHOT_VERSION = 2;
 
+// Temporarily hidden — flip back on once the refresh flow is revisited.
+const SHOW_REFRESH_NOW = false;
+
 type TabId = 'buyers' | 'performance';
 
 interface CohortDetailPageProps {
@@ -101,7 +104,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         actions={
           isSellerAdmin && data ? (
             <div className="flex items-center gap-2 pt-1">
-              {!data.details_rules.is_static ? (
+              {SHOW_REFRESH_NOW && !data.details_rules.is_static ? (
                 <div className="flex flex-col items-end gap-0.5">
                   <Button
                     variant="outline"
@@ -151,7 +154,6 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           <CohortBuyersTab
             cohortId={id}
             rules_summary={data.rules_summary}
-            activeMembersMtd={data.meta_strip_4.active_member_count}
             details_rules={data.details_rules}
           />
         ) : (

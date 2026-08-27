@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { BuyerCatalogDesktopLayout } from '@/components/buyer/catalog/BuyerCatalogDesktopLayout';
-import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
+import { CampaignSummaryBlock, CampaignTitleRow } from '@/components/buyer/catalog/CampaignSummaryBlock';
 import { CatalogSearchState } from '@/components/buyer/catalog/CatalogSearchState';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -26,6 +26,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
       shareCatalogName: null as string | null,
       shareCatalogMessage: null as string | null,
       shareCatalogValidUntil: null as string | null,
+      shareCatalogImageUrl: null as string | null,
       loadedShareToken: null as string | null,
     },
   });
@@ -34,6 +35,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
   const shareCatalogName = routeState.shareCatalogName;
   const shareCatalogMessage = routeState.shareCatalogMessage;
   const shareCatalogValidUntil = routeState.shareCatalogValidUntil;
+  const shareCatalogImageUrl = routeState.shareCatalogImageUrl;
   const loadedShareToken = routeState.loadedShareToken;
   const [loading, setLoading] = React.useState(items.length === 0);
   const [listFetchError, setListFetchError] = React.useState(false);
@@ -54,7 +56,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
     setLoading(items.length === 0);
 
     apiFetch(`/api/buyer/catalog/${shareToken}`)
-      .then((r) => r.json() as Promise<{ campaign_id?: string; name?: string; message?: string | null; valid_until?: string | null; items?: BuyerCatalogItem[] }>)
+      .then((r) => r.json() as Promise<{ campaign_id?: string; name?: string; message?: string | null; image_url?: string | null; valid_until?: string | null; items?: BuyerCatalogItem[] }>)
       .then((data) => {
         if (cancelled) return;
         setRouteState((current) => ({
@@ -63,6 +65,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
           shareCatalogName: data.name ?? 'Catalog',
           shareCatalogMessage: data.message ?? null,
           shareCatalogValidUntil: data.valid_until ?? null,
+          shareCatalogImageUrl: data.image_url ?? null,
           loadedShareToken: shareToken,
         }));
         if (data.campaign_id) {
@@ -90,6 +93,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
       shareCatalogName: null,
       shareCatalogMessage: null,
       shareCatalogValidUntil: null,
+      shareCatalogImageUrl: null,
       loadedShareToken: null,
     }));
   }, [loadedShareToken, setRouteState, shareToken]);
@@ -112,23 +116,27 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
           <BuyerCatalogSearchInput
             value={search}
             onChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-            placeholder="Search products in this catalog"
+            placeholder="Search products in this campaign"
           />
         }
       >
-        <BuyerCatalogDesktopLayout>
+        <BuyerCatalogDesktopLayout splitScroll>
           <div className="hidden px-2 pt-5 md:block lg:px-2 lg:pt-6">
-            <div className="flex items-center gap-3">
+            <CampaignTitleRow name={shareCatalogName ?? 'Campaign'} imageUrl={shareCatalogImageUrl} />
+            <CampaignSummaryBlock message={shareCatalogMessage} validUntil={shareCatalogValidUntil} />
+            <div className="mt-4 flex items-center gap-3">
               <BuyerCatalogSearchInput
                 value={search}
                 onChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-                placeholder="Search products in this catalog"
+                placeholder="Search products in this campaign"
                 className="max-w-[34rem]"
               />
             </div>
           </div>
 
-          <CampaignSummaryBlock message={shareCatalogMessage} validUntil={shareCatalogValidUntil} />
+          <div className="md:hidden">
+            <CampaignSummaryBlock message={shareCatalogMessage} validUntil={shareCatalogValidUntil} />
+          </div>
 
           {listFetchError && items.length === 0 ? (
             <div className="p-4">

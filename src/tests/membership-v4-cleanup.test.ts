@@ -11,7 +11,6 @@ function read(path: string) {
 describe('membership v4 cleanup', () => {
   it('keeps active membership UI and API off legacy 90-day filters', () => {
     const activeSurface = [
-      'src/components/seller/shared/MembershipFilterPanel.tsx',
       'src/components/seller/cohorts/detail/CohortBuyersTab.tsx',
       'src/components/seller/catalogs/detail/CatalogBuyersTab.tsx',
       'src/components/seller/catalogs/CatalogComposer.tsx',

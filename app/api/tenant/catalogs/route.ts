@@ -640,6 +640,12 @@ export async function POST(request: NextRequest) {
   const campaignPriceListId = isSimpleForm
     ? (payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null)
     : (payload.price_source === 'price_list' ? payload.price_list_id ?? null : null);
+  // Flat/percent bulk pricing only applies to campaign-specific pricing -- a pricelist
+  // already dictates pricing, so force edit_each/null there regardless of form input.
+  const campaignPricingStrategy = isSimpleForm && pricingSource === 'individual_prices'
+    ? (payload.pricing_strategy ?? 'edit_each')
+    : 'edit_each';
+  const campaignStrategyValue = campaignPricingStrategy === 'edit_each' ? null : (payload.strategy_value ?? null);
 
   const { data: insertedCatalog, error: insertError } = await db
     .schema('app')
@@ -664,6 +670,8 @@ export async function POST(request: NextRequest) {
       is_dynamic: productMembershipMode === 'automatic',
       pricing_source: pricingSource,
       price_list_id: campaignPriceListId,
+      pricing_strategy: campaignPricingStrategy,
+      strategy_value: campaignStrategyValue,
       created_by: claims.sub,
       updated_by: claims.sub,
     })
@@ -740,6 +748,13 @@ export async function POST(request: NextRequest) {
     if (itemsError) {
       console.error('[POST /api/tenant/catalogs] simple items error:', itemsError);
       return NextResponse.json({ error: 'Failed to create catalog items' }, { status: 500 });
+    }
+  }
+
+  if (campaignPricingStrategy !== 'edit_each') {
+    const { error: applyError } = await db.schema('app').rpc('apply_campaign_pricing_strategy', { p_campaign_id: insertedCatalog.id });
+    if (applyError) {
+      console.error('[POST /api/tenant/catalogs] apply pricing strategy error:', applyError.message);
     }
   }
 

@@ -27,16 +27,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { AutomaticBuyerMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
 import { BuyerPickerRow } from '@/components/seller/shared/BuyerPickerRow';
+import { PickerFiltersPanel } from '@/components/seller/shared/PickerFiltersPanel';
+import { SelectedItemsChipsPanel } from '@/components/seller/shared/SelectedItemsChipsPanel';
+import { SelectAllCheckbox } from '@/components/seller/shared/SelectableMembershipTable';
 import {
   MembershipModeSwitchDialog,
   type MembershipModeSwitchDirection,
 } from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { useTenantBrands } from '@/hooks/useBrands';
 import { useCohortComposerBuyers, useSaveSimpleCustomerGroup } from '@/hooks/useCohorts';
+import { useTenantLocationOptions } from '@/hooks/useLocations';
 import { CustomerGroupFormPayloadSchema, type CustomerGroupFormPayload } from '@/lib/zod';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { usePickerSelection, getLoadedSelectionState } from '@/hooks/usePickerSelection';
+import { usePickerFilterState } from '@/hooks/usePickerFilterState';
+import { BUYER_ADVANCED_FILTERS, BUYER_QUICK_ADVANCED_LINKS, BUYER_QUICK_FILTERS } from '@/lib/picker-filters';
 
 interface CustomerGroupFormSheetProps {
   open: boolean;
@@ -130,11 +137,25 @@ export function CustomerGroupFormSheet({
       .map((brand) => brand.display_name_override ?? brand.master_brand?.name ?? 'Unnamed brand'),
     [brands, selectedBrandIds],
   );
+  const buyerFilterState = usePickerFilterState(BUYER_QUICK_ADVANCED_LINKS);
+  const { data: locationOptions = [] } = useTenantLocationOptions(buyerPickerOpen);
+  const buyerAdvancedFilters = useMemo(
+    () => [
+      ...BUYER_ADVANCED_FILTERS,
+      { key: 'sales_location', label: 'Sales location', options: locationOptions.map((loc) => ({ value: loc.id, label: loc.label })) },
+    ],
+    [locationOptions],
+  );
   const buyerQuery = useCohortComposerBuyers({
     query: buyerSearch,
     selectedIds: selectedBuyerIds,
     limit: 30,
     enabled: buyerPickerOpen && membershipMode === 'manual',
+    quickFilters: buyerFilterState.quickFilters as any,
+    status: (buyerFilterState.advancedValues.status ?? null) as any,
+    buyerAppFilter: (buyerFilterState.advancedValues.buyer_app ?? null) as any,
+    outstandingFilter: (buyerFilterState.advancedValues.outstanding ?? null) as any,
+    locationId: buyerFilterState.advancedValues.sales_location ?? null,
   });
   const buyerRows = useMemo(
     () => buyerQuery.data?.pages.flatMap((page) => page.buyers) ?? [],
@@ -148,7 +169,6 @@ export function CustomerGroupFormSheet({
     () => new Map([...selectedBuyerRows, ...buyerRows].map((buyer) => [buyer.id, buyer])),
     [buyerRows, selectedBuyerRows],
   );
-  const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
   const selectedBuyerSummary = useMemo(() => {
     if (selectedBuyerIds.length === 0) return 'Select buyers';
     const first = buyerCache.get(selectedBuyerIds[0]);
@@ -163,15 +183,14 @@ export function CustomerGroupFormSheet({
       void buyerQuery.fetchNextPage();
     },
   });
+  const buyerSelection = usePickerSelection(selectedBuyerIds, (ids) =>
+    form.setValue('selected_buyer_ids', ids, { shouldDirty: true, shouldTouch: true, shouldValidate: true }),
+  );
+  const selectedBuyerSet = buyerSelection.selectedSet;
+  const buyerLoadedState = getLoadedSelectionState(buyerRows.map((b) => b.id), selectedBuyerSet);
 
   function toggleBuyer(buyerId: string) {
-    form.setValue(
-      'selected_buyer_ids',
-      selectedBuyerSet.has(buyerId)
-        ? selectedBuyerIds.filter((id) => id !== buyerId)
-        : [...selectedBuyerIds, buyerId],
-      { shouldDirty: true, shouldTouch: true, shouldValidate: true },
-    );
+    buyerSelection.toggleOne(buyerId);
   }
 
   return (
@@ -383,6 +402,48 @@ export function CustomerGroupFormSheet({
                           searchValue={buyerSearch}
                           onSearchValueChange={setBuyerSearch}
                           searchPlaceholder="Search buyers…"
+                          selectedItemsSummary={(
+                            <SelectedItemsChipsPanel
+                              label="Selected buyers"
+                              items={selectedBuyerIds.map((buyerId) => ({
+                                id: buyerId,
+                                label: buyerCache.get(buyerId)?.business_name ?? 'Selected buyer',
+                              }))}
+                              onRemove={toggleBuyer}
+                            />
+                          )}
+                          filtersPanel={(
+                            <PickerFiltersPanel
+                              quickFilters={BUYER_QUICK_FILTERS}
+                              activeQuickFilters={buyerFilterState.quickFilters}
+                              onToggleQuickFilter={buyerFilterState.toggleQuickFilter}
+                              advancedFilters={buyerAdvancedFilters}
+                              advancedValues={buyerFilterState.advancedValues}
+                              onAdvancedChange={buyerFilterState.setAdvancedFilter}
+                            />
+                          )}
+                          selectionSummary={(
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-2 text-sm text-cream-700">
+                                <SelectAllCheckbox
+                                  checked={buyerLoadedState.allLoadedSelected}
+                                  indeterminate={buyerLoadedState.someLoadedSelected}
+                                  onChange={() => buyerSelection.toggleAllLoaded(buyerRows.map((b) => b.id))}
+                                  label="Select all loaded buyers"
+                                />
+                                Select all
+                              </label>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={selectedBuyerIds.length === 0}
+                                onClick={buyerSelection.clearAll}
+                              >
+                                Clear selection
+                              </Button>
+                            </div>
+                          )}
                           footer={(
                             <div className="flex items-center justify-end gap-2">
                               <Button type="button" variant="ghost" onClick={() => setBuyerPickerOpen(false)}>
@@ -395,27 +456,6 @@ export function CustomerGroupFormSheet({
                             </div>
                           )}
                         >
-                          {selectedBuyerIds.length > 0 ? (
-                            <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected buyers</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {selectedBuyerIds.map((buyerId) => {
-                                  const buyer = buyerCache.get(buyerId);
-                                  return (
-                                    <button
-                                      key={buyerId}
-                                      type="button"
-                                      onClick={() => toggleBuyer(buyerId)}
-                                      className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
-                                    >
-                                      <span>{buyer?.business_name ?? 'Selected buyer'}</span>
-                                      <span aria-hidden="true" className="text-teal-700">×</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : null}
                           {buyerQuery.isFetching && buyerRows.length === 0 ? (
                             <div className="space-y-1">
                               {Array.from({ length: 4 }).map((_, idx) => (
@@ -450,8 +490,7 @@ export function CustomerGroupFormSheet({
                     name="rules"
                     render={({ field }) => (
                       <FormItem className="mt-4">
-                        <MembershipFilterPanel
-                          entityType="cohort"
+                        <AutomaticBuyerMembershipPanel
                           rules={field.value ?? {}}
                           onRulesChange={field.onChange}
                         />

@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
         gmvBuckets: readArrayParam(params, 'gmv') as any,
         limit: parseRowsLimit(params.get('limit'), PAGE_SIZE.COMPOSER),
         cursor: params.get('cursor'),
+        quickFilters: readArrayParam(params, 'quick') as any,
+        status: (params.get('status') || null) as any,
+        buyerAppFilter: (params.get('buyer_app') || null) as any,
+        outstandingFilter: (params.get('outstanding') || null) as any,
+        locationId: params.get('location_id') || null,
       }),
       selectedIds.length > 0
         ? getCohortComposerBuyerResultset(db as any, claims.tenant_id, { ids: selectedIds })

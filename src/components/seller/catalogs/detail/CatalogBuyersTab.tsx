@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag, type FilterBarGroup } from '@/components/seller/layout';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { useDetailTableInfiniteScroll } from '@/hooks/useDetailTableInfiniteScroll';
+import { AutomaticBuyerMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
+import { BuyerAppAvatar } from '@/components/seller/shared/BuyerPickerRow';
 import {
   MemberToggle,
   MembershipBulkActionBar,
@@ -96,10 +98,16 @@ function statusTone(status: CampaignBuyer['opened_status']) {
   return 'warning';
 }
 
-function buyerAppLabel(status?: string) {
-  if (status === 'enabled') return 'Buyer App enabled';
-  if (status === 'inactive') return 'Buyer inactive';
-  return 'Buyer App not enabled';
+function initialsFromName(value: string) {
+  return (
+    value
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0] ?? '')
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '—'
+  );
 }
 
 function demandLabel(kind: 'orders' | 'estimates' | 'none' | string | undefined) {
@@ -127,7 +135,6 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   const [invoiceThisQuarter, setInvoiceThisQuarter] = useState<string[]>([]);
   const [buyerApp, setBuyerApp] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('Demand Value (high → low)');
-  const [page, setPage] = useState(0);
   const debouncedSearch = useDebounce(search, 300);
   const query = useCatalogBuyers(catalogId, {
     query: debouncedSearch,
@@ -137,24 +144,27 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
     invoiceThisQuarter,
     buyerApp,
     sort: sortValue[sortBy],
-    page,
   });
-
-  useEffect(() => setPage(0), [debouncedSearch, sortBy, member, status, demandThisQuarter, invoiceThisQuarter, buyerApp]);
 
   const fallbackTotals = useMemo(() => ({
     opens: buyers.filter((buyer) => normalizeStatus(buyer.opened_status) !== 'NOT YET OPENED').length,
     converted: buyers.filter((buyer) => normalizeStatus(buyer.opened_status) === 'CONVERTED').length,
     gmv: buyers.reduce((sum, buyer) => sum + buyer.spend, 0),
   }), [buyers]);
-  const totals = query.data?.totals ?? fallbackTotals;
-  const rows = query.data?.rows ?? buyers;
+  const totals = query.data?.pages[0]?.totals ?? fallbackTotals;
+  const rows = useMemo(() => query.data?.pages.flatMap((page) => page.rows) ?? buyers, [query.data, buyers]);
   const primaryDemandKind = rows.find((buyer) => buyer.primary_demand_kind && buyer.primary_demand_kind !== 'none')?.primary_demand_kind ?? rows[0]?.primary_demand_kind ?? 'none';
   const primaryDemandLabel = demandLabel(primaryDemandKind);
   const selection = useSelectableRows(rows, (buyer) => buyer.buyer_id);
   const isInitialLoading = !query.data && query.isLoading;
   const isTransitioning = query.isFetching || search !== debouncedSearch;
-  const total = query.data?.total ?? buyers.length;
+  const total = query.data?.pages[0]?.total ?? buyers.length;
+  const { sentinelIndex, sentinelRef } = useDetailTableInfiniteScroll({
+    itemCount: rows.length,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: () => query.fetchNextPage(),
+  });
 
   useEffect(() => {
     selection.clearSelection();
@@ -190,8 +200,10 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
       hero_image_url: heroImageUrl ?? '',
       target_mode: 'individual_buyers',
       target_cohort_id: null,
-      pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
-      price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
+      pricing_mode: composer.pricing_source,
+      price_list_id: composer.pricing_source === 'pricelist' ? composer.price_list_id : null,
+      pricing_strategy: composer.bulk_pricing_strategy,
+      strategy_value: composer.bulk_pricing_strategy_value,
       buyer_target_mode: 'automatic',
       buyer_ids: [],
       buyer_rules: draftBuyerRules,
@@ -212,7 +224,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   ];
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="h-full max-h-[calc(100dvh-var(--topbar-h)-14rem)] space-y-4 overflow-y-auto pt-5">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -240,7 +252,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
 
         {buyerTargetMode === 'automatic' ? (
           <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-            <MembershipFilterPanel entityType="campaign_buyers" rules={draftBuyerRules} onRulesChange={(next) => setDraftBuyerRules(next as BuyerMembershipRules)} />
+            <AutomaticBuyerMembershipPanel rules={draftBuyerRules} onRulesChange={(next) => setDraftBuyerRules(next)} />
             <div className="flex items-center justify-end gap-2">
               {buyerRulesDirty ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setDraftBuyerRules(savedBuyerRules)} disabled={saveCatalog.isPending}>
@@ -303,29 +315,44 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
             { label: 'Geography', className: 'px-5' },
             { label: 'Status', className: 'px-5' },
             { label: primaryDemandLabel, align: 'right', className: 'px-5' },
-            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, className: 'px-5' },
-            { label: 'Last opened', className: 'px-5' },
-            { label: 'Last Conversion', className: 'px-5' },
+            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, align: 'right', className: 'px-5' },
+            { label: 'Last opened', align: 'right', className: 'px-5' },
+            { label: 'Last Conversion', align: 'right', className: 'px-5' },
           ]}
           tableMinWidth={1180}
+          horizontalScrollOnly
           showEmptyState={!isInitialLoading && rows.length === 0}
           emptyState={<div className="py-16 text-center text-sm text-cream-500">No buyers match these filters.</div>}
         >
           {isInitialLoading ? (
             <TableBodySkeleton columns={8} />
           ) : (
-            rows.map((buyer) => {
+            rows.map((buyer, index) => {
               const isSelected = selection.selectedIds.includes(buyer.buyer_id);
               const demandValue = buyer.demand_value ?? buyer.spend;
               const demandCount = buyer.demand_count ?? buyer.orders;
               const normalizedStatus = normalizeStatus(buyer.opened_status);
               const lastConversionAt = buyer.last_conversion_at ?? buyer.last_order_at;
               return (
-                <SelectableRow key={buyer.buyer_id} selected={isSelected}>
+                <Fragment key={buyer.buyer_id}>
+                {index === sentinelIndex ? (
+                  <tr aria-hidden="true" style={{ height: 0 }}>
+                    <td colSpan={8} className="p-0">
+                      <div ref={sentinelRef} />
+                    </td>
+                  </tr>
+                ) : null}
+                <SelectableRow selected={isSelected}>
                   <td className="px-3 py-3"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
                   <td className="px-3 py-3">
-                    <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
-                    <p className="mt-0.5 text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <BuyerAppAvatar
+                        initials={initialsFromName(buyer.buyer_name)}
+                        enabled={buyer.buyer_app_status === 'enabled'}
+                        size={38}
+                      />
+                      <p className="truncate text-base font-medium text-cream-900">{buyer.buyer_name}</p>
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <MemberToggle
@@ -346,20 +373,15 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
                     <p className="font-display text-md text-cream-950">{demandValue > 0 ? formatNumberValue(demandValue, 'CURRENCY_THRESHOLD') : '—'}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{demandCount > 0 ? demandCountLabel(buyer.primary_demand_kind, demandCount) : '—'}</p>
                   </td>
-                  <td className="px-3 py-3 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
-                  <td className="px-3 py-3 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
-                  <td className="px-3 py-3 text-base text-cream-700">{lastConversionAt ? formatDate(lastConversionAt) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-base text-cream-700">{lastConversionAt ? formatDate(lastConversionAt) : '—'}</td>
                 </SelectableRow>
+                </Fragment>
               );
             })
           )}
         </LandingTable>
-        {total > 50 ? (
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" size="sm" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={(page + 1) * 50 >= total || query.isFetching} onClick={() => setPage((value) => value + 1)}>Next</Button>
-          </div>
-        ) : null}
       </div>
     </section>
   );

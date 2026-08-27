@@ -68,35 +68,28 @@ export function DistributionList({
     const funnelPalette = ['#204A41', '#3B6659', '#57816F', '#7EA89A', '#A8C7BC'];
     return (
       <div className={cn(compact ? 'p-4' : 'p-5', className)}>
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col gap-2.5">
           {items.map((item, index) => {
             const width = Math.max(Math.min(item.pct ?? 0, 100), 4);
             const color = item.tone ?? funnelPalette[index % funnelPalette.length];
-            const isLast = index === items.length - 1;
             return (
-              <div key={item.id} className="w-full">
-                <div
-                  className={cn('flex items-center justify-center px-3 py-2.5 text-center', !isLast && 'border-b border-white/40')}
-                  style={{ width: `${width}%`, minWidth: '40%', backgroundColor: color, marginLeft: 'auto', marginRight: 'auto' }}
-                  role="img"
-                  aria-label={`${item.label}: ${item.pct ?? 0}%`}
-                >
-                  <span className="truncate text-sm font-semibold text-white">{item.label}</span>
-                  <span className="ml-2 shrink-0 font-mono text-sm text-white/85">{item.pct != null ? `${item.pct}%` : null}</span>
+              <div key={item.id} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 truncate text-sm text-cream-800 sm:w-36">{item.label}</span>
+                <div className="h-8 flex-1 overflow-hidden rounded-lg bg-cream-100">
+                  <div
+                    className="flex h-full items-center rounded-lg px-3"
+                    style={{ width: `${width}%`, backgroundColor: color }}
+                    role="img"
+                    aria-label={`${item.label}: ${item.value ?? ''} ${item.pct ?? 0}%`}
+                  />
                 </div>
+                <span className="ml-1 flex shrink-0 items-baseline gap-2 font-mono text-sm text-cream-900">
+                  {item.value != null ? <span>{item.value}</span> : null}
+                  {item.pct != null ? <span className="text-cream-600">{item.pct}%</span> : null}
+                </span>
               </div>
             );
           })}
-        </div>
-        <div className="mt-4 space-y-1.5">
-          {items.map((item) => (
-            item.supporting || item.value ? (
-              <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate text-cream-700">{item.label}</span>
-                <span className="text-right text-cream-900">{item.value}{item.supporting ? <span className="ml-2 text-cream-600">{item.supporting}</span> : null}</span>
-              </div>
-            ) : null
-          ))}
         </div>
       </div>
     );

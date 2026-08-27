@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
+import { useDetailTableInfiniteScroll } from '@/hooks/useDetailTableInfiniteScroll';
 import {
   MemberToggle,
   MembershipBulkActionBar,
@@ -11,7 +12,8 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { AutomaticBuyerMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
+import { BuyerAppAvatar } from '@/components/seller/shared/BuyerPickerRow';
 import { Button } from '@/components/ui/button';
 import type { CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -54,14 +56,19 @@ const BUYER_APP_OPTIONS = [
 interface CohortBuyersTabProps {
   cohortId: string;
   rules_summary: CohortRulesSummary;
-  activeMembersMtd: number;
   details_rules: CohortDetailDetailsRules;
 }
 
-function buyerAppLabel(status: string) {
-  if (status === 'enabled') return 'Buyer App enabled';
-  if (status === 'inactive') return 'Buyer inactive';
-  return 'Buyer App not enabled';
+function initialsFromName(value: string) {
+  return (
+    value
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0] ?? '')
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '—'
+  );
 }
 
 function demandLabel(kind: 'orders' | 'estimates' | 'none' | string) {
@@ -76,12 +83,12 @@ function demandSingularLabel(kind: 'orders' | 'estimates' | 'none' | string) {
   return 'Demand';
 }
 
-function demandCountLabel(kind: 'orders' | 'estimates' | 'none' | string, count: number) {
-  const label = kind === 'orders' ? 'orders' : kind === 'estimates' ? 'estimates' : 'docs';
+function demandCountLabel(kind: 'orders' | 'estimates' | 'invoices' | 'none' | string, count: number) {
+  const label = kind === 'orders' ? 'orders' : kind === 'estimates' ? 'estimates' : kind === 'invoices' ? 'invoices' : 'docs';
   return `${formatNumberValue(count, 'COUNT')} ${label}`;
 }
 
-export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, details_rules }: CohortBuyersTabProps) {
+export function CohortBuyersTab({ cohortId, rules_summary, details_rules }: CohortBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
   const [demandThisQuarter, setDemandThisQuarter] = useState<string[]>([]);
@@ -102,6 +109,12 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
   const selection = useSelectableRows(buyers, (buyer) => buyer.buyer_id);
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
+  const { sentinelIndex, sentinelRef } = useDetailTableInfiniteScroll({
+    itemCount: buyers.length,
+    hasNextPage: result.hasNextPage,
+    isFetchingNextPage: result.isFetchingNextPage,
+    fetchNextPage: () => result.fetchNextPage(),
+  });
 
   // Manual membership can be edited inline here; automatic membership's rules stay
   // Edit-overlay-only (requirement 6) -- this tab only adds/removes explicit picks.
@@ -138,20 +151,14 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
   const rulesTitle = rules_summary.is_static ? 'Manual member list' : 'Filters applied';
   const rulesSub = rules_summary.is_static
     ? `${rules_summary.matched_of_total_label}. Buyers are explicitly assigned to this customer group.`
-    : `${rules_summary.member_count} buyers match · ${rules_summary.matched_of_total_label}.`;
+    : `${rules_summary.member_count} buyers match.`;
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="h-full max-h-[calc(100dvh-var(--topbar-h)-14rem)] space-y-4 overflow-y-auto pt-5">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-display text-lg text-cream-950">{rulesTitle}</h3>
-            <p className="mt-1 text-base text-cream-700">{rulesSub}</p>
-          </div>
-          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-right">
-            <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Active this month</p>
-            <p className="mt-1 font-display text-2xl leading-none text-cream-950">{activeMembersMtd}</p>
-          </div>
+        <div>
+          <h3 className="font-display text-lg text-cream-950">{rulesTitle}</h3>
+          <p className="mt-1 text-base text-cream-700">{rulesSub}</p>
         </div>
 
         {rules_summary.is_static ? (
@@ -160,7 +167,7 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
           </div>
         ) : (
           <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-            <MembershipFilterPanel entityType="cohort" rules={draftRules} onRulesChange={(next) => setDraftRules(next as BuyerMembershipRules)} />
+            <AutomaticBuyerMembershipPanel rules={draftRules} onRulesChange={(next) => setDraftRules(next)} />
             <div className="flex items-center justify-end gap-2">
               {rulesDirty ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setDraftRules(savedRules)} disabled={saveGroup.isPending}>
@@ -243,26 +250,41 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
             { label: 'Member', width: 150, className: 'px-5' },
             { label: 'Geography', className: 'px-5' },
             { label: 'Spend · QTD', align: 'right', className: 'px-5' },
-            { label: 'Last invoice', className: 'px-5' },
+            { label: 'Last invoice', align: 'right', className: 'px-5' },
             { label: 'Outstanding due', align: 'right', className: 'px-5' },
             { label: `${primaryDemandLabel} · QTD`, align: 'right', className: 'px-5' },
-            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, className: 'px-5' },
+            { label: `Last ${demandSingularLabel(primaryDemandKind)}`, align: 'right', className: 'px-5' },
           ]}
           tableMinWidth={1280}
+          horizontalScrollOnly
           showEmptyState={!isInitialLoading && buyers.length === 0}
           emptyState={<div className="py-16 text-center text-sm text-cream-500">No buyers match these filters.</div>}
         >
           {isInitialLoading ? (
             <TableBodySkeleton columns={9} />
           ) : (
-            buyers.map((buyer) => {
+            buyers.map((buyer, index) => {
               const isSelected = selection.selectedIds.includes(buyer.buyer_id);
               return (
-                <SelectableRow key={buyer.buyer_id} selected={isSelected}>
+                <Fragment key={buyer.buyer_id}>
+                {index === sentinelIndex ? (
+                  <tr aria-hidden="true" style={{ height: 0 }}>
+                    <td colSpan={9} className="p-0">
+                      <div ref={sentinelRef} />
+                    </td>
+                  </tr>
+                ) : null}
+                <SelectableRow selected={isSelected}>
                   <td className="px-3 py-3"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(buyer.buyer_id)} /></td>
                   <td className="px-3 py-3">
-                    <p className="truncate text-base font-medium text-cream-950">{buyer.business_name}</p>
-                    <p className="mt-0.5 truncate text-xs text-cream-700">{buyerAppLabel(buyer.buyer_app_status)}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <BuyerAppAvatar
+                        initials={initialsFromName(buyer.business_name)}
+                        enabled={buyer.buyer_app_status === 'enabled'}
+                        size={38}
+                      />
+                      <p className="truncate text-base font-medium text-cream-950">{buyer.business_name}</p>
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <MemberToggle
@@ -282,19 +304,19 @@ export function CohortBuyersTab({ cohortId, rules_summary, activeMembersMtd, det
                     <p className="font-display text-md text-cream-950">{formatNumberValue(buyer.spend_90d, 'CURRENCY_EXACT')}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{demandCountLabel('invoices', buyer.invoice_count_90d)}</p>
                   </td>
-                  <td className="px-3 py-3 text-base text-cream-700">{buyer.last_invoice_at ? formatDate(buyer.last_invoice_at) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-base text-cream-700">{buyer.last_invoice_at ? formatDate(buyer.last_invoice_at) : '—'}</td>
                   <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{formatNumberValue(buyer.outstanding_due, 'CURRENCY_EXACT')}</td>
                   <td className="px-3 py-3 text-right">
                     <p className="font-display text-md text-cream-950">{buyer.primary_demand_kind === 'none' ? '—' : formatNumberValue(buyer.demand_value_90d, 'CURRENCY_EXACT')}</p>
                     <p className="mt-0.5 text-xs text-cream-600">{buyer.primary_demand_kind === 'none' ? '—' : demandCountLabel(buyer.primary_demand_kind, buyer.demand_count_90d)}</p>
                   </td>
-                  <td className="px-3 py-3 text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-base text-cream-700">{buyer.last_primary_demand_at ? formatDate(buyer.last_primary_demand_at) : '—'}</td>
                 </SelectableRow>
+                </Fragment>
               );
             })
           )}
         </LandingTable>
-        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
     </section>
   );

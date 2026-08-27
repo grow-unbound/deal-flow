@@ -377,7 +377,7 @@ export function ProductCard({
                 </span>
               ) : null}
             </div>
-            {!isCompact && item.has_campaign_price && item.campaign_valid_until ? (
+            {!isCompact && showPromotionBadge && item.has_campaign_price && item.campaign_valid_until ? (
               <p className="mt-1 text-amber-700" style={{ fontSize: 'var(--b-text-sub)' }}>
                 Valid until {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
               </p>

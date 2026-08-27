@@ -47,7 +47,21 @@ export function BuyerCatalogDesktopLayout({
 
   if (!rail) {
     return (
-      <div className={cn('px-4 pb-4 sm:px-4 lg:px-4 lg:pb-6', contentClassName)} style={style}>
+      <div
+        className={cn(
+          'px-4 pb-4 sm:px-4 lg:px-4 lg:pb-6',
+          splitScroll
+            ? cn(
+                'dashboard-vscroll min-h-0 h-full overflow-y-auto overscroll-contain [touch-action:pan-y] [-webkit-overflow-scrolling:touch]',
+                contentScroll.active && 'dashboard-vscroll--active',
+              )
+            : '',
+          contentClassName,
+        )}
+        style={style}
+        data-buyer-nested-scroll={splitScroll ? 'true' : undefined}
+        onScroll={splitScroll ? contentScroll.onScroll : undefined}
+      >
         {children}
       </div>
     );

@@ -561,8 +561,8 @@ export async function PATCH(
       priority: payload.priority,
       ...(!isSimpleForm ? { currency: payload.currency } : {}),
       ...(!isSimpleForm ? { is_active: payload.save_mode === 'publish' } : {}),
-      ...(!isSimpleForm ? { pricing_strategy: payload.pricing_strategy } : {}),
-      ...(!isSimpleForm ? { strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null) } : {}),
+      pricing_strategy: payload.pricing_strategy,
+      strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null),
       ...(!isSimpleForm ? { filters: payload.filters } : {}),
       ...(isSimpleForm && simpleMembershipMode !== undefined ? {
         membership_mode: simpleMembershipMode,
@@ -684,6 +684,13 @@ export async function PATCH(
           });
         if (itemInsertError) {
           return NextResponse.json({ error: 'Failed to add selected products', detail: itemInsertError.message }, { status: 500 });
+        }
+      }
+
+      if (payload.pricing_strategy !== 'edit_each') {
+        const { error: applyError } = await db.schema('app').rpc('apply_price_list_pricing_strategy', { p_price_list_id: id });
+        if (applyError) {
+          console.error('[PATCH /api/price-lists/[id]] apply pricing strategy error:', applyError.message);
         }
       }
     }

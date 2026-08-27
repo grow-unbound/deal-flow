@@ -25,7 +25,7 @@ function useDetailRows<T>(key: string, url: string, filterKey: string, filters: 
         }
         if (value) params.set(paramKey, value);
       });
-      const response = await apiFetch(`${url}?${params.toString()}`, { signal });
+      const response = await apiFetch(`${url}?${params.toString()}`, { signal, fresh: true });
       if (!response.ok) throw new Error('Failed to load detail rows');
       return response.json() as Promise<DetailPage<T>>;
     },

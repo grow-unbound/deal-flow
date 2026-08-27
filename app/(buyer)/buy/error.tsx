@@ -1,6 +1,8 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 
@@ -11,6 +13,10 @@ export default function ShopSegmentError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <div className="p-4">
       <ErrorState
