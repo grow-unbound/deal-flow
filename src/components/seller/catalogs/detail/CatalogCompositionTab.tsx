@@ -1,19 +1,39 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { AutomaticProductMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
 import {
   useAddCatalogProduct,
+  useApplyCampaignPricingStrategy,
   useRemoveCatalogProduct,
   useSaveSimpleCatalog,
   type CatalogDetailResponse,
 } from '@/hooks/useCatalogs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, useCatalogProductsDetail } from '@/hooks/useDetailTabSearch';
+import { useDetailTableInfiniteScroll } from '@/hooks/useDetailTableInfiniteScroll';
 import {
   MemberToggle,
   MembershipBulkActionBar,
@@ -24,7 +44,8 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
-import type { ProductMembershipRules } from '@/lib/zod';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
+import type { PriceListSimplePricingStrategy, ProductMembershipRules } from '@/lib/zod';
 import { formatNumberInput, formatNumberValue } from '@/lib/utils';
 
 type SortOption = 'Campaign order' | 'Brand (A → Z)' | 'Campaign Sales (high → low)' | 'Units sold (high → low)';
@@ -76,6 +97,12 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
   const selection = useSelectableRows(rows, (row) => row.tenant_product_id);
   const isInitialLoading = !result.data && result.isLoading;
   const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
+  const { sentinelIndex, sentinelRef } = useDetailTableInfiniteScroll({
+    itemCount: rows.length,
+    hasNextPage: result.hasNextPage,
+    isFetchingNextPage: result.isFetchingNextPage,
+    fetchNextPage: () => result.fetchNextPage(),
+  });
 
   useEffect(() => {
     selection.clearSelection();
@@ -100,6 +127,20 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
   const saveCatalog = useSaveSimpleCatalog(catalogId);
   const productRulesDirty = JSON.stringify(draftProductRules) !== JSON.stringify(savedProductRules);
 
+  const pricingSource = composer?.pricing_source ?? 'individual_prices';
+  const savedPricingStrategy = composer?.bulk_pricing_strategy ?? 'edit_each';
+  const savedPricingValue = composer?.bulk_pricing_strategy_value ?? null;
+  const [draftPricingStrategy, setDraftPricingStrategy] = useState<PriceListSimplePricingStrategy>(savedPricingStrategy);
+  const [draftPricingValue, setDraftPricingValue] = useState<number | null>(savedPricingValue);
+  const [confirmPricingOpen, setConfirmPricingOpen] = useState(false);
+  useEffect(() => {
+    setDraftPricingStrategy(savedPricingStrategy);
+    setDraftPricingValue(savedPricingValue);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId, savedPricingStrategy, savedPricingValue]);
+  const applyPricing = useApplyCampaignPricingStrategy(catalogId);
+  const pricingDirty = draftPricingStrategy !== savedPricingStrategy || draftPricingValue !== savedPricingValue;
+
   function saveProductRules() {
     if (!composer) return;
     saveCatalog.mutate({
@@ -112,8 +153,10 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
       hero_image_url: heroImageUrl ?? '',
       target_mode: composer.scope_type === 'cohort' ? 'customer_group' : 'individual_buyers',
       target_cohort_id: composer.scope_type === 'cohort' ? composer.cohort_id : null,
-      pricing_mode: composer.price_source === 'price_list' ? 'pricelist' : 'individual_prices',
-      price_list_id: composer.price_source === 'price_list' ? composer.price_list_id : null,
+      pricing_mode: composer.pricing_source,
+      price_list_id: composer.pricing_source === 'pricelist' ? composer.price_list_id : null,
+      pricing_strategy: composer.bulk_pricing_strategy,
+      strategy_value: composer.bulk_pricing_strategy_value,
       buyer_target_mode: composer.buyer_target_mode,
       buyer_ids: composer.buyer_target_mode === 'manual' ? (composer.buyer_ids ?? []) : [],
       buyer_rules: composer.buyer_rules,
@@ -151,24 +194,87 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
   }
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="h-full max-h-[calc(100dvh-var(--topbar-h)-14rem)] space-y-4 overflow-y-auto pt-5">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-display text-lg text-cream-950">Filters applied</h3>
-            <p className="mt-1 text-base text-cream-700">
-              {summary.included_count} products selected across {summary.brands_covered} brands.
-            </p>
-          </div>
-          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-right">
-            <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">In stock</p>
-            <p className="mt-1 font-display text-2xl leading-none text-cream-950">{summary.in_stock_count}</p>
-          </div>
+        <div>
+          <h3 className="font-display text-lg text-cream-950">Campaign Details</h3>
+          <p className="mt-1 text-base text-cream-700">
+            {summary.included_count} products selected across {summary.brands_covered} brands.
+          </p>
+        </div>
+
+        <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+          {pricingSource === 'pricelist' ? (
+            <p className="text-sm text-cream-700">Priced via pricelist. Change pricing source from Edit to set campaign-specific pricing.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-cream-800">Pricing mode</label>
+                  <Select
+                    value={draftPricingStrategy}
+                    onValueChange={(value) => {
+                      setDraftPricingStrategy(value as PriceListSimplePricingStrategy);
+                      if (value === 'edit_each') setDraftPricingValue(null);
+                    }}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select pricing mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="edit_each">Manual pricing</SelectItem>
+                      <SelectItem value="flat_off_base">Flat ₹ off base rate</SelectItem>
+                      <SelectItem value="percentage">% off base rate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {draftPricingStrategy !== 'edit_each' ? (
+                  <div>
+                    <label className="text-sm font-medium text-cream-800">{draftPricingStrategy === 'percentage' ? '% off' : 'Flat ₹ off'}</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="mt-1"
+                      value={draftPricingValue ?? ''}
+                      onChange={(event) => setDraftPricingValue(event.target.valueAsNumber || 0)}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-cream-600">{formatStrategySummary(draftPricingStrategy, draftPricingValue)}</p>
+                <div className="flex items-center gap-2">
+                  {pricingDirty ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setDraftPricingStrategy(savedPricingStrategy);
+                        setDraftPricingValue(savedPricingValue);
+                      }}
+                      disabled={applyPricing.isPending}
+                    >
+                      Discard
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!pricingDirty || applyPricing.isPending || (draftPricingStrategy !== 'edit_each' && draftPricingValue == null)}
+                    onClick={() => setConfirmPricingOpen(true)}
+                  >
+                    {applyPricing.isPending ? 'Saving…' : 'Save pricing mode'}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {productMembershipMode === 'automatic' ? (
           <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-            <MembershipFilterPanel entityType="campaign_products" rules={draftProductRules} onRulesChange={(next) => setDraftProductRules(next as ProductMembershipRules)} />
+            <AutomaticProductMembershipPanel rules={draftProductRules} onRulesChange={(next) => setDraftProductRules(next)} />
             <div className="flex items-center justify-end gap-2">
               {productRulesDirty ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setDraftProductRules(savedProductRules)} disabled={saveCatalog.isPending}>
@@ -240,18 +346,27 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
             { label: 'Units Sold', align: 'right', className: 'px-5' },
           ]}
           tableMinWidth={1340}
+          horizontalScrollOnly
           showEmptyState={!isInitialLoading && rows.length === 0}
           emptyState={<div className="py-16 text-center text-sm text-cream-500">No products match these filters.</div>}
         >
           {isInitialLoading ? (
             <TableBodySkeleton columns={10} />
           ) : (
-            rows.map((row) => {
+            rows.map((row, index) => {
               const isSelected = selection.selectedIds.includes(row.tenant_product_id);
               const campaignPrice = row.override_price ?? row.base_selling_price;
               const isEditing = editingProductId === row.tenant_product_id;
               return (
-                <SelectableRow key={row.tenant_product_id} selected={isSelected}>
+                <Fragment key={row.tenant_product_id}>
+                {index === sentinelIndex ? (
+                  <tr aria-hidden="true" style={{ height: 0 }}>
+                    <td colSpan={10} className="p-0">
+                      <div ref={sentinelRef} />
+                    </td>
+                  </tr>
+                ) : null}
+                <SelectableRow selected={isSelected}>
                   <td className="px-3 py-3"><RowSelectCheckbox checked={isSelected} onChange={() => selection.toggleRow(row.tenant_product_id)} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
@@ -311,12 +426,37 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
                   <td className="px-3 py-3 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatNumberValue(row.catalog_gmv, 'CURRENCY_THRESHOLD') : '—'}</td>
                   <td className="px-3 py-3 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
                 </SelectableRow>
+                </Fragment>
               );
             })
           )}
         </LandingTable>
-        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
+
+      <AlertDialog open={confirmPricingOpen} onOpenChange={setConfirmPricingOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update pricing mode?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will update the price of {summary.included_count} products. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applyPricing.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={applyPricing.isPending}
+              onClick={() => {
+                applyPricing.mutate(
+                  { pricingStrategy: draftPricingStrategy, strategyValue: draftPricingStrategy === 'edit_each' ? null : draftPricingValue },
+                  { onSuccess: () => setConfirmPricingOpen(false) },
+                );
+              }}
+            >
+              {applyPricing.isPending ? 'Updating…' : 'Update pricing'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

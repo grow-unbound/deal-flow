@@ -3,6 +3,25 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pencil, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
 import {
   MemberToggle,
@@ -14,12 +33,13 @@ import {
   TableBodySkeleton,
   useSelectableRows,
 } from '@/components/seller/shared/SelectableMembershipTable';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
-import { useAddPriceListItems, useRemovePriceListItems, useSaveSimplePriceList, useUpdatePriceListItem } from '@/hooks/usePriceLists';
+import { AutomaticProductMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
+import { useAddPriceListItems, useApplyPriceListPricingStrategy, useRemovePriceListItems, useSaveSimplePriceList, useUpdatePriceListItem } from '@/hooks/usePriceLists';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detailRowsTotal, flattenDetailRows, usePriceListProductsDetail } from '@/hooks/useDetailTabSearch';
 import { useDetailTableInfiniteScroll } from '@/hooks/useDetailTableInfiniteScroll';
-import type { MembershipMode, PriceListFilterState, PriceListPricingStrategy, ProductMembershipRules } from '@/lib/zod';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
+import type { MembershipMode, PriceListFilterState, PriceListPricingStrategy, PriceListSimplePricingStrategy, ProductMembershipRules } from '@/lib/zod';
 import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 
 type SortOption =
@@ -91,6 +111,7 @@ export function PriceListProductsTab({
   const [sortBy, setSortBy] = useState<SortOption>('Product (A → Z)');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftPrice, setDraftPrice] = useState('');
+  const [pendingOverride, setPendingOverride] = useState<{ itemId: string; price: number } | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
   const sort = sortBy === 'Brand (A → Z)' ? 'brand_asc' : sortBy === 'List price (high → low)' ? 'list_desc' : sortBy === 'Discount % (high → low)' ? 'discount_desc' : sortBy === 'Margin % (high → low)' ? 'margin_desc' : 'product_asc';
@@ -127,6 +148,19 @@ export function PriceListProductsTab({
   const savePriceList = useSaveSimplePriceList(priceListId);
   const rulesDirty = JSON.stringify(draftRules) !== JSON.stringify(savedRules);
 
+  const savedPricingStrategy: PriceListSimplePricingStrategy =
+    pricingStrategy === 'flat_off_base' || pricingStrategy === 'percentage' ? pricingStrategy : 'edit_each';
+  const [draftPricingStrategy, setDraftPricingStrategy] = useState<PriceListSimplePricingStrategy>(savedPricingStrategy);
+  const [draftPricingValue, setDraftPricingValue] = useState<number | null>(strategyValue);
+  const [confirmPricingOpen, setConfirmPricingOpen] = useState(false);
+  useEffect(() => {
+    setDraftPricingStrategy(savedPricingStrategy);
+    setDraftPricingValue(strategyValue);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceListId, pricingStrategy, strategyValue]);
+  const applyPricing = useApplyPriceListPricingStrategy(priceListId);
+  const pricingDirty = draftPricingStrategy !== savedPricingStrategy || draftPricingValue !== strategyValue;
+
   useEffect(() => {
     selection.clearSelection();
   }, [member, brands, categories, stock, debouncedSearch, sort, selection.clearSelection]);
@@ -153,65 +187,141 @@ export function PriceListProductsTab({
     setDraftPrice(formatNumberInput(row.list_price, 'CURRENCY_EXACT'));
   }
 
-  async function saveEdit(row: (typeof rows)[number]) {
+  function commitEdit(itemId: string, price: number) {
+    updateItem.mutate({ itemId, price });
+    setEditingId(null);
+    setDraftPrice('');
+  }
+
+  function saveEdit(row: (typeof rows)[number]) {
     if (!row.item_id) return;
     const parsed = parseNumberInput(draftPrice, 'CURRENCY_EXACT');
     if (parsed == null || parsed <= 0) return;
 
     const derived = strategyPrice(Number(row.base_price ?? 0), pricingStrategy, strategyValue);
     if (derived != null && Math.abs(derived - parsed) > 0.004) {
-      const confirmed = window.confirm('This list price differs from the price list strategy. Save it as a row-level override?');
-      if (!confirmed) return;
+      setPendingOverride({ itemId: row.item_id, price: parsed });
+      return;
     }
 
-    await updateItem.mutateAsync({ itemId: row.item_id, price: parsed });
-    setEditingId(null);
-    setDraftPrice('');
+    commitEdit(row.item_id, parsed);
   }
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="h-full max-h-[calc(100dvh-var(--topbar-h)-14rem)] space-y-4 overflow-y-auto pt-5">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-lg text-cream-950">{membershipMode === 'automatic' ? 'Filters applied' : 'Manual product list'}</h3>
+            <h3 className="font-display text-lg text-cream-950">Pricelist Details</h3>
             <p className="mt-1 text-base text-cream-700">
               {detailRowsTotal(result.data) || productsCovered} products across {brandsCovered} brands.
             </p>
           </div>
         </div>
 
-        {membershipMode === 'automatic' ? (
-          <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-            <MembershipFilterPanel entityType="price_list" rules={draftRules} onRulesChange={(next) => setDraftRules(next as ProductMembershipRules)} />
-            <div className="flex items-center justify-end gap-2">
-              {rulesDirty ? (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setDraftRules(savedRules)} disabled={savePriceList.isPending}>
+        <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-cream-800">Pricing mode</label>
+              <Select
+                value={draftPricingStrategy}
+                onValueChange={(value) => {
+                  setDraftPricingStrategy(value as PriceListSimplePricingStrategy);
+                  if (value === 'edit_each') setDraftPricingValue(null);
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select pricing mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="edit_each">Manual pricing</SelectItem>
+                  <SelectItem value="flat_off_base">Flat ₹ off base rate</SelectItem>
+                  <SelectItem value="percentage">% off base rate</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {draftPricingStrategy !== 'edit_each' ? (
+              <div>
+                <label className="text-sm font-medium text-cream-800">{draftPricingStrategy === 'percentage' ? '% off' : 'Flat ₹ off'}</label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1"
+                  value={draftPricingValue ?? ''}
+                  onChange={(event) => setDraftPricingValue(event.target.valueAsNumber || 0)}
+                />
+              </div>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-cream-600">{formatStrategySummary(draftPricingStrategy, draftPricingValue)}</p>
+            <div className="flex items-center gap-2">
+              {pricingDirty ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDraftPricingStrategy(savedPricingStrategy);
+                    setDraftPricingValue(strategyValue);
+                  }}
+                  disabled={applyPricing.isPending}
+                >
                   Discard
                 </Button>
               ) : null}
               <Button
                 type="button"
                 size="sm"
-                disabled={!rulesDirty || savePriceList.isPending}
-                onClick={() =>
-                  savePriceList.mutate({
-                    form_mode: 'simple',
-                    name,
-                    description: description ?? '',
-                    valid_from: validFrom ? new Date(validFrom) : new Date(),
-                    valid_to: validTo ? new Date(validTo) : undefined,
-                    priority,
-                    membership_mode: 'automatic',
-                    selected_product_ids: [],
-                    rules: draftRules,
-                  })
-                }
+                disabled={!pricingDirty || applyPricing.isPending || (draftPricingStrategy !== 'edit_each' && draftPricingValue == null)}
+                onClick={() => setConfirmPricingOpen(true)}
               >
-                {savePriceList.isPending ? 'Saving…' : 'Save filters'}
+                {applyPricing.isPending ? 'Saving…' : 'Save pricing mode'}
               </Button>
             </div>
           </div>
+        </div>
+
+        {membershipMode === 'automatic' ? (
+          <Accordion type="single" collapsible className="mt-4">
+            <AccordionItem value="filters" className="rounded-[10px] border border-cream-300 bg-cream-50 px-3">
+              <AccordionTrigger className="px-0">Automatic filters</AccordionTrigger>
+              <AccordionContent className="px-0">
+                <div className="space-y-3">
+                  <AutomaticProductMembershipPanel rules={draftRules} onRulesChange={(next) => setDraftRules(next)} />
+                  <div className="flex items-center justify-end gap-2">
+                    {rulesDirty ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setDraftRules(savedRules)} disabled={savePriceList.isPending}>
+                        Discard
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!rulesDirty || savePriceList.isPending}
+                      onClick={() =>
+                        savePriceList.mutate({
+                          form_mode: 'simple',
+                          name,
+                          description: description ?? '',
+                          valid_from: validFrom ? new Date(validFrom) : new Date(),
+                          valid_to: validTo ? new Date(validTo) : undefined,
+                          priority,
+                          pricing_strategy: savedPricingStrategy,
+                          strategy_value: strategyValue,
+                          membership_mode: 'automatic',
+                          selected_product_ids: [],
+                          rules: draftRules,
+                        })
+                      }
+                    >
+                      {savePriceList.isPending ? 'Saving…' : 'Save filters'}
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         ) : (
           <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             This is a targeted price list. Products are managed manually below.
@@ -275,6 +385,7 @@ export function PriceListProductsTab({
             { label: 'Current Stock', align: 'right', className: 'px-5' },
           ]}
           tableMinWidth={canViewFinancials ? 1160 : 980}
+          horizontalScrollOnly
           showEmptyState={!isInitialLoading && rows.length === 0}
           emptyState={<div className="py-16 text-center text-sm text-cream-500">No products match these filters.</div>}
         >
@@ -284,6 +395,8 @@ export function PriceListProductsTab({
             rows.map((row, index) => {
               const isSelected = selection.selectedIds.includes(row.tenant_product_id);
               const isEditing = editingId === row.item_id;
+              const derivedPrice = strategyPrice(Number(row.base_price ?? 0), pricingStrategy, strategyValue);
+              const isOverridden = derivedPrice != null && row.list_price != null && Math.abs(derivedPrice - row.list_price) > 0.004;
               return (
                 <Fragment key={row.tenant_product_id}>
                 {index === sentinelIndex ? (
@@ -336,7 +449,7 @@ export function PriceListProductsTab({
                             aria-label="List price"
                           />
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={updateItem.isPending} onClick={() => void saveEdit(row)} aria-label="Save list price">
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={updateItem.isPending} onClick={() => saveEdit(row)} aria-label="Save list price">
                           <Save size={14} />
                         </Button>
                         <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={updateItem.isPending} onClick={() => { setEditingId(null); setDraftPrice(''); }} aria-label="Cancel list price edit">
@@ -348,7 +461,11 @@ export function PriceListProductsTab({
                         type="button"
                         disabled={!row.item_id}
                         onClick={() => beginEdit(row)}
-                        className={cn('inline-flex items-center justify-end gap-2 rounded-[8px] text-right', row.item_id && 'hover:text-ember-700')}
+                        title={isOverridden ? 'Row-level override — differs from the pricelist\'s pricing mode' : undefined}
+                        className={cn(
+                          'inline-flex items-center justify-end gap-2 rounded-[8px] text-right',
+                          isOverridden ? 'text-ember-700' : row.item_id && 'hover:text-ember-700',
+                        )}
                       >
                         {row.list_price != null ? formatNumberValue(row.list_price, 'CURRENCY_EXACT') : '—'}
                         {row.item_id ? <Pencil size={13} className="opacity-0 transition-opacity group-hover:opacity-100" /> : null}
@@ -375,6 +492,54 @@ export function PriceListProductsTab({
           )}
         </LandingTable>
       </div>
+
+      <AlertDialog open={confirmPricingOpen} onOpenChange={setConfirmPricingOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update pricing mode?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will update the price of {detailRowsTotal(result.data) || productsCovered} products. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applyPricing.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={applyPricing.isPending}
+              onClick={() => {
+                applyPricing.mutate(
+                  { pricingStrategy: draftPricingStrategy, strategyValue: draftPricingStrategy === 'edit_each' ? null : draftPricingValue },
+                  { onSuccess: () => setConfirmPricingOpen(false) },
+                );
+              }}
+            >
+              {applyPricing.isPending ? 'Updating…' : 'Update pricing'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingOverride != null} onOpenChange={(open) => { if (!open) setPendingOverride(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save as a row-level override?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This list price differs from the pricelist&apos;s pricing mode. Save it as a row-level override?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={updateItem.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={updateItem.isPending}
+              onClick={() => {
+                if (pendingOverride) commitEdit(pendingOverride.itemId, pendingOverride.price);
+                setPendingOverride(null);
+              }}
+            >
+              {updateItem.isPending ? 'Saving…' : 'Save override'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

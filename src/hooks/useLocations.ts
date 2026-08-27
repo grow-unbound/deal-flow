@@ -4,7 +4,25 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
-import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import { REFERENCE_QUERY_STALE_TIME, REFERENCE_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
+
+/** Plain id/name dimension lookup for filter dropdowns (e.g. picker overlay Sales Location). */
+export function useTenantLocationOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['tenant-location-options'],
+    queryFn: async (): Promise<Array<{ id: string; label: string }>> => {
+      const res = await fetch('/api/tenant/locations');
+      if (!res.ok) throw new Error('Failed to fetch locations');
+      const json = await res.json();
+      const locations = (json?.data?.locations ?? []) as Array<{ id: string; name: string }>;
+      return locations.map((location) => ({ id: location.id, label: location.name }));
+    },
+    enabled,
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
 
 // ─── Location document types ──────────────────────────────────────────────────
 
@@ -191,6 +209,26 @@ export interface LocationDetailTopBuyer {
   outstanding_dues: number;
 }
 
+export interface LocationPeriodBuyerRow {
+  buyer_id: string;
+  business_name: string;
+  phone: string | null;
+  buyer_app_enabled: boolean;
+  invoice_value: number;
+  invoice_count: number;
+  receivable_amount: number;
+  overdue_amount: number;
+  credit_limit: number;
+  credit_available: number;
+  credit_used: number;
+}
+
+export interface LocationPeriodBuyersResponse {
+  buyers: LocationPeriodBuyerRow[];
+  period_key: 'this_month';
+  period_start: string;
+}
+
 export interface LocationDetailActivityItem {
   id: string;
   action: string;
@@ -313,6 +351,22 @@ export function useLocationDetail(id: string, options?: { includePerformance?: b
       if (res.status === 404) throw new Error('not_found');
       if (!res.ok) throw new Error(`location-detail ${res.status}`);
       return res.json() as Promise<LocationDetailResponse>;
+    },
+  });
+}
+
+export function useLocationBuyers(id: string) {
+  const { currentTenantId } = useAuth();
+
+  return useQuery<LocationPeriodBuyersResponse>({
+    queryKey: ['location-buyers', currentTenantId, id],
+    enabled: Boolean(currentTenantId) && Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    queryFn: async () => {
+      const res = await fetch(`/api/tenant/locations/${id}/buyers`);
+      if (!res.ok) throw new Error(`location-buyers ${res.status}`);
+      return res.json() as Promise<LocationPeriodBuyersResponse>;
     },
   });
 }

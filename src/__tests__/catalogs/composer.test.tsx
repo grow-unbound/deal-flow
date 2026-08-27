@@ -5,7 +5,8 @@ const pushMock = vi.fn();
 const useCatalogComposerBootstrapMock = vi.fn();
 const useCatalogComposerProductsMock = vi.fn();
 const useCatalogComposerDetailMock = vi.fn();
-const useCatalogComposerBuyerPickerMock = vi.fn();
+const useCohortComposerBuyersMock = vi.fn();
+const useTenantLocationOptionsMock = vi.fn();
 const useComposerPublishPreviewMock = vi.fn();
 const useSaveCatalogComposerMock = vi.fn();
 
@@ -30,10 +31,26 @@ vi.mock('@/hooks/useCatalogs', () => ({
   useCatalogComposerBootstrap: (...args: unknown[]) => useCatalogComposerBootstrapMock(...args),
   useCatalogComposerProducts: (...args: unknown[]) => useCatalogComposerProductsMock(...args),
   useCatalogComposerDetail: (...args: unknown[]) => useCatalogComposerDetailMock(...args),
-  useCatalogComposerBuyerPicker: (...args: unknown[]) => useCatalogComposerBuyerPickerMock(...args),
   useComposerPublishPreview: (...args: unknown[]) => useComposerPublishPreviewMock(...args),
   useSaveCatalogComposer: (...args: unknown[]) => useSaveCatalogComposerMock(...args),
 }));
+
+// SellerBuyerPickerOverlay (rendered inside CatalogComposer) calls these directly.
+vi.mock('@/hooks/useCohorts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCohorts')>();
+  return {
+    ...actual,
+    useCohortComposerBuyers: (...args: unknown[]) => useCohortComposerBuyersMock(...args),
+  };
+});
+
+vi.mock('@/hooks/useLocations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useLocations')>();
+  return {
+    ...actual,
+    useTenantLocationOptions: (...args: unknown[]) => useTenantLocationOptionsMock(...args),
+  };
+});
 
 import { CatalogComposer } from '@/components/seller/catalogs/CatalogComposer';
 
@@ -148,7 +165,8 @@ describe('CatalogComposer', () => {
   beforeEach(() => {
     pushMock.mockReset();
     useCatalogComposerProductsMock.mockReset();
-    useCatalogComposerBuyerPickerMock.mockReset();
+    useCohortComposerBuyersMock.mockReset();
+    useTenantLocationOptionsMock.mockReset();
     useComposerPublishPreviewMock.mockReset();
     useCatalogComposerBootstrapMock.mockReturnValue({
       data: bootstrap,
@@ -177,13 +195,19 @@ describe('CatalogComposer', () => {
       isLoading: false,
       error: null,
     });
-    useCatalogComposerBuyerPickerMock.mockReturnValue({
-      data: { pages: [{ buyers: [], selected_buyers: [], filters: {}, nextCursor: null }] },
+    useCohortComposerBuyersMock.mockReturnValue({
+      data: { pages: [{ buyers: [], selected_buyers: [], total: 0, nextCursor: null }] },
       isLoading: false,
       isError: false,
+      isFetching: false,
+      isPlaceholderData: false,
       hasNextPage: false,
       isFetchingNextPage: false,
       fetchNextPage: vi.fn(),
+    });
+    useTenantLocationOptionsMock.mockReturnValue({
+      data: [],
+      isLoading: false,
     });
     useSaveCatalogComposerMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({ catalog: { id: 'cat-1', status: 'draft' } }),

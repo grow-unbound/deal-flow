@@ -18,6 +18,8 @@ import type {
   PriceListPricingStrategy,
   MembershipMode,
 } from '@/lib/zod';
+import type { PriceListProductDetailRow } from '@/hooks/useDetailTabSearch';
+import { computeStrategyPrice } from '@/lib/price-list-strategy';
 
 export interface PriceList {
   id: string;
@@ -253,7 +255,7 @@ export function usePriceListsLanding(
       const params = new URLSearchParams({ limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
-      const res = await apiFetch(`/api/price-lists?${params.toString()}`, { signal });
+      const res = await apiFetch(`/api/price-lists?${params.toString()}`, { signal, fresh: true });
       if (!res.ok) throw new Error('Failed to fetch price lists landing');
       return res.json();
     },
@@ -504,6 +506,7 @@ export function useSaveSimplePriceList(priceListId?: string) {
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       if (priceListId) {
         queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+        queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
       }
       toast.success(priceListId ? 'Price list updated' : 'Price list created');
     },
@@ -615,7 +618,7 @@ export function usePriceListDetail(id: string, options?: { includePerformance?: 
     queryFn: async (): Promise<{ price_list: PriceListDetail }> => {
       const params = new URLSearchParams();
       params.set('include_performance', String(options?.includePerformance ?? true));
-      const res = await apiFetch(`/api/price-lists/${id}?${params.toString()}`);
+      const res = await apiFetch(`/api/price-lists/${id}?${params.toString()}`, { fresh: true });
       if (!res.ok) {
         throw new Error('Failed to fetch price list');
       }
@@ -657,6 +660,18 @@ export function useUpdatePriceListItem(priceListId: string) {
       queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
         items: (old?.items ?? []).map((item) => (item.id === itemId ? { ...item, price } : item)),
       }));
+      queryClient.getQueriesData<InfiniteData<{ rows: PriceListProductDetailRow[]; total: number; nextOffset: number | null }>>({
+        queryKey: ['price-list-products-detail'],
+      }).forEach(([queryKey, old]) => {
+        if (!old) return;
+        queryClient.setQueryData(queryKey, {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            rows: page.rows.map((row) => (row.item_id === itemId ? { ...row, list_price: price } : row)),
+          })),
+        });
+      });
       return { snapshots };
     },
     onError: (_error, _vars, ctx) => {
@@ -669,6 +684,76 @@ export function useUpdatePriceListItem(priceListId: string) {
       queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('List price updated');
+    },
+  });
+}
+
+export function useApplyPriceListPricingStrategy(priceListId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pricingStrategy, strategyValue }: { pricingStrategy: string; strategyValue: number | null }) => {
+      const res = await apiFetch(`/api/price-lists/${priceListId}/pricing`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pricing_strategy: pricingStrategy, strategy_value: strategyValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to update pricing mode');
+      }
+      return res.json() as Promise<{ ok: boolean; updated_count: number }>;
+    },
+    onMutate: async ({ pricingStrategy, strategyValue }) => {
+      const snapshots = await takeSnapshots(queryClient, [['price-list', priceListId]]);
+
+      queryClient.setQueriesData<{ price_list: PriceListDetail }>({ queryKey: ['price-list', priceListId] }, (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            pricing_strategy: pricingStrategy as PriceListPricingStrategy,
+            strategy_value: strategyValue,
+          },
+        };
+      });
+
+      if (pricingStrategy !== 'edit_each') {
+        queryClient.getQueriesData<InfiniteData<{ rows: PriceListProductDetailRow[]; total: number; nextOffset: number | null }>>({
+          queryKey: ['price-list-products-detail'],
+        }).forEach(([queryKey, old]) => {
+          if (!old) return;
+          queryClient.setQueryData(queryKey, {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              rows: page.rows.map((row) =>
+                row.is_member
+                  ? {
+                      ...row,
+                      list_price: computeStrategyPrice(
+                        { base_selling_price: row.base_price, mrp: row.mrp },
+                        pricingStrategy as PriceListPricingStrategy,
+                        String(strategyValue ?? 0),
+                      ),
+                    }
+                  : row,
+              ),
+            })),
+          });
+        });
+      }
+
+      return { snapshots };
+    },
+    onError: (error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Could not update pricing mode');
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      toast.success(result.updated_count > 0 ? `Repriced ${result.updated_count} products` : 'Pricing mode updated');
     },
   });
 }

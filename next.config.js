@@ -148,9 +148,16 @@ export default withSentryConfig(withBundleAnalyzer(nextConfig), {
   silent: !sentryAuthToken,
   sourcemaps: { disable: !sentryAuthToken },
   release: { create: !!sentryAuthToken, finalize: !!sentryAuthToken },
-  widenClientFileUpload: true,
+  // Default (false) — only uploads source maps for chunks actually referenced
+  // by build output, not every emitted file. `true` widens the scan to catch
+  // dynamically-loaded chunks Sentry's plugin might otherwise miss, at the
+  // cost of scanning/uploading far more files. This app has no such edge
+  // case, so leave it narrow — it's the difference between uploading dozens
+  // of chunks vs. every .js.map in the output tree.
+  widenClientFileUpload: false,
+  // No Vercel Cron routes in this repo — automaticVercelMonitors would just
+  // be an unused Sentry API call at build time for zero benefit.
   webpack: {
     treeshake: { removeDebugLogging: true },
-    automaticVercelMonitors: true,
   },
 });

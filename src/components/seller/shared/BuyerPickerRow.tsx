@@ -12,7 +12,7 @@ function formatLastOrderLabel(value: string | null) {
   return `Ordered ${new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
 }
 
-function BuyerAppAvatar({
+export function BuyerAppAvatar({
   initials,
   enabled,
   size,
@@ -74,18 +74,18 @@ export function BuyerRowContent({
           {formatLastOrderLabel(buyer.last_order_at)}
           {' · '}
           {formatNumberValue(buyer.gmv_90d, 'CURRENCY_THRESHOLD')} spend QTD
-          {overdue ? (
-            <span className="text-danger-600">
-              {' · '}
-              {formatNumberValue(buyer.overdue_amount ?? 0, 'CURRENCY_THRESHOLD')} overdue
-            </span>
-          ) : buyer.credit_used > 0 ? (
-            <>
-              {' · '}
-              {formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')} due
-            </>
-          ) : null}
+          {' · '}
+          {formatNumberValue(buyer.invoice_count ?? 0, 'COUNT')} invoices QTD
         </p>
+        {overdue ? (
+          <p className="mt-0.5 truncate text-sm text-danger-600">
+            {formatNumberValue(buyer.overdue_amount ?? 0, 'CURRENCY_THRESHOLD')} overdue
+          </p>
+        ) : buyer.credit_used > 0 ? (
+          <p className="mt-0.5 truncate text-sm text-cream-700">
+            {formatNumberValue(buyer.credit_used, 'CURRENCY_THRESHOLD')} due
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -96,12 +96,30 @@ export function BuyerPickerRow({
   selected,
   onClick,
   size = 'default',
+  readOnly = false,
 }: {
   buyer: CohortComposerBuyer;
   selected: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   size?: 'default' | 'compact';
+  readOnly?: boolean;
 }) {
+  if (readOnly) {
+    return (
+      <div
+        className={cn(
+          'flex w-full items-center justify-between gap-3 rounded-[8px] px-3',
+          size === 'compact' ? 'py-2' : 'py-[10px]',
+        )}
+      >
+        <BuyerRowContent buyer={buyer} size={size} />
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+          Matches
+        </span>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"

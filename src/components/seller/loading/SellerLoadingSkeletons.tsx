@@ -228,7 +228,7 @@ export function DashboardSkeleton() {
 }
 
 export function BuyerAppSkeleton() {
-  return <SellerDashboardLoadingSkeleton ariaLabel="Loading buyer app" widgetCount={4} hero />;
+  return <SellerDashboardLoadingSkeleton ariaLabel="Loading buyer app" widgetCount={5} />;
 }
 
 export function WorkboardLandingSkeleton({

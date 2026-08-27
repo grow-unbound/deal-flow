@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Check } from 'lucide-react';
@@ -28,15 +28,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MembershipFilterPanel } from '@/components/seller/shared/MembershipFilterPanel';
+import { AutomaticProductMembershipPanel } from '@/components/seller/shared/AutomaticMembershipRulesPanel';
+import { ProductPickerRow } from '@/components/seller/shared/ProductPickerRow';
+import { PickerFiltersPanel } from '@/components/seller/shared/PickerFiltersPanel';
+import { SelectedItemsChipsPanel } from '@/components/seller/shared/SelectedItemsChipsPanel';
+import { SelectAllCheckbox } from '@/components/seller/shared/SelectableMembershipTable';
 import {
   MembershipModeSwitchDialog,
   type MembershipModeSwitchDirection,
 } from '@/components/seller/shared/MembershipModeSwitchDialog';
 import { isoDateString } from '@/lib/date-utils';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListFormPayloadSchema, type PriceListFormPayload } from '@/lib/zod';
-import { usePriceListComposerProducts, useSaveSimplePriceList } from '@/hooks/usePriceLists';
+import { useSaveSimplePriceList } from '@/hooks/usePriceLists';
+import { useProductPickerSearch } from '@/hooks/useProductPicker';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { usePickerSelection, getLoadedSelectionState } from '@/hooks/usePickerSelection';
+import { usePickerFilterState } from '@/hooks/usePickerFilterState';
+import { PRODUCT_ADVANCED_FILTERS, PRODUCT_QUICK_ADVANCED_LINKS, PRODUCT_QUICK_FILTERS } from '@/lib/picker-filters';
 
 interface PriceListFormSheetProps {
   open: boolean;
@@ -59,6 +68,8 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       description: '',
       valid_from: new Date(),
       priority: 0,
+      pricing_strategy: 'edit_each',
+      strategy_value: null,
       membership_mode: 'manual',
       selected_product_ids: [],
       ...defaultValues,
@@ -73,6 +84,8 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       description: '',
       valid_from: new Date(),
       priority: 0,
+      pricing_strategy: 'edit_each',
+      strategy_value: null,
       membership_mode: 'manual',
       selected_product_ids: [],
       ...defaultValues,
@@ -88,12 +101,38 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
   });
 
   const membershipMode = form.watch('membership_mode');
+  const pricingStrategy = form.watch('pricing_strategy');
   const selectedProductIds = form.watch('selected_product_ids') ?? [];
   const initialMembershipMode = defaultValues?.membership_mode ?? 'manual';
-  const productsQuery = usePriceListComposerProducts({ search: productSearch, limit: 30 }, productPickerOpen && membershipMode === 'manual');
+  const productFilterState = usePickerFilterState(PRODUCT_QUICK_ADVANCED_LINKS);
+  const productsQuery = useProductPickerSearch({
+    query: productSearch,
+    selectedIds: selectedProductIds,
+    limit: 30,
+    enabled: productPickerOpen && membershipMode === 'manual',
+    brandIds: productFilterState.advancedValues.brand ? [productFilterState.advancedValues.brand] : [],
+    categoryIds: productFilterState.advancedValues.category ? [productFilterState.advancedValues.category] : [],
+    stockBucket: (productFilterState.advancedValues.stock ?? null) as any,
+    status: (productFilterState.advancedValues.status ?? null) as any,
+    quickFilters: productFilterState.quickFilters,
+  });
+  const productFilterLookups = productsQuery.data?.pages[0]?.filters ?? { brands: [], categories: [] };
+  const productAdvancedFilters = useMemo(
+    () => [
+      ...PRODUCT_ADVANCED_FILTERS,
+      { key: 'brand', label: 'Brand', options: productFilterLookups.brands.map((b) => ({ value: b.id, label: b.label })) },
+      { key: 'category', label: 'Category', options: productFilterLookups.categories.map((c) => ({ value: c.id, label: c.label })) },
+    ],
+    [productFilterLookups],
+  );
   const productRows = productsQuery.data?.pages.flatMap((page) => page.products) ?? [];
-  const productMap = new Map(productRows.map((product) => [product.id, product]));
-  const selectedProductSet = new Set(selectedProductIds);
+  const selectedProductRows = productsQuery.data?.pages.flatMap((page) => page.selected_products ?? []) ?? [];
+  const productMap = new Map([...selectedProductRows, ...productRows].map((product) => [product.id, product]));
+  const productSelection = usePickerSelection(selectedProductIds, (ids) =>
+    form.setValue('selected_product_ids', ids, { shouldDirty: true, shouldTouch: true, shouldValidate: true }),
+  );
+  const selectedProductSet = productSelection.selectedSet;
+  const productLoadedState = getLoadedSelectionState(productRows.map((p) => p.id), selectedProductSet);
   const selectedProductSummary = selectedProductIds.length === 0
     ? 'Select products'
     : `${productMap.get(selectedProductIds[0])?.display_name ?? 'Selected product'}${selectedProductIds.length > 1 ? ` +${selectedProductIds.length - 1} more` : ''}`;
@@ -193,6 +232,51 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                   </FormItem>
                 )} />
               </FormBlock>
+              <FormBlock title="Pricing mode">
+                <FormSectionGrid columns={pricingStrategy === 'edit_each' ? 1 : 2}>
+                  <FormField control={form.control} name="pricing_strategy" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pricing mode</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          form.setValue('pricing_strategy', value as 'edit_each' | 'flat_off_base' | 'percentage', { shouldDirty: true });
+                          if (value === 'edit_each') form.setValue('strategy_value', null, { shouldDirty: true });
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select pricing mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="edit_each">Manual pricing</SelectItem>
+                          <SelectItem value="flat_off_base">Flat ₹ off base rate</SelectItem>
+                          <SelectItem value="percentage">% off base rate</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-cream-600">{formatStrategySummary(pricingStrategy, form.watch('strategy_value'))}</p>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  {pricingStrategy !== 'edit_each' ? (
+                    <FormField control={form.control} name="strategy_value" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{pricingStrategy === 'percentage' ? '% off' : 'Flat ₹ off'}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={field.value ?? ''}
+                            onChange={(event) => field.onChange(event.target.valueAsNumber || 0)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  ) : null}
+                </FormSectionGrid>
+              </FormBlock>
               <FormBlock title="Targeting">
                 <FormField
                   control={form.control}
@@ -229,8 +313,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                     name="rules"
                     render={({ field }) => (
                       <FormItem className="mt-4">
-                        <MembershipFilterPanel
-                          entityType="price_list"
+                        <AutomaticProductMembershipPanel
                           rules={field.value ?? { brand_names: [], category_names: [] }}
                           onRulesChange={field.onChange}
                         />
@@ -259,6 +342,52 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                           searchValue={productSearch}
                           onSearchValueChange={setProductSearch}
                           searchPlaceholder="Search products, SKU, or brand…"
+                          selectedItemsSummary={(
+                            <SelectedItemsChipsPanel
+                              label="Selected products"
+                              items={selectedProductIds.map((productId) => ({
+                                id: productId,
+                                label: productMap.get(productId)?.display_name ?? 'Selected product',
+                              }))}
+                              onRemove={(productId) => form.setValue(
+                                'selected_product_ids',
+                                selectedProductIds.filter((id) => id !== productId),
+                                { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                              )}
+                            />
+                          )}
+                          filtersPanel={(
+                            <PickerFiltersPanel
+                              quickFilters={PRODUCT_QUICK_FILTERS}
+                              activeQuickFilters={productFilterState.quickFilters}
+                              onToggleQuickFilter={productFilterState.toggleQuickFilter}
+                              advancedFilters={productAdvancedFilters}
+                              advancedValues={productFilterState.advancedValues}
+                              onAdvancedChange={productFilterState.setAdvancedFilter}
+                            />
+                          )}
+                          selectionSummary={(
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-2 text-sm text-cream-700">
+                                <SelectAllCheckbox
+                                  checked={productLoadedState.allLoadedSelected}
+                                  indeterminate={productLoadedState.someLoadedSelected}
+                                  onChange={() => productSelection.toggleAllLoaded(productRows.map((p) => p.id))}
+                                  label="Select all loaded products"
+                                />
+                                Select all
+                              </label>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={selectedProductIds.length === 0}
+                                onClick={productSelection.clearAll}
+                              >
+                                Clear selection
+                              </Button>
+                            </div>
+                          )}
                           footer={(
                             <div className="flex items-center justify-end gap-2">
                               <Button type="button" variant="ghost" onClick={() => setProductPickerOpen(false)}>
@@ -271,27 +400,6 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                             </div>
                           )}
                         >
-                          {selectedProductIds.length > 0 ? (
-                            <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected products</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {selectedProductIds.map((productId) => {
-                                  const product = productMap.get(productId);
-                                  return (
-                                    <button
-                                      key={productId}
-                                      type="button"
-                                      onClick={() => form.setValue('selected_product_ids', selectedProductIds.filter((id) => id !== productId), { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
-                                      className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
-                                    >
-                                      <span>{product?.display_name ?? 'Selected product'}</span>
-                                      <span aria-hidden="true" className="text-teal-700">×</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : null}
                           {productsQuery.isFetching && productRows.length === 0 ? (
                             <div className="space-y-1">
                               {Array.from({ length: 4 }).map((_, idx) => (
@@ -300,38 +408,20 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                             </div>
                           ) : productRows.length > 0 ? (
                             <div className="space-y-0.5">
-                              {productRows.map((product) => {
-                                const selected = selectedProductSet.has(product.id);
-                                return (
-                                  <button
-                                    key={product.id}
-                                    type="button"
-                                    onClick={() => form.setValue(
-                                      'selected_product_ids',
-                                      selected
-                                        ? selectedProductIds.filter((id) => id !== product.id)
-                                        : [...selectedProductIds, product.id],
-                                      { shouldDirty: true, shouldTouch: true, shouldValidate: true },
-                                    )}
-                                    className={[
-                                      'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
-                                      selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
-                                    ].join(' ')}
-                                  >
-                                    <div className="min-w-0">
-                                      <p className="text-base font-medium text-cream-900">{product.display_name}</p>
-                                      <p className="mt-0.5 text-sm text-cream-700">
-                                        {product.internal_sku ?? '—'}
-                                        {product.category_name ? ` · ${product.category_name}` : ''}
-                                        {product.base_selling_price != null ? ` · ₹${Math.round(product.base_selling_price).toLocaleString('en-IN')}` : ''}
-                                      </p>
-                                    </div>
-                                    <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
-                                      {selected ? 'Selected' : 'Add'}
-                                    </span>
-                                  </button>
-                                );
-                              })}
+                              {productRows.map((product) => (
+                                <ProductPickerRow
+                                  key={product.id}
+                                  product={product}
+                                  selected={selectedProductSet.has(product.id)}
+                                  onClick={() => form.setValue(
+                                    'selected_product_ids',
+                                    selectedProductSet.has(product.id)
+                                      ? selectedProductIds.filter((id) => id !== product.id)
+                                      : [...selectedProductIds, product.id],
+                                    { shouldDirty: true, shouldTouch: true, shouldValidate: true },
+                                  )}
+                                />
+                              ))}
                               {productsQuery.hasNextPage ? <div ref={sentinelRef} className="h-4" /> : null}
                             </div>
                           ) : (

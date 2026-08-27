@@ -428,8 +428,8 @@ export async function POST(request: NextRequest) {
       valid_to: data.valid_to ? data.valid_to.toISOString() : null,
       priority: data.priority,
       is_active: isSimpleForm ? false : data.save_mode === 'publish',
-      pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
-      strategy_value: isSimpleForm ? null : (data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null)),
+      pricing_strategy: data.pricing_strategy,
+      strategy_value: data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null),
       // Composer path: membership_mode inferred the same way the Phase 1 backfill did --
       // non-edit_each pricing with populated filters implies automatic product membership.
       membership_mode: isSimpleForm
@@ -513,6 +513,13 @@ export async function POST(request: NextRequest) {
     if (itemsError) {
       return NextResponse.json({ error: 'Price list was created but products could not be saved', detail: itemsError.message }, { status: 500 });
     }
+
+    if (data.pricing_strategy !== 'edit_each') {
+      const { error: applyError } = await db.schema('app').rpc('apply_price_list_pricing_strategy', { p_price_list_id: priceList.id });
+      if (applyError) {
+        console.error('[POST /api/price-lists] apply pricing strategy error:', applyError.message);
+      }
+    }
   }
 
   await db.schema('app').from('audit_log').insert({
@@ -524,7 +531,7 @@ export async function POST(request: NextRequest) {
       diff: {
       event: isSimpleForm ? 'price_list_created_simple' : data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
       item_count: isSimpleForm ? 0 : data.item_prices.length,
-      pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
+      pricing_strategy: data.pricing_strategy,
       },
       ts: new Date().toISOString(),
   });
@@ -541,7 +548,7 @@ export async function POST(request: NextRequest) {
         item_count: isSimpleForm
           ? data.selected_product_ids.length
           : data.item_prices.length,
-        pricing_strategy: isSimpleForm ? 'edit_each' : data.pricing_strategy,
+        pricing_strategy: data.pricing_strategy,
         membership_mode: isSimpleForm
           ? simpleMembershipMode
           : priceList.membership_mode ?? null,

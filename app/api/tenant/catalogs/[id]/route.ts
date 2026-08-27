@@ -314,7 +314,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('campaigns')
-      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, hero_image_url, created_by, created_at, buyer_target_mode, buyer_filter_rules, product_membership_mode, dynamic_rules')
+      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, hero_image_url, created_by, created_at, buyer_target_mode, buyer_filter_rules, product_membership_mode, dynamic_rules, pricing_source, price_list_id, pricing_strategy, strategy_value')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
@@ -393,6 +393,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     buyer_filter_rules: Record<string, unknown> | null;
     product_membership_mode: string | null;
     dynamic_rules: Record<string, unknown> | null;
+    pricing_source: 'pricelist' | 'individual_prices' | null;
+    price_list_id: string | null;
+    pricing_strategy: 'edit_each' | 'flat_off_base' | 'percentage' | null;
+    strategy_value: number | null;
   };
 
   const allCampaignItemRows = (itemsRes.data ?? []) as Array<{
@@ -766,6 +770,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       price_source: composerDraft?.price_source ?? composerScopeValue.composer?.price_source ?? 'manual',
       price_list_id: composerDraft?.price_list_id ?? composerScopeValue.composer?.price_list_id ?? null,
       pricing_strategy: composerDraft?.pricing_strategy ?? composerScopeValue.composer?.pricing_strategy,
+      pricing_source: catalog.pricing_source ?? (catalog.price_list_id ? 'pricelist' : 'individual_prices'),
+      bulk_pricing_strategy: catalog.pricing_strategy ?? 'edit_each',
+      bulk_pricing_strategy_value: catalog.strategy_value ?? null,
       scope_type: composerDraft?.scope_type ?? (catalog.scope_type === 'all' ? 'all' : catalog.scope_type === 'buyer' ? 'buyer' : 'cohort'),
       cohort_id: composerDraft?.cohort_id ?? composerScopeValue.cohort_id ?? null,
       buyer_ids: composerDraft?.buyer_ids ?? composerScopeValue.buyer_ids ?? (scopeValue.buyer_id ? [scopeValue.buyer_id] : []),
@@ -1220,6 +1227,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     };
     const pricingSource = payload.pricing_mode === 'pricelist' ? 'pricelist' : 'individual_prices';
     const campaignPriceListId = payload.pricing_mode === 'pricelist' ? payload.price_list_id ?? null : null;
+    // A pricelist already dictates pricing -- force edit_each/null there regardless of form input.
+    const campaignPricingStrategy = pricingSource === 'individual_prices' ? (payload.pricing_strategy ?? 'edit_each') : 'edit_each';
+    const campaignStrategyValue = campaignPricingStrategy === 'edit_each' ? null : (payload.strategy_value ?? null);
 
     const { data: updatedCatalog, error: updateCatalogError } = await db
       .schema('app')
@@ -1239,6 +1249,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         is_dynamic: productMembershipMode === 'automatic',
         pricing_source: pricingSource,
         price_list_id: campaignPriceListId,
+        pricing_strategy: campaignPricingStrategy,
+        strategy_value: campaignStrategyValue,
         updated_by: claims.sub,
       })
       .eq('id', id)
@@ -1393,6 +1405,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           }, insertItemsError);
           return NextResponse.json({ error: 'Failed to add selected products' }, { status: 500 });
         }
+      }
+    }
+
+    if (campaignPricingStrategy !== 'edit_each') {
+      const { error: applyError } = await db.schema('app').rpc('apply_campaign_pricing_strategy', { p_campaign_id: id });
+      if (applyError) {
+        console.error('[PATCH /api/tenant/catalogs/[id]] apply pricing strategy error:', applyError.message);
       }
     }
 

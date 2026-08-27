@@ -817,6 +817,7 @@ export async function fetchBuyerCatalogPage(
     selected_campaign_name: scope.selectedCampaign?.name ?? null,
     selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
     selected_campaign_message: scope.selectedCampaign?.message ?? null,
+    selected_campaign_image_url: scope.selectedCampaign?.hero_image_url ?? null,
   };
 }
 

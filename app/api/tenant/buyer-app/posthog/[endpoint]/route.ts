@@ -1,17 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 const POSTHOG_BASE = 'https://us.posthog.com';
 const POSTHOG_PROJECT_ID = '370765';
 
-// Endpoints that accept a tenant_id variable for server-side filtering
-const TENANT_FILTERED_ENDPOINTS = new Set(['wau', 'products-viewed', 'cart-submits']);
-// Endpoints without tenant_id variable — filter client-side by label prefix
-const ALL_TENANT_ENDPOINTS = new Set(['products-added-to-cart']);
-const ALLOWED_ENDPOINTS = new Set([...TENANT_FILTERED_ENDPOINTS, ...ALL_TENANT_ENDPOINTS]);
+// Endpoints that accept a tenant_id variable for server-side filtering.
+// products-added-to-cart used to be filtered client-side by label prefix
+// instead (no tenant_id variable sent), which meant it never matched
+// anything and the card always came back empty -- scope it the same way as
+// products-viewed.
+const TENANT_FILTERED_ENDPOINTS = new Set(['wau', 'products-viewed', 'products-added-to-cart', 'cart-submits']);
+const ALLOWED_ENDPOINTS = TENANT_FILTERED_ENDPOINTS;
+
+interface ProductSummaryRow {
+  tenant_product_id: string;
+  product_name: string;
+  sku: string | null;
+  brand_name: string | null;
+  category_name: string | null;
+  image_urls: string[] | null;
+}
+
+/** Enrich raw {tenant_product_id, product_name (== id placeholder), ...count} rows with real product data. */
+async function enrichWithProductSummary<T extends { tenant_product_id: string; product_name: string }>(
+  rows: T[],
+  tenantId: string,
+): Promise<T[]> {
+  if (!rows.length || !supabaseAdmin) return rows;
+
+  const ids = rows.map((r) => r.tenant_product_id);
+  const { data, error } = await (supabaseAdmin as any)
+    .schema('app')
+    .rpc('get_tenant_products_summary', { p_tenant_id: tenantId, p_tenant_product_ids: ids });
+
+  if (error) {
+    console.error('[buyer-app/posthog] get_tenant_products_summary failed', error);
+    return rows;
+  }
+
+  const bySummary = new Map<string, ProductSummaryRow>((data as ProductSummaryRow[]).map((row) => [row.tenant_product_id, row]));
+  return rows.map((row) => {
+    const summary = bySummary.get(row.tenant_product_id);
+    if (!summary) return row;
+    return {
+      ...row,
+      product_name: summary.product_name,
+      sku: summary.sku,
+      brand_name: summary.brand_name,
+      category_name: summary.category_name,
+      image_urls: summary.image_urls,
+    };
+  });
+}
 
 /** PostHog Trends-style response series */
 interface PhTrendSeries {
@@ -135,11 +179,11 @@ export async function GET(
         return NextResponse.json(transformWau(raw));
       case 'products-viewed':
         return NextResponse.json(
-          transformProductsList(raw, claims.tenant_id, 'view_count'),
+          await enrichWithProductSummary(transformProductsList(raw, claims.tenant_id, 'view_count'), claims.tenant_id),
         );
       case 'products-added-to-cart':
         return NextResponse.json(
-          transformProductsList(raw, claims.tenant_id, 'add_count'),
+          await enrichWithProductSummary(transformProductsList(raw, claims.tenant_id, 'add_count'), claims.tenant_id),
         );
       case 'cart-submits':
         return NextResponse.json(transformCartSubmits(raw));
