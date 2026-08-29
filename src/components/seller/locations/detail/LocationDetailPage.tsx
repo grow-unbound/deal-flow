@@ -116,7 +116,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     }
   }, [activeTab, setTab, tab]);
 
-  if (isError || (!isLoading && !data)) {
+  if (!data && !isError) return <LocationDetailSkeleton />;
+
+  if (isError || !data) {
     return (
       <ErrorState
         heading="Couldn't load location"
@@ -125,8 +127,6 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       />
     );
   }
-
-  if (isLoading && !data) return <LocationDetailSkeleton />;
 
   const demandKindLabel = meta
     ? meta.open_primary_demand_kind === 'orders'

@@ -258,7 +258,7 @@ function LocationsLandingContent({
             ) : (
               <LandingTableRowsSkeleton columns={12} tableMinWidth={1700} />
             )
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && !isFetching ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
               heading={search.trim() || filterPreset ? 'No matching locations' : 'No locations yet'}
