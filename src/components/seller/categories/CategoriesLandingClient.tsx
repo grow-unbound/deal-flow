@@ -269,7 +269,7 @@ function CategoriesLandingContent({
               { width: 40, className: 'px-4' },
             ]}
             tableMinWidth={1380}
-            showEmptyState={visibleRows.length === 0 && !isLoading}
+            showEmptyState={visibleRows.length === 0 && !isLoading && !isFetching}
             emptyState={
               <EmptyState
                 icon={<Tag size={28} strokeWidth={1.5} />}

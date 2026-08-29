@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -21,6 +22,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTenantCategories } from '@/hooks/useTenantCategories';
 import { r2Url } from '@/lib/r2-url';
 import { uploadEntityFile } from '@/lib/upload-client';
@@ -72,6 +74,8 @@ interface CategoryFormSheetProps {
 
 export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSuccess }: CategoryFormSheetProps) {
   const { createCategory, updateCategory, isCreating, isUpdating } = useTenantCategories();
+  const queryClient = useQueryClient();
+  const { currentTenantId } = useAuth();
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -164,10 +168,13 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
         imageType: 'icon',
       })
         .then(() => {
+          void queryClient.invalidateQueries({ queryKey: ['tenant-categories', currentTenantId] });
+          void queryClient.invalidateQueries({ queryKey: ['categories-landing'] });
+          void queryClient.invalidateQueries({ queryKey: ['category-detail'] });
           toast.success(isEdit ? 'Category updated' : 'Category added');
         })
         .catch((err) => {
-          toast.warning(`Category saved, but image upload failed. Edit and retry.`, {
+          toast.warning('Category saved, but image upload failed. Edit and retry.', {
             description: err instanceof Error ? err.message : 'Image upload failed.',
           });
         });

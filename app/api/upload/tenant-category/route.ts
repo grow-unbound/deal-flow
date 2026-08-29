@@ -72,6 +72,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to save image metadata.' }, { status: 500 });
     }
 
+    // Keep denormalised keys on tenant_categories so the list query picks them up without a join
+    await db
+      .schema('app')
+      .from('tenant_categories')
+      .update({
+        r2_image_original_key: keys.original,
+        r2_image_medium_key: keys.medium,
+        r2_image_thumb_key: keys.thumb,
+        updated_by: actorId,
+      })
+      .eq('id', entityId)
+      .eq('tenant_id', claims.tenant_id);
+
     return NextResponse.json({
       success: true,
       entity_type: 'tenant_category',
