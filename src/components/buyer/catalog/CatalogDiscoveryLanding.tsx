@@ -47,7 +47,11 @@ async function fetchBuyerHomeReco(): Promise<BuyerHomeRecoResponse> {
   return response.json() as Promise<BuyerHomeRecoResponse>;
 }
 
-export function CatalogDiscoveryLanding(): React.ReactNode {
+export function CatalogDiscoveryLanding({
+  initialPromotions,
+}: {
+  initialPromotions?: BuyerHomePromotionsResponse;
+} = {}): React.ReactNode {
   const posthog = usePostHog();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -64,6 +68,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     queryFn: fetchBuyerHomePromotions,
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    initialData: initialPromotions,
   });
   const {
     data: recoData,
