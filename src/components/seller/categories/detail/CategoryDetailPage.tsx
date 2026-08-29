@@ -99,7 +99,9 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     }
   }, [activeTab, setTab, tab]);
 
-  if (isError || (!isLoading && !data)) {
+  if (!data && !isError) return <CategoryDetailSkeleton />;
+
+  if (isError || !data) {
     return (
       <ErrorState
         heading="Couldn't load category"
@@ -107,8 +109,6 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
     );
   }
-
-  if (isLoading && !data) return <CategoryDetailSkeleton />;
 
   return (
     <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">

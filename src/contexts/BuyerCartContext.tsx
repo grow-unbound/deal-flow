@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { usePostHog } from 'posthog-js/react';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import {
   BUYER_CART_CAMPAIGN_STORAGE_KEY,
   resolveBuyerCartCampaignId,
@@ -194,7 +194,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
   const posthog = usePostHog();
-  const { currentTenantId } = useAuth();
+  const { tenant_id: currentTenantId } = useBuyerAnalyticsIds();
   const hasClientMutationRef = useRef(false);
 
   // Always start from an empty, server-matching state — reading localStorage in the

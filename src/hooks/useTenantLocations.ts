@@ -94,6 +94,8 @@ export function useTenantLocations() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
+      void queryClient.invalidateQueries({ queryKey: ['locations-landing'] });
+      void queryClient.invalidateQueries({ queryKey: ['location-detail'] });
     },
     onSuccess: () => {
       toast.success('Location added');
@@ -153,6 +155,8 @@ export function useTenantLocations() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
+      void queryClient.invalidateQueries({ queryKey: ['locations-landing'] });
+      void queryClient.invalidateQueries({ queryKey: ['location-detail'] });
     },
     onSuccess: (_data, vars) => {
       if (vars.patch.reactivate === true) {
@@ -187,6 +191,8 @@ export function useTenantLocations() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: locationsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['locations'] });
+      void queryClient.invalidateQueries({ queryKey: ['locations-landing'] });
+      void queryClient.invalidateQueries({ queryKey: ['location-detail'] });
     },
     onSuccess: () => {
       toast.success('Location deactivated');
