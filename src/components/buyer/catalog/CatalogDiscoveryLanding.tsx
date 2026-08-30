@@ -28,7 +28,7 @@ import {
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
 import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
 import { BUYER_REFERENCE_QUERY_GC_TIME, BUYER_REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { BuyerCatalogItem } from '@/types/buyer';
+import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import { cn } from '@/lib/utils';
 
 function formatProductCount(count: number): string {
@@ -49,8 +49,14 @@ async function fetchBuyerHomeReco(): Promise<BuyerHomeRecoResponse> {
 
 export function CatalogDiscoveryLanding({
   initialPromotions,
+  initialReco,
+  initialBrands,
+  initialCategories,
 }: {
   initialPromotions?: BuyerHomePromotionsResponse;
+  initialReco?: BuyerHomeRecoResponse;
+  initialBrands?: BuyerBrand[];
+  initialCategories?: BuyerCategory[];
 } = {}): React.ReactNode {
   const posthog = usePostHog();
   const { setRefreshFn } = useBuyerRealtimeContext();
@@ -80,19 +86,20 @@ export function CatalogDiscoveryLanding({
     queryFn: fetchBuyerHomeReco,
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    initialData: initialReco,
   });
   const {
     data: brandsData,
     isLoading: brandsLoading,
     isError: brandsError,
     refetch: refetchBrands,
-  } = useBuyerBrands();
+  } = useBuyerBrands(initialBrands);
   const {
     data: categoriesData,
     isLoading: categoriesLoading,
     isError: categoriesError,
     refetch: refetchCategories,
-  } = useBuyerCategories();
+  } = useBuyerCategories(initialCategories);
 
   const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
   const searchPages = searchQueryResult.data?.pages ?? [];
@@ -347,8 +354,12 @@ function CampaignTilesSkeleton() {
         <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-cream-50', BUYER_CARD_RADIUS_CLASS)}>
           <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
           <div className="space-y-2 bg-white px-5 py-4">
-            <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} />
-            <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+            {/* min-h-[2.4em] is relative to font-size -- must match CatalogLookbookCard's
+                inline fontSize (var(--b-text-section) for the default/non-compact size used
+                on this rail) or the reserved height is wrong and swapping in real content
+                shifts layout. */}
+            <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} style={{ fontSize: 'var(--b-text-section)' }} />
+            <div className="h-4 w-full animate-pulse rounded bg-cream-200" style={{ fontSize: 'var(--b-text-sub)' }} />
           </div>
         </div>
       ))}
@@ -363,7 +374,10 @@ function ProductRailSkeleton() {
         <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-cream-50 ${BUYER_CARD_RADIUS_CLASS}`}>
           <div className="aspect-square animate-pulse bg-cream-100" />
           <div className="px-2 pb-2 pt-1.5">
-            <div className={`${BUYER_TWO_LINE_TITLE_CLASS} min-h-[2.4em] animate-pulse rounded bg-cream-200`} />
+            {/* fontSize must match ProductCard's compact-variant title (var(--b-text-label))
+                -- min-h-[2.4em] resolves against this element's own font-size, not the real
+                card's, so without it the reserved height is wrong. */}
+            <div className={cn(BUYER_TWO_LINE_TITLE_CLASS, 'animate-pulse rounded bg-cream-200')} style={{ fontSize: 'var(--b-text-label)' }} />
             <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
           </div>
         </div>
@@ -381,7 +395,12 @@ function BrandScrollSkeleton() {
           className="flex w-[calc((100vw-2.5rem)/3)] max-w-[124px] shrink-0 flex-col items-center"
         >
           <div className="aspect-square w-full animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-          <div className="mt-1.5 h-4 w-3/4 animate-pulse rounded bg-cream-200" />
+          {/* Real brand name is 2-line-clamped (DiscoveryThumbTile, var(--b-text-body)) --
+              a single fixed h-4 bar under-reserves height whenever a name wraps to 2 lines. */}
+          <div
+            className={cn('mt-1.5 w-3/4 animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)}
+            style={{ fontSize: 'var(--b-text-body)' }}
+          />
         </div>
       ))}
     </div>
@@ -398,7 +417,8 @@ function CategoryGridSkeleton() {
         >
           <div className="aspect-square animate-pulse bg-cream-100" />
           <div className="flex flex-col px-3 pt-2.5">
-            <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} />
+            {/* fontSize must match DiscoveryThumbTile's title (var(--b-text-body)). */}
+            <div className={cn('animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)} style={{ fontSize: 'var(--b-text-body)' }} />
           </div>
         </div>
       ))}
