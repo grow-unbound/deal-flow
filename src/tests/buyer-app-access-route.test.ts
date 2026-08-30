@@ -44,9 +44,9 @@ const rpcResponse = {
       state: 'Telangana',
       buyer_app_enabled: false,
       last_app_order_at: null,
-      offline_spend_90d: 10_000,
-      total_spend_90d: 10_000,
-      app_gmv_90d: 0,
+      offline_spend_mtd: 10_000,
+      total_spend_mtd: 10_000,
+      app_gmv_mtd: 0,
       is_suggested: true,
       is_inactive: false,
     },
@@ -77,7 +77,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
     ));
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith('search_buyer_app_access_v2', {
+    expect(rpcMock).toHaveBeenCalledWith('search_buyer_app_access_v4', {
       p_tenant_id: 'tenant-1',
       p_query: 'alp',
       p_segment: 'suggested',
@@ -105,7 +105,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
 
     expect(response.status).toBe(200);
     expect(rpcMock).toHaveBeenCalledWith(
-      'search_buyer_app_access_v2',
+      'search_buyer_app_access_v4',
       expect.objectContaining({
         p_segment: 'inactive',
         p_location_ids: ['loc-1', 'loc-2'],
@@ -121,7 +121,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
 
     expect(response.status).toBe(200);
     expect(rpcMock).toHaveBeenCalledWith(
-      'search_buyer_app_access_v2',
+      'search_buyer_app_access_v4',
       expect.objectContaining({
         p_query: null,
         p_segment: 'all',

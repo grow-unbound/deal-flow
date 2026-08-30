@@ -37,9 +37,9 @@ export interface AccessBuyer {
   state: string | null;
   buyer_app_enabled: boolean;
   last_app_order_at: string | null;
-  offline_spend_90d: number;
-  total_spend_90d: number;
-  app_gmv_90d: number;
+  offline_spend_mtd: number;
+  total_spend_mtd: number;
+  app_gmv_mtd: number;
   is_suggested: boolean;
   is_inactive: boolean;
 }
@@ -90,7 +90,7 @@ function patchAccessListBuyers(
               ...buyer,
               buyer_app_enabled: enabled,
               is_inactive: enabled ? isBuyerUsageInactive(buyer) : false,
-              is_suggested: !enabled && buyer.offline_spend_90d > 0,
+              is_suggested: !enabled && buyer.offline_spend_mtd > 0,
             }
           : buyer,
       ),
@@ -127,7 +127,7 @@ function countAccessTransitions(
         if (!enabled && buyer.buyer_app_enabled) {
           enabledDelta -= 1;
           if (buyer.is_inactive) inactiveDelta -= 1;
-          if (buyer.offline_spend_90d > 0) suggestedDelta += 1;
+          if (buyer.offline_spend_mtd > 0) suggestedDelta += 1;
         }
       }
     }
