@@ -16,12 +16,37 @@ type PriceRow = { tenant_product_id: string; unit_price: number | string };
  * Order/estimate placement must never trust a client-sent price directly.
  * Items are grouped by qty since price can be qty-tiered, mirroring the grouping
  * already used in buyer-product-data.ts's catalog price resolution.
+ *
+ * `campaignId` (already resolved + visibility-checked by inferCampaignIdForBuyerCart
+ * before this is called) is checked first, matching the documented resolution order
+ * ("1. Catalog price_override") — `resolve_prices_batch` only implements steps 2-5
+ * (buyer/cohort/all_buyers price lists, then base_selling_price), so without this,
+ * every campaign-priced cart item silently re-priced at full price at checkout even
+ * though the buyer was quoted the campaign price everywhere else in the UI.
  */
 export async function resolveAuthoritativePrices(
   db: SupabaseClient,
-  params: { tenantId: string; buyerId: string; items: BuyerPricedLine[] },
+  params: { tenantId: string; buyerId: string; items: BuyerPricedLine[]; campaignId?: string | null },
 ): Promise<{ ok: true; items: BuyerPricedLine[] } | { ok: false; status: number; error: string }> {
-  const { buyerId, items } = params;
+  const { buyerId, items, campaignId } = params;
+
+  const campaignPriceMap = new Map<string, number>();
+  if (campaignId) {
+    const { data: campaignItemRows, error: campaignItemsError } = await db
+      .schema('app')
+      .from('campaign_items')
+      .select('tenant_product_id, price_override')
+      .eq('campaign_id', campaignId)
+      .in('tenant_product_id', items.map((item) => item.tenant_product_id))
+      .is('deleted_at', null);
+    if (campaignItemsError) throw new Error(campaignItemsError.message);
+    for (const row of (campaignItemRows ?? []) as Array<{ tenant_product_id: string; price_override: number | string | null }>) {
+      const override = Number(row.price_override);
+      if (Number.isFinite(override) && override > 0) {
+        campaignPriceMap.set(row.tenant_product_id, override);
+      }
+    }
+  }
 
   const grouped = new Map<number, string[]>();
   for (const item of items) {
@@ -51,7 +76,7 @@ export async function resolveAuthoritativePrices(
 
   const priced: BuyerPricedLine[] = [];
   for (const item of items) {
-    const resolved = priceMap.get(item.tenant_product_id);
+    const resolved = campaignPriceMap.get(item.tenant_product_id) ?? priceMap.get(item.tenant_product_id);
     if (resolved === undefined || !Number.isFinite(resolved) || resolved <= 0) {
       return {
         ok: false,

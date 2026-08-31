@@ -1705,8 +1705,20 @@ export async function handleIntegrationsDisconnect(request: Request): Promise<Re
     const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
 
     if (isZohoIntegrationTypeId(integration.integration_type_id) && integration.vault_secret_id) {
-      const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
-      await cleanupZohoWebhookRegistrations(admin, integration, credentials);
+      // Best-effort: deregister webhooks on Zoho's side before severing the link.
+      // Must never block disconnect itself — a lost/invalid credential (expired
+      // token, or the vault secret gone entirely, e.g. after a project migration
+      // that didn't carry vault.secrets over) means Zoho-side cleanup can't run,
+      // but the tenant must still be able to disconnect locally and reconnect.
+      try {
+        const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
+        await cleanupZohoWebhookRegistrations(admin, integration, credentials);
+      } catch (error) {
+        console.error('[integrations-disconnect] Zoho webhook cleanup skipped', {
+          tenant_integration_id: integration.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     await softDeleteIntegrationChildren(admin, integration.id, actor.userId);
