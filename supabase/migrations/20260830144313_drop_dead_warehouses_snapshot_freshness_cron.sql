@@ -1,0 +1,22 @@
+-- Regression caught during the DB colocation migration verification pass
+-- (checking pg_cron jobs before replicating them onto yukti-prod): the
+-- daily warehouses-snapshot-freshness cron job (20:30 IST) calls
+-- app.refresh_all_warehouses_snapshots(), which loops over every
+-- warehouse calling app.refresh_warehouses_snapshot(id) -- the exact
+-- function dropped in the Phase 2 v2-pipeline-sunset migration
+-- (20260830064044) as part of retiring the warehouses_snapshot table.
+--
+-- That drop's dependency check only traced refresh_warehouses_snapshot's
+-- caller via the tenant_inventory trigger (dispatch_from_inventory) --
+-- it missed this cron-only caller, which goes through a wrapper function
+-- one level removed. Caught here before it fired (last successful run
+-- was yesterday, 2026-08-29 20:30, before today's drop; next run
+-- tonight would have errored).
+--
+-- Fix: retire the wrapper function and its cron job. Confirmed nothing
+-- else calls refresh_all_warehouses_snapshots, and (per the Phase 2
+-- migration's own verification) nothing has read warehouses_snapshot
+-- since it was dropped -- this was pure dead-code cleanup that Phase 2
+-- should have already caught.
+SELECT cron.unschedule('warehouses-snapshot-freshness');
+DROP FUNCTION IF EXISTS app.refresh_all_warehouses_snapshots();

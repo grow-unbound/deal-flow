@@ -434,8 +434,21 @@ export async function enrichBuyerProducts(
     .eq('is_active', true);
 
   if (Array.isArray(allowedTenantBrandIds)) {
-    if (allowedTenantBrandIds.length === 0) return new Map();
-    tenantProductsQuery = tenantProductsQuery.in('tenant_brand_id', allowedTenantBrandIds);
+    // A cohort's brand allowlist gates the default browse, not a product the
+    // buyer can already see via a targeted campaign (campaignByProductId is
+    // itself built from getVisibleBuyerCatalogs, which is the authorization
+    // check) — a product in both should still resolve. Without this, cart/
+    // checkout price resolution (this function is shared by the catalog list,
+    // product detail, and /api/buyer/products/resolve) silently dropped every
+    // campaign product outside the buyer's allowlist, which made add-to-cart
+    // look like a no-op since the cart's own resolve call found nothing.
+    const campaignExemptIds = orderedIds.filter((id) => campaignByProductId.has(id));
+    if (allowedTenantBrandIds.length === 0 && campaignExemptIds.length === 0) return new Map();
+    tenantProductsQuery = campaignExemptIds.length > 0
+      ? tenantProductsQuery.or(
+          `tenant_brand_id.in.(${allowedTenantBrandIds.join(',')}),id.in.(${campaignExemptIds.join(',')})`,
+        )
+      : tenantProductsQuery.in('tenant_brand_id', allowedTenantBrandIds);
   }
 
   const [{ data: tenantProductsData, error: tenantProductsError }, stockVisibilityEnabled] = await Promise.all([
@@ -676,14 +689,19 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
       };
     }
 
-    let effectiveTenantBrandIds = Array.isArray(allowedTenantBrandIds) ? [...allowedTenantBrandIds] : null;
+    // A buyer's `allowedTenantBrandIds` gates the *default* catalog browse —
+    // it must not also gate a campaign the buyer was explicitly targeted for
+    // (`selectedCampaign` above already proves that authorization via
+    // `visibleCampaigns`/`getVisibleBuyerCatalogs`). A cohort's brand allowlist
+    // and a campaign's own product membership are independent scopes; applying
+    // both meant a buyer whose cohort excludes a brand saw the campaign banner
+    // but got zero items on every campaign product that happened to be in that
+    // brand — the campaign's own membership is the authoritative scope here.
+    // The explicit `brandId` filter chip (a user choice within the campaign
+    // view, not a visibility gate) still applies on its own.
+    let effectiveTenantBrandIds: string[] | null = null;
     if (brandId) {
-      const matchingTenantBrandIds = await resolveTenantBrandIdsForBuyerBrand(db, tenantId, brandId);
-      effectiveTenantBrandIds = effectiveTenantBrandIds
-        ? effectiveTenantBrandIds.filter((id) => matchingTenantBrandIds.includes(id))
-        : matchingTenantBrandIds;
-    }
-    if (effectiveTenantBrandIds) {
+      effectiveTenantBrandIds = await resolveTenantBrandIdsForBuyerBrand(db, tenantId, brandId);
       if (effectiveTenantBrandIds.length === 0) {
         return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map(), textByProductId: new Map() };
       }
@@ -797,11 +815,17 @@ export async function fetchBuyerCatalogPage(
   params: CatalogPageParams,
 ): Promise<BuyerCatalogResponse> {
   const scope = await resolveCatalogScope(params);
+  // Same reasoning as resolveCatalogScope's campaign branch: a buyer's cohort
+  // brand allowlist gates the default browse, not a campaign they were
+  // explicitly targeted for (scope.selectedCampaign is only set once that
+  // targeting is already verified). Applying it here too silently dropped
+  // every enriched item for a campaign product outside the buyer's allowlist,
+  // even after the scope query itself was scoped correctly.
   const itemsMap = await enrichBuyerProducts(params.db, {
     tenantId: params.tenantId,
     buyerId: params.buyerId,
     tenantProductIds: scope.orderedProductIds,
-    allowedTenantBrandIds: params.allowedTenantBrandIds,
+    allowedTenantBrandIds: scope.selectedCampaign ? null : params.allowedTenantBrandIds,
     inventoryWarehouseId: params.inventoryWarehouseId,
     campaignByProductId: scope.campaignByProductId,
     priceStockByProductId: priceStockMapFromScope(scope.textByProductId),

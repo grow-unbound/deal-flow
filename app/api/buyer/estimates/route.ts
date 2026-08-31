@@ -17,7 +17,7 @@ import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 import { resolveBuyerInventoryWarehouseId } from '@/lib/server/buyer-product-data';
 import { validateBuyerCartStock } from '@/lib/server/buyer-cart-stock';
 import { resolveAuthoritativePrices } from '@/lib/server/buyer-price-resolution';
-import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
+import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
@@ -123,9 +123,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     }
 
     const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
-    const routedLocationId = selectedDelivery?.routed_location_id ?? location_id ?? null;
+    const requestedLocationId = selectedDelivery?.routed_location_id ?? location_id ?? null;
 
-    if (!routedLocationId) {
+    if (!requestedLocationId) {
       return NextResponse.json(
         { success: false, error: 'Select a delivery location before requesting a quote' },
         { status: 400 },
@@ -140,6 +140,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
+    const routedLocationId = await resolveTenantScopedLocationId(db, tenant_id, requestedLocationId);
+    if (!routedLocationId) {
+      return NextResponse.json(
+        { success: false, error: 'Your saved delivery location is no longer valid for this store. Please reselect it.' },
+        { status: 400 },
+      );
+    }
     const inventoryWarehouseId = await resolveBuyerInventoryWarehouseId(db as any, request, profile);
     const stockValidation = await validateBuyerCartStock(db as any, {
       tenantId: tenant_id,
@@ -153,10 +160,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         { status: stockValidation.status },
       );
     }
+    const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      clientCampaignId: campaign_id,
+      tenantProductIds: stockValidation.items.map((item) => item.tenant_product_id),
+    });
+
     const priceResolution = await resolveAuthoritativePrices(db as any, {
       tenantId: tenant_id,
       buyerId: buyer_id,
       items: stockValidation.items,
+      campaignId: resolvedCampaignId,
     });
     if (!priceResolution.ok) {
       return NextResponse.json(
@@ -165,13 +180,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       );
     }
     const acceptedItems = priceResolution.items;
-
-    const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
-      tenantId: tenant_id,
-      buyerId: buyer_id,
-      clientCampaignId: campaign_id,
-      tenantProductIds: acceptedItems.map((item) => item.tenant_product_id),
-    });
 
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
     const subtotal = acceptedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);

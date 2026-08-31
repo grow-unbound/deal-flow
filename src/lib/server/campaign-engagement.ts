@@ -2,10 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type CampaignViewSource = 'buyer_app' | 'guest_link' | 'cockpit';
 
-function utcViewDate(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
 export async function recordCampaignView(
   db: SupabaseClient,
   input: {
@@ -15,51 +11,24 @@ export async function recordCampaignView(
     source: CampaignViewSource;
   },
 ): Promise<void> {
-  const viewedAt = new Date().toISOString();
-  const viewDate = utcViewDate();
+  // app.record_campaign_view does a real INSERT ... ON CONFLICT (...) WHERE
+  // deleted_at IS NULL DO UPDATE — atomic against concurrent requests for the
+  // same buyer/campaign/day. PostgREST's .upsert() can't target the partial
+  // unique index directly, so this goes through a DB function instead of the
+  // client (see migration 20260831013151 for why the old update-then-insert
+  // approach raced under concurrent calls).
+  const { error } = await db.schema('app').rpc('record_campaign_view', {
+    p_tenant_id: input.tenantId,
+    p_buyer_id: input.buyerId,
+    p_campaign_id: input.campaignId,
+    p_source: input.source,
+  });
 
-  // Partial unique index (deleted_at IS NULL) is not usable with PostgREST upsert — update-then-insert instead.
-  const { data: updatedRows, error: updateError } = await db
-    .schema('app')
-    .from('campaign_views')
-    .update({ viewed_at: viewedAt, source: input.source, updated_at: viewedAt })
-    .eq('tenant_id', input.tenantId)
-    .eq('buyer_id', input.buyerId)
-    .eq('campaign_id', input.campaignId)
-    .eq('view_date', viewDate)
-    .is('deleted_at', null)
-    .select('id');
-
-  if (updateError) {
-    console.warn('[recordCampaignView] update failed', {
+  if (error) {
+    console.warn('[recordCampaignView] upsert failed', {
       campaignId: input.campaignId,
       buyerId: input.buyerId,
-      message: updateError.message,
-    });
-    return;
-  }
-
-  if ((updatedRows ?? []).length > 0) {
-    return;
-  }
-
-  const { error: insertError } = await db
-    .schema('app')
-    .from('campaign_views')
-    .insert({
-      tenant_id: input.tenantId,
-      buyer_id: input.buyerId,
-      campaign_id: input.campaignId,
-      view_date: viewDate,
-      viewed_at: viewedAt,
-      source: input.source,
-    });
-
-  if (insertError) {
-    console.warn('[recordCampaignView] insert failed', {
-      campaignId: input.campaignId,
-      buyerId: input.buyerId,
-      message: insertError.message,
+      message: error.message,
     });
   }
 }

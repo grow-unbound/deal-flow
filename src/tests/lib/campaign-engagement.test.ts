@@ -1,39 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 
-function createMockDb(handlers: {
-  updateResult?: { data: Array<{ id: string }> | null; error: { message: string } | null };
-  insertError?: { message: string; code?: string } | null;
-}) {
-  const update = vi.fn().mockReturnValue({
-    eq: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    select: vi.fn().mockResolvedValue(handlers.updateResult ?? { data: [], error: null }),
-  });
-  const insert = vi.fn().mockResolvedValue({ error: handlers.insertError ?? null });
-
-  const from = vi.fn((table: string) => {
-    expect(table).toBe('campaign_views');
-    return { update, insert };
-  });
+function createMockDb(rpcError: { message: string } | null = null) {
+  const rpc = vi.fn().mockResolvedValue({ error: rpcError });
+  const schema = vi.fn(() => ({ rpc }));
 
   return {
-    db: {
-      schema: vi.fn(() => ({ from })),
-    } as unknown as Parameters<typeof recordCampaignView>[0],
-    update,
-    insert,
+    db: { schema } as unknown as Parameters<typeof recordCampaignView>[0],
+    schema,
+    rpc,
   };
 }
 
 describe('recordCampaignView', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-  });
-
-  it('inserts when no existing row for today', async () => {
-    const { db, insert } = createMockDb({ updateResult: { data: [], error: null } });
+  it('calls the app.record_campaign_view upsert RPC with the right params', async () => {
+    const { db, schema, rpc } = createMockDb();
 
     await recordCampaignView(db, {
       tenantId: 'tenant-1',
@@ -42,21 +24,25 @@ describe('recordCampaignView', () => {
       source: 'buyer_app',
     });
 
-    expect(insert).toHaveBeenCalledOnce();
+    expect(schema).toHaveBeenCalledWith('app');
+    expect(rpc).toHaveBeenCalledWith('record_campaign_view', {
+      p_tenant_id: 'tenant-1',
+      p_buyer_id: 'buyer-1',
+      p_campaign_id: 'campaign-1',
+      p_source: 'buyer_app',
+    });
   });
 
-  it('skips insert when update hits an existing row', async () => {
-    const { db, insert } = createMockDb({
-      updateResult: { data: [{ id: 'view-1' }], error: null },
-    });
+  it('does not throw when the RPC errors', async () => {
+    const { db } = createMockDb({ message: 'duplicate key value violates unique constraint' });
 
-    await recordCampaignView(db, {
-      tenantId: 'tenant-1',
-      buyerId: 'buyer-1',
-      campaignId: 'campaign-1',
-      source: 'buyer_app',
-    });
-
-    expect(insert).not.toHaveBeenCalled();
+    await expect(
+      recordCampaignView(db, {
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        campaignId: 'campaign-1',
+        source: 'buyer_app',
+      }),
+    ).resolves.toBeUndefined();
   });
 });

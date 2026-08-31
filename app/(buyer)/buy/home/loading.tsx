@@ -1,5 +1,6 @@
-import { BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS } from '@/lib/buyer-ui';
-import { BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS, BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
+import { BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
+import { BUYER_LOOKBOOK_ASPECT_CLASS, BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX, BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
+import { cn } from '@/lib/utils';
 
 const SECTION_TITLE_STYLE = {
   fontFamily: 'var(--font-display)',
@@ -56,15 +57,21 @@ export default function CatalogLoading() {
       <div className="px-5 pb-4 sm:px-4 lg:px-4 lg:pb-6">
         <section className="pt-6 lg:pt-8">
           <SectionHeader title="Campaigns" />
+          {/* Width/padding/font-size here must match CatalogLookbookCard's default
+              (non-compact) size, since the real campaigns rail renders with no `size`
+              prop -- a narrower width also proportionally shortens the aspect-ratio
+              image, so a mismatch here compounds into two axes of layout shift. */}
           <div className="flex gap-3 overflow-hidden px-1">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: 2 }).map((_, i) => (
               <div
                 key={i}
-                className={`${BUYER_LOOKBOOK_COMPACT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200`}
+                className="shrink-0 overflow-hidden rounded-[12px] border border-cream-200"
+                style={{ width: BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX }}
               >
-                <div className="aspect-[15/8] w-full animate-pulse bg-cream-100" />
-                <div className="space-y-2 bg-white px-3.5 py-3">
-                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
+                <div className="space-y-2 bg-white px-5 py-4">
+                  <div className={BUYER_TWO_LINE_TITLE_CLASS + ' animate-pulse rounded bg-cream-200'} style={{ fontSize: 'var(--b-text-section)' }} />
+                  <div className="h-4 w-full animate-pulse rounded bg-cream-200" style={{ fontSize: 'var(--b-text-sub)' }} />
                 </div>
               </div>
             ))}
@@ -78,7 +85,8 @@ export default function CatalogLoading() {
               <div key={i} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50`}>
                 <div className="aspect-square animate-pulse bg-cream-100" />
                 <div className="px-2 pb-2 pt-1.5">
-                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                  {/* fontSize must match ProductCard's compact-variant title (var(--b-text-label)). */}
+                  <div className={BUYER_TWO_LINE_TITLE_CLASS + ' animate-pulse rounded bg-cream-200'} style={{ fontSize: 'var(--b-text-label)' }} />
                   <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
                 </div>
               </div>
@@ -93,7 +101,8 @@ export default function CatalogLoading() {
               <div key={i} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50`}>
                 <div className="aspect-square animate-pulse bg-cream-100" />
                 <div className="px-2 pb-2 pt-1.5">
-                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                  {/* fontSize must match ProductCard's compact-variant title (var(--b-text-label)). */}
+                  <div className={BUYER_TWO_LINE_TITLE_CLASS + ' animate-pulse rounded bg-cream-200'} style={{ fontSize: 'var(--b-text-label)' }} />
                   <div className="mt-1 h-4 w-16 animate-pulse rounded bg-cream-200" />
                 </div>
               </div>
@@ -107,7 +116,11 @@ export default function CatalogLoading() {
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex w-[calc((100vw-2.5rem)/3)] max-w-[124px] shrink-0 flex-col items-center">
                 <div className="aspect-square w-full animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-                <div className="mt-1.5 h-4 w-3/4 animate-pulse rounded bg-cream-200" />
+                {/* Real brand name is 2-line-clamped (DiscoveryThumbTile, var(--b-text-body)). */}
+                <div
+                  className={cn('mt-1.5 w-3/4 animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)}
+                  style={{ fontSize: 'var(--b-text-body)' }}
+                />
               </div>
             ))}
           </div>
@@ -123,7 +136,8 @@ export default function CatalogLoading() {
               >
                 <div className="aspect-square animate-pulse bg-cream-100" />
                 <div className="flex flex-col px-3 pt-2.5">
-                  <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
+                  {/* fontSize must match DiscoveryThumbTile's title (var(--b-text-body)). */}
+                  <div className={BUYER_TWO_LINE_TITLE_CLASS + ' animate-pulse rounded bg-cream-200'} style={{ fontSize: 'var(--b-text-body)' }} />
                 </div>
               </div>
             ))}

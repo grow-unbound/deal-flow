@@ -265,14 +265,14 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await db
       .schema('app')
-      .rpc('get_metrics_v2_buyer_app_dashboard', {
+      .rpc('get_buyer_app_dashboard_v4', {
         p_tenant_id: claims.tenant_id,
         p_role: claims.role ?? null,
         p_location_ids: locationScope.mode === 'subset' ? locationScope.locationIds : null,
       });
 
     if (error) {
-      console.error('[GET /api/tenant/buyer-app] get_metrics_v2_buyer_app_dashboard failed', error);
+      console.error('[GET /api/tenant/buyer-app] get_buyer_app_dashboard_v4 failed', error);
       return timedJson({ error: 'Failed to load buyer app data' }, { status: 500 });
     }
 

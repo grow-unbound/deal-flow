@@ -7,9 +7,14 @@ import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const SELECTED_PRODUCTS_LIMIT = 250;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function readArrayParam(params: URLSearchParams, key: string) {
   return params.getAll(key).flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean);
+}
+
+function isValidUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
 }
 
 /**
@@ -28,15 +33,31 @@ export async function GET(request: NextRequest) {
   try {
     const db = supabaseAdmin ?? (await getRequestSupabaseClient());
     const params = request.nextUrl.searchParams;
-    const selectedIds = readArrayParam(params, 'selected_id').slice(0, SELECTED_PRODUCTS_LIMIT);
+    const allSelectedIds = readArrayParam(params, 'selected_id');
+    const selectedIds = allSelectedIds.filter((id) => {
+      const valid = isValidUuid(id);
+      if (!valid) console.warn(`[GET /api/tenant/products/picker] Invalid UUID in selected_id: "${id}"`);
+      return valid;
+    }).slice(0, SELECTED_PRODUCTS_LIMIT);
+
+    const brandIds = readArrayParam(params, 'brand_id').filter((id) => {
+      const valid = isValidUuid(id);
+      if (!valid) console.warn(`[GET /api/tenant/products/picker] Invalid UUID in brand_id: "${id}"`);
+      return valid;
+    });
+    const categoryIds = readArrayParam(params, 'category_id').filter((id) => {
+      const valid = isValidUuid(id);
+      if (!valid) console.warn(`[GET /api/tenant/products/picker] Invalid UUID in category_id: "${id}"`);
+      return valid;
+    });
 
     const [payload, selectedPayload, lookups] = await Promise.all([
       getProductPickerResultset(db as any, claims.tenant_id, {
         q: params.get('q')?.trim() ?? '',
         limit: parseRowsLimit(params.get('limit'), PAGE_SIZE.COMPOSER),
         cursor: params.get('cursor'),
-        brandIds: readArrayParam(params, 'brand_id'),
-        categoryIds: readArrayParam(params, 'category_id'),
+        brandIds,
+        categoryIds,
         stockBucket: (params.get('stock') || null) as any,
         status: (params.get('status') || null) as any,
         quickFilters: readArrayParam(params, 'quick') as any,
