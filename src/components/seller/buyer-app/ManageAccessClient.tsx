@@ -275,8 +275,8 @@ function filterAndSortBuyers(
   }
 
   return [...result].sort((a, b) => {
-    if (filter.sortBy === 'App GMV (high→low)') return b.app_gmv_90d - a.app_gmv_90d;
-    if (filter.sortBy === 'Offline spend (high→low)') return b.offline_spend_90d - a.offline_spend_90d;
+    if (filter.sortBy === 'App GMV (high→low)') return b.app_gmv_mtd - a.app_gmv_mtd;
+    if (filter.sortBy === 'Offline spend (high→low)') return b.offline_spend_mtd - a.offline_spend_mtd;
     if (filter.sortBy === 'Last ordered') {
       const aDate = a.last_app_order_at ? Date.parse(a.last_app_order_at) : 0;
       const bDate = b.last_app_order_at ? Date.parse(b.last_app_order_at) : 0;
@@ -430,11 +430,11 @@ function AccessTable({
                     </span>
                   </td>
                   <td className="px-3 py-3 text-right">
-                    {buyer.total_spend_90d > 0 ? (
+                    {buyer.total_spend_mtd > 0 ? (
                       <span className="font-display text-md font-medium tabular-nums text-cream-900">
-                        {formatNumberValue(buyer.offline_spend_90d, 'CURRENCY_THRESHOLD')}
+                        {formatNumberValue(buyer.offline_spend_mtd, 'CURRENCY_THRESHOLD')}
                         <span className="font-sans font-normal text-cream-400"> / </span>
-                        {formatNumberValue(buyer.total_spend_90d, 'CURRENCY_THRESHOLD')}
+                        {formatNumberValue(buyer.total_spend_mtd, 'CURRENCY_THRESHOLD')}
                       </span>
                     ) : (
                       <span className="text-sm text-cream-400">—</span>
@@ -442,8 +442,8 @@ function AccessTable({
                   </td>
                   <td className="px-3 py-3 text-right">
                     <span className="font-display text-sm font-medium tabular-nums text-cream-900">
-                      {buyer.buyer_app_enabled && buyer.app_gmv_90d > 0
-                        ? formatNumberValue(buyer.app_gmv_90d, 'CURRENCY_THRESHOLD')
+                      {buyer.buyer_app_enabled && buyer.app_gmv_mtd > 0
+                        ? formatNumberValue(buyer.app_gmv_mtd, 'CURRENCY_THRESHOLD')
                         : '—'}
                     </span>
                   </td>

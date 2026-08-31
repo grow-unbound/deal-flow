@@ -13,18 +13,24 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   weight: ['400', '500', '600', '700', '800'],
+  display: 'optional',
+  fallback: ['system-ui', 'arial'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   weight: ['400', '500', '600'],
+  display: 'optional',
+  fallback: ['ui-monospace', 'monospace'],
 });
 
 const baloo2 = Baloo_2({
   subsets: ['latin'],
   variable: '--font-wordmark',
   weight: ['600'],
+  display: 'optional',
+  fallback: ['system-ui', 'arial'],
 });
 
 export const metadata: Metadata = {

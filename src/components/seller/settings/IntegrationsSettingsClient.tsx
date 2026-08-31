@@ -194,11 +194,18 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     };
   }, []);
 
-  // Advance wizard when fresh integration data arrives after OAuth cross-tab signal
+  // Advance wizard when fresh integration data arrives after OAuth cross-tab signal.
+  // Must wait for tenant_integration.status to actually read 'connected' — the
+  // pre-refetch `integrations` array still contains this id from before OAuth
+  // completed (disconnected/no credentials), and matching on id alone clears
+  // pendingOAuthConnectedId immediately on that stale data, so this effect never
+  // gets a second chance to run once the real refetch lands. That left the wizard
+  // permanently on the stale snapshot, whose blank `credentials` then flowed into
+  // runStartImport's connect fallback and failed schema validation on org_id.
   useEffect(() => {
     if (!pendingOAuthConnectedId || integrations.length === 0) return;
     const target = integrations.find((i) => i.id === pendingOAuthConnectedId);
-    if (!target) return;
+    if (!target || target.tenant_integration?.status !== 'connected') return;
     setPendingOAuthConnectedId(null);
     setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 2 });
   }, [pendingOAuthConnectedId, integrations]);
@@ -271,6 +278,15 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     let tenantIntegrationId = wizardIntegration.tenant_integration?.id ?? null;
 
     if (!tenantIntegrationId || wizardIntegration.tenant_integration?.status !== 'connected') {
+      // OAuth integrations never populate wizard.credentials (step 1's manual
+      // credential form is hidden for them) — sending it here always fails
+      // schema validation on an empty required field. If status isn't
+      // 'connected' yet for an OAuth integration, the connect flow itself
+      // (Zoho popup + callback) hasn't finished — ask the user to retry rather
+      // than attempting a manual connect that's guaranteed to fail.
+      if (wizardIntegration.auth_schema?.oauth === true) {
+        throw new Error('Zoho connection is still finishing. Please wait a moment and try again.');
+      }
       const connectedView = await connectIntegration({
         integration_type_id: wizardIntegration.id,
         credentials: wizard.credentials,
@@ -473,11 +489,11 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           localStorage.removeItem('df_zoho_oauth_error');
           setIsOAuthRedirecting(false);
           // setOauthNotice({ kind: 'success', message: 'Zoho connection is set up. You can close the other tab.' });
+          // Don't snapshot the wizard from `integrations` here — it's the
+          // pre-refetch array and still shows this integration as disconnected
+          // with no credentials. The pendingOAuthConnectedId effect above rebuilds
+          // the wizard once refetch() lands and status actually reads 'connected'.
           setPendingOAuthConnectedId(connectedId);
-          const target = integrations.find((integration) => integration.id === connectedId);
-          if (target) {
-            setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 2 });
-          }
           void refetch();
           return;
         }

@@ -87,7 +87,7 @@ async function fetchJson<T>(url: string, init?: ApiFetchInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function useBuyerCategories() {
+export function useBuyerCategories(initialData?: BuyerCategory[]) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerCategory[]>({
@@ -98,10 +98,11 @@ export function useBuyerCategories() {
     },
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    initialData,
   });
 }
 
-export function useBuyerBrands() {
+export function useBuyerBrands(initialData?: BuyerBrand[]) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerBrand[]>({
@@ -112,6 +113,7 @@ export function useBuyerBrands() {
     },
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    initialData,
   });
 }
 

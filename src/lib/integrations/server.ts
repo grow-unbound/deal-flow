@@ -242,14 +242,11 @@ async function loadAggregateFreshness(
   tenantId: string,
   recentJobs: Record<string, unknown>[],
 ): Promise<import('@/types/integrations').IntegrationAggregateFreshness> {
-  const [
-    refreshStateRes,
-    commercialRes,
-    inventoryRes,
-    buyerAppRes,
-    setupRes,
-    tenantDailyRes,
-  ] = await Promise.all([
+  // The v2 per-domain snapshot tables (metrics_tenant_commercial_snapshot,
+  // _inventory_snapshot, _buyer_app_snapshot, _setup_snapshot) were dropped in
+  // the v4 sunset — v4 tracks all domains for a tenant in one row on
+  // metrics_tenant_now_summary, so freshness is now one query, not four.
+  const [refreshStateRes, tenantNowRes, tenantDailyRes] = await Promise.all([
     db
       .schema('app')
       .from('metrics_refresh_state')
@@ -257,39 +254,10 @@ async function loadAggregateFreshness(
       .eq('tenant_id', tenantId),
     db
       .schema('app')
-      .from('metrics_tenant_commercial_snapshot')
+      .from('metrics_tenant_now_summary')
       .select('computed_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .order('computed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    db
-      .schema('app')
-      .from('metrics_tenant_inventory_snapshot')
-      .select('computed_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('computed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    db
-      .schema('app')
-      .from('metrics_tenant_buyer_app_snapshot')
-      .select('computed_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('computed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    db
-      .schema('app')
-      .from('metrics_tenant_setup_snapshot')
-      .select('computed_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('computed_at', { ascending: false })
-      .limit(1)
       .maybeSingle(),
     db
       .schema('app')
@@ -302,22 +270,11 @@ async function loadAggregateFreshness(
       .limit(1)
       .maybeSingle(),
   ]);
-  const refreshError =
-    refreshStateRes.error
-    ?? commercialRes.error
-    ?? inventoryRes.error
-    ?? buyerAppRes.error
-    ?? setupRes.error
-    ?? tenantDailyRes.error;
+  const refreshError = refreshStateRes.error ?? tenantNowRes.error ?? tenantDailyRes.error;
   if (refreshError) throw new Error(refreshError.message ?? 'Failed to load aggregate freshness');
 
   const refreshStates = (refreshStateRes.data ?? []) as MetricsRefreshStateRow[];
-  const latestSnapshotRefreshedAt = maxIsoTimestamp([
-    commercialRes.data?.computed_at ?? null,
-    inventoryRes.data?.computed_at ?? null,
-    buyerAppRes.data?.computed_at ?? null,
-    setupRes.data?.computed_at ?? null,
-  ]);
+  const latestSnapshotRefreshedAt = tenantNowRes.data?.computed_at ?? null;
   const latestKpiUpdatedAt = tenantDailyRes.data?.computed_at ?? null;
   const latestRefreshStateAt = maxIsoTimestamp(refreshStates.map((row) => row.updated_at));
   const latestAggregateAt = maxIsoTimestamp([latestSnapshotRefreshedAt, latestKpiUpdatedAt, latestRefreshStateAt]);
