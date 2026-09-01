@@ -1,0 +1,18 @@
+-- Historical record only -- this migration's actual SQL is intentionally NOT
+-- reproduced here. It re-created the push-estimate-to-zoho / push-order-to-zoho
+-- triggers with the then-current INTEGRATIONS_PUSH_SECRET value baked into the
+-- trigger DDL as a plaintext literal (the pattern used everywhere else in this
+-- codebase up to that point -- see e.g. 20260713141953, 20260720142106).
+--
+-- This repo is public. Committing that SQL here would have published a live,
+-- currently-active credential. Applied directly to yukti-prod instead, tracked
+-- in supabase_migrations.schema_migrations there, never replayed to git.
+--
+-- Fully superseded by 20260901072701_fix_zoho_push_triggers_use_current_setting_secret.sql,
+-- which rewrites both triggers to read the secret from
+-- current_setting('app.integrations_dispatch_secret', true) at runtime instead
+-- of a baked literal -- fixing the root cause (secret goes stale silently on
+-- every rotation) rather than re-patching the symptom. This file exists only
+-- so `supabase migration list` doesn't show a permanent untracked gap for this
+-- version; it is deliberately a no-op.
+SELECT 1;

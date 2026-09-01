@@ -46,6 +46,8 @@ bun.lockb
 # Supabase
 .supabase/
 supabase/.temp/*
+supabase/.temp/**/*
+supabase/.temp.*
 
 # Claude 
 .claude/
