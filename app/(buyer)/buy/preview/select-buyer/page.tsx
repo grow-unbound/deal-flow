@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ interface PreviewCandidatesResponse {
 export default function PreviewSelectBuyerPage() {
   const router = useRouter();
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -81,6 +83,10 @@ export default function PreviewSelectBuyerPage() {
         setError(data.error ?? 'Failed to open buyer preview');
         return;
       }
+      // router.refresh() only re-runs RSC data — the switched account's buyer
+      // profile/outlets can still be served from the previous account's cached
+      // ['buyer-me'] query otherwise.
+      await queryClient.invalidateQueries({ queryKey: ['buyer-me'] });
       router.replace(data.redirect ?? '/buy/home');
       router.refresh();
     } catch {
