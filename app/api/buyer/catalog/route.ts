@@ -53,9 +53,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       categoryId,
       brandId,
       tenantProductId,
-      requestedCampaignId,
+      requestedCampaignId: context.guestPricing ? '' : requestedCampaignId,
       limit,
       offset,
+      guestPricing: context.guestPricing,
     });
 
     if (offset === 0 && context.buyerId && response.selected_campaign_id) {

@@ -179,4 +179,39 @@ describe('AuthProvider', () => {
     expect(window.localStorage.getItem('yukti_draft_products')).toBeNull();
     expect(assignMock).toHaveBeenCalledWith('/login');
   });
+
+  it('does NOT redirect to /login on a tenant storefront host — guest browsing has no session by design', async () => {
+    // A fresh guest visiting a published public catalog never had a session at
+    // all — Supabase still emits a SIGNED_OUT-shaped event for that client on
+    // first subscribe, and this must not be treated as an expired session.
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...window.location,
+        pathname: '/',
+        hostname: 'wineyard.useyukti.in',
+        assign: assignMock,
+      },
+    });
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AuthProbe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('signed-out')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      await authStateChangeHandler?.('SIGNED_OUT', null);
+    });
+
+    expect(assignMock).not.toHaveBeenCalled();
+  });
 });

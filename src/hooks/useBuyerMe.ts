@@ -5,14 +5,14 @@ import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface BuyerMeData {
-  mode: 'buyer' | 'preview';
+  mode: 'buyer' | 'preview' | 'guest';
   buyer_id: string;
   business_name: string;
   contact_name: string;
   phone: string;
   gstin: string | null;
   session_person_name: string | null;
-  session_person_kind: 'buyer' | 'buyer_user' | 'preview';
+  session_person_kind: 'buyer' | 'buyer_user' | 'preview' | 'guest';
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -55,6 +55,8 @@ export interface BuyerMeData {
     block_order_on_oos: boolean;
   };
   whatsapp_consent_required: boolean;
+  /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
+  guest_pricing_mode?: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | null;
 }
 
 export function useBuyerMe() {

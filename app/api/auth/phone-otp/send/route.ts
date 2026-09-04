@@ -2,10 +2,12 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
-import { findAllLoginCandidates, findBuyerLoginCandidates } from '@/lib/server/buyer-access';
+import { findAllLoginCandidates, findBuyerLoginCandidates, filterLoginCandidatesToTenant } from '@/lib/server/buyer-access';
 import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
 import { sendLoginOtpWhatsapp } from '@/lib/server/whatsapp';
 import { AUTH_LOGIN_COPY, buildRequestAccessMessage } from '@/constants/auth-login-copy';
+import { isCatalogRequest } from '@/lib/server/catalog-request';
+import { sellerAppHostForRequest } from '@/lib/storefront-host';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_SEND_COOLDOWN_MS = 45 * 1000; // 45 seconds between sends to the same phone
@@ -40,6 +42,8 @@ export async function POST(request: NextRequest) {
     }
 
     const phone = normalizeIndianPhone(raw);
+    const hostTenantId = request.headers.get('x-verified-tenant-id');
+    const onCatalogHost = isCatalogRequest(request);
 
     // Per-phone cooldown — prevents OTP-bombing a victim's number (each send costs a
     // WhatsApp API call and re-annoys the recipient). Checked before any candidate
@@ -52,7 +56,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allCandidates = await findAllLoginCandidates(phone);
+    const allCandidatesRaw = hostTenantId
+      ? filterLoginCandidatesToTenant(await findAllLoginCandidates(phone), hostTenantId)
+      : await findAllLoginCandidates(phone);
+
+    const allCandidates = onCatalogHost
+      ? allCandidatesRaw.filter((c) => c.kind === 'buyer')
+      : allCandidatesRaw;
+
+    if (allCandidates.length === 0 && onCatalogHost) {
+      const sellerOnly = allCandidatesRaw.some((c) => c.kind === 'seller');
+      if (sellerOnly) {
+        const appHost = sellerAppHostForRequest(request.headers.get('host') ?? '');
+        const responseBody: PhoneOtpSendResponse = {
+          ref_id: null,
+          registered: false,
+          outcome: 'unregistered',
+          message: `This number is registered as a seller. Sign in at ${appHost}.`,
+          seller_name: null,
+          seller_whatsapp_number: null,
+          buyer_name: null,
+        };
+        return NextResponse.json(responseBody);
+      }
+    }
+
+    if (allCandidates.length === 0 && hostTenantId) {
+      const otp = String(crypto.randomInt(100000, 999999));
+      const ref_id = await buyerOtpStore.insert({
+        kind: 'pending',
+        otp,
+        phone,
+        expiresAt: Date.now() + OTP_TTL_MS,
+        attempts: 0,
+        candidates: [{
+          kind: 'buyer',
+          tenant_id: hostTenantId,
+          tenant_name: '',
+          tenant_slug: '',
+          tenant_whatsapp_number: null,
+          tenant_whatsapp_display_name: null,
+          tenant_logo_url: null,
+          role: 'buyer_admin',
+          buyer_id: null,
+          principal_type: 'buyer',
+          user_id: null,
+          buyer_user_id: null,
+          phone,
+          business_name: '',
+          contact_name: null,
+        }],
+      });
+      if (!ref_id) {
+        return NextResponse.json({ error: 'Failed to create OTP session' }, { status: 500 });
+      }
+      await sendLoginOtpWhatsapp(phone, otp);
+      const acquireBody: PhoneOtpSendResponse = { ref_id, registered: true, outcome: 'otp_sent', message: 'OTP sent' };
+      return NextResponse.json(acquireBody);
+    }
 
     if (allCandidates.length === 0) {
       // Re-run buyer-only lookup to produce contextual blocked messages

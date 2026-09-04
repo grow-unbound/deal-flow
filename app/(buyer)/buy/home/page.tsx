@@ -88,12 +88,15 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     );
   }
 
-  const { promotions, reco, brands, categories } = await loadInitialCatalogData();
+  const [claims, { promotions, reco, brands, categories }] = await Promise.all([
+    getBuyerServerClaims(),
+    loadInitialCatalogData(),
+  ]);
   const heroImageUrl = promotions?.latest_promotions_preview[0]?.hero_image_url;
   if (heroImageUrl) preload(heroImageUrl, { as: 'image' });
 
   return (
-    <BuyerSelectionGate returnTo={returnTo}>
+    <BuyerSelectionGate returnTo={returnTo} required={Boolean(claims.buyer_id)}>
       <CatalogDiscoveryLanding
         initialPromotions={promotions}
         initialReco={reco}

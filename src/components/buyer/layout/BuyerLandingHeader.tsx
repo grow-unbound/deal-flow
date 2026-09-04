@@ -8,6 +8,7 @@ import { SearchBar } from '@/components/buyer/catalog/SearchBar';
 import { BuyerLocationRow } from '@/components/buyer/layout/BuyerLocationRow';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { buildBuyerSearchHref, type BuyerSearchHrefParams } from '@/lib/buyer-routes';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 
 interface BuyerLandingHeaderProps {
@@ -77,7 +78,7 @@ export function BuyerLandingHeader({
           </div>
           {showProfile ? (
             <Link
-              href="/buy/profile"
+              href={STOREFRONT.profile}
               className={cn(
                 'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)]',
                 'hover:bg-[var(--bg-recessed)] transition-colors',

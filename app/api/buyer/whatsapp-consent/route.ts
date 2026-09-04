@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { hasPhoneConsented, stampPhoneConsent } from '@/lib/server/phone-consent';
 
 /**
  * POST /api/buyer/whatsapp-consent
@@ -25,10 +25,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
-    if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
     let body: { agreed?: boolean };
     try {
       body = await request.json() as { agreed?: boolean };
@@ -43,28 +39,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Already consented — one-time gate, never overwrite. Idempotent success.
-    if (profile.buyer.whatsapp_consent_at) {
+    // Phone-level, one-time gate — never overwrite. Idempotent success.
+    if (!profile.buyer.phone || await hasPhoneConsented(profile.buyer.phone)) {
       return NextResponse.json({ success: true, already_consented: true });
     }
 
-    const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-    const { error } = await db
-      .schema('app')
-      .from('buyers')
-      .update({
-        whatsapp_consent_at: new Date().toISOString(),
-        whatsapp_consent_method: 'explicit_checkbox_first_login',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', profile.buyer.id)
-      .eq('tenant_id', profile.context.tenant_id)
-      .is('whatsapp_consent_at', null); // belt-and-braces: never re-stamp a set value
-
-    if (error) {
-      console.error('[POST /api/buyer/whatsapp-consent] update failed', error);
-      return NextResponse.json({ error: 'Failed to record consent' }, { status: 500 });
-    }
+    await stampPhoneConsent(profile.buyer.phone, 'explicit_checkbox_first_login', profile.buyer.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

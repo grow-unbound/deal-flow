@@ -20,7 +20,9 @@ import {
   hasBuyerCampaignPrice,
 } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
@@ -33,12 +35,16 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
+export type ProductCardPriceReveal = 'hidden_bar' | 'login_cta' | 'amount';
+
 interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
   showPromotionBadge?: boolean;
   /** Smaller tile for secondary surfaces (e.g. cart gap carousel). */
   variant?: 'default' | 'compact';
+  /** Onboarding preview only — overrides guest price rendering. */
+  priceReveal?: ProductCardPriceReveal;
 }
 
 function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
@@ -75,6 +81,7 @@ export function ProductCard({
   className,
   showPromotionBadge = true,
   variant = 'default',
+  priceReveal,
 }: ProductCardProps): React.ReactNode {
   const isCompact = variant === 'compact';
   const posthog = usePostHog();
@@ -85,7 +92,9 @@ export function ProductCard({
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const { items, addItem, updateQty } = useCart();
   const { data: meData } = useBuyerMe();
-  const stockVisible = meData?.stock_visibility?.enabled ?? false;
+  const { openLogin } = useStorefrontLogin();
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
+  const stockVisible = !isGuest && (meData?.stock_visibility?.enabled ?? false);
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
@@ -93,10 +102,11 @@ export function ProductCard({
 
   const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
-  const productHref = `/buy/product/${item.tenant_product_id}`;
-  const showCampaignPrice = hasBuyerCampaignPrice(item);
+  const productHref = STOREFRONT.product(item.tenant_product_id);
+  const unitPrice = item.price;
+  const showCampaignPrice = !isGuest && unitPrice != null && hasBuyerCampaignPrice(item);
   const discountPct = showCampaignPrice && item.resolved_price
-    ? Math.round((1 - item.price / item.resolved_price) * 100)
+    ? Math.round((1 - unitPrice / item.resolved_price) * 100)
     : 0;
   const prefetchProduct = prefetchOnPress(productHref, () => {
     prefetchBuyerProductDetail(queryClient, item.tenant_product_id, stockSignature);
@@ -112,19 +122,23 @@ export function ProductCard({
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
+    if (isGuest || unitPrice == null) {
+      openLogin();
+      return;
+    }
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
       image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
-      unit_price: item.price,
+      unit_price: unitPrice,
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
-      line_total: item.price,
+      line_total: unitPrice,
       tenant_category_id: item.category_id ?? undefined,
       stock_status: item.stock_status,
       on_hand: item.on_hand,
@@ -350,32 +364,71 @@ export function ProductCard({
                 {item.internal_sku}
               </p>
             ) : null}
-            <div className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5', isCompact ? 'mt-1' : 'mt-2')}>
-              <span
-                className="font-medium tabular-nums text-[var(--fg-1)]"
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
-                  fontVariantNumeric: 'tabular-nums',
-                  fontWeight: 500,
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-              </span>
-              {showCampaignPrice ? (
-                <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
-                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
-                </span>
-              ) : null}
-              {showCampaignPrice && discountPct > 0 ? (
-                <span
-                  className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
-                  style={{ fontSize: 'var(--b-text-eyebrow)' }}
-                >
-                  -{discountPct}%
-                </span>
-              ) : null}
+            <div className={cn('self-start', isCompact ? 'mt-1' : 'mt-2')}>
+                {priceReveal === 'hidden_bar' || (!priceReveal && unitPrice == null) ? (
+                  <span
+                    className={cn(
+                      'inline-block rounded-md bg-cream-300',
+                      priceReveal === 'hidden_bar' ? 'h-5 w-[6.25rem]' : 'min-h-[1em] min-w-[4.5rem]',
+                    )}
+                    aria-label="Price hidden"
+                  />
+                ) : priceReveal === 'login_cta' ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      'inline-flex w-fit shrink-0 cursor-pointer items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-3 py-1 font-medium text-cream-600',
+                      'transition-colors duration-fast',
+                      '[@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-cream-50 [@media(hover:hover)]:hover:text-cream-800',
+                    )}
+                    style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openLogin();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openLogin();
+                    }}
+                  >
+                    Login for Price
+                  </span>
+                ) : unitPrice == null ? (
+                  <span
+                    className="inline-block h-5 w-[6.25rem] rounded-md bg-cream-300"
+                    aria-label="Price loading"
+                  />
+                ) : (
+                  <span
+                    className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-medium tabular-nums text-[var(--fg-1)]"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontWeight: 500,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {formatNumberValue(unitPrice, 'CURRENCY_EXACT')}
+                    {showCampaignPrice ? (
+                      <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                        {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+                      </span>
+                    ) : null}
+                    {showCampaignPrice && discountPct > 0 ? (
+                      <span
+                        className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
+                        style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                      >
+                        -{discountPct}%
+                      </span>
+                    ) : null}
+                  </span>
+                )}
             </div>
             {!isCompact && showPromotionBadge && item.has_campaign_price && item.campaign_valid_until ? (
               <p className="mt-1 text-amber-700" style={{ fontSize: 'var(--b-text-sub)' }}>

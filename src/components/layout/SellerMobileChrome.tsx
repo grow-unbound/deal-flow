@@ -3,13 +3,13 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, ExternalLink, Home, LogOut, Menu, Package, Search, ShoppingBag, Users } from 'lucide-react';
-import { usePostHog } from 'posthog-js/react';
+import { ArrowLeft, Bell, Home, LogOut, Menu, Package, Search, ShoppingBag, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Pressable } from '@/components/ui/pressable';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
+import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
 import { navGroups, type NavFlagKey, type NavItem } from '@/components/layout/SellerSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/hooks/useRole';
@@ -170,7 +170,6 @@ export function SellerMobileTopbar({
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
   const { role, isSellerAdmin, isSellerAssistant } = useRole();
-  const posthog = usePostHog();
   const pathname = usePathname();
   const router = useRouter();
   const tenantName = tenantBranding.tenantName || currentTenant?.business_name || 'Tenant';
@@ -203,24 +202,7 @@ export function SellerMobileTopbar({
         </SheetHeader>
 
         <SheetBody className="px-3 py-3">
-          <Button asChild variant="primary" className="mb-3 h-11 w-full justify-center rounded-xl">
-            <a
-              href="/api/buyer/preview/launch"
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                posthog?.capture('seller_open_buyer_app_clicked', {
-                  tenant_id: currentTenant?.id ?? null,
-                  role: isSellerAdmin ? 'seller_admin' : isSellerAssistant ? 'seller_assistant' : 'seller',
-                  destination: '/api/buyer/preview/launch',
-                  source_surface: 'seller_mobile_menu',
-                });
-              }}
-            >
-              <ExternalLink size={15} />
-              Open Buyer App
-            </a>
-          </Button>
+          <SellerOpenCatalogCta className="mb-3" fullWidth sourceSurface="seller_mobile_menu" />
 
           <nav className="space-y-4">
             {nav.map((group) => (

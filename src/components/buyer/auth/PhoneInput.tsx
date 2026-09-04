@@ -6,6 +6,8 @@ interface PhoneInputProps {
   onSubmit: (phoneNumber: string) => void | Promise<void>;
   loading?: boolean;
   error?: string;
+  submitLabel?: string;
+  loadingLabel?: string;
 }
 
 const inputCls =
@@ -14,7 +16,13 @@ const inputCls =
 const labelCls =
   'block text-cream-700 font-semibold mb-1.5 text-xs uppercase tracking-[0.08em]';
 
-export function PhoneInput({ onSubmit, loading = false, error }: PhoneInputProps) {
+export function PhoneInput({
+  onSubmit,
+  loading = false,
+  error,
+  submitLabel = 'Send OTP',
+  loadingLabel = 'Sending OTP…',
+}: PhoneInputProps) {
   const [value, setValue] = useState('');
 
   function handleSubmit(e: FormEvent) {
@@ -59,7 +67,7 @@ export function PhoneInput({ onSubmit, loading = false, error }: PhoneInputProps
         disabled={loading || value.length !== 10}
         className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Sending OTP…' : 'Send OTP'}
+        {loading ? loadingLabel : submitLabel}
       </button>
     </form>
   );

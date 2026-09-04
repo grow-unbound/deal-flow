@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListComposerPayloadSchema, PriceListFormPayloadSchema } from '@/lib/zod';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 type PriceListStatus = 'active' | 'draft' | 'expired';
 type PriceListStatusTone = 'success' | 'warning' | 'neutral';
@@ -444,6 +445,7 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ price_list: data });
   }
 
@@ -463,6 +465,7 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ price_list: data });
   }
 
@@ -477,6 +480,7 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ price_list: data });
   }
 
@@ -695,6 +699,7 @@ export async function PATCH(
       }
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ price_list: updatedPriceList as Record<string, unknown> & { id: string } });
   }
 
@@ -805,5 +810,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Price list updated but refresh failed' }, { status: 500 });
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ price_list: updatedPriceList as Record<string, unknown> & { id: string } });
 }

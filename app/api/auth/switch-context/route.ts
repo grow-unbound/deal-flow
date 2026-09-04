@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
-import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
-import { findAllLoginCandidates, resolveSellerAuthPhone } from '@/lib/server/buyer-access';
+import { findAllLoginCandidates } from '@/lib/server/buyer-access';
 import { writeVerifiedCandidatesRecord } from '@/lib/server/buyer-otp-store';
-import { supabaseAdmin } from '@/lib/supabase';
+import { resolveCallerPhone } from '@/lib/server/resolve-auth-phone';
 
 /**
  * POST /api/auth/switch-context
@@ -44,44 +43,4 @@ export async function POST(request: NextRequest) {
     console.error('[switch-context] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-async function resolveCallerPhone(userId: string, role: string | null): Promise<string | null> {
-  if (!supabaseAdmin) return null;
-
-  if (role && (SELLER_ROLES as readonly string[]).includes(role)) {
-    // app.tenant_users.phone — matches what find_seller_candidates_by_phone matches on.
-    // Falls back to auth.users only if tenant_users.phone was never backfilled, and
-    // self-heals it when that happens (see resolveSellerAuthPhone).
-    return resolveSellerAuthPhone(userId);
-  }
-
-  if (role && (BUYER_ROLES as readonly string[]).includes(role)) {
-    // Buyer owners log in directly as app.buyers (buyers.user_id) and have no
-    // buyer_users row at all — check that first. Delegates (real staff) only
-    // ever have a buyer_users row, never buyers.user_id.
-    const { data: ownerRow } = await supabaseAdmin
-      .schema('app')
-      .from('buyers')
-      .select('phone')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const ownerPhone = (ownerRow as { phone: string | null } | null)?.phone;
-    if (ownerPhone) return ownerPhone;
-
-    // A user can be a member of multiple buyer accounts — take one deterministically
-    // rather than .maybeSingle() (which errors on >1 rows).
-    const { data } = await supabaseAdmin
-      .schema('app')
-      .from('buyer_users')
-      .select('phone')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    return (data as { phone: string | null } | null)?.phone ?? null;
-  }
-
-  return null;
 }

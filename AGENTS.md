@@ -405,14 +405,22 @@ Wk 12: Cross-tenant security tests, onboarding polish, first paid customer
 ### Migration workflow
 - **Always create migration files via CLI:** `supabase migration new <descriptive-name>` — never create or name migration files manually. The CLI generates the correct `YYYYMMDDHHMMSS_<name>.sql` timestamp format.
 - **Never create schema changes directly in the Supabase dashboard.** If an emergency dashboard change is explicitly authorized, immediately capture it with the linked remote CLI, review the generated migration, and reconcile migration history before further work.
-- This repository uses the hosted **`yukti-dev`** Supabase project (`euhzgherjvjopjrpoqjr`) for all development, migration validation, SQL tests, seeds, auth/setup work, function deployment, integration tests, and load tests. Agents must not use the local Docker stack and must not run or require `supabase start`, `supabase db reset --local`, `supabase test db --local`, or another Docker-dependent Supabase workflow.
-- The **`yukti` production** project (`hcpzbnmumbykdqveyjhr`) is forbidden for development work. Do not run SQL, tests, migrations, seeds, function/config/auth/storage changes, or `--linked` commands against it. Production access requires a separate explicit user authorization naming the exact production action; Phase 8 authorization must not be inferred from earlier development approval.
-- Use the official `SUPABASE_DB_PASSWORD` variable from `.env.local` for linked remote CLI commands. Never print, echo, log, inline in a command, or commit its value. (`SUPABASE_PASSWORD` is not the project variable.)
-- Before **every** `--linked` inspection, test, dry-run, or push, read the current linked project ref and require it to equal `euhzgherjvjopjrpoqjr`. Project refs are safe to record; credentials are not. Stop on any mismatch—especially `hcpzbnmumbykdqveyjhr`. Because the main checkout may still be linked to production, use a verified temporary Supabase project directory/workdir linked to `yukti-dev`; never rely on another session's link state.
+- This repository uses the hosted **`yukti-dev`** Supabase project (`hcpzbnmumbykdqveyjhr`, ap-northeast-2) for all development, migration validation, SQL tests, seeds, auth/setup work, function deployment, integration tests, and load tests. Agents must not use the local Docker stack and must not run or require `supabase start`, `supabase db reset --local`, `supabase test db --local`, or another Docker-dependent Supabase workflow.
+- The **`yukti-prod`** project (`cckmurgapnkytbzxqesp`, ap-south-1 / Mumbai, created 2026-08-31) is production. **Never** run SQL, tests, migrations, seeds, function/config/auth/storage changes, `--linked` commands, or `db push` against it. Production access requires a separate explicit user authorization naming the exact production action; Phase 8 authorization must not be inferred from earlier development approval. The main checkout may still be linked to `yukti-prod` — never trust that link.
+- Use the official `SUPABASE_DB_PASSWORD` variable from `.env.local` for linked remote CLI commands (fall back to `DATABASE_PASSWORD` if that is the only db password present). Never print, echo, log, inline in a command, or commit its value. (`SUPABASE_PASSWORD` is not the project variable.)
+- Before **every** `--linked` inspection, test, dry-run, or push, read the current linked project ref and require it to equal `hcpzbnmumbykdqveyjhr`. Project refs are safe to record; credentials are not. Stop on any mismatch — especially `cckmurgapnkytbzxqesp`. Use a verified temporary Supabase project directory/workdir linked to `yukti-dev`; never rely on another session's link state. Never `db push` to `yukti-prod`.
 - Read-only inspection and SQL behavior tests may use `npx supabase db query --linked --file <file>`. Wrap mutation-shaped validation in `BEGIN ... ROLLBACK`, use isolated fixtures, and verify that no persistent business data changed.
 - Before a persistent remote migration, run `npx supabase migration list --linked` and `npx supabase db push --linked --dry-run`. A real `npx supabase db push --linked` requires explicit user approval. Verify migration history, RLS, grants, advisors, and focused tests afterward.
 - Never run `supabase db reset --linked`, remote destructive cleanup, or `supabase migration repair` unless the user explicitly authorizes a documented recovery procedure.
-- Cross-connection, API, Cron, sync, or load tests that cannot run inside a rolled-back transaction use `yukti-dev` with deterministic isolated seed data. Never fall back to the production project because the development environment is unavailable.
+- Cross-connection, API, Cron, sync, or load tests that cannot run inside a rolled-back transaction use `yukti-dev` with deterministic isolated seed data. Never fall back to `yukti-prod` because the development environment is unavailable.
+
+### Local storefront hosts (no Vercel, no `/etc/hosts`)
+Browsers resolve `*.localhost` to `127.0.0.1`. With `pnpm dev`, use:
+- Seller: `http://app.localhost:3000`
+- Tenant storefront: `http://{slug}.localhost:3000` (e.g. `http://wineyard.localhost:3000`)
+- Unscoped seller (legacy): `http://localhost:3000`
+
+Do not add hosts-file entries, `lvh.me`, or nip.io unless those hostnames already exist. Going live is `app.catalogs.live_at` (plus `pricing_mode`); unpublished hosts render `/not-live`.
 - For newly created Data API objects, explicitly verify schema exposure, grants, and RLS; do not assume a new table is automatically API-accessible.
 
 ### Always qualify schema names
@@ -441,7 +449,7 @@ supabase.from('tenants').select('*')
 
 ## Workflow Rules (from parent project)
 - Explore first, plan before coding. Use plan mode for anything touching >2 files.
-- Always verify your work. Run tests or show a diff before declaring done.
+- Always verify your work. After every code change in a session, run `npx tsc --noEmit` and the focused Vitest files that cover the change (or `pnpm exec vitest run <paths>`). Do not declare done while either is failing. Broaden tests when the change is cross-cutting (auth, middleware, catalog, pricing). Show a diff when there is no test surface.
 - Use subagents for investigation tasks. Do not bloat main context with file reads.
 - Commit frequently with descriptive messages. Always create a PR, never push to main.
 - Agent commits must not hang on an interactive signing prompt. Default to `git -c commit.gpgsign=false commit ...` without changing repository or global Git configuration.

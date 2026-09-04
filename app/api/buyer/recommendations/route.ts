@@ -4,6 +4,7 @@ import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assem
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
+import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
 
@@ -25,40 +26,39 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
 
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
+  const isGuest = profile.context.mode === 'guest';
 
   try {
-    const allowedTenantBrandIds = buyerId
-      ? await resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId)
-      : [];
+    const [allowedTenantBrandIds, guestPricing] = await Promise.all([
+      // null (not []) for guest/no-cohort — an empty array means "allow zero
+      // brands" to enrichBuyerProducts and would zero out every result.
+      buyerId ? resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId) : Promise.resolve(null),
+      isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
+    ]);
 
+    // Only same_category is ever rendered on the PDP (co_order/"Frequently Bought
+    // Together" was dropped, co_buyer was fetched but never rendered anywhere) —
+    // asking the RPC for widgets nobody sees just wastes the query and the
+    // enrichment pass below.
     const recoRes = await supabaseAdmin
       .schema('app')
       .rpc('reco_get_product_page', {
         p_tenant_id: tenantId,
         p_tenant_product_id: productId,
         p_buyer_id: buyerId,
-        p_widget_types: ['co_order', 'co_buyer', 'same_category'],
+        p_widget_types: ['same_category'],
         p_limit: 8,
       });
 
     if (recoRes.error) throw new Error(recoRes.error.message);
 
     const recoData = recoRes.data as {
-      co_order?: string[];
-      co_buyer?: string[];
       same_category?: string[];
     } | null;
 
     if (!recoData) return NextResponse.json(EMPTY, { headers: BUYER_CACHE_PRICED });
 
-    // Deduplicate product IDs across all carousels before enrichment (single DB round-trip)
-    const allIds = Array.from(
-      new Set([
-        ...(recoData.co_order ?? []),
-        ...(recoData.co_buyer ?? []),
-        ...(recoData.same_category ?? []),
-      ]),
-    );
+    const allIds = Array.from(new Set(recoData.same_category ?? []));
 
     const enriched =
       allIds.length > 0
@@ -71,6 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
             campaignName: null,
             campaignValidUntil: null,
             priceOverrides: new Map(),
+            guestPricing,
           })
         : new Map<string, import('@/types/buyer').BuyerCatalogItem>();
 
@@ -78,8 +79,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
       ids.map((id) => enriched.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item));
 
     return NextResponse.json({
-      co_order: hydrate(recoData.co_order),
-      co_buyer: hydrate(recoData.co_buyer),
+      co_order: [],
+      co_buyer: [],
       same_category: hydrate(recoData.same_category),
     }, { headers: BUYER_CACHE_PRICED });
   } catch (error) {

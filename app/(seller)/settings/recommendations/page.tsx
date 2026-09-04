@@ -1,7 +1,10 @@
 import { PageWrap } from '@/components/seller/layout';
 import { RecommendationsSettingsClient } from '@/components/seller/settings/RecommendationsSettingsClient';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 import { supabaseAdmin } from '@/lib/supabase';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.settingsRecommendations);
 
 export default async function RecommendationsSettingsPage() {
   const tenantId = await requireSellerServerTenantId();

@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 import { buildBuyerLocationHref } from '@/lib/buyer-routes';
 import { DELIVERY_COOKIE_NAME, parseDeliveryCookie } from '@/lib/buyer-delivery-location';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
+import { getBuyerServerClaims } from '@/lib/server/buyer-server-claims';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -43,8 +44,16 @@ export function getSelectedBuyerDeliveryFromRequest(req: NextRequest): BuyerDeli
   return parseDeliveryCookie(req.cookies.get(DELIVERY_COOKIE_NAME)?.value)?.selected ?? null;
 }
 
-export async function requireBuyerDeliverySelection(returnTo: string): Promise<BuyerDeliveryLocation> {
+/**
+ * Guests have no outlet to route delivery to (that list is resolved off the
+ * authenticated buyer's account) — the redirect would strand them on an
+ * empty picker. Only an authenticated buyer session is required to select
+ * a location before browsing; a guest passes through with `selected: null`.
+ */
+export async function requireBuyerDeliverySelection(returnTo: string): Promise<BuyerDeliveryLocation | null> {
+  const claims = await getBuyerServerClaims();
   const selected = await getSelectedBuyerDeliveryFromCookies();
+  if (!claims.buyer_id) return selected;
   if (!selected) {
     redirect(buildBuyerLocationHref(returnTo));
   }

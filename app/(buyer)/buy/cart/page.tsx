@@ -29,7 +29,7 @@ import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
-import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
+import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -122,22 +122,25 @@ export default function CartPage() {
 
   useEffect(() => {
     if (!reconcileQuery.data) return;
-    const nextItems = reconcileQuery.data.items.map((product) => {
+    const nextItems = reconcileQuery.data.items
+      .filter((product) => hasVisibleBuyerPrice(product.price))
+      .map((product) => {
       const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
       const quantity = existing?.quantity ?? 1;
+      const unitPrice = product.price as number;
       return {
         tenant_product_id: product.tenant_product_id,
         name: product.display_name,
         brand: product.brand_name ?? undefined,
         internal_sku: product.internal_sku,
         image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
-        unit_price: product.price,
+        unit_price: unitPrice,
         resolved_price: product.resolved_price,
         has_campaign_price: product.has_campaign_price,
         gst_rate: product.gst_rate ?? gstRate,
         unit: product.default_uom ?? undefined,
         quantity,
-        line_total: product.price * quantity,
+        line_total: unitPrice * quantity,
         tenant_category_id: product.category_id ?? undefined,
         campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
         stock_status: product.stock_status,

@@ -24,6 +24,8 @@ import {
   StatusTag,
 } from '@/components/seller/layout';
 import { PerformanceCard, RankedList } from '@/components/seller/detail';
+import { CatalogLiveShareCard, CatalogUnpublishedIntercept } from '@/components/seller/dashboard/CatalogOnboardingCards';
+import { useTenant } from '@/contexts/TenantContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
@@ -154,6 +156,7 @@ function AdminSection({
   const { data: customerActivityData, isLoading: customerActivityLoading } = useSellerDashboardCustomerActivity();
   const { data: salesMixData } = useSellerDashboardSalesMix(salesMixDimension);
   const { data: locationPerformanceData, isLoading: locationPerformanceLoading } = useSellerDashboardLocationPerformance();
+  const { currentTenant } = useTenant();
   if (!admin) return null;
 
   const mixResult = normalizeSalesMixItems(salesMixData?.items ?? []);
@@ -163,6 +166,7 @@ function AdminSection({
 
   return (
     <>
+      {currentTenant?.public_catalog_live === true ? <CatalogLiveShareCard /> : <CatalogUnpublishedIntercept />}
       <InsightStrip4
         tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
           label: metric.time_basis ? `${kpiLabel(DASHBOARD_KPI_COPY, metric)} · ${metric.time_basis}` : kpiLabel(DASHBOARD_KPI_COPY, metric),

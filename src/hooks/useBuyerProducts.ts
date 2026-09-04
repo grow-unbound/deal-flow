@@ -141,6 +141,7 @@ export function useBuyerCatalogSearchInfinite(
   search: string,
   filters: BuyerCatalogSearchFilters = {},
   enabled = true,
+  options: { allowEmpty?: boolean } = {},
 ) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
@@ -148,6 +149,7 @@ export function useBuyerCatalogSearchInfinite(
   const categoryId = filters.categoryId?.trim() ?? '';
   const brandId = filters.brandId?.trim() ?? '';
   const campaignId = filters.campaignId?.trim() ?? '';
+  const allowEmpty = options.allowEmpty === true;
 
   return useInfiniteQuery<BuyerCatalogResponse>({
     queryKey: [
@@ -157,8 +159,9 @@ export function useBuyerCatalogSearchInfinite(
       brandId,
       campaignId,
       stockSignature,
+      allowEmpty ? 'browse' : 'search',
     ],
-    enabled: enabled && trimmedSearch.length > 0,
+    enabled: enabled && (allowEmpty || trimmedSearch.length > 0),
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),

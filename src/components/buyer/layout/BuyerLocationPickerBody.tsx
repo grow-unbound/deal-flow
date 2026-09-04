@@ -11,6 +11,7 @@ import { formatBuyerSelectedLocationLabel, type BuyerDeliveryLocation } from '@/
 import { apiFetch } from '@/lib/api-fetch';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { STOREFRONT, toInternalBuyPath } from '@/lib/storefront-paths';
 import { cn } from '@/lib/utils';
 import { getAnalyticsRouteInfo } from '@/lib/analytics-route';
 
@@ -52,14 +53,15 @@ const STICKY_HEADER: React.CSSProperties = {
 };
 
 export function safeReturnTo(raw: string | null): string {
-  if (!raw?.trim()) return '/buy/home';
+  if (!raw?.trim()) return STOREFRONT.home;
   try {
     const decoded = decodeURIComponent(raw);
-    if (decoded.startsWith('/buy/') && !decoded.startsWith('//')) return decoded;
+    if (decoded.startsWith('//')) return STOREFRONT.home;
+    if (toInternalBuyPath(decoded) || decoded.startsWith('/buy/')) return decoded;
   } catch {
     /* ignore */
   }
-  return '/buy/home';
+  return STOREFRONT.home;
 }
 
 function buildSelectedLocationAnalytics(location: BuyerDeliveryLocation) {

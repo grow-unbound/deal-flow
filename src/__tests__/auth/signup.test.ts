@@ -158,10 +158,10 @@ describe('signup client session contract', () => {
 // ─── payload shape ───────────────────────────────────────────────────────────
 
 describe('signup payload shape', () => {
-  it('derives subdomain from slug (slug + .yukti.so)', () => {
+  it('derives storefront host from slug (slug + .useyukti.in)', () => {
     const slug = 'wineyard';
-    const expectedSubdomain = `${slug}.yukti.so`;
-    expect(expectedSubdomain).toBe('wineyard.yukti.so');
+    const expectedSubdomain = `${slug}.useyukti.in`;
+    expect(expectedSubdomain).toBe('wineyard.useyukti.in');
   });
 
   it('sends only the four required fields to the API', () => {

@@ -11,6 +11,7 @@ import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsO
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { safeErrorMessage } from '@/lib/server/safe-error-message';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -561,5 +562,6 @@ export async function POST(request: NextRequest) {
     // Analytics is non-blocking for price list creation.
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ price_list: priceList }, { status: 201 });
 }

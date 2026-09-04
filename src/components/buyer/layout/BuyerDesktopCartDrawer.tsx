@@ -25,10 +25,11 @@ import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
+import { BuyAsPicker } from '@/components/buyer/cart/BuyAsPicker';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { BuyerTransactionConfirmation, type BuyerTransactionConfirmationData } from '@/components/buyer/transactions/BuyerTransactionConfirmation';
 import { apiFetch } from '@/lib/api-fetch';
-import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
+import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -235,6 +236,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
   const selectedDelivery = delivery?.selected ?? null;
   const deliveryHydrated = delivery?.hydrated ?? true;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
@@ -258,9 +260,9 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (!open || !deliveryHydrated || selectedDelivery) return;
+    if (isGuest || !open || !deliveryHydrated || selectedDelivery) return;
     router.replace(`/buy/location?returnTo=${encodeURIComponent(returnToOpenHref)}`);
-  }, [deliveryHydrated, open, returnToOpenHref, router, selectedDelivery]);
+  }, [isGuest, deliveryHydrated, open, returnToOpenHref, router, selectedDelivery]);
 
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
@@ -271,10 +273,11 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
 
   useEffect(() => {
     if (!reconcileQuery.data) return;
-    const nextItems = reconcileQuery.data.items.map((product) => {
+    const nextItems = reconcileQuery.data.items.flatMap((product) => {
+      if (!hasVisibleBuyerPrice(product.price)) return [];
       const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
       const quantity = existing?.quantity ?? 1;
-      return {
+      return [{
         tenant_product_id: product.tenant_product_id,
         name: product.display_name,
         brand: product.brand_name ?? undefined,
@@ -291,7 +294,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
         stock_status: product.stock_status,
         on_hand: product.on_hand,
-      } satisfies BuyerCartItem;
+      } satisfies BuyerCartItem];
     });
 
     const currentSignature = JSON.stringify(items);
@@ -807,6 +810,8 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                     </span>
                   </div>
                 </div>
+
+                <BuyAsPicker />
 
                 <button
                   type="button"

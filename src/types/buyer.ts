@@ -11,7 +11,8 @@ export interface BuyerCatalogItem {
   category_id: string | null;
   category_name: string | null;
   mrp: number;
-  price: number;
+  /** Null when the public catalog hides prices until login. */
+  price: number | null;
   resolved_price?: number | null;
   campaign_price?: number | null;
   has_campaign_price?: boolean;
@@ -84,4 +85,12 @@ export interface BuyerResolvedProductsResponse {
   missing_ids: string[];
 }
 
-export type BuyerAppMode = 'buyer' | 'preview';
+export type BuyerAppMode = 'buyer' | 'preview' | 'guest';
+
+export interface BuyerSiblingRow {
+  buyer_id: string;
+  business_name: string;
+  role: string;
+  price_list_id: string | null;
+  price_list_name: string | null;
+}

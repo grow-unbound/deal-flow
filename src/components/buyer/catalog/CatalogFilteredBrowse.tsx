@@ -17,6 +17,7 @@ import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { setBuyerRailPathname } from '@/hooks/useBuyerRailPathnameOverride';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import {
   useBuyerBrands,
   useBuyerCatalogList,
@@ -24,7 +25,8 @@ import {
 } from '@/hooks/useBuyerProducts';
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
-import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { BUYER_INFINITE_SCROLL_RATIO, guestPriceReveal } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
@@ -36,6 +38,9 @@ interface CatalogFilteredBrowseProps {
 
 export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
   const posthog = usePostHog();
+  const { data: me } = useBuyerMe();
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const priceReveal = isGuest ? guestPriceReveal(me?.guest_pricing_mode) : undefined;
   const { setCampaignId } = useCart();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
@@ -194,8 +199,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
     const nextPath =
       mode === 'category'
-        ? `/buy/home/category/${nextId}`
-        : `/buy/home/brand/${nextId}`;
+        ? STOREFRONT.category(nextId)
+        : STOREFRONT.brand(nextId);
     window.history.replaceState(window.history.state, '', nextPath);
     setBuyerRailPathname(nextPath);
   }, [mode]);
@@ -234,7 +239,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
       <BuyerDetailShell
         title={title}
         hideDesktopHeader
-        backFallbackHref="/buy/home"
+        backFallbackHref={STOREFRONT.home}
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -281,6 +286,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w5_category_trending"
                 items={categoryRecos ?? []}
                 isLoading={showCategoryRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -292,6 +298,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w6_brand_trending"
                 items={brandRecos ?? []}
                 isLoading={showBrandRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -330,6 +337,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
                 showPromotionBadge={mode !== 'list'}
+                priceReveal={priceReveal}
               />
 
               {!showProductsSkeleton && items.length === 0 ? (
@@ -351,7 +359,7 @@ function NoProductsFoundState(): React.ReactNode {
       description="Try a different search or switch filters to explore more products."
       action={(
         <Link
-          href="/buy/home"
+          href={STOREFRONT.home}
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
         >
           Browse Catalog

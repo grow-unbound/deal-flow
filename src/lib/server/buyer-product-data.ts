@@ -1,5 +1,8 @@
 import type { NextRequest } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createHash } from 'crypto';
+import { unstable_cache } from 'next/cache';
+import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAccessProfile, BuyerVisibleCatalog } from '@/lib/server/buyer-access';
 import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
@@ -14,72 +17,21 @@ import type {
   BuyerCatalogSummary,
   BuyerCategory,
 } from '@/types/buyer';
+import {
+  getCachedGuestPricingContext,
+  guestUnitPrice,
+  loadAssignedPriceListPrices,
+  TENANT_PRODUCT_PUBLIC_SELECT,
+  type GuestPricingContext,
+} from '@/lib/server/public-catalog';
+
+export { TENANT_PRODUCT_PUBLIC_SELECT };
 
 type CampaignItemRow = {
   tenant_product_id: string;
   price_override: number | null;
   display_order: number | null;
   is_featured?: boolean | null;
-};
-
-type TenantProductRow = {
-  id: string;
-  internal_sku: string | null;
-  name_override: string | null;
-  tenant_brand_id: string | null;
-  tenant_category_id: string | null;
-  master_product_id: string | null;
-  mrp: number | null;
-  base_selling_price: number | null;
-  gst_rate: number | null;
-  default_uom: string | null;
-  pack_size: number | null;
-  image_urls: string[] | null;
-  r2_small_key: string | null;
-  r2_medium_key: string | null;
-  r2_large_key: string | null;
-  is_active?: boolean | null;
-};
-
-type TenantBrandRow = {
-  id: string;
-  display_name_override: string | null;
-  master_brand_id: string | null;
-  logo_url: string | null;
-};
-
-type MasterBrandRow = {
-  id: string;
-  name: string;
-  logo_url: string | null;
-};
-
-type MasterProductRow = {
-  id: string;
-  name: string;
-  image_urls: string[] | null;
-  gst_rate: number | null;
-  category_id: string | null;
-};
-
-type CategoryRow = {
-  id: string;
-  name: string;
-  slug?: string | null;
-  image_url: string | null;
-};
-
-type TenantCategoryRow = {
-  id: string;
-  name: string;
-  slug: string | null;
-  r2_image_thumb_key: string | null;
-  r2_image_medium_key: string | null;
-};
-
-type InventoryRow = {
-  tenant_product_id: string;
-  qty_available: number | null;
 };
 
 type PriceRow = {
@@ -126,6 +78,15 @@ export type BuyerProductEnrichmentParams = {
    * catalog, cart/order assembly) omit this and get the original self-contained resolution.
    */
   priceStockByProductId?: Map<string, { unit_price: number; on_hand: number }>;
+  /**
+   * Full enrichment rows already fetched by the caller's own search_products_scoped /
+   * load_products_scoped call (e.g. resolveCatalogScope) — skips enrichBuyerProducts's
+   * own RPC round-trip entirely. Callers working from an arbitrary id list with no
+   * prior RPC call (home reco, recommendations, cart resolve) omit this.
+   */
+  scopedRows?: ScopedProductSearchRow[] | null;
+  /** Public-store guest pricing. When set, never call `resolve_prices_batch`. */
+  guestPricing?: GuestPricingContext | null;
 };
 
 type CatalogPageParams = {
@@ -142,17 +103,7 @@ type CatalogPageParams = {
   requestedCampaignId?: string;
   limit: number;
   offset: number;
-};
-
-type CatalogScopeTextRow = {
-  product_name: string;
-  sku: string | null;
-  brand_id: string | null;
-  brand_name: string | null;
-  category_id: string | null;
-  category_name: string | null;
-  unit_price: number | null;
-  on_hand: number | null;
+  guestPricing?: GuestPricingContext | null;
 };
 
 type CatalogScopeResult = {
@@ -166,45 +117,29 @@ type CatalogScopeResult = {
     campaign_price: number | null;
     is_featured?: boolean;
   }>;
-  textByProductId: Map<string, CatalogScopeTextRow>;
+  textByProductId: Map<string, ScopedProductSearchRow>;
 };
 
-function uniq<T>(values: T[]): T[] {
-  return Array.from(new Set(values));
+function isBuyerStockVisibilityEnabled(db: SupabaseClient, tenantId: string): Promise<boolean> {
+  return unstable_cache(
+    async () => {
+      const { data } = await (db as any)
+        .schema('app')
+        .from('tenant_settings')
+        .select('settings')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      const rawSettings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+      const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
+      return rawBuyerApp.stock_visibility_enabled === true;
+    },
+    ['buyer-stock-visibility', tenantId],
+    { revalidate: 300, tags: [`tenant-settings:${tenantId}`] },
+  )();
 }
 
-async function isBuyerStockVisibilityEnabled(db: SupabaseClient, tenantId: string): Promise<boolean> {
-  const { data } = await (db as any)
-    .schema('app')
-    .from('tenant_settings')
-    .select('settings')
-    .eq('tenant_id', tenantId)
-    .maybeSingle();
-  const rawSettings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
-  const rawBuyerApp = (rawSettings.buyer_app ?? {}) as Record<string, unknown>;
-  return rawBuyerApp.stock_visibility_enabled === true;
-}
-
-function rowsToTextMap(rows: ScopedProductSearchRow[]): Map<string, CatalogScopeTextRow> {
-  return new Map(rows.map((row) => [row.tenant_product_id, {
-    product_name: row.product_name,
-    sku: row.sku,
-    brand_id: row.brand_id,
-    brand_name: row.brand_name,
-    category_id: row.category_id,
-    category_name: row.category_name,
-    unit_price: row.unit_price,
-    on_hand: row.on_hand,
-  }]));
-}
-
-/** Price/stock already resolved by `search_products_scoped` — skips re-resolving via `resolve_prices_batch`. */
-function priceStockMapFromScope(textByProductId: Map<string, CatalogScopeTextRow>): Map<string, { unit_price: number; on_hand: number }> {
-  const out = new Map<string, { unit_price: number; on_hand: number }>();
-  for (const [productId, row] of textByProductId) {
-    out.set(productId, { unit_price: Number(row.unit_price ?? 0), on_hand: Number(row.on_hand ?? 0) });
-  }
-  return out;
+function rowsToTextMap(rows: ScopedProductSearchRow[]): Map<string, ScopedProductSearchRow> {
+  return new Map(rows.map((row) => [row.tenant_product_id, row]));
 }
 
 export async function resolveVisibleCampaignMap(
@@ -419,142 +354,50 @@ export async function enrichBuyerProducts(
     campaignByProductId = new Map(),
     qtyByProductId = new Map(),
     priceStockByProductId = null,
+    guestPricing = null,
+    scopedRows = null,
   } = params;
 
   const orderedIds = tenantProductIds.filter(Boolean);
   if (orderedIds.length === 0) return new Map();
 
-  let tenantProductsQuery = db
-    .schema('app')
-    .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls, r2_small_key, r2_medium_key, r2_large_key')
-    .eq('tenant_id', tenantId)
-    .in('id', orderedIds)
-    .is('deleted_at', null)
-    .eq('is_active', true);
-
-  if (Array.isArray(allowedTenantBrandIds)) {
-    // A cohort's brand allowlist gates the default browse, not a product the
-    // buyer can already see via a targeted campaign (campaignByProductId is
-    // itself built from getVisibleBuyerCatalogs, which is the authorization
-    // check) — a product in both should still resolve. Without this, cart/
-    // checkout price resolution (this function is shared by the catalog list,
-    // product detail, and /api/buyer/products/resolve) silently dropped every
-    // campaign product outside the buyer's allowlist, which made add-to-cart
-    // look like a no-op since the cart's own resolve call found nothing.
-    const campaignExemptIds = orderedIds.filter((id) => campaignByProductId.has(id));
-    if (allowedTenantBrandIds.length === 0 && campaignExemptIds.length === 0) return new Map();
-    tenantProductsQuery = campaignExemptIds.length > 0
-      ? tenantProductsQuery.or(
-          `tenant_brand_id.in.(${allowedTenantBrandIds.join(',')}),id.in.(${campaignExemptIds.join(',')})`,
-        )
-      : tenantProductsQuery.in('tenant_brand_id', allowedTenantBrandIds);
-  }
-
-  const [{ data: tenantProductsData, error: tenantProductsError }, stockVisibilityEnabled] = await Promise.all([
-    tenantProductsQuery,
-    isBuyerStockVisibilityEnabled(db, tenantId),
-  ]);
-  if (tenantProductsError) throw new Error(tenantProductsError.message);
-
-  const tenantProducts = (tenantProductsData ?? []) as TenantProductRow[];
-  if (tenantProducts.length === 0) return new Map();
-
-  const productIds = tenantProducts.map((product) => product.id);
-  const tenantBrandIds = uniq(
-    tenantProducts.map((product) => product.tenant_brand_id).filter((value): value is string => Boolean(value)),
-  );
-  const tenantCategoryIds = uniq(
-    tenantProducts.map((product) => product.tenant_category_id).filter((value): value is string => Boolean(value)),
-  );
-  const masterProductIds = uniq(
-    tenantProducts.map((product) => product.master_product_id).filter((value): value is string => Boolean(value)),
+  // Name/brand/category/tax/stock/images now come from one RPC round-trip
+  // (search_products_scoped / load_products_scoped — see scoped-product-
+  // search.ts) instead of the old 4-stage tenant_products -> tenant_brands/
+  // tenant_categories/catalog.products -> catalog.brands/catalog.categories
+  // -> inventory join chain. A caller that already ran that RPC for its own
+  // purposes (fetchBuyerCatalogPage's resolveCatalogScope) passes the rows
+  // straight through via `scopedRows` — zero extra round-trips. A caller
+  // working from an arbitrary id list with no prior RPC call (home reco,
+  // recommendations, cart resolve) triggers exactly one here.
+  //
+  // Deliberately not passing allowedTenantBrandIds into that fetch: this
+  // function only ever enriches ids the caller already decided are legitimate
+  // to look up (a past order's line items, the recommendation engine's own
+  // output, a cart the buyer built by adding items they could already see) —
+  // never an open browse. The cohort brand allowlist is the browse-time
+  // authorization boundary (enforced by resolveCatalogScope's own RPC call,
+  // whose rows arrive here via `scopedRows`); re-applying it to an explicit
+  // id list previously caused a real bug (a campaign product outside the
+  // buyer's allowlist silently failed to resolve during checkout).
+  const rows: ScopedProductSearchRow[] = scopedRows ?? (
+    orderedIds.length > 0
+      ? (await searchScopedProducts({
+          db,
+          tenantId,
+          ids: orderedIds,
+          warehouseIds: inventoryWarehouseId ? [inventoryWarehouseId] : null,
+          limit: Math.max(orderedIds.length, 1),
+        })).rows
+      : []
   );
 
-  const [tenantBrandsRes, tenantCategoriesRes, masterProductsRes, inventoryRes] = await Promise.all([
-    tenantBrandIds.length > 0
-      ? db
-          .schema('app')
-          .from('tenant_brands')
-          .select('id, display_name_override, master_brand_id, logo_url')
-          .in('id', tenantBrandIds)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    tenantCategoryIds.length > 0
-      ? db
-          .schema('app')
-          .from('tenant_categories')
-          .select('id, name, slug, r2_image_thumb_key, r2_image_medium_key')
-          .in('id', tenantCategoryIds)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    masterProductIds.length > 0
-      ? db
-          .schema('catalog')
-          .from('products')
-          .select('id, name, image_urls, gst_rate, category_id')
-          .in('id', masterProductIds)
-      : Promise.resolve({ data: [], error: null }),
-    (() => {
-      if (priceStockByProductId) return Promise.resolve({ data: [], error: null });
-      if (!stockVisibilityEnabled) return Promise.resolve({ data: [], error: null });
-      let inventoryQuery = db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('tenant_product_id, qty_available')
-        .in('tenant_product_id', productIds)
-        .is('deleted_at', null);
-      if (inventoryWarehouseId) {
-        inventoryQuery = inventoryQuery.eq('warehouse_id', inventoryWarehouseId);
-      }
-      return inventoryQuery;
-    })(),
-  ]);
+  const stockVisibilityEnabled = await isBuyerStockVisibilityEnabled(db, tenantId);
 
-  const secondError = tenantBrandsRes.error ?? tenantCategoriesRes.error ?? masterProductsRes.error ?? inventoryRes.error;
-  if (secondError) throw new Error(secondError.message);
-
-  const tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
-  const tenantCategories = (tenantCategoriesRes.data ?? []) as TenantCategoryRow[];
-  const masterProducts = (masterProductsRes.data ?? []) as MasterProductRow[];
-  const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
-
-  const masterBrandIds = uniq(
-    tenantBrands.map((brand) => brand.master_brand_id).filter((value): value is string => Boolean(value)),
-  );
-  const categoryIds = uniq(
-    masterProducts.map((product) => product.category_id).filter((value): value is string => Boolean(value)),
-  );
-
-  const [masterBrandsRes, categoriesRes] = await Promise.all([
-    masterBrandIds.length > 0
-      ? db
-          .schema('catalog')
-          .from('brands')
-          .select('id, name, logo_url')
-          .in('id', masterBrandIds)
-      : Promise.resolve({ data: [], error: null }),
-    categoryIds.length > 0
-      ? db
-          .schema('catalog')
-          .from('categories')
-          .select('id, name, slug, image_url')
-          .in('id', categoryIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  const thirdError = masterBrandsRes.error ?? categoriesRes.error;
-  if (thirdError) throw new Error(thirdError.message);
-
-  const tenantBrandMap = new Map(tenantBrands.map((brand) => [brand.id, brand]));
-  const tenantCategoryMap = new Map(tenantCategories.map((category) => [category.id, category]));
-  const masterProductMap = new Map(masterProducts.map((product) => [product.id, product]));
-  const masterBrandMap = new Map(
-    ((masterBrandsRes.data ?? []) as MasterBrandRow[]).map((brand) => [brand.id, brand]),
-  );
-  const categoryMap = new Map(
-    ((categoriesRes.data ?? []) as CategoryRow[]).map((category) => [category.id, category]),
-  );
+  if (rows.length === 0) return new Map();
+  const rowById = new Map(rows.map((row) => [row.tenant_product_id, row]));
+  const productIds = orderedIds.filter((id) => rowById.has(id));
+  if (productIds.length === 0) return new Map();
 
   const inventoryMap = new Map<string, number>();
   if (priceStockByProductId) {
@@ -565,21 +408,38 @@ export async function enrichBuyerProducts(
         inventoryMap.set(productId, Math.max(0, entry.on_hand));
       }
     }
-  } else {
-    for (const row of inventoryRows) {
-      inventoryMap.set(
-        row.tenant_product_id,
-        (inventoryMap.get(row.tenant_product_id) ?? 0) + Number(row.qty_available ?? 0),
-      );
+  } else if (stockVisibilityEnabled) {
+    for (const productId of productIds) {
+      inventoryMap.set(productId, Number(rowById.get(productId)?.on_hand ?? 0));
     }
   }
 
   const priceMap = new Map<string, number>();
-  if (priceStockByProductId) {
+  if (guestPricing?.mode === 'hidden_until_login') {
+    // Guests never see a unit price in this mode — leave priceMap empty.
+  } else if (guestPricing?.mode === 'assigned_price_list' && guestPricing.priceListId) {
+    const assigned = await loadAssignedPriceListPrices(db, {
+      tenantId,
+      priceListId: guestPricing.priceListId,
+      productIds,
+    });
+    for (const [productId, unitPrice] of assigned) {
+      priceMap.set(productId, unitPrice);
+    }
+  } else if (guestPricing?.mode === 'base_selling_rate') {
+    for (const productId of productIds) {
+      const basePrice = rowById.get(productId)?.base_selling_price;
+      if (basePrice != null) priceMap.set(productId, Number(basePrice));
+    }
+  } else if (priceStockByProductId) {
     for (const [productId, entry] of priceStockByProductId) {
       priceMap.set(productId, entry.unit_price);
     }
   } else if (buyerId && productIds.length > 0) {
+    // Qty-tiered price-list pricing depends on the actual quantity, which
+    // search_products_scoped's own price resolution doesn't know about (it
+    // always resolves at qty=1) — kept as a dedicated, qty-grouped RPC call,
+    // same as before this change.
     const grouped = new Map<number, string[]>();
     for (const productId of productIds) {
       const qty = Math.max(1, Number(qtyByProductId.get(productId) ?? 1));
@@ -600,8 +460,8 @@ export async function enrichBuyerProducts(
       }),
     );
 
-    for (const rows of priceResponses) {
-      for (const row of rows) {
+    for (const priceRows of priceResponses) {
+      for (const row of priceRows) {
         priceMap.set(row.tenant_product_id, Number(row.unit_price ?? 0));
       }
     }
@@ -609,49 +469,51 @@ export async function enrichBuyerProducts(
 
   const out = new Map<string, BuyerCatalogItem>();
   for (const productId of orderedIds) {
-    const product = tenantProducts.find((entry) => entry.id === productId);
-    if (!product) continue;
+    const row = rowById.get(productId);
+    if (!row) continue;
 
-    const tenantBrand = product.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id) ?? null : null;
-    const tenantCategory = product.tenant_category_id ? tenantCategoryMap.get(product.tenant_category_id) ?? null : null;
-    const masterBrand = tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null;
-    const masterProduct = product.master_product_id ? masterProductMap.get(product.master_product_id) ?? null : null;
-    const category = masterProduct?.category_id ? categoryMap.get(masterProduct.category_id) ?? null : null;
-    const campaign = campaignByProductId.get(product.id) ?? null;
-    const resolvedPrice = priceMap.get(product.id) ?? Number(product.base_selling_price ?? product.mrp ?? 0);
+    const campaign = guestPricing ? null : (campaignByProductId.get(productId) ?? null);
+    const resolvedPrice = guestPricing
+      ? guestUnitPrice({
+          mode: guestPricing.mode,
+          assignedPrice: priceMap.get(productId),
+          baseSellingPrice: row.base_selling_price,
+        })
+      : (priceMap.get(productId) ?? Number(row.base_selling_price ?? row.mrp ?? 0));
     const campaignPrice = campaign?.campaign_price ?? null;
-    const onHand = Math.max(0, inventoryMap.get(product.id) ?? 0);
-    const fallbackImageUrl = product.image_urls?.length ? product.image_urls[0] : (masterProduct?.image_urls?.[0] ?? null);
-    const smallVariantUrl = r2Url(product.r2_small_key) ?? r2Url(product.r2_medium_key) ?? r2Url(product.r2_large_key);
-    const mediumVariantUrl = r2Url(product.r2_medium_key) ?? r2Url(product.r2_large_key) ?? r2Url(product.r2_small_key);
-    const largeVariantUrl = r2Url(product.r2_large_key) ?? r2Url(product.r2_medium_key) ?? r2Url(product.r2_small_key);
+    const unitPrice = guestPricing ? resolvedPrice : (campaignPrice ?? resolvedPrice);
+    const onHand = Math.max(0, inventoryMap.get(productId) ?? 0);
+    const fallbackImageUrl = row.image_urls?.length ? row.image_urls[0] : null;
+    const smallVariantUrl = r2Url(row.r2_small_key) ?? r2Url(row.r2_medium_key) ?? r2Url(row.r2_large_key);
+    const mediumVariantUrl = r2Url(row.r2_medium_key) ?? r2Url(row.r2_large_key) ?? r2Url(row.r2_small_key);
+    const largeVariantUrl = r2Url(row.r2_large_key) ?? r2Url(row.r2_medium_key) ?? r2Url(row.r2_small_key);
 
-    out.set(product.id, {
-      id: product.id,
-      tenant_product_id: product.id,
+    out.set(productId, {
+      id: productId,
+      tenant_product_id: productId,
       campaign_id: campaign?.campaign_id ?? null,
       campaign_name: campaign?.campaign_name ?? null,
       campaign_valid_until: campaign?.campaign_valid_until ?? null,
-      internal_sku: product.internal_sku ?? product.id,
-      display_name: product.name_override ?? masterProduct?.name ?? product.internal_sku ?? product.id,
-      brand_id: tenantBrand?.master_brand_id ?? null,
-      brand_name: tenantBrand?.display_name_override ?? masterBrand?.name ?? null,
-      category_id: tenantCategory?.id ?? category?.id ?? null,
-      category_name: tenantCategory?.name ?? category?.name ?? null,
-      mrp: Number(product.mrp ?? 0),
-      price: campaignPrice ?? resolvedPrice,
+      internal_sku: row.sku ?? productId,
+      display_name: row.product_name,
+      brand_id: row.brand_id,
+      brand_name: row.brand_name,
+      category_id: row.category_id,
+      category_name: row.category_name,
+      mrp: Number(row.mrp ?? 0),
+      price: unitPrice,
       resolved_price: resolvedPrice,
       campaign_price: campaignPrice,
       has_campaign_price: campaignPrice != null,
-      gst_rate: product.gst_rate ?? masterProduct?.gst_rate ?? null,
-      default_uom: product.default_uom,
-      pack_size: product.pack_size,
-      image_urls: (product.image_urls?.length ? product.image_urls : (masterProduct?.image_urls ?? [])) as string[],
+      gst_rate: row.tax_pct,
+      default_uom: row.default_uom,
+      pack_size: row.pack_size,
+      image_urls: (row.image_urls?.length ? row.image_urls : []) as string[],
       image_url_small: smallVariantUrl ?? fallbackImageUrl,
       image_url_medium: mediumVariantUrl ?? fallbackImageUrl,
       image_url_large: largeVariantUrl ?? fallbackImageUrl,
-      brand_logo_url: tenantBrand?.logo_url ?? masterBrand?.logo_url ?? null,
-      category_image_url: r2Url(tenantCategory?.r2_image_thumb_key ?? tenantCategory?.r2_image_medium_key) ?? category?.image_url ?? null,
+      brand_logo_url: row.brand_logo_url,
+      category_image_url: r2Url(row.category_image_thumb_key ?? row.category_image_medium_key),
       stock_status: !stockVisibilityEnabled ? 'available' : onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available',
       on_hand: onHand,
       is_featured: campaign?.is_featured ?? false,
@@ -677,7 +539,7 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
   } = params;
 
   const trimmedSearch = search.trim();
-  if (requestedCampaignId) {
+  if (requestedCampaignId && !params.guestPricing) {
     const selectedCampaign = visibleCampaigns.find((campaign) => campaign.id === requestedCampaignId) ?? null;
     if (!selectedCampaign) {
       return {
@@ -780,7 +642,8 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
   const { rows, total } = await searchScopedProducts({
     db,
     tenantId,
-    buyerId: params.buyerId,
+    buyerId: params.guestPricing ? null : params.buyerId,
+    priceListId: params.guestPricing?.mode === 'assigned_price_list' ? params.guestPricing.priceListId : null,
     query: trimmedSearch,
     limit,
     offset,
@@ -793,14 +656,19 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
     sort: trimmedSearch ? 'relevance' : 'created_desc',
   });
 
-  const orderedProductIds = rows.map((row) => row.tenant_product_id);
-  const textByProductId = rowsToTextMap(rows);
-  const campaignByProductId = await resolveVisibleCampaignMap(db, {
-    tenantId,
-    buyerId: params.buyerId,
-    productIds: orderedProductIds,
-    visibleCampaigns,
-  });
+  const excluded = new Set(params.guestPricing?.excludedProductIds ?? []);
+  const orderedProductIds = rows
+    .map((row) => row.tenant_product_id)
+    .filter((id) => !excluded.has(id));
+  const textByProductId = rowsToTextMap(rows.filter((row) => !excluded.has(row.tenant_product_id)));
+  const campaignByProductId = params.guestPricing
+    ? new Map()
+    : await resolveVisibleCampaignMap(db, {
+        tenantId,
+        buyerId: params.buyerId,
+        productIds: orderedProductIds,
+        visibleCampaigns,
+      });
 
   return {
     orderedProductIds,
@@ -828,7 +696,8 @@ export async function fetchBuyerCatalogPage(
     allowedTenantBrandIds: scope.selectedCampaign ? null : params.allowedTenantBrandIds,
     inventoryWarehouseId: params.inventoryWarehouseId,
     campaignByProductId: scope.campaignByProductId,
-    priceStockByProductId: priceStockMapFromScope(scope.textByProductId),
+    scopedRows: Array.from(scope.textByProductId.values()),
+    guestPricing: params.guestPricing ?? null,
   });
 
   return {
@@ -927,6 +796,74 @@ export async function fetchBuyerBrands(
     }));
 }
 
+/**
+ * Cached guest-only category/brand facets — no cohort scoping (allowedTenantBrandIds
+ * is always null for a guest), no campaign/share-token scoping, tenant-scoped only.
+ * Callers must only use these for a confirmed guest request with no campaign/share_token
+ * query params — see app/api/buyer/categories and app/api/buyer/brands routes.
+ * Invalidated via revalidatePublicCatalogCache() on catalog writes.
+ */
+export function fetchCachedGuestCategories(tenantId: string): Promise<BuyerCategory[]> {
+  return unstable_cache(
+    () => fetchBuyerCategories({ db: supabaseAdmin as unknown as SupabaseClient, tenantId, allowedTenantBrandIds: null }),
+    ['guest-categories', tenantId],
+    { revalidate: 300, tags: [`public-catalog:${tenantId}`] },
+  )();
+}
+
+export function fetchCachedGuestBrands(tenantId: string): Promise<BuyerBrand[]> {
+  return unstable_cache(
+    () => fetchBuyerBrands({ db: supabaseAdmin as unknown as SupabaseClient, tenantId, allowedTenantBrandIds: null }),
+    ['guest-brands', tenantId],
+    { revalidate: 300, tags: [`public-catalog:${tenantId}`] },
+  )();
+}
+
+/**
+ * Cache key for an authenticated buyer's cohort brand allowlist. Buyers in the
+ * same cohort(s) resolve to the identical `allowedTenantBrandIds` set (or
+ * `null` if unrestricted), so this dedupes the facet query across buyers
+ * sharing a cohort rather than caching per-buyer. `allowedTenantBrandIds` is
+ * always recomputed live from the buyer's current claims in
+ * resolveBuyerProductScopeContext — never itself cached — so a cohort switch
+ * or membership edit naturally produces a different key on the next request,
+ * with no explicit invalidation needed here.
+ */
+function cohortCacheKey(allowedTenantBrandIds: string[] | null): string {
+  if (allowedTenantBrandIds === null) return 'unrestricted';
+  if (allowedTenantBrandIds.length === 0) return 'empty';
+  const sorted = [...allowedTenantBrandIds].sort();
+  return createHash('sha1').update(sorted.join(',')).digest('hex');
+}
+
+/**
+ * Cached authenticated-buyer category/brand facets, keyed by tenant + cohort
+ * brand allowlist signature. Only used for the default browse (no campaign/
+ * share_token override, which are session-specific and never cached) — see
+ * app/api/buyer/categories and app/api/buyer/brands routes.
+ */
+export function fetchCachedBuyerCategories(
+  tenantId: string,
+  allowedTenantBrandIds: string[] | null,
+): Promise<BuyerCategory[]> {
+  return unstable_cache(
+    () => fetchBuyerCategories({ db: supabaseAdmin as unknown as SupabaseClient, tenantId, allowedTenantBrandIds }),
+    ['buyer-categories', tenantId, cohortCacheKey(allowedTenantBrandIds)],
+    { revalidate: 300, tags: [`public-catalog:${tenantId}`] },
+  )();
+}
+
+export function fetchCachedBuyerBrands(
+  tenantId: string,
+  allowedTenantBrandIds: string[] | null,
+): Promise<BuyerBrand[]> {
+  return unstable_cache(
+    () => fetchBuyerBrands({ db: supabaseAdmin as unknown as SupabaseClient, tenantId, allowedTenantBrandIds }),
+    ['buyer-brands', tenantId, cohortCacheKey(allowedTenantBrandIds)],
+    { revalidate: 300, tags: [`public-catalog:${tenantId}`] },
+  )();
+}
+
 export async function resolveBuyerCatalogContext(
   db: SupabaseClient,
   request: NextRequest,
@@ -938,12 +875,16 @@ export async function resolveBuyerCatalogContext(
   allowedTenantBrandIds: string[] | null;
   visibleCampaigns: BuyerVisibleCatalog[];
   catalogs: BuyerCatalogSummary[];
+  guestPricing: GuestPricingContext | null;
 }> {
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
+  const isGuest = profile.context.mode === 'guest';
   const [scopeContext, catalogSummary] = await Promise.all([
     resolveBuyerProductScopeContext(db, request, profile),
-    resolveBuyerCatalogSummaries(db, tenantId, buyerId),
+    isGuest
+      ? Promise.resolve({ visibleCampaigns: [] as BuyerVisibleCatalog[], catalogs: [] as BuyerCatalogSummary[] })
+      : resolveBuyerCatalogSummaries(db, tenantId, buyerId),
   ]);
 
   return {
@@ -953,6 +894,8 @@ export async function resolveBuyerCatalogContext(
     allowedTenantBrandIds: scopeContext.allowedTenantBrandIds,
     visibleCampaigns: catalogSummary.visibleCampaigns,
     catalogs: catalogSummary.catalogs,
+    // Already resolved inside resolveBuyerProductScopeContext — don't fetch twice.
+    guestPricing: scopeContext.guestPricing,
   };
 }
 
@@ -965,12 +908,15 @@ export async function resolveBuyerProductScopeContext(
   buyerId: string | null;
   inventoryWarehouseId: string | null;
   allowedTenantBrandIds: string[] | null;
+  guestPricing: GuestPricingContext | null;
 }> {
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
-  const [inventoryWarehouseId, allowedTenantBrandIds] = await Promise.all([
+  const isGuest = profile.context.mode === 'guest';
+  const [inventoryWarehouseId, allowedTenantBrandIds, guestPricing] = await Promise.all([
     resolveBuyerInventoryWarehouseId(db, request, profile),
     buyerId ? resolveBuyerAllowedTenantBrandIds(db as any, tenantId, buyerId) : Promise.resolve(null),
+    isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
   ]);
 
   return {
@@ -978,5 +924,6 @@ export async function resolveBuyerProductScopeContext(
     buyerId,
     inventoryWarehouseId,
     allowedTenantBrandIds,
+    guestPricing,
   };
 }

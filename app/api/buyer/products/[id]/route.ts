@@ -42,11 +42,11 @@ export async function GET(
       productIds: [productId],
       allowedTenantBrandIds: context.allowedTenantBrandIds,
       inventoryWarehouseId: context.inventoryWarehouseId,
-      // Null campaign context → assemble auto-resolves visible campaign + price override.
       campaignId: null,
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      guestPricing: context.guestPricing,
     });
 
     const item = enriched.get(productId);

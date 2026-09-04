@@ -68,14 +68,34 @@ export function getBuyerProductPrimaryImageUrl(input: BuyerProductImageLike): st
   return getBuyerProductImageCandidates(input)[0] ?? null;
 }
 
+export function hasVisibleBuyerPrice(price: number | null | undefined): price is number {
+  return typeof price === 'number' && Number.isFinite(price);
+}
+
+/**
+ * Maps a tenant's public-catalog pricing mode to how ProductCard should
+ * render price for a guest: hidden_until_login shows a clickable "Login for
+ * Price" CTA (not just an inert grey bar) since that's the mode where a
+ * guest can actually do something about it. Shared between the real guest
+ * storefront and the seller's own onboarding preview, which must render
+ * identically.
+ */
+export function guestPriceReveal(
+  mode: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | '' | null | undefined,
+): 'hidden_bar' | 'login_cta' | 'amount' {
+  if (mode === 'hidden_until_login') return 'login_cta';
+  if (mode === 'base_selling_rate' || mode === 'assigned_price_list') return 'amount';
+  return 'hidden_bar';
+}
+
 export function hasBuyerCampaignPrice(input: {
   has_campaign_price?: boolean;
-  price: number;
+  price: number | null;
   resolved_price?: number | null;
 }): boolean {
+  if (!hasVisibleBuyerPrice(input.price) || input.resolved_price == null) return false;
   return Boolean(
     input.has_campaign_price
-    && input.resolved_price != null
     && Math.abs(input.resolved_price - input.price) > 0.004,
   );
 }

@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
@@ -11,6 +12,8 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // Note: `?search=` seeding now happens client-side inside PriceListsLandingClient via
 // useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams` from
 // Next.js, and the list now lives here so it can stay mounted across /price-lists <-> /price-lists/[id].
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.priceLists);
+
 export default async function PriceListsLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 

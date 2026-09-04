@@ -17,6 +17,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!profile?.context.tenant_id || !supabaseAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (profile.context.mode === 'guest') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await request.json() as ResolveBody;
     const rows = (body.items ?? []).filter((row) => row?.tenant_product_id?.trim());

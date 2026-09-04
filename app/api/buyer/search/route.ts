@@ -26,6 +26,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
 
     const { tenant_id, buyer_id } = profile.context;
     const scope = (request.nextUrl.searchParams.get('scope') ?? 'catalog') as 'catalog' | 'orders';
+    if (profile.context.mode === 'guest' && scope === 'orders') {
+      return NextResponse.json({ items: [], scope }, { headers: BUYER_CACHE_PERSONAL });
+    }
     const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
     const cacheHeaders = scope === 'orders' ? BUYER_CACHE_PERSONAL : BUYER_CACHE_CATALOG;
 
@@ -66,47 +69,45 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
     }
 
     if (scope === 'orders' && buyer_id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: orders } = await (db as any)
-        .schema('app')
-        .from('orders')
-        .select('id, order_number, status, total_amount')
-        .eq('tenant_id', tenant_id)
-        .eq('buyer_id', buyer_id)
-        .is('deleted_at', null)
-        .ilike('order_number', `%${q}%`)
-        .limit(10);
+      const [{ data: orders }, { data: estimates }, { data: invoices }] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (db as any)
+          .schema('app')
+          .from('orders')
+          .select('id, order_number, status, total_amount')
+          .eq('tenant_id', tenant_id)
+          .eq('buyer_id', buyer_id)
+          .is('deleted_at', null)
+          .ilike('order_number', `%${q}%`)
+          .limit(10),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (db as any)
+          .schema('app')
+          .from('estimates')
+          .select('id, estimate_number, status, total_amount')
+          .eq('tenant_id', tenant_id)
+          .eq('buyer_id', buyer_id)
+          .is('deleted_at', null)
+          .ilike('estimate_number', `%${q}%`)
+          .limit(10),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (db as any)
+          .schema('app')
+          .from('invoices')
+          .select('id, invoice_number, status, total_amount')
+          .eq('tenant_id', tenant_id)
+          .eq('buyer_id', buyer_id)
+          .is('deleted_at', null)
+          .ilike('invoice_number', `%${q}%`)
+          .limit(10),
+      ]);
 
       for (const o of (orders ?? [])) {
         items.push({ id: o.id, entity_type: 'order', label: o.order_number, sublabel: o.status, meta: String(o.total_amount ?? 0) });
       }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: estimates } = await (db as any)
-        .schema('app')
-        .from('estimates')
-        .select('id, estimate_number, status, total_amount')
-        .eq('tenant_id', tenant_id)
-        .eq('buyer_id', buyer_id)
-        .is('deleted_at', null)
-        .ilike('estimate_number', `%${q}%`)
-        .limit(10);
-
       for (const e of (estimates ?? [])) {
         items.push({ id: e.id, entity_type: 'estimate', label: e.estimate_number ?? '', sublabel: e.status, meta: String(e.total_amount ?? 0) });
       }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: invoices } = await (db as any)
-        .schema('app')
-        .from('invoices')
-        .select('id, invoice_number, status, total_amount')
-        .eq('tenant_id', tenant_id)
-        .eq('buyer_id', buyer_id)
-        .is('deleted_at', null)
-        .ilike('invoice_number', `%${q}%`)
-        .limit(10);
-
       for (const inv of (invoices ?? [])) {
         items.push({ id: inv.id, entity_type: 'invoice', label: inv.invoice_number, sublabel: inv.status, meta: String(inv.total_amount ?? 0) });
       }

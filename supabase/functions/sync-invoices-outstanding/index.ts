@@ -13,15 +13,18 @@ import {
 // the daily incremental to catch invoices whose balances changed due to payment
 // application (Zoho does not update invoice.last_modified_time on payment).
 // Uses entityType 'invoices_outstanding' so TRANSACTIONAL_ENTITY_TYPES does not
-// apply — no date_start filter is added; filter_by=Status.Outstanding is the
-// sole filter, returning all open/partially-paid invoices.
+// apply — no date_start filter is added.
+// Note: Zoho has no 'Status.Outstanding' filter value. To catch both fully-unpaid
+// and partially-paid invoices (e.g. after a payment is applied), we fetch without
+// filter_by and rely on the FY date window. Two-pass approach would require separate
+// function invocations for Status.Unpaid + Status.PartiallyPaid; single no-filter
+// pass is simpler and covers all statuses at the cost of fetching paid/void rows too.
 const PHASE = {
   id: 'invoices_outstanding',
   label: 'Re-fetching outstanding invoices from Zoho',
   entityType: 'invoices_outstanding',
   path: '/invoices',
   itemKey: 'invoices',
-  extraParams: { filter_by: 'Status.Outstanding' },
 } as const;
 
 Deno.serve(async (req: Request) => {

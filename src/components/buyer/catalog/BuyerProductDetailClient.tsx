@@ -8,12 +8,13 @@ import { usePostHog } from 'posthog-js/react';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasBuyerCampaignPrice, hasVisibleBuyerPrice } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 
@@ -27,6 +28,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const analyticsIds = useBuyerAnalyticsIds();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const { data: meData } = useBuyerMe();
+  const { openLogin } = useStorefrontLogin();
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
+  const priceReveal = isGuest ? guestPriceReveal(meData?.guest_pricing_mode) : 'amount';
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const {
     item,
@@ -63,6 +67,10 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   function handleAddToCart(): void {
     if (!item) return;
+    if (isGuest || !hasVisibleBuyerPrice(item.price)) {
+      openLogin();
+      return;
+    }
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
@@ -220,9 +228,24 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 </p>
               ) : null}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-1">
-                <p className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price-lg)', color: 'var(--fg-1)' }}>
-                  {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-                </p>
+                {item.price == null ? (
+                  priceReveal === 'login_cta' ? (
+                    <button
+                      type="button"
+                      onClick={openLogin}
+                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-3 py-1.5 font-medium text-cream-600 transition-colors duration-fast [@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-cream-50 [@media(hover:hover)]:hover:text-cream-800"
+                      style={{ fontSize: 'var(--b-text-label)' }}
+                    >
+                      Login for Price
+                    </button>
+                  ) : (
+                    <span className="inline-block h-7 w-28 rounded-md bg-cream-300" aria-label="Price hidden" />
+                  )
+                ) : (
+                  <p className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price-lg)', color: 'var(--fg-1)' }}>
+                    {formatNumberValue(item.price, 'CURRENCY_EXACT')}
+                  </p>
+                )}
                 {showCampaignPrice ? (
                   <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
@@ -337,17 +360,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           </div>
         </div>
 
-        {/* Reco rails — title + skeleton while loading; hide after settle if empty */}
-        <RecoSection
-          title="Frequently Bought Together"
-          widget="co_order"
-          items={recos.co_order}
-          sourceProductId={tenantProductId}
-          isLoading={isRecosLoading}
-          sectionClassName="px-3 pb-3 md:px-6"
-          scrollClassName="gap-3 px-3 md:px-6"
-        />
-
+        {/* Reco rail — title + skeleton while loading; hide after settle if empty.
+            "Frequently Bought Together" (co_order) was dropped to cut a reco widget
+            off the PDP's data/compute path — see recommendations route. */}
         <RecoSection
           title={categoryRecoTitle}
           widget="same_category"
@@ -356,6 +371,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           isLoading={isRecosLoading}
           sectionClassName="px-3 pb-3"
           scrollClassName="gap-3 px-3"
+          priceReveal={priceReveal}
         />
       </BuyerDetailShell>
 
@@ -383,9 +399,24 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : (
             <>
               <div className="flex flex-col items-end">
-                <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>
-                  {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-                </span>
+                {item.price == null ? (
+                  priceReveal === 'login_cta' ? (
+                    <button
+                      type="button"
+                      onClick={openLogin}
+                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-2.5 py-1 font-medium text-cream-600"
+                      style={{ fontSize: 'var(--b-text-sub)' }}
+                    >
+                      Login for Price
+                    </button>
+                  ) : (
+                    <span className="inline-block h-5 w-20 rounded-md bg-cream-300" aria-label="Price hidden" />
+                  )
+                ) : (
+                  <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>
+                    {formatNumberValue(item.price, 'CURRENCY_EXACT')}
+                  </span>
+                )}
                 {showCampaignPrice ? (
                   <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}

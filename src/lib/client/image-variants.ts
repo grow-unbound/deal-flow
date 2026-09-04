@@ -111,12 +111,13 @@ export async function generateEntityVariants(
   entityType: string,
   entityId: string,
   tenantId?: string,
+  sharedPica?: ReturnType<typeof pica>,
 ): Promise<GeneratedVariant[]> {
   const config = ENTITY_VARIANT_CONFIG[entityType];
   if (!config) throw new Error(`Unknown entity type: ${entityType}`);
 
   const baseKey = config.buildBaseKey(entityId, tenantId);
-  const picaInstance = pica();
+  const picaInstance = sharedPica ?? pica();
   const srcCanvas = await loadImageToCanvas(file);
 
   // White-flatten the source canvas once if needed, before generating all variants

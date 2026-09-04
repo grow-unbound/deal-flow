@@ -15,6 +15,7 @@ import {
   BUYER_QUICK_ADD_IDLE_CLASS,
   getBuyerProductPrimaryImageUrl,
   hasBuyerCampaignPrice,
+  hasVisibleBuyerPrice,
 } from '@/lib/buyer-ui';
 import { cn, formatNumberValue } from '@/lib/utils';
 import {
@@ -127,6 +128,7 @@ function CartGapListItem({
   const subline = [product.brand_name, product.internal_sku].filter(Boolean).join(' · ');
 
   function handleAdd(): void {
+    if (!hasVisibleBuyerPrice(product.price)) return;
     addItem(
       {
         tenant_product_id: product.tenant_product_id,

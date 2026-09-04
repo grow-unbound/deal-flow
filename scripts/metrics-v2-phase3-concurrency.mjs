@@ -11,7 +11,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const sqlDir = path.join(repoRoot, 'scripts/sql/metrics-v2-phase3');
 const linkedRefPath = path.join(repoRoot, 'supabase/.temp/project-ref');
 const poolerUrlPath = path.join(repoRoot, 'supabase/.temp/pooler-url');
-const expectedRef = 'euhzgherjvjopjrpoqjr';
+const expectedRef = 'hcpzbnmumbykdqveyjhr';
 const phase3MigrationSuffix = '_metrics_v2_phase_3_manual_refresh_kernel.sql';
 const command = process.argv[2] || 'help';
 

@@ -34,6 +34,7 @@ function deepMergeObjects<T extends Record<string, unknown>>(base: T, patch: Rec
 
 export interface TenantRowForSettings {
   business_name: string;
+  tagline: string | null;
   gstin: string | null;
   primary_state: string | null;
   plan: string;
@@ -55,6 +56,9 @@ export function buildGeneralSettingsView(
     company_name: merged.business?.company_name?.trim()
       ? merged.business.company_name
       : tenant.business_name?.trim() || 'My Business',
+    tagline: merged.business?.tagline?.trim()
+      ? merged.business.tagline
+      : (tenant.tagline?.trim() ?? ''),
     gstin: merged.business?.gstin?.trim()
       ? merged.business.gstin
       : (tenant.gstin ?? ''),

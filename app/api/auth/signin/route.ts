@@ -68,14 +68,13 @@ export async function POST(request: NextRequest) {
     const subdomain = request.headers.get('x-tenant-subdomain');
     let currentTenantId: string | null = null;
 
-    if (subdomain && supabaseAdmin) {
-      const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-      const { data: tenantRow } = await db
+    if (subdomain && supabaseAdmin && subdomain !== 'app') {
+      const { data: tenantRow } = await supabaseAdmin
         .schema('app')
         .from('tenants')
         .select('id')
-        .eq('subdomain', subdomain)
-        .single() as { data: { id: string } | null };
+        .eq('slug', subdomain)
+        .maybeSingle();
 
       if (tenantRow?.id) {
         currentTenantId = tenantRow.id;

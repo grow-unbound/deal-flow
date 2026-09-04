@@ -14,6 +14,7 @@ export interface LoginOtpContext {
   tenant_slug: string;
   tenant_whatsapp_number: string | null;
   tenant_whatsapp_display_name: string | null;
+  tenant_logo_url: string | null;
   role: string;
   buyer_id: string | null;
   // Disambiguates accounts that share a phone number but belong to different

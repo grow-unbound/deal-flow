@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
         tenant_slug: candidate.tenant_slug,
         tenant_whatsapp_number: null,
         tenant_whatsapp_display_name: null,
+        tenant_logo_url: null,
         role: candidate.role,
         buyer_id: null,
         principal_type: 'seller',

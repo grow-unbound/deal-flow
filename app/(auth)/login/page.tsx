@@ -14,6 +14,10 @@ import {
   buildWhatsAppChatUrl,
   openWhatsAppShare,
 } from '@/constants/auth-login-copy';
+import { StorefrontPhoneLogin } from '@/components/buyer/auth/StorefrontPhoneLogin';
+import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHero';
+import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
+import { parseRequestHost, sellerAppHostForRequest } from '@/lib/storefront-host';
 
 type LoginView = 'otp' | 'email';
 type LoginResolution =
@@ -46,8 +50,22 @@ function safeNext(raw: string | null): string | null {
   if (!raw?.trim()) return null;
   try {
     const decoded = decodeURIComponent(raw);
-    if ((decoded.startsWith('/buy/') || decoded.startsWith('/c/')) && !decoded.startsWith('//'))
+    if (decoded.startsWith('//')) return null;
+    if (
+      decoded.startsWith('/buy/')
+      || decoded.startsWith('/c/')
+      || decoded === '/'
+      || decoded.startsWith('/product/')
+      || decoded.startsWith('/category/')
+      || decoded.startsWith('/brand/')
+      || decoded.startsWith('/list/')
+      || decoded.startsWith('/search')
+      || decoded.startsWith('/cart')
+      || decoded.startsWith('/orders')
+      || decoded.startsWith('/profile')
+    ) {
       return decoded;
+    }
   } catch { /* ignore */ }
   return null;
 }
@@ -61,6 +79,17 @@ function LoginForm() {
   const prefillEmail = searchParams.get('email') ?? '';
   const requestedView = searchParams.get('view');
   const next = safeNext(searchParams.get('next'));
+  // Absolute cross-origin return URL (e.g. the tenant product page a buyer was
+  // on before being sent here to log in) — deliberately separate from `next`,
+  // which safeNext() restricts to relative paths. Real validation happens
+  // server-side in /api/auth/phone-otp/verify against the resolved tenant
+  // host; this is just carried through untouched.
+  const returnTo = searchParams.get('return_to');
+  const {
+    isCatalogHost,
+    tenant: returnToTenant,
+    tenantLoading: returnToTenantLoading,
+  } = useCatalogTenantContext();
 
   const [view, setView] = useState<LoginView>(
     requestedView === 'email' || prefillEmail ? 'email' : 'otp',
@@ -79,8 +108,18 @@ function LoginForm() {
   const [showWelcomeSubtitle, setShowWelcomeSubtitle] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (isCatalogHost) {
+      setView('otp');
+    }
+  }, [isCatalogHost]);
+
+  useEffect(() => {
     setShowWelcomeSubtitle(!hasLoggedInOnDevice());
   }, []);
+
+  const sellerLoginUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${sellerAppHostForRequest(window.location.host)}/login`
+    : '/login';
 
   async function handlePhoneSubmit(phoneNumber: string) {
     setPhoneError('');
@@ -111,7 +150,8 @@ function LoginForm() {
         shouldResetLoading = false;
         router.push(
           `/verify?ref_id=${encodeURIComponent(data.ref_id ?? '')}&phone=${encodeURIComponent(phoneNumber)}`
-          + (next ? `&next=${encodeURIComponent(next)}` : ''),
+          + (next ? `&next=${encodeURIComponent(next)}` : '')
+          + (returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : ''),
         );
         return;
       }
@@ -288,20 +328,30 @@ function LoginForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <h1
-        className={
-          showWelcomeSubtitle
-            ? 'font-display text-h2 text-cream-900 mb-1'
-            : 'font-display text-h2 text-cream-900 mb-6'
-        }
-      >
-        {AUTH_LOGIN_COPY.login.welcomeTitle}
-      </h1>
-      {showWelcomeSubtitle ? (
-        <p className="text-body-sm text-cream-600 mb-6">
-          {AUTH_LOGIN_COPY.login.welcomeSubtitle}
-        </p>
-      ) : null}
+      {isCatalogHost ? (
+        <CatalogBuyerAuthHero
+          variant="login"
+          tenant={returnToTenant}
+          tenantLoading={returnToTenantLoading}
+        />
+      ) : (
+        <>
+          <h1
+            className={
+              showWelcomeSubtitle
+                ? 'font-display text-h2 text-cream-900 mb-1'
+                : 'font-display text-h2 text-cream-900 mb-6'
+            }
+          >
+            {AUTH_LOGIN_COPY.login.welcomeTitle}
+          </h1>
+          {showWelcomeSubtitle ? (
+            <p className="text-body-sm text-cream-600 mb-6">
+              {AUTH_LOGIN_COPY.login.welcomeSubtitle}
+            </p>
+          ) : null}
+        </>
+      )}
 
       {accountVerified && (
         <div className="mb-4 rounded-md bg-teal-50 border border-teal-200 px-4 py-3">
@@ -319,7 +369,7 @@ function LoginForm() {
         </div>
       )}
 
-      {view === 'otp' ? (
+      {view === 'otp' || isCatalogHost ? (
         <>
           <p className="text-body-sm text-cream-600 mb-6">
             {AUTH_LOGIN_COPY.login.landingBody}
@@ -331,13 +381,21 @@ function LoginForm() {
                 {resolution.kind === 'unregistered' ? (
                   <>
                     <p className="text-body-sm text-warning-700 font-medium">
-                      {AUTH_LOGIN_COPY.resolution.unregistered.title}
+                      {isCatalogHost
+                        ? 'This number is not linked to a buyer account yet.'
+                        : AUTH_LOGIN_COPY.resolution.unregistered.title}
                     </p>
-                    {AUTH_LOGIN_COPY.resolution.unregistered.lines.map((line) => (
-                      <p key={line} className="text-body-sm text-warning-700/90">
-                        {line}
+                    {isCatalogHost ? (
+                      <p className="text-body-sm text-warning-700/90">
+                        Ask your supplier to add you as a buyer, or sign in on the seller app if you distribute products.
                       </p>
-                    ))}
+                    ) : (
+                      AUTH_LOGIN_COPY.resolution.unregistered.lines.map((line) => (
+                        <p key={line} className="text-body-sm text-warning-700/90">
+                          {line}
+                        </p>
+                      ))
+                    )}
                   </>
                 ) : (
                   <>
@@ -357,28 +415,37 @@ function LoginForm() {
 
               <div className="space-y-3">
                 {resolution.kind === 'unregistered' ? (
-                  <>
-                    <Link
-                      href="/signup"
+                  isCatalogHost ? (
+                    <a
+                      href={sellerLoginUrl}
                       className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
                     >
-                      {AUTH_LOGIN_COPY.login.createSellerAccount}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={handleInformSeller}
-                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
-                    >
-                      {AUTH_LOGIN_COPY.login.informSeller}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetPhoneEntry}
-                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
-                    >
-                      {AUTH_LOGIN_COPY.login.tryDifferentNumber}
-                    </button>
-                  </>
+                      Go to seller login
+                    </a>
+                  ) : (
+                    <>
+                      <Link
+                        href="/signup"
+                        className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                      >
+                        {AUTH_LOGIN_COPY.login.createSellerAccount}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleInformSeller}
+                        className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.login.informSeller}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneEntry}
+                        className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                      </button>
+                    </>
+                  )
                 ) : (
                   <>
                     <button
@@ -401,7 +468,14 @@ function LoginForm() {
               </div>
             </div>
           ) : (
-            <PhoneInput key={phoneFormKey} onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
+            <PhoneInput
+              key={phoneFormKey}
+              onSubmit={handlePhoneSubmit}
+              loading={phoneLoading}
+              error={phoneError}
+              submitLabel={isCatalogHost ? 'Send OTP' : undefined}
+              loadingLabel={isCatalogHost ? 'Sending OTP…' : undefined}
+            />
           )}
         </>
       ) : (
@@ -484,14 +558,16 @@ function LoginForm() {
         </>
       )}
 
-      <div className="mt-4 text-right">
-        <Link
-          href="/signup"
-          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-        >
-          {AUTH_LOGIN_COPY.login.createSellerAccount}
-        </Link>
-      </div>
+      {!isCatalogHost ? (
+        <div className="mt-4 text-right">
+          <Link
+            href="/signup"
+            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+          >
+            {AUTH_LOGIN_COPY.login.createSellerAccount}
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -513,10 +589,25 @@ function LoginFallback() {
   );
 }
 
+function TenantStorefrontLogin() {
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get('next')) ?? '/';
+  return <StorefrontPhoneLogin nextPath={next} />;
+}
+
+function LoginSwitcher() {
+  const [storefront, setStorefront] = useState(false);
+  useEffect(() => {
+    setStorefront(parseRequestHost(window.location.host).kind === 'tenant');
+  }, []);
+  if (storefront) return <TenantStorefrontLogin />;
+  return <LoginForm />;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<LoginFallback />}>
-      <LoginForm />
+      <LoginSwitcher />
     </Suspense>
   );
 }

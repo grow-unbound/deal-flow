@@ -6,6 +6,7 @@ import { usePostHog } from 'posthog-js/react';
 import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
 import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { RecoCarousel } from '@/components/buyer/catalog/RecoCarousel';
+import type { ProductCardPriceReveal } from '@/components/buyer/catalog/ProductCard';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import { BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
@@ -28,6 +29,7 @@ interface RecoSectionProps {
   sectionClassName?: string;
   /** Override horizontal scroll gutter (default gap-3 px-4). */
   scrollClassName?: string;
+  priceReveal?: ProductCardPriceReveal;
 }
 
 export function RecoSection({
@@ -41,6 +43,7 @@ export function RecoSection({
   linkLabel,
   sectionClassName = 'px-4 pb-3',
   scrollClassName = 'gap-3 px-4',
+  priceReveal,
 }: RecoSectionProps): React.ReactNode {
   const posthog = usePostHog();
   const analyticsIds = useBuyerAnalyticsIds();
@@ -68,7 +71,7 @@ export function RecoSection({
         <RecoSectionSkeleton scrollClassName={scrollClassName} />
       ) : (
         <RecoWidgetProvider value={{ widget, sourceProductId }}>
-          <RecoCarousel items={items} scrollClassName={scrollClassName} />
+          <RecoCarousel items={items} scrollClassName={scrollClassName} priceReveal={priceReveal} />
         </RecoWidgetProvider>
       )}
     </div>
