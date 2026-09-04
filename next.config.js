@@ -110,20 +110,82 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      {
-        source: '/ingest/static/:path*',
-        destination: 'https://us-assets.i.posthog.com/static/:path*',
-      },
-      {
-        source: '/ingest/array/:path*',
-        destination: 'https://us-assets.i.posthog.com/array/:path*',
-      },
-      {
-        source: '/ingest/:path*',
-        destination: 'https://us.i.posthog.com/:path*',
-      },
+    // Tenant-scoped guest-ISR routing (plan #4). Deliberately a next.config.js
+    // rewrite, NOT a middleware NextResponse.rewrite() — a middleware-computed
+    // rewrite defeats Next's Full Route Cache/ISR for the destination
+    // (confirmed: vercel/next.js#83862 — Next matches the PRE-rewrite pathname
+    // against the dynamic-route regex table to decide cacheability, so a
+    // middleware rewrite always falls back to `private, no-store`; verified
+    // empirically against this exact route with next build + next start).
+    // A config-level rewrite is resolved natively by Next's router before
+    // dynamic-route matching, so ISR applies correctly.
+    //
+    // middleware.ts still owns the auth-dependent decision (see its
+    // GUEST_CATALOG_ISR_ENABLED branch in handleTenantHost): for an
+    // authenticated buyer, or with the kill switch off, middleware rewrites
+    // the pathname to the EXISTING dynamic tree (/buy/home/...) itself,
+    // before these rules ever run — so these rules only ever see (and only
+    // ever fire for) a pathname middleware deliberately left unmodified,
+    // i.e. an already-vetted true-guest request on a live, real tenant host.
+    //
+    // Suffixes must stay in sync with src/lib/storefront-host.ts's
+    // CANONICAL_STOREFRONT_SUFFIX / LEGACY_STOREFRONT_SUFFIX /
+    // LOCAL_STOREFRONT_SUFFIX (can't import that .ts module here — this file
+    // runs directly under Node, not through Next's bundler).
+    const GUEST_ISR_HOST_SUFFIX_PATTERNS = [
+      'useyukti\\.in',
+      'yukti\\.so',
+      'localhost(:\\d+)?', // local dev Host header carries the port
     ];
+    const hostHasRule = (suffix) => ({
+      type: 'host',
+      value: `^(?<slug>[^.]+)\\.${suffix}$`,
+    });
+
+    // Home ('/') must be `beforeFiles` — a literal app/page.tsx exists at the
+    // root (the app host's own landing page), which would otherwise shadow
+    // an `afterFiles` rule for the same source and the rewrite would never
+    // fire. The `has: host` condition still scopes this to tenant subdomains
+    // only, so app.<domain>'s own root page is completely unaffected.
+    const guestIsrHomeRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.map((suffix) => ({
+      source: '/',
+      has: [hostHasRule(suffix)],
+      destination: '/buy/g/:slug/home',
+    }));
+
+    // No filesystem collision for these four — safe as `afterFiles`.
+    const GUEST_ISR_ID_ROUTES = [
+      { source: '/category/:id', internalSuffix: '/home/category/:id' },
+      { source: '/brand/:id', internalSuffix: '/home/brand/:id' },
+      { source: '/list/:id', internalSuffix: '/home/list/:id' },
+      { source: '/product/:id', internalSuffix: '/product/:id' },
+    ];
+    const guestIsrIdRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.flatMap((suffix) =>
+      GUEST_ISR_ID_ROUTES.map(({ source, internalSuffix }) => ({
+        source,
+        has: [hostHasRule(suffix)],
+        destination: `/buy/g/:slug${internalSuffix}`,
+      })),
+    );
+
+    return {
+      beforeFiles: guestIsrHomeRules,
+      afterFiles: [
+        ...guestIsrIdRules,
+        {
+          source: '/ingest/static/:path*',
+          destination: 'https://us-assets.i.posthog.com/static/:path*',
+        },
+        {
+          source: '/ingest/array/:path*',
+          destination: 'https://us-assets.i.posthog.com/array/:path*',
+        },
+        {
+          source: '/ingest/:path*',
+          destination: 'https://us.i.posthog.com/:path*',
+        },
+      ],
+    };
   },
 };
 

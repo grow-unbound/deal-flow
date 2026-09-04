@@ -55,6 +55,7 @@ import {
 } from '@/lib/storefront-host';
 import {
   isGuestCatalogApiPath,
+  isGuestIsrPagePath,
   isGuestRateLimitedPath,
   isGuestSearchApiPath,
   isGuestStorefrontPagePath,
@@ -66,6 +67,13 @@ import { clientIpFromRequest, consumeEnumerationRateLimit, consumePublicCatalogR
 import { isPublicCatalogLive, resolveStorefrontTenantBySlug, resolveTenantSlugById } from '@/lib/server/resolve-storefront-tenant';
 import { recordViolationAndCheckChallenge } from '@/lib/server/ip-challenge';
 import { HUMAN_VERIFIED_COOKIE, verifyHumanVerifiedToken } from '@/lib/server/human-verify-token';
+
+// Kill switch for guest-catalog ISR (plan #4). Off by default — flipping it
+// off routes ALL guest traffic back through the existing dynamic /buy/home/*
+// tree instantly, no redeploy, if wrong/stale data ever surfaces in prod. The
+// existing dynamic tree is never modified by this feature, so this is a safe
+// instant rollback, not a partial one.
+const GUEST_CATALOG_ISR_ENABLED = process.env.GUEST_CATALOG_ISR_ENABLED === '1';
 
 const PUBLIC_PREFIXES = [
   '/api/auth',
@@ -392,7 +400,46 @@ async function handleTenantHost(
   if (isPublicRoute(pathname) || (live && (guestPage || guestApi))) {
     if (buyerMatchesHost && auth.claims) {
       attachSessionHeaders(requestHeaders, auth.claims, storefront?.tenantId ?? null);
+      const target = live && internalPath && internalPath !== pathname ? internalPath : undefined;
+      const res = target
+        ? rewriteWithHeaders(request, requestHeaders, target)
+        : nextWithHeaders(request, requestHeaders);
+      attachAuthCookies(res, auth);
+      return res;
     }
+
+    if (
+      GUEST_CATALOG_ISR_ENABLED
+      && live
+      && storefront
+      && guestPage
+      && isGuestIsrPagePath(pathname)
+      // Any query string (share_token, campaign filters, etc.) needs the
+      // existing dynamic tree — reading searchParams in a Server Component
+      // is itself a dynamic API, and the ISR shell doesn't handle share-token
+      // flows at all. Plain guest browsing never needs query params here.
+      && !request.nextUrl.search
+    ) {
+      // True guest (no session, or a session that doesn't match this tenant
+      // host) on a page with an ISR twin. Deliberately NOT rewriting here —
+      // a middleware-computed NextResponse.rewrite() defeats Next's Full
+      // Route Cache/ISR for the destination (confirmed: vercel/next.js#83862
+      // — Next matches the PRE-rewrite pathname against the dynamic-route
+      // regex table to decide cacheability, so a middleware rewrite always
+      // falls back to `private, no-store`; verified empirically against this
+      // exact route with next build + next start before this comment was
+      // written). Pass the ORIGINAL public pathname through unmodified and
+      // let the tenant-scoped `rewrites().afterFiles` rules in
+      // next.config.js do the path mapping — those are resolved natively by
+      // Next's router, before dynamic-route matching, so ISR applies
+      // correctly. Those config rules re-derive the tenant slug from the
+      // same Host header middleware already verified — nothing else changes
+      // here, so there's no separate value to compute in this branch.
+      const res = nextWithHeaders(request, requestHeaders);
+      attachAuthCookies(res, auth);
+      return res;
+    }
+
     const target = live && internalPath && internalPath !== pathname ? internalPath : undefined;
     const res = target
       ? rewriteWithHeaders(request, requestHeaders, target)

@@ -12,10 +12,8 @@ async function resolveTenantId(): Promise<string | null> {
   return claims.tenant_id ?? null;
 }
 
-export const loadBuyerCategoryTitle = cache(async (categoryId: string): Promise<string | null> => {
+async function loadCategoryTitleForTenant(tenantId: string, categoryId: string): Promise<string | null> {
   if (!supabaseAdmin || !categoryId.trim()) return null;
-  const tenantId = await resolveTenantId();
-  if (!tenantId) return null;
 
   const { data } = await supabaseAdmin
     .schema('app')
@@ -28,12 +26,10 @@ export const loadBuyerCategoryTitle = cache(async (categoryId: string): Promise<
 
   const name = data?.name as string | null;
   return name?.trim() || null;
-});
+}
 
-export const loadBuyerBrandTitle = cache(async (brandId: string): Promise<string | null> => {
+async function loadBrandTitleForTenant(tenantId: string, brandId: string): Promise<string | null> {
   if (!supabaseAdmin || !brandId.trim()) return null;
-  const tenantId = await resolveTenantId();
-  if (!tenantId) return null;
 
   const { data } = await supabaseAdmin
     .schema('app')
@@ -60,12 +56,10 @@ export const loadBuyerBrandTitle = cache(async (brandId: string): Promise<string
 
   const masterName = master?.name as string | null;
   return masterName?.trim() || null;
-});
+}
 
-export const loadBuyerProductTitle = cache(async (tenantProductId: string): Promise<string | null> => {
+async function loadProductTitleForTenant(tenantId: string, tenantProductId: string): Promise<string | null> {
   if (!supabaseAdmin || !tenantProductId.trim()) return null;
-  const tenantId = await resolveTenantId();
-  if (!tenantId) return null;
 
   const { data } = await supabaseAdmin
     .schema('app')
@@ -94,7 +88,34 @@ export const loadBuyerProductTitle = cache(async (tenantProductId: string): Prom
 
   const sku = data.internal_sku as string | null;
   return sku?.trim() || null;
+}
+
+export const loadBuyerCategoryTitle = cache(async (categoryId: string): Promise<string | null> => {
+  const tenantId = await resolveTenantId();
+  if (!tenantId) return null;
+  return loadCategoryTitleForTenant(tenantId, categoryId);
 });
+
+export const loadBuyerBrandTitle = cache(async (brandId: string): Promise<string | null> => {
+  const tenantId = await resolveTenantId();
+  if (!tenantId) return null;
+  return loadBrandTitleForTenant(tenantId, brandId);
+});
+
+export const loadBuyerProductTitle = cache(async (tenantProductId: string): Promise<string | null> => {
+  const tenantId = await resolveTenantId();
+  if (!tenantId) return null;
+  return loadProductTitleForTenant(tenantId, tenantProductId);
+});
+
+/**
+ * Tenant-scoped variants for the guest ISR tree (app/(buyer-guest)/buy/g/...)
+ * — take `tenantId` from the `[tenantSlug]`-resolved route param instead of
+ * `headers()`, so calling these never forces the page dynamic.
+ */
+export const loadBuyerCategoryTitleForTenant = cache(loadCategoryTitleForTenant);
+export const loadBuyerBrandTitleForTenant = cache(loadBrandTitleForTenant);
+export const loadBuyerProductTitleForTenant = cache(loadProductTitleForTenant);
 
 export const loadBuyerOrderTitle = cache(async (orderId: string): Promise<string | null> => {
   if (!supabaseAdmin || !orderId.trim()) return null;

@@ -53,6 +53,26 @@ export const loadStorefrontBrandingContext = cache(async (): Promise<StorefrontB
   };
 });
 
+/**
+ * Slug-scoped variant for the guest ISR tree (app/(buyer-guest)/buy/g/...) —
+ * takes `tenantSlug` from the route param instead of `headers()`, so it never
+ * forces the page dynamic. Always `isTenantHost: true`: this tree is only
+ * ever reached via a resolved tenant subdomain (middleware rewrite), so
+ * there's no "not a tenant host" case to represent here.
+ */
+export const loadStorefrontBrandingContextForSlug = cache(async (slug: string): Promise<StorefrontBrandingContext> => {
+  const branding = await getCachedTenantBrandingBySlug(slug);
+  if (!branding) {
+    return { isTenantHost: true, businessName: null, tagline: null, logoUrl: null };
+  }
+  return {
+    isTenantHost: true,
+    businessName: branding.businessName,
+    tagline: branding.tagline,
+    logoUrl: branding.logoUrl,
+  };
+});
+
 export function buildStorefrontLayoutMetadata(ctx: StorefrontBrandingContext): Metadata {
   const title = storefrontDefaultTitle(ctx);
   const tabIcon = ctx.logoUrl ?? YUKTI_FAVICON;

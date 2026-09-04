@@ -9,6 +9,7 @@ import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/l
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { searchScopedProducts } from '@/lib/server/scoped-product-search';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -707,6 +708,7 @@ export async function POST(req: NextRequest) {
       // Analytics is non-blocking for product creation.
     }
 
+    revalidatePublicCatalogCache(tenantId);
     return NextResponse.json({ product: inserted }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/tenant/products] Unexpected error:', err);

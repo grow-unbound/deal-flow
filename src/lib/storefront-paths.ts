@@ -62,9 +62,22 @@ export function toInternalBuyPath(pathname: string): string | null {
 }
 
 /**
- * Internal `/buy/*` pathname → public storefront URL (301 target).
+ * Internal `/buy/*` pathname → public storefront URL (301 target). Also
+ * unwraps the guest-ISR internal tree (`/buy/g/<tenantSlug>/...`) back to the
+ * same public URL a guest actually typed — this is what makes a direct hit
+ * on the ISR-only internal path safe: middleware's existing `/buy/*` guard
+ * (any request starting with `/buy/` gets 301'd here) already catches
+ * `/buy/g/*` too, since it's a `/buy/` prefix like every other internal path;
+ * without this branch it would fail through to the `/` fallback below instead
+ * of round-tripping back through the real Host-based tenant resolution.
  */
 export function toPublicStorefrontPath(pathname: string): string | null {
+  if (pathname.startsWith('/buy/g/')) {
+    const rest = pathname.slice('/buy/g/'.length); // "<tenantSlug>/home/category/x"
+    const slashIndex = rest.indexOf('/');
+    if (slashIndex === -1) return '/';
+    return toPublicStorefrontPath(`/buy${rest.slice(slashIndex)}`);
+  }
   if (INTERNAL_EXACT_TO_PUBLIC[pathname]) return INTERNAL_EXACT_TO_PUBLIC[pathname];
   if (pathname === '/buy/home') return '/';
   if (pathname.startsWith('/buy/home/category/')) return `/category/${pathname.slice('/buy/home/category/'.length)}`;
@@ -105,6 +118,29 @@ export function isGuestStorefrontPagePath(pathname: string): boolean {
   if (GUEST_PUBLIC_EXACT.has(pathname)) return true;
   return GUEST_PUBLIC_PREFIXES.some((prefix) => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix));
 }
+
+// Subset of guest-eligible pages that have an ISR twin under
+// app/(buyer-guest)/buy/g/[tenantSlug]/... — home, category, brand, list,
+// product. Deliberately excludes /search (query-string cache-key variance,
+// not designed yet), /cart and /location ('use client', nothing to
+// prerender), /login and /not-live (never rewritten to the buy tree).
+const GUEST_ISR_PUBLIC_EXACT = new Set(['/']);
+const GUEST_ISR_PUBLIC_PREFIXES = ['/product/', '/category/', '/brand/', '/list/'];
+
+export function isGuestIsrPagePath(pathname: string): boolean {
+  if (GUEST_ISR_PUBLIC_EXACT.has(pathname)) return true;
+  return GUEST_ISR_PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+// The public → `/buy/g/<tenantSlug>/...` mapping for guest-ISR-eligible
+// pages is NOT expressed here — middleware deliberately does not compute or
+// rewrite to that path (a middleware-computed NextResponse.rewrite() defeats
+// Next's ISR caching for the destination, confirmed: vercel/next.js#83862).
+// The actual mapping lives as static `rewrites().afterFiles` entries in
+// next.config.js, which Next's router resolves natively before dynamic-route
+// matching. isGuestIsrPagePath above is still the source of truth for WHICH
+// paths are guest-ISR-eligible; keep it in sync with next.config.js's rule
+// list by hand if either changes.
 
 export function isStorefrontPagePath(pathname: string): boolean {
   if (toInternalBuyPath(pathname)) return true;

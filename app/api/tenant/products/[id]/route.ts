@@ -7,6 +7,7 @@ import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { chunkArray, POSTGREST_IN_CHUNK_SIZE } from '@/lib/server/warehouse-data';
 import { getPriceListStatus, type PriceListStatus } from '@/lib/utils';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import { z } from 'zod';
 
 const PRODUCT_PRICELIST_ROWS_LIMIT = 200;
@@ -560,6 +561,7 @@ export async function PATCH(
         });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ product: updated });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
