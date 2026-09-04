@@ -28,15 +28,26 @@ import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { BUYER_INFINITE_SCROLL_RATIO, guestPriceReveal } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
+import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
 interface CatalogFilteredBrowseProps {
   mode: CatalogFilteredMode;
   id: string;
+  /** SSR-seeded first page (authenticated buyers only) — see loadInitialCatalogListData. */
+  initialCatalogPage?: BuyerCatalogResponse | null;
+  initialBrands?: BuyerBrand[];
+  initialCategories?: BuyerCategory[];
 }
 
-export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
+export function CatalogFilteredBrowse({
+  mode,
+  id,
+  initialCatalogPage,
+  initialBrands,
+  initialCategories,
+}: CatalogFilteredBrowseProps): React.ReactNode {
   const posthog = usePostHog();
   const { data: me } = useBuyerMe();
   const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
@@ -64,12 +75,12 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     data: categories,
     isLoading: categoriesLoading,
     refetch: refetchCategories,
-  } = useBuyerCategories();
+  } = useBuyerCategories(initialCategories);
   const {
     data: brands,
     isLoading: brandsLoading,
     refetch: refetchBrands,
-  } = useBuyerBrands();
+  } = useBuyerBrands(initialBrands);
 
   const {
     data: categoryRecos,
@@ -82,7 +93,22 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     refetch: refetchBrandRecos,
   } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
+  // initialData re-seeds ANY new queryKey miss, not just the key it was
+  // fetched for — TanStack Query applies it whenever the current queryKey
+  // has no cache entry, regardless of which key the data actually belongs
+  // to. initialCatalogPage is SSR data for this page's own `id`/empty
+  // search only; once the rail nav switches activeId (no real navigation,
+  // `id` prop never changes) or the user types a search, the queryKey
+  // changes but the stale initialCatalogPage would otherwise get reapplied
+  // as if it were fresh data for the new key — exactly the bug where
+  // switching category/brand silently kept showing the original list.
+  const isInitialDataStillValid = activeId === id && !debouncedSearch.trim();
+  const listQuery = useBuyerCatalogList(
+    mode,
+    activeId,
+    debouncedSearch,
+    isInitialDataStillValid ? initialCatalogPage : undefined,
+  );
   const pages = listQuery.data?.pages ?? [];
   const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;

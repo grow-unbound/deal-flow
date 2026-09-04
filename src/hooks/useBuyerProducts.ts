@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost, type ApiFetchInit } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
@@ -185,11 +185,26 @@ export function useBuyerCatalogSearchInfinite(
   });
 }
 
-export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
+/**
+ * `initialCatalogPage` is a server-resolved first page (SSR-seeded from
+ * app/(buyer)/buy/home/{category,brand,list}/[id]/page.tsx via
+ * loadInitialCatalogListData) — only ever meaningful on first mount for the
+ * `id`/mode this hook was called with, matching how `activeId`/`search`
+ * start equal to the page's own `id`/`''` in CatalogFilteredBrowse. Once the
+ * user switches entity or types a search, the queryKey changes and this
+ * seed is irrelevant (React Query only consults `initialData` on a cache
+ * miss for a given key, never for key transitions).
+ */
+export function useBuyerCatalogList(
+  mode: FilterMode,
+  id: string,
+  search = '',
+  initialCatalogPage?: BuyerCatalogResponse | null,
+) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const trimmedSearch = search.trim();
-  return useInfiniteQuery<BuyerCatalogResponse>({
+  return useInfiniteQuery<BuyerCatalogResponse, Error, InfiniteData<BuyerCatalogResponse>, readonly unknown[], number>({
     queryKey: ['buyer-catalog-list', mode, id, trimmedSearch, stockSignature],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
@@ -211,6 +226,9 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
     placeholderData: keepPreviousData,
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
+    initialData: initialCatalogPage
+      ? { pages: [initialCatalogPage], pageParams: [0] }
+      : undefined,
   });
 }
 

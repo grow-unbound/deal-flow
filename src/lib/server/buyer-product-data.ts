@@ -7,6 +7,7 @@ import type { BuyerAccessProfile, BuyerVisibleCatalog } from '@/lib/server/buyer
 import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
+import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
 import { searchScopedProducts, type ScopedProductSearchRow } from '@/lib/server/scoped-product-search';
 import { r2Url } from '@/lib/r2-url';
@@ -286,6 +287,32 @@ export async function resolveBuyerInventoryWarehouseId(
   }
 
   return null;
+}
+
+/**
+ * Cookie-based sibling of resolveBuyerInventoryWarehouseId, for Server
+ * Components (page.tsx doesn't have a NextRequest, only next/headers
+ * cookies()). Takes an already-resolved `selectedDelivery` (callers already
+ * fetch this for getBuyerServerProductScope, no need to re-read cookies).
+ *
+ * Deliberately omits the last-resort profile.buyer.geography-gated default-
+ * warehouse fallback the request-scoped version has — that needs a full
+ * buyer row fetch this path doesn't otherwise need. Returns null in that
+ * residual case; callers skip SSR-seeding the product grid and fall back to
+ * the existing client fetch, same graceful-degradation pattern
+ * getBuyerServerProductScope already uses when there's no delivery cookie.
+ */
+export async function resolveBuyerInventoryWarehouseIdFromCookies(
+  db: SupabaseClient,
+  tenantId: string,
+  selectedDelivery: BuyerDeliveryLocation | null,
+): Promise<string | null> {
+  if (selectedDelivery?.nearest_warehouse_id) {
+    return selectedDelivery.nearest_warehouse_id;
+  }
+
+  const resolvedRouting = await resolveNearestBuyerLocation(db as any, tenantId, selectedDelivery);
+  return resolvedRouting?.warehouseId ?? null;
 }
 
 export async function resolveBuyerCatalogSummaries(
