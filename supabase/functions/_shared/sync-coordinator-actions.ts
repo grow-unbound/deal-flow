@@ -374,6 +374,8 @@ const DISPATCH_TIMEOUT_MS = 140_000;
 const PHASE_FUNCTION_NAMES: Record<string, string> = {
   transaction_line_items: 'sync-transaction-line-items',
   contact_persons: 'sync-contact-persons',
+  invoices_outstanding: 'sync-invoices-outstanding',
+  customer_payments: 'sync-customer-payments',
 };
 
 export async function dispatchPhase(opts: {

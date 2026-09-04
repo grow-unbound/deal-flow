@@ -25,6 +25,7 @@ const PHASE_BY_ENTITY: Record<string, string> = {
   estimates: 'estimates',
   salesorders: 'orders',
   invoices: 'invoices',
+  customerpayments: 'customer_payments',
 };
 
 // Maps persist phase → app schema table name (for soft-delete path)
@@ -34,6 +35,7 @@ const TABLE_BY_PHASE: Record<string, string> = {
   estimates: 'estimates',
   orders: 'orders',
   invoices: 'invoices',
+  customer_payments: 'payments',
 };
 
 // Extract endpoint_token from URL path: /integrations-webhook/{token}
