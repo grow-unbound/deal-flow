@@ -9,14 +9,26 @@ const seedSql = readFileSync(path.join(process.cwd(), 'supabase/seed.sql'), 'utf
 // for fresh local/CI bootstraps) remains a live source of truth to check here.
 
 describe('zoho oauth seed config', () => {
-  it('grants Zoho Books full-module access (fullaccess.all) while leaving inventory scopes intact', () => {
-    // Books moved off a hand-picked module list to a single fullaccess.all grant
-    // (2026-09-05) — a missing module in that list is what 401'd WineYard's
-    // customer_payments backfill (Zoho error code 57). fullaccess.all avoids
-    // that class of bug recurring for future modules.
+  it('keeps Zoho Books on a least-privilege module list while leaving inventory scopes intact', () => {
+    // Deliberately NOT ZohoBooks.fullaccess.all — see the comment on
+    // ZOHO_OAUTH_SCOPES_BY_INTEGRATION in zoho-oauth.ts for why (tried and
+    // reverted 2026-09-05: too broad a blast radius on a live customer's
+    // real accounting data for what this app actually uses). The
+    // missing-module failure mode that motivated trying fullaccess.all is
+    // instead guarded by zoho-scope-coverage.test.ts.
+    for (const scope of [
+      'ZohoBooks.contacts.ALL',
+      'ZohoBooks.items.ALL',
+      'ZohoBooks.salesorders.ALL',
+      'ZohoBooks.invoices.ALL',
+      'ZohoBooks.estimates.ALL',
+      'ZohoBooks.settings.ALL',
+      'ZohoBooks.customerpayments.ALL',
+    ]) {
+      expect(seedSql).toContain(`'${scope}'`);
+    }
     expect(seedSql).toContain(`'zoho_books',`);
     expect(seedSql).toContain(`jsonb_build_array(`);
-    expect(seedSql).toContain(`'ZohoBooks.fullaccess.all'`);
     expect(seedSql).toContain(`jsonb_build_array('ZohoInventory.fullaccess.all', 'ZohoInventory.settings.READ')`);
   });
 });
