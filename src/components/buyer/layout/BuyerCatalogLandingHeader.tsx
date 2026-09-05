@@ -7,6 +7,7 @@ import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogS
 import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 
 interface BuyerCatalogLandingHeaderProps {
   searchPlaceholder?: string;
@@ -30,7 +31,9 @@ export function BuyerCatalogLandingHeader({
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
   const { data: me, isLoading: meLoading } = useBuyerMe();
+  const { openLogin } = useStorefrontLogin();
   const tenantLoading = meLoading && !me;
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
   const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
@@ -77,7 +80,17 @@ export function BuyerCatalogLandingHeader({
                   )}
                 </div>
               </div>
-              <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
+              {isGuest ? (
+                <button
+                  type="button"
+                  onClick={openLogin}
+                  className="max-w-[42vw] shrink-0 rounded-[12px] px-3 py-2 text-sm font-semibold text-[var(--teal-500)]"
+                >
+                  Log in
+                </button>
+              ) : (
+                <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
+              )}
             </div>
           </div>
         </div>

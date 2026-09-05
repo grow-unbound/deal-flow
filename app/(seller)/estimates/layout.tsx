@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { EstimatesLandingClient } from '@/components/seller/estimates/EstimatesLandingClient';
@@ -15,6 +16,8 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // mounted across /estimates <-> /estimates/[id]. The SSR bootstrap fetch below
 // always uses the default period; a deep link with an explicit `?period=` briefly
 // shows the default period's data until the client-side period hook corrects it.
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.estimates);
+
 export default async function EstimatesLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 

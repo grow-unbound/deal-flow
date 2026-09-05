@@ -10,6 +10,7 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { r2Url } from '@/lib/r2-url';
 import { UpdateCategoryInputSchema } from '@/types/tenant-categories';
 import type { CategoryDetailResponse } from '@/hooks/useCategories';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -208,6 +209,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ts: nowIso,
       });
 
+      revalidatePublicCatalogCache(claims.tenant_id);
       return NextResponse.json({ data: { category: updated }, error: null }, { status: 200 });
     }
 
@@ -270,6 +272,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ts: nowIso,
     });
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ data: { category: updated }, error: null }, { status: 200 });
   } catch (e) {
     console.error('[PATCH /api/tenant/categories/[id]]', e);
@@ -353,6 +356,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       ts: nowIso,
     });
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ data: { id }, error: null }, { status: 200 });
   } catch (e) {
     console.error('[DELETE /api/tenant/categories/[id]]', e);

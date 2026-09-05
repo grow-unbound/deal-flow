@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { DashboardOnboardingBanner } from '@/components/seller/dashboard/DashboardOnboardingBanner';
 import { SellerDashboardClient } from '@/components/seller/dashboard/SellerDashboardClient';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
@@ -9,6 +10,8 @@ import { getTenantOnboardingBannerState } from '@/lib/server/tenant-creator';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { SellerDashboardMetricsV4, SellerDashboardResponse } from '@/types/seller-dashboard';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.dashboard);
 
 // Split into two independent Suspense boundaries so the page shell can
 // stream before either resolves, and the (typically fast) banner doesn't

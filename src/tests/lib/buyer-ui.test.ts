@@ -18,5 +18,6 @@ describe('buyer-ui helpers', () => {
     expect(hasBuyerCampaignPrice({ has_campaign_price: true, price: 950, resolved_price: 1200 })).toBe(true);
     expect(hasBuyerCampaignPrice({ has_campaign_price: true, price: 950, resolved_price: 950 })).toBe(false);
     expect(hasBuyerCampaignPrice({ has_campaign_price: false, price: 950, resolved_price: 1200 })).toBe(false);
+    expect(hasBuyerCampaignPrice({ has_campaign_price: true, price: null, resolved_price: 1200 })).toBe(false);
   });
 });

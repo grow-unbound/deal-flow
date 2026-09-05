@@ -240,6 +240,17 @@ export function GeneralSettingsForm({
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="tagline">Tagline</Label>
+                <Input
+                  id="tagline"
+                  value={draft.business.tagline ?? ''}
+                  onChange={(e) => updateBusiness({ tagline: e.target.value })}
+                  maxLength={120}
+                  placeholder="Your catalog headline"
+                />
+                <p className="text-sm text-cream-600">Shown in the catalog tab title and home screen name.</p>
+              </div>
+              <div className="space-y-2 sm:col-span-2 sm:max-w-md">
                 <Label htmlFor="gstin">GSTIN</Label>
                 <Input
                   id="gstin"

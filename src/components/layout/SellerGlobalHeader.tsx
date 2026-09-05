@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone, Repeat } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Mail, Phone, Repeat } from 'lucide-react';
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { GlobalSearchOverlay } from '@/components/seller/layout/GlobalSearchOverlay';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
+import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { useTenant } from '@/contexts/TenantContext';
@@ -116,22 +117,7 @@ export function SellerGlobalHeader({ tenantBrandingPromise, tenantBrandingOverri
         <GlobalSearchOverlay className="max-w-[min(50vw,40rem)] flex-[1_1_0%]" />
 
         <div className="ml-auto flex items-center gap-2">
-          <Button asChild variant="ghost" className="h-9 rounded-[12px] px-3 text-cream-800 hover:text-[#221E1A]">
-            <a
-              href="/api/buyer/preview/launch"
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                posthog?.capture('seller_open_buyer_app_clicked', {
-                  tenant_id: currentTenant?.id ?? null,
-                  role: isSellerAdmin ? 'seller_admin' : isSellerAssistant ? 'seller_assistant' : 'seller',
-                  destination: '/api/buyer/preview/launch',
-                });
-              }}
-            >
-              Open Buyer App <ExternalLink size={14} />
-            </a>
-          </Button>
+          <SellerOpenCatalogCta />
 
           <NotificationsBell unreadCount={unreadCount} onClick={() => setDrawerOpen(true)} />
 

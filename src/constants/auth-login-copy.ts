@@ -5,7 +5,7 @@ export const AUTH_LOGIN_COPY = {
     welcomeTitle: 'Welcome to Yukti',
     welcomeSubtitle:
       'Browse catalogs, place orders, track invoices, and manage sales, all in one place',
-    landingBody: 'Enter your registered mobile number to get a WhatsApp OTP',
+    landingBody: 'Enter your mobile number to get a WhatsApp OTP',
     emailBody: 'Sign in with your email and password',
     loginWithEmail: 'Login with Email',
     loginWithMobileOtp: 'Login with mobile OTP',

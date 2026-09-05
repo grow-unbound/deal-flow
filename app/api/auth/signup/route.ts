@@ -6,6 +6,7 @@ import { getFlag } from '@/lib/flags';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { buildSignupTenantSettingsSeed } from '@/lib/tenant-settings/signup-seed';
 import { sendAccountVerificationOtpWhatsapp } from '@/lib/server/account-verification';
+import { canonicalStorefrontHost, isReservedStorefrontLabel } from '@/lib/storefront-host';
 
 const SignupBodySchema = z.object({
   full_name: z.string().min(1).optional(),
@@ -16,7 +17,8 @@ const SignupBodySchema = z.object({
     .string()
     .min(3)
     .max(50)
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens'),
+    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens')
+    .refine((value) => !isReservedStorefrontLabel(value), 'This URL is reserved'),
   phone: z.string().regex(/^[0-9]{10}$/).optional(),
   gstin: z.string().optional(),
   primary_state: z.string().optional(),
@@ -154,7 +156,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const tenantResult = (rpcData as TenantRpcResult | null) ?? {
     tenant_id: '',
     slug,
-    subdomain: `${slug}.yukti.so`,
+    subdomain: canonicalStorefrontHost(slug),
   };
 
   // Step 3 — pin workspace so custom_access_token_hook resolves the new tenant

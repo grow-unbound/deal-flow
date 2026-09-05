@@ -11,6 +11,7 @@ import { Pressable } from '@/components/ui/pressable';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { isBuyerLandingRoute } from '@/lib/buyer-routes';
 
 /** Product detail sticky footer: button row + padding + safe-area buffer. */
@@ -59,7 +60,7 @@ export function CartBar() {
     >
       <Pressable asChild haptic>
         <Link
-          href="/buy/cart"
+          href={STOREFRONT.cart}
           onClick={() => {
             posthog?.capture('buyer_cart_opened', {
               source_surface: 'floating_cart_bar',

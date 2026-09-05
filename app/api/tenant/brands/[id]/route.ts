@@ -6,6 +6,7 @@ import { TenantBrandUpdateSchema } from '@/lib/zod';
 import { r2Url } from '@/lib/r2-url';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 type OrderRow = {
@@ -300,5 +301,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (error) return NextResponse.json({ error: 'Failed to update brand' }, { status: 500 });
 
+  if (claims.tenant_id) {
+    revalidatePublicCatalogCache(claims.tenant_id);
+  }
   return NextResponse.json({ brand: updated });
 }

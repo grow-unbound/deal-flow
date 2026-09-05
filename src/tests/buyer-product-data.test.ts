@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+}));
+
 vi.mock('@/lib/server/buyer-access', () => ({
   getVisibleBuyerCatalogs: vi.fn(),
 }));
@@ -24,20 +28,26 @@ vi.mock('@/lib/r2-url', () => ({
   r2Url: vi.fn(() => null),
 }));
 
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: { schema: vi.fn(() => ({ rpc: vi.fn(), from: vi.fn() })) },
+}));
+
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 describe('buyer product enrichment', () => {
-  it('filters inactive tenant products before exposing them to the buyer app', async () => {
-    const finalEq = vi.fn(async () => ({ data: [], error: null }));
-    const deletedIs = vi.fn(() => ({ eq: finalEq }));
-    const idsIn = vi.fn(() => ({ is: deletedIs }));
-    const tenantEq = vi.fn(() => ({ in: idsIn }));
-    const select = vi.fn(() => ({ eq: tenantEq }));
+  it('returns nothing for a product id search_products_scoped/load_products_scoped did not resolve', async () => {
+    // is_active/deleted_at filtering now happens inside the RPC's own SQL
+    // (search_products_scoped / load_products_scoped), not a separate JS
+    // query — an id the RPC doesn't return (inactive, deleted, wrong tenant)
+    // simply isn't in `rows`, and enrichBuyerProducts must not fabricate one.
+    vi.mocked(searchScopedProducts).mockResolvedValue({ rows: [], total: 0 });
+
     const settingsMaybeSingle = vi.fn(async () => ({ data: null }));
     const settingsEq = vi.fn(() => ({ maybeSingle: settingsMaybeSingle }));
     const settingsSelect = vi.fn(() => ({ eq: settingsEq }));
     const from = vi.fn((table: string) =>
-      table === 'tenant_settings' ? { select: settingsSelect } : { select },
+      table === 'tenant_settings' ? { select: settingsSelect } : { select: vi.fn() },
     );
     const schema = vi.fn(() => ({ from }));
     const db = { schema } as any;
@@ -49,8 +59,62 @@ describe('buyer product enrichment', () => {
     });
 
     expect(result.size).toBe(0);
-    expect(schema).toHaveBeenCalledWith('app');
-    expect(from).toHaveBeenCalledWith('tenant_products');
-    expect(finalEq).toHaveBeenCalledWith('is_active', true);
+    expect(searchScopedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-1', ids: ['product-1'] }),
+    );
+  });
+
+  it('enriches from pre-fetched scopedRows without calling searchScopedProducts again', async () => {
+    vi.mocked(searchScopedProducts).mockClear();
+
+    const settingsMaybeSingle = vi.fn(async () => ({ data: null }));
+    const settingsEq = vi.fn(() => ({ maybeSingle: settingsMaybeSingle }));
+    const settingsSelect = vi.fn(() => ({ eq: settingsEq }));
+    const from = vi.fn((table: string) =>
+      table === 'tenant_settings' ? { select: settingsSelect } : { select: vi.fn() },
+    );
+    const rpc = vi.fn(async () => ({ data: [{ tenant_product_id: 'product-1', unit_price: 100 }], error: null }));
+    const schema = vi.fn(() => ({ from, rpc }));
+    const db = { schema } as any;
+
+    const result = await enrichBuyerProducts(db, {
+      tenantId: 'tenant-1',
+      buyerId: 'buyer-1',
+      tenantProductIds: ['product-1'],
+      scopedRows: [{
+        tenant_product_id: 'product-1',
+        product_name: 'Widget',
+        sku: 'W-1',
+        brand_id: null,
+        brand_name: 'Brand',
+        category_id: null,
+        category_name: '',
+        hsn_code: null,
+        tax_pct: 18,
+        on_hand: 0,
+        reorder_point: 0,
+        unit_price: 100,
+        mrp: 120,
+        base_selling_price: 100,
+        cost_price: null,
+        default_uom: null,
+        pack_size: null,
+        created_at: new Date().toISOString(),
+        search_rank: 0,
+        total_count: 1,
+        image_urls: [],
+        r2_small_key: null,
+        r2_medium_key: null,
+        r2_large_key: null,
+        brand_logo_url: null,
+        category_image_thumb_key: null,
+        category_image_medium_key: null,
+      }],
+    });
+
+    expect(result.size).toBe(1);
+    expect(result.get('product-1')?.display_name).toBe('Widget');
+    expect(result.get('product-1')?.price).toBe(100);
+    expect(searchScopedProducts).not.toHaveBeenCalled();
   });
 });

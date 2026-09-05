@@ -14,6 +14,7 @@ export interface IntegrationSyncPhaseDefinition {
   path: string;
   itemKey: string;
   perPage?: number;
+  extraParams?: Record<string, string>;
 }
 
 export interface ZohoPhasePage {
@@ -84,7 +85,7 @@ interface NormalizedZohoCredentials {
 const DEFAULT_PER_PAGE = 200;
 const DEFAULT_REGION = 'in';
 
-const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
+const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices', 'customer_payments']);
 // Zoho supports last_modified_time filter on these endpoints; locations and pricelists always do full fetch
 const LAST_MODIFIED_SUPPORTED_TYPES = new Set(['products', 'customers', 'estimates', 'orders', 'invoices']);
 const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
@@ -413,11 +414,15 @@ export function getZohoPhasePlan(
       { id: 'estimates', label: 'Importing estimates from Zoho Books', entityType: 'estimates', path: '/estimates', itemKey: 'estimates' },
       { id: 'orders', label: 'Importing sales orders from Zoho Books', entityType: 'orders', path: '/salesorders', itemKey: 'salesorders' },
       { id: 'invoices', label: 'Importing invoices from Zoho Books', entityType: 'invoices', path: '/invoices', itemKey: 'invoices' },
+      { id: 'invoices_outstanding', label: 'Re-fetching outstanding invoices from Zoho Books', entityType: 'invoices_outstanding', path: '/invoices', itemKey: 'invoices', extraParams: { filter_by: 'Status.Outstanding' } },
+      { id: 'customer_payments', label: 'Importing customer payments from Zoho Books', entityType: 'customer_payments', path: '/customerpayments', itemKey: 'customerpayments' },
     ],
     zoho_inventory: [
       { id: 'estimates', label: 'Importing estimates from Zoho Inventory', entityType: 'estimates', path: '/estimates', itemKey: 'estimates' },
       { id: 'orders', label: 'Importing sales orders from Zoho Inventory', entityType: 'orders', path: '/salesorders', itemKey: 'salesorders' },
       { id: 'invoices', label: 'Importing invoices from Zoho Inventory', entityType: 'invoices', path: '/invoices', itemKey: 'invoices' },
+      { id: 'invoices_outstanding', label: 'Re-fetching outstanding invoices from Zoho Inventory', entityType: 'invoices_outstanding', path: '/invoices', itemKey: 'invoices', extraParams: { filter_by: 'Status.Outstanding' } },
+      { id: 'customer_payments', label: 'Importing customer payments from Zoho Inventory', entityType: 'customer_payments', path: '/customerpayments', itemKey: 'customerpayments' },
     ],
   };
 
@@ -431,7 +436,7 @@ export function sampleExternalIds(records: Record<string, unknown>[]): string[] 
     'location_id', 'warehouse_id',
     'contact_id', 'contact_person_id',
     'item_id',
-    'estimate_id', 'salesorder_id', 'invoice_id',
+    'estimate_id', 'salesorder_id', 'invoice_id', 'payment_id',
     'organization_id', 'id',
   ];
   const samples: string[] = [];
@@ -581,6 +586,7 @@ export function createZohoAdapter(
       per_page: perPage,
       ...(dateStart ? { date_start: dateStart } : {}),
       ...(lastModified ? { last_modified_time: lastModified } : {}),
+      ...(phase.extraParams ?? {}),
     };
     const baseUrl = phase.entityType === 'warehouses'
       ? credentials.warehouseApiBaseUrl
@@ -652,6 +658,17 @@ export function createZohoAdapter(
       const location = payload.warehouse ?? payload.location;
       return isRecord(location) ? location : null;
     } catch {
+      return null;
+    }
+  }
+
+  async function fetchCustomerPaymentDetail(paymentId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/customerpayments/${paymentId}` });
+      const payment = payload.payment;
+      return isRecord(payment) ? payment : null;
+    } catch (error) {
+      console.warn(`[fetchCustomerPaymentDetail] skipping payment ${paymentId}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -797,6 +814,7 @@ export function createZohoAdapter(
     fetchItemById,
     fetchLocationById,
     fetchPricebookDetail,
+    fetchCustomerPaymentDetail,
     fetchEstimateById,
     fetchSalesOrderById,
     fetchInvoiceById,

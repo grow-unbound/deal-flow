@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CatalogsLandingClient } from '@/components/seller/catalogs/CatalogsLandingClient';
@@ -15,6 +16,8 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // page.tsx (initialData) but CatalogsLandingClient's useTenantCatalogs hook already
 // self-fetches client-side, so dropping the SSR list fetch here matches every other
 // EntitySplitShell layout — only the KPI bootstrap is server-seeded.
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.campaigns);
+
 export default async function CampaignsLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 

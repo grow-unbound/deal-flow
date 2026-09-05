@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { ProductsLandingClient } from '@/components/seller/products/ProductsLandingClient';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -7,6 +8,8 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { ProductsLandingMetricsV4 } from '@/hooks/useProducts';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.products);
 
 // Note: `?search=` seeding now happens client-side inside ProductsLandingClient via
 // useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams` from

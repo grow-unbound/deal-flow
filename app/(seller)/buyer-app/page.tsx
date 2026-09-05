@@ -1,9 +1,12 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BuyerAppLandingClient } from '@/components/seller/buyer-app/BuyerAppLandingClient';
 import type { BuyerAppLandingMetricsV4, BuyerAppLandingResponse } from '@/hooks/useBuyerApp';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.buyerApp);
 
 export default async function BuyerAppPage() {
   await requireSellerServerTenantId();

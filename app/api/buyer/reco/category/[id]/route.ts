@@ -4,6 +4,7 @@ import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assem
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
+import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -26,6 +27,7 @@ export async function GET(
   const { id: categoryId } = await params;
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
+  const isGuest = profile.context.mode === 'guest';
 
   try {
     const { data: rpcData, error: rpcErr } = await supabaseAdmin
@@ -43,9 +45,10 @@ export async function GET(
 
     const productIds = rows.map((r) => r.tenant_product_id);
 
-    const allowedTenantBrandIds = buyerId
-      ? await resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId)
-      : [];
+    const [allowedTenantBrandIds, guestPricing] = await Promise.all([
+      buyerId ? resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId) : Promise.resolve(null),
+      isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
+    ]);
 
     const enriched = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       tenantId,
@@ -56,6 +59,7 @@ export async function GET(
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      guestPricing,
     });
 
     // Return in RPC's weighted_score order

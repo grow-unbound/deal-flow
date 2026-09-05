@@ -51,6 +51,13 @@ export interface ScopedProductSearchRow {
   created_at: string;
   search_rank: number;
   total_count: number;
+  image_urls: string[] | null;
+  r2_small_key: string | null;
+  r2_medium_key: string | null;
+  r2_large_key: string | null;
+  brand_logo_url: string | null;
+  category_image_thumb_key: string | null;
+  category_image_medium_key: string | null;
 }
 
 function normalizeUuidArray(values?: string[] | null): string[] | null {
@@ -70,10 +77,15 @@ export async function searchScopedProducts(
 
   const trimmedQuery = params.query?.trim() ?? '';
   const db = params.db as any;
+  // A plain browse/filter/id-list load (no search text) never needs the
+  // tsquery/prefix-query/trigram-rank machinery search_products_scoped pays
+  // for on every call — route it to load_products_scoped instead, which
+  // shares the same enrichment/pricing shape minus that overhead.
+  const isSearch = trimmedQuery.length > 0;
+  const rpcName = isSearch ? 'search_products_scoped' : 'load_products_scoped';
 
-  const rpcArgs = {
+  const sharedArgs = {
     p_tenant_id: params.tenantId,
-    p_query: trimmedQuery || null,
     p_buyer_id: params.buyerId ?? null,
     p_price_list_id: params.priceListId ?? null,
     p_campaign_id: params.campaignId ?? null,
@@ -86,20 +98,26 @@ export async function searchScopedProducts(
     p_allowed_brand_ids: normalizeUuidArray(params.allowedBrandIds),
     p_warehouse_ids: normalizeUuidArray(params.warehouseIds),
     p_availability: params.availability ?? 'show_all',
-    p_sort: params.sort ?? 'relevance',
   };
-  const { data, error } = await db.schema('app').rpc('search_products_scoped', rpcArgs);
+  const rpcArgs = isSearch
+    ? { ...sharedArgs, p_query: trimmedQuery, p_sort: params.sort ?? 'relevance' }
+    : { ...sharedArgs, p_sort: params.sort === 'name_asc' ? 'name_asc' : 'created_desc' };
+
+  const { data, error } = await db.schema('app').rpc(rpcName, rpcArgs);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const rows = (data ?? []) as ScopedProductSearchRow[];
+  const rows = ((data ?? []) as Array<ScopedProductSearchRow & { search_rank?: number }>).map((row) => ({
+    ...row,
+    search_rank: row.search_rank ?? 0,
+  }));
   let total = rows[0]?.total_count ?? 0;
   if (rows.length === 0 && (params.offset ?? 0) > 0) {
     // Window counts disappear on an out-of-range page. Recover the stable total
     // with one bounded probe instead of misreporting an existing scope as empty.
-    const { data: probeData, error: probeError } = await db.schema('app').rpc('search_products_scoped', {
+    const { data: probeData, error: probeError } = await db.schema('app').rpc(rpcName, {
       ...rpcArgs,
       p_limit: 1,
       p_offset: 0,

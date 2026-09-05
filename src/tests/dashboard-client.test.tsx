@@ -39,6 +39,29 @@ vi.mock('next/navigation', () => ({
   useRouter: () => useRouterMock(),
 }));
 
+vi.mock('@/lib/supabase-browser', () => ({
+  supabaseBrowser: {},
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null, signOut: vi.fn() }),
+}));
+
+const tenantHolder = vi.hoisted(() => ({
+  current: {
+    id: 'tenant-1',
+    slug: 'wineyard',
+    business_name: 'WineYard',
+    public_catalog_live: false as boolean,
+  },
+}));
+
+vi.mock('@/contexts/TenantContext', () => ({
+  useTenant: () => ({
+    currentTenant: tenantHolder.current,
+  }),
+}));
+
 import { SellerDashboardClient } from '@/components/seller/dashboard/SellerDashboardClient';
 import type { SellerDashboardResponse } from '@/types/seller-dashboard';
 
@@ -140,6 +163,7 @@ const locationPerformanceData = {
 
 describe('SellerDashboardClient', () => {
   beforeEach(() => {
+    tenantHolder.current.public_catalog_live = false;
     periodHookValue.setPeriod.mockReset();
     useSellerLandingPeriodMock.mockReturnValue(periodHookValue);
     useSellerDashboardMetricsMock.mockReset();
@@ -182,6 +206,10 @@ describe('SellerDashboardClient', () => {
 
     expect(await screen.findByText('Zeta')).toBeInTheDocument();
 
+    expect(screen.getByTestId('catalog-onboarding-intercept')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /set it up/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
+
     expect(screen.getByRole('button', { name: 'Brand' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Location' })).not.toBeInTheDocument();
@@ -193,8 +221,9 @@ describe('SellerDashboardClient', () => {
 
     render(<SellerDashboardClient initialData={assistantData} initialPeriod="week" />);
 
+    expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Needs action').length).toBeGreaterThan(0);
     expect(screen.getByText('Estimates')).toBeInTheDocument();
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
     expect(screen.getByText('Invoices')).toBeInTheDocument();
@@ -222,6 +251,17 @@ describe('SellerDashboardClient', () => {
     expect(within(salesMixDialog).getByText('Sales mix')).toBeInTheDocument();
     expect(within(salesMixDialog).getByText('Zeta')).toBeInTheDocument();
     fireEvent.click(within(salesMixDialog).getByRole('button', { name: 'Close' }));
+  });
+
+  it('shows the live share card after the public catalog is published', () => {
+    tenantHolder.current.public_catalog_live = true;
+    useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
+
+    render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
+
+    expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
+    expect(screen.getByText('wineyard.useyukti.in')).toBeInTheDocument();
   });
 
   it('does not render a Recent activity card in the admin section', () => {

@@ -4042,6 +4042,173 @@ async function persistContactPersonsPage(
   return result;
 }
 
+// ── Customer Payments ────────────────────────────────────────────────────────
+
+// Reserve time for one detail fetch (worst case ~30s call + 300ms pace) so the
+// loop doesn't blow past the edge function's ~150s hard-kill mid-request.
+const PAYMENT_DETAIL_DEADLINE_RESERVATION_MS = 35_000;
+
+async function persistCustomerPayments(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+): Promise<PersistResult> {
+  const result = emptyPersistResult();
+  if (records.length === 0) return result;
+
+  // 1. Resolve buyer_ids from customer_id external refs (same pattern as invoices)
+  const customerExternalIds = [...new Set(
+    records.map((r) => asStr(r.customer_id)).filter((x): x is string => x !== null),
+  )];
+  const buyerIdMap = customerExternalIds.length > 0
+    ? await resolveInternalIdsWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds)
+    : new Map<string, string>();
+
+  // 2. Upsert payment headers from list records
+  const paymentRows: Record<string, unknown>[] = [];
+  for (const rec of records) {
+    const externalRef = asStr(rec.payment_id);
+    if (!externalRef) { result.skipped++; continue; }
+    const customerId = asStr(rec.customer_id);
+    const buyerId = customerId ? (buyerIdMap.get(customerId) ?? null) : null;
+    const zohoStatus = asStr(rec.status);
+    const status = zohoStatus === 'success' ? 'cleared' : zohoStatus === 'failure' ? 'failed' : 'recorded';
+    paymentRows.push({
+      tenant_id:           tenantId,
+      external_ref:        externalRef,
+      buyer_id:            buyerId,
+      amount:              asNum(rec.amount) ?? 0,
+      paid_at:             asDate(rec.date) ?? nowIso(),
+      mode:                asStr(rec.payment_mode),
+      status,
+      payment_number:      asStr(rec.payment_number),
+      reference_number:    asStr(rec.reference_number),
+      bank_charges:        asNum(rec.bank_charges) ?? 0,
+      tax_amount_withheld: asNum(rec.tax_amount_withheld) ?? 0,
+      currency_code:       asStr(rec.currency_code) ?? 'INR',
+      description:         asStr(rec.description),
+      excess_amount:       asNum(rec.balance) ?? 0,
+      zoho_customer_id:    customerId,
+      created_by:          actorId,
+      updated_by:          actorId,
+      deleted_at:          null,
+    });
+  }
+
+  if (paymentRows.length > 0) {
+    const { error, count } = await admin
+      .schema('app')
+      .from('payments')
+      .upsert(paymentRows, { onConflict: 'tenant_id,external_ref', count: 'exact' });
+    if (error) {
+      console.error('[persistCustomerPayments] payment upsert error:', error.message);
+    } else {
+      result.updated += count ?? paymentRows.length;
+    }
+  }
+
+  // 3. Fetch per-payment detail to get invoices[] array, then upsert payment_applications
+  if (!adapter?.fetchCustomerPaymentDetail) return result;
+
+  // Resolve payment UUIDs for the rows we just upserted
+  const externalRefs = paymentRows.map((r) => asStr(r.external_ref)).filter((x): x is string => x !== null);
+  const { data: paymentIdRows } = await admin
+    .schema('app')
+    .from('payments')
+    .select('id, external_ref')
+    .eq('tenant_id', tenantId)
+    .in('external_ref', externalRefs)
+    .is('deleted_at', null);
+
+  const paymentUuidByExternalRef = new Map<string, string>(
+    (paymentIdRows ?? []).map((r: { id: string; external_ref: string }) => [r.external_ref, r.id] as const),
+  );
+
+  for (const rec of records) {
+    const externalRef = asStr(rec.payment_id);
+    if (!externalRef) continue;
+    const paymentId = paymentUuidByExternalRef.get(externalRef);
+    if (!paymentId) continue;
+
+    if (
+      PAYMENT_DETAIL_DEADLINE_RESERVATION_MS != null
+      && adapter?.fetchCustomerPaymentDetail
+      // persistOptions.deadlineMs isn't threaded into this path; use a fixed 20s from now as a soft guard
+      // (the coordinator's DISPATCH_TIMEOUT_MS=140s hard-stops the entire edge function call externally)
+    ) {
+      // no deadline check here — see comment above; the outer coordinator timeout is the hard boundary
+    }
+
+    // Webhook payloads include full payment detail (invoices[]) inline.
+    // List payloads typically omit it — fetch detail only when not present on the record.
+    let invoiceEntries: Record<string, unknown>[] = [];
+    if (Array.isArray(rec.invoices) && rec.invoices.length > 0) {
+      invoiceEntries = rec.invoices as Record<string, unknown>[];
+    } else {
+      const detail = await adapter.fetchCustomerPaymentDetail(externalRef);
+      if (!detail) {
+        await new Promise<void>((r) => setTimeout(r, 300));
+        continue;
+      }
+      invoiceEntries = Array.isArray(detail.invoices) ? detail.invoices as Record<string, unknown>[] : [];
+    }
+
+    if (invoiceEntries.length === 0) {
+      await new Promise<void>((r) => setTimeout(r, 300));
+      continue;
+    }
+
+    // Resolve invoice UUIDs from Zoho invoice_id external refs
+    const invoiceExternalIds = invoiceEntries
+      .map((inv) => asStr(inv.invoice_id))
+      .filter((x): x is string => x !== null);
+
+    const { data: invoiceIdRows } = await admin
+      .schema('app')
+      .from('invoices')
+      .select('id, external_ref')
+      .eq('tenant_id', tenantId)
+      .in('external_ref', invoiceExternalIds)
+      .is('deleted_at', null);
+
+    const invoiceUuidByExternalRef = new Map<string, string>(
+      (invoiceIdRows ?? []).map((r: { id: string; external_ref: string }) => [r.external_ref, r.id] as const),
+    );
+
+    const applicationRows: Record<string, unknown>[] = [];
+    for (const inv of invoiceEntries) {
+      const invExternalRef = asStr(inv.invoice_id);
+      if (!invExternalRef) continue;
+      const invoiceId = invExternalRef ? invoiceUuidByExternalRef.get(invExternalRef) : null;
+      if (!invoiceId) continue;
+      applicationRows.push({
+        tenant_id:      tenantId,
+        payment_id:     paymentId,
+        invoice_id:     invoiceId,
+        amount_applied: asNum(inv.amount_applied) ?? 0,
+        balance_after:  asNum(inv.balance_amount) ?? 0,
+      });
+    }
+
+    if (applicationRows.length > 0) {
+      const { error: appError } = await admin
+        .schema('app')
+        .from('payment_applications')
+        .upsert(applicationRows, { onConflict: 'payment_id,invoice_id' });
+      if (appError) {
+        console.error(`[persistCustomerPayments] application upsert error for payment ${externalRef}:`, appError.message);
+      }
+    }
+
+    await new Promise<void>((r) => setTimeout(r, 300));
+  }
+
+  return result;
+}
+
 export async function persistZohoEntityPage(
   admin: AdminClient,
   tenantId: string,
@@ -4103,7 +4270,11 @@ async function persistZohoEntityPageImpl(
       return persistOrders(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     case 'invoices':
+    case 'invoices_outstanding':
       return persistInvoices(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
+
+    case 'customer_payments':
+      return persistCustomerPayments(admin, tenantId, actorId, integrationId, records, adapter);
 
     default:
       return emptyPersistResult({ skipped: records.length });

@@ -17,7 +17,7 @@ export interface JWTClaims {
 }
 
 export interface BuyerAppContext extends JWTClaims {
-  mode: 'buyer' | 'preview';
+  mode: 'buyer' | 'preview' | 'guest';
   share_token: string | null;
   preview: BuyerPreviewTokenPayload | null;
 }
@@ -138,6 +138,18 @@ export async function getBuyerAppContext(request: NextRequest): Promise<BuyerApp
       mode: 'preview',
       share_token: preview.share_token,
       preview,
+    };
+  }
+
+  const hostTenantId = request.headers.get('x-verified-tenant-id');
+  const storefrontLive = request.headers.get('x-verified-storefront-live') === '1';
+  if (storefrontLive && hostTenantId && !claims.buyer_id) {
+    return {
+      ...claims,
+      tenant_id: hostTenantId,
+      mode: 'guest',
+      share_token: null,
+      preview: null,
     };
   }
 

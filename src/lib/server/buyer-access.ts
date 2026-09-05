@@ -15,6 +15,7 @@ export interface BuyerLoginCandidate {
   tenant_slug: string;
   tenant_whatsapp_number: string | null;
   tenant_whatsapp_display_name: string | null;
+  tenant_logo_url: string | null;
   buyer_id: string;
   role: 'buyer_admin' | 'buyer_assistant';
   principal_type: 'buyer' | 'delegate';
@@ -36,6 +37,7 @@ interface TenantBuyerAppMetadata {
   enabled: boolean;
   whatsapp_number: string | null;
   whatsapp_display_name: string | null;
+  logo_url: string | null;
 }
 
 interface BuyerRow {
@@ -81,7 +83,10 @@ export interface BuyerVisibleCatalog {
 
 const BUYER_SESSION_PASSWORD_LENGTH = 32;
 
-function buyerAppMetadataFromSettings(settings: Record<string, unknown> | null | undefined): TenantBuyerAppMetadata {
+function buyerAppMetadataFromSettings(
+  settings: Record<string, unknown> | null | undefined,
+  logoUrl: string | null = null,
+): TenantBuyerAppMetadata {
   const buyerApp = settings?.buyer_app;
   if (buyerApp && typeof buyerApp === 'object' && 'enabled' in buyerApp) {
     const typedBuyerApp = buyerApp as {
@@ -100,6 +105,7 @@ function buyerAppMetadataFromSettings(settings: Record<string, unknown> | null |
         typeof typedBuyerApp.whatsapp_display_name === 'string' && typedBuyerApp.whatsapp_display_name.trim()
           ? typedBuyerApp.whatsapp_display_name.trim()
           : null,
+      logo_url: logoUrl,
     };
   }
 
@@ -107,6 +113,7 @@ function buyerAppMetadataFromSettings(settings: Record<string, unknown> | null |
     enabled: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.enabled,
     whatsapp_number: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_number || null,
     whatsapp_display_name: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_display_name || null,
+    logo_url: logoUrl,
   };
 }
 
@@ -117,6 +124,45 @@ function randomPassword() {
 
 function syntheticBuyerEmail(phone: string, buyerId: string) {
   return `buyer-${phone}-${buyerId}@buyers.yukti.local`;
+}
+
+/**
+ * One auth.users identity per real phone number, not one per buyers row —
+ * a phone buying from multiple tenants (or multiple businesses at one tenant)
+ * shares this id across every buyers/buyer_users row it's linked to, instead of
+ * minting a fresh Supabase Auth user (and MAU) per relationship. Requires the
+ * custom_access_token_hook's current_tenant_id/current_buyer_id preference
+ * (fix_buyer_owner_hook_context_preference migration) to already be in place —
+ * that's what makes it safe for multiple buyers rows to share one user_id.
+ */
+async function findExistingAuthUserIdForPhone(phone: string): Promise<string | null> {
+  if (!supabaseAdmin) return null;
+
+  const [buyersRes, buyerUsersRes] = await Promise.all([
+    supabaseAdmin
+      .schema('app')
+      .from('buyers')
+      .select('user_id')
+      .eq('phone', phone)
+      .not('user_id', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabaseAdmin
+      .schema('app')
+      .from('buyer_users')
+      .select('user_id')
+      .eq('phone', phone)
+      .not('user_id', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const buyerUserId = (buyersRes.data as { user_id: string | null } | null)?.user_id ?? null;
+  const buyerUsersUserId = (buyerUsersRes.data as { user_id: string | null } | null)?.user_id ?? null;
+
+  return buyerUserId ?? buyerUsersUserId;
 }
 
 async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<string, TenantBuyerAppMetadata>> {
@@ -131,7 +177,7 @@ async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<stri
     supabaseAdmin
       .schema('app')
       .from('tenants')
-      .select('id, settings')
+      .select('id, settings, logo_url')
       .in('id', tenantIds),
   ]);
 
@@ -144,9 +190,9 @@ async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<stri
   );
 
   return new Map(
-    ((tenantsRes.data ?? []) as Array<{ id: string; settings: Record<string, unknown> | null }>).map((row) => [
+    ((tenantsRes.data ?? []) as Array<{ id: string; settings: Record<string, unknown> | null; logo_url: string | null }>).map((row) => [
       row.id,
-      buyerAppMetadataFromSettings(tenantSettingsById.get(row.id) ?? row.settings),
+      buyerAppMetadataFromSettings(tenantSettingsById.get(row.id) ?? row.settings, row.logo_url ?? null),
     ]),
   );
 }
@@ -259,6 +305,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         tenant_slug: String(row.tenant_slug ?? ''),
         tenant_whatsapp_number: null,
         tenant_whatsapp_display_name: null,
+        tenant_logo_url: null,
         buyer_id: String(row.id),
         role: 'buyer_admin',
         principal_type: 'buyer',
@@ -283,6 +330,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
       tenant_slug: String(row.tenant_slug ?? ''),
       tenant_whatsapp_number: null,
       tenant_whatsapp_display_name: null,
+      tenant_logo_url: null,
       buyer_id: String(row.buyer_id ?? ''),
       role: (String(row.role ?? 'buyer_assistant') as 'buyer_admin' | 'buyer_assistant'),
       principal_type: 'delegate',
@@ -305,6 +353,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
     tenant_app_enabled: metadataByTenant.get(candidate.tenant_id)?.enabled === true,
     tenant_whatsapp_number: metadataByTenant.get(candidate.tenant_id)?.whatsapp_number ?? null,
     tenant_whatsapp_display_name: metadataByTenant.get(candidate.tenant_id)?.whatsapp_display_name ?? null,
+    tenant_logo_url: metadataByTenant.get(candidate.tenant_id)?.logo_url ?? null,
   }));
 }
 
@@ -322,8 +371,40 @@ async function ensureBuyerOwnerPrincipal(candidate: BuyerLoginCandidate): Promis
     return { user: { id: candidate.user_id } as User, email };
   }
 
-  const password = randomPassword();
   const fullName = candidate.contact_name?.trim() || candidate.business_name;
+
+  // This phone may already have an auth.users identity from a different
+  // buyers/buyer_users row (another tenant, or another business at this
+  // tenant) — reuse it instead of minting a new one. custom_access_token_hook
+  // resolves which row a given session is scoped to via app_metadata.current_*,
+  // not via a 1:1 user_id assumption, so sharing is safe once linked.
+  const existingUserId = await findExistingAuthUserIdForPhone(candidate.phone);
+
+  if (existingUserId) {
+    await supabaseAdmin.auth.admin.updateUserById(existingUserId, {
+      user_metadata: {
+        full_name: fullName,
+        first_name: firstNameFromValue(fullName),
+        phone: candidate.phone,
+        buyer_id: candidate.buyer_id,
+        tenant_id: candidate.tenant_id,
+      },
+    });
+
+    const { error: linkError } = await supabaseAdmin
+      .schema('app')
+      .from('buyers')
+      .update({ user_id: existingUserId, updated_by: existingUserId })
+      .eq('id', candidate.buyer_id);
+
+    if (linkError) {
+      throw new Error(`Failed to link buyer auth user: ${linkError.message}`);
+    }
+
+    return { user: { id: existingUserId } as User, email };
+  }
+
+  const password = randomPassword();
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
@@ -408,7 +489,6 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
     throw new Error('Buyer delegate principal is missing a buyer_users row to link');
   }
 
-  const password = randomPassword();
   // Keyed off buyer_user_id, not buyer_id — a delegate's phone can legitimately
   // equal the buyer owner's own phone (same person added twice, or shared office
   // line), and the owner's synthetic email is keyed off buyer_id alone. Keying
@@ -416,6 +496,40 @@ async function ensureBuyerDelegatePrincipal(candidate: BuyerLoginCandidate): Pro
   // which auth.admin.createUser then rejects as a duplicate.
   const email = syntheticBuyerEmail(candidate.phone, candidate.buyer_user_id);
   const fullName = candidate.contact_name?.trim() || candidate.business_name;
+
+  // Same phone may already have an auth.users identity via another
+  // buyers/buyer_users row — reuse it instead of minting a new one.
+  const existingUserId = await findExistingAuthUserIdForPhone(candidate.phone);
+
+  if (existingUserId) {
+    await supabaseAdmin.auth.admin.updateUserById(existingUserId, {
+      user_metadata: {
+        full_name: fullName,
+        first_name: firstNameFromValue(fullName),
+        phone: candidate.phone,
+        buyer_id: candidate.buyer_id,
+        tenant_id: candidate.tenant_id,
+      },
+    });
+
+    const { error: linkError } = await supabaseAdmin
+      .schema('app')
+      .from('buyer_users')
+      .update({
+        user_id: existingUserId,
+        email,
+        updated_by: existingUserId,
+      })
+      .eq('id', candidate.buyer_user_id);
+
+    if (linkError) {
+      throw new Error(`Failed to link buyer delegate auth user: ${linkError.message}`);
+    }
+
+    return { user: { id: existingUserId } as User, email };
+  }
+
+  const password = randomPassword();
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
@@ -511,6 +625,185 @@ async function createBuyerSessionForUser(
   return refreshData.session ?? signInData.session;
 }
 
+/**
+ * Cross-origin session handoff — OTP verified on catalog.useyukti.in (or any
+ * host other than the candidate's own tenant) can't set a cookie on the
+ * destination tenant's origin directly (third-party cookie context). Instead,
+ * mint a single-use, short-TTL magic-link token the destination host redeems
+ * client-side (supabaseBrowser.auth.verifyOtp), which sets that origin's own
+ * first-party cookie. Same generateLink technique mintSellerSession already
+ * uses for a different reason (password-less session creation).
+ */
+export async function mintBuyerHandoffLink(
+  candidate: BuyerLoginCandidate,
+): Promise<{ hashedToken: string; buyerId: string | null }> {
+  if (!supabaseAdmin) {
+    throw new Error('Server configuration error');
+  }
+
+  const principal = candidate.principal_type === 'buyer'
+    ? await ensureBuyerOwnerPrincipal(candidate)
+    : await ensureBuyerDelegatePrincipal(candidate);
+
+  const fullName = candidate.contact_name?.trim() || candidate.business_name;
+
+  // Ensure the shared auth.users row's email/app_metadata reflect THIS
+  // candidate's context before generating the link — the same user id may
+  // have been used for a different buyer/tenant context on a prior login.
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(principal.user.id, {
+    email: principal.email,
+    email_confirm: true,
+    user_metadata: {
+      full_name: fullName,
+      first_name: firstNameFromValue(fullName),
+      phone: candidate.phone,
+      buyer_id: candidate.buyer_id,
+      tenant_id: candidate.tenant_id,
+    },
+    app_metadata: {
+      current_tenant_id: candidate.tenant_id,
+      current_buyer_id: candidate.buyer_id,
+    },
+  });
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: 'magiclink',
+    email: principal.email,
+  });
+  if (error || !data?.properties?.hashed_token) {
+    throw new Error(error?.message ?? 'Failed to generate storefront handoff link');
+  }
+
+  return { hashedToken: data.properties.hashed_token, buyerId: candidate.buyer_id };
+}
+
+export function filterLoginCandidatesToTenant<T extends { tenant_id: string; kind?: string }>(
+  candidates: T[],
+  tenantId: string,
+): T[] {
+  return candidates.filter((candidate) => candidate.tenant_id === tenantId && candidate.kind !== 'seller');
+}
+
+export async function acquireBuyerForStorefront(
+  tenantId: string,
+  phone: string,
+): Promise<BuyerLoginCandidate> {
+  if (!supabaseAdmin) {
+    throw new Error('Server configuration error');
+  }
+
+  const normalizedPhone = normalizeIndianPhone(phone);
+  const db = supabaseAdmin;
+  const { data: tenant, error: tenantError } = await db
+    .schema('app')
+    .from('tenants')
+    .select('id, business_name, slug')
+    .eq('id', tenantId)
+    .maybeSingle();
+  if (tenantError) throw new Error(tenantError.message);
+  if (!tenant?.id) throw new Error('Tenant not found');
+
+  const tenantMeta = (await loadTenantBuyerAppMetadata([tenantId])).get(tenantId);
+
+  const { data: existing, error: existingError } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id, business_name, contact_name, user_id, buyer_app_enabled')
+    .eq('tenant_id', tenantId)
+    .eq('phone', normalizedPhone)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+
+  const row = existing as {
+    id: string;
+    business_name: string;
+    contact_name: string | null;
+    user_id: string | null;
+    buyer_app_enabled: boolean | null;
+  } | null;
+
+  if (row) {
+    // Never auto-reactivate here just because the phone retried OTP — that
+    // would let a seller-suspended buyer, or a still-pending fresh
+    // acquisition (see the insert branch below), silently re-enable
+    // themselves by retrying. Reactivation is a seller action (Manage
+    // Access) or an explicit approval, never a side effect of login.
+    return {
+      tenant_id: tenantId,
+      tenant_name: tenant.business_name as string,
+      tenant_slug: tenant.slug as string,
+      tenant_whatsapp_number: tenantMeta?.whatsapp_number ?? null,
+      tenant_whatsapp_display_name: tenantMeta?.whatsapp_display_name ?? null,
+      tenant_logo_url: tenantMeta?.logo_url ?? null,
+      buyer_id: row.id,
+      role: 'buyer_admin',
+      principal_type: 'buyer',
+      user_id: row.user_id,
+      buyer_user_id: null,
+      phone: normalizedPhone,
+      business_name: row.business_name,
+      contact_name: row.contact_name,
+      buyer_app_enabled: row.buyer_app_enabled !== false,
+      tenant_app_enabled: true,
+    };
+  }
+
+  // Fresh self-registration via OTP, no prior seller relationship — defaults
+  // closed (buyer_app_enabled: false), pending seller approval. Known buyers
+  // (ERP-synced, CSV-imported, seller-added) are provisioned true elsewhere;
+  // this path is specifically "a stranger just OTP'd in," which should not
+  // be equivalent to a seller-vetted customer until approved.
+  const { data: created, error: insertError } = await db
+    .schema('app')
+    .from('buyers')
+    .insert({
+      tenant_id: tenantId,
+      business_name: `Customer ${normalizedPhone}`,
+      contact_name: null,
+      phone: normalizedPhone,
+      credit_limit: 0,
+      payment_terms_days: 0,
+      buyer_app_enabled: false,
+      is_active: true,
+    })
+    .select('id, business_name, contact_name, user_id')
+    .single();
+  if (insertError || !created) {
+    throw new Error(insertError?.message ?? 'Failed to create buyer');
+  }
+
+  const createdRow = created as {
+    id: string;
+    business_name: string;
+    contact_name: string | null;
+    user_id: string | null;
+  };
+
+  return {
+    tenant_id: tenantId,
+    tenant_name: tenant.business_name as string,
+    tenant_slug: tenant.slug as string,
+    tenant_whatsapp_number: tenantMeta?.whatsapp_number ?? null,
+    tenant_whatsapp_display_name: tenantMeta?.whatsapp_display_name ?? null,
+    tenant_logo_url: tenantMeta?.logo_url ?? null,
+    buyer_id: createdRow.id,
+    role: 'buyer_admin',
+    principal_type: 'buyer',
+    user_id: createdRow.user_id,
+    buyer_user_id: null,
+    phone: normalizedPhone,
+    business_name: createdRow.business_name,
+    contact_name: createdRow.contact_name,
+    buyer_app_enabled: false,
+    tenant_app_enabled: true,
+  };
+}
+
 export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<{ session: Session; user: User }> {
   const principal = candidate.principal_type === 'buyer'
     ? await ensureBuyerOwnerPrincipal(candidate)
@@ -523,6 +816,17 @@ export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<
     password,
     candidate,
   );
+
+  if (supabaseAdmin && candidate.buyer_id) {
+    void supabaseAdmin
+      .schema('app')
+      .from('buyers')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', candidate.buyer_id)
+      .then(({ error }) => {
+        if (error) console.error('[mintBuyerSession] failed to stamp last_login_at', error);
+      });
+  }
 
   return {
     session,
@@ -567,6 +871,23 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     };
   }
 
+  if (context.mode === 'guest') {
+    const { data: tenant, error } = await tenantPromise;
+    if (error) throw new Error(error.message);
+    if (!tenant) return null;
+
+    return {
+      context,
+      buyer: null,
+      tenant: {
+        id: tenant.id,
+        business_name: tenant.business_name,
+        slug: tenant.slug,
+      },
+      greeting_name: tenant.business_name,
+    };
+  }
+
   if (!context.buyer_id) {
     return null;
   }
@@ -604,15 +925,12 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     return null;
   }
 
-  const tenantSettingsEnabled = buyerAppMetadataFromSettings(
-    (settingsRes.data as TenantSettingsRow | null)?.settings
-    ?? (tenantRes.data?.settings as Record<string, unknown> | null | undefined),
-  ).enabled;
-
-  if (!tenantSettingsEnabled && context.mode !== 'preview') {
-    return null;
-  }
-
+  // tenant_settings.buyer_app.enabled retired as a login/access gate — buyer
+  // app is core MVP now, not a togglable module. app.catalogs.live_at gates
+  // whether a storefront is live at all; buyers.buyer_app_enabled (already
+  // checked in buyerLookup above) is the per-buyer override. Settings are
+  // still fetched above for other fields (whatsapp_number, stock visibility);
+  // just no longer used to block access here.
   const greetingName =
     firstNameFromValue(buyerRes.data.contact_name)
     || buyerRes.data.contact_name?.trim()
@@ -699,7 +1017,7 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
 
   if (error) throw new Error(`Seller lookup failed: ${error.message}`);
 
-  return ((data ?? []) as Array<{
+  const rows = (data ?? []) as Array<{
     user_id: string;
     tenant_id: string;
     tenant_name: string;
@@ -708,13 +1026,18 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     location_ids: string[] | null;
     email: string | null;
     full_name: string | null;
-  }>).map((row) => ({
+  }>;
+
+  const logoByTenant = await loadTenantLogos(rows.map((row) => row.tenant_id));
+
+  return rows.map((row) => ({
     kind: 'seller' as const,
     tenant_id: row.tenant_id,
     tenant_name: row.tenant_name,
     tenant_slug: row.tenant_slug,
     tenant_whatsapp_number: null,
     tenant_whatsapp_display_name: null,
+    tenant_logo_url: logoByTenant.get(row.tenant_id) ?? null,
     role: row.role,
     buyer_id: null,
     principal_type: 'seller' as const,
@@ -727,15 +1050,40 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
   }));
 }
 
+/** Lightweight logo-only batch lookup — used for seller candidates, which
+ * don't otherwise need loadTenantBuyerAppMetadata's settings/whatsapp fetch. */
+async function loadTenantLogos(tenantIds: string[]): Promise<Map<string, string | null>> {
+  const uniqueIds = Array.from(new Set(tenantIds));
+  if (!supabaseAdmin || uniqueIds.length === 0) return new Map();
+
+  const { data, error } = await supabaseAdmin
+    .schema('app')
+    .from('tenants')
+    .select('id, logo_url')
+    .in('id', uniqueIds);
+
+  if (error) {
+    console.error('[loadTenantLogos] lookup failed', error);
+    return new Map();
+  }
+
+  return new Map(
+    ((data ?? []) as Array<{ id: string; logo_url: string | null }>).map((row) => [row.id, row.logo_url]),
+  );
+}
+
 export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCandidate[]> {
   const [sellers, buyers] = await Promise.all([
     findSellerLoginCandidates(phone),
     findBuyerLoginCandidates(phone),
   ]);
 
-  // Map buyer candidates to the unified LoginOtpCandidate shape (filtering for eligible only)
+  // Map buyer candidates to the unified LoginOtpCandidate shape (filtering for eligible only).
+  // tenant_app_enabled retired as a login gate — per-buyer buyer_app_enabled is
+  // now the only access check (provenance-defaulted: true for known/synced
+  // buyers, false pending approval for fresh self-registrations).
   const eligibleBuyers: LoginOtpCandidate[] = buyers
-    .filter((c) => c.buyer_app_enabled && c.tenant_app_enabled)
+    .filter((c) => c.buyer_app_enabled)
     .map((c) => ({
       kind: 'buyer' as const,
       tenant_id: c.tenant_id,
@@ -743,6 +1091,7 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
       tenant_slug: c.tenant_slug,
       tenant_whatsapp_number: c.tenant_whatsapp_number,
       tenant_whatsapp_display_name: c.tenant_whatsapp_display_name,
+      tenant_logo_url: c.tenant_logo_url,
       role: c.role,
       buyer_id: c.buyer_id,
       principal_type: c.principal_type as 'buyer' | 'delegate',
@@ -771,6 +1120,7 @@ export function toBuyerLoginCandidate(c: LoginOtpCandidate): BuyerLoginCandidate
     tenant_slug: c.tenant_slug,
     tenant_whatsapp_number: c.tenant_whatsapp_number,
     tenant_whatsapp_display_name: c.tenant_whatsapp_display_name,
+    tenant_logo_url: c.tenant_logo_url,
     buyer_id: c.buyer_id,
     role: c.role as 'buyer_admin' | 'buyer_assistant',
     principal_type: c.principal_type as 'buyer' | 'delegate',

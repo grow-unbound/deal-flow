@@ -5,19 +5,26 @@ import { usePathname } from 'next/navigation';
 import { Pressable } from '@/components/ui/pressable';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
-import { isBuyerChromelessRoute, isBuyerDeepRoute } from '@/lib/buyer-routes';
+import { isBuyerChromelessRoute, isBuyerDeepRoute, normalizeBuyerPathname } from '@/lib/buyer-routes';
+import { STOREFRONT } from '@/lib/storefront-paths';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { label: 'Home', href: '/buy/home', icon: CatalogIcon },
-  { label: 'Orders', href: '/buy/orders', icon: OrdersIcon },
-  { label: 'Profile', href: '/buy/profile', icon: ProfileIcon },
-];
+  { label: 'Home', href: STOREFRONT.home, icon: CatalogIcon },
+  { label: 'Orders', href: STOREFRONT.orders, icon: OrdersIcon },
+  { label: 'Profile', href: STOREFRONT.profile, icon: ProfileIcon },
+] as const;
 
 export function BuyerTabBar() {
   const pathname = usePathname();
+  const normalizedPath = normalizeBuyerPathname(pathname);
   const { tabBarVisible } = useBuyerScrollChromeState();
-  useIdleRoutePrefetch(['/buy/home', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
+  const { data: me } = useBuyerMe();
+  const { openLogin } = useStorefrontLogin();
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  useIdleRoutePrefetch([STOREFRONT.home, STOREFRONT.orders, STOREFRONT.profile, STOREFRONT.search, STOREFRONT.location]);
 
   if (isBuyerDeepRoute(pathname) || isBuyerChromelessRoute(pathname)) return null;
 
@@ -37,7 +44,29 @@ export function BuyerTabBar() {
     >
       <div className="flex min-h-[var(--tab-bar-h)] w-full items-stretch">
       {tabs.map(({ label, href, icon: Icon }) => {
-        const active = pathname === href || (href !== '/' && pathname.startsWith(href));
+        const internalHref = normalizeBuyerPathname(href);
+        const active = normalizedPath === internalHref
+          || (internalHref !== '/buy/home' && normalizedPath.startsWith(internalHref));
+        const requiresAuth = href !== STOREFRONT.home;
+        if (isGuest && requiresAuth) {
+          return (
+            <Pressable key={href} asChild haptic>
+              <button
+                type="button"
+                onClick={openLogin}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-colors duration-fast"
+              >
+                <Icon size={22} className="text-cream-600" />
+                <span
+                  className="text-eyebrow text-cream-600"
+                  style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}
+                >
+                  {label}
+                </span>
+              </button>
+            </Pressable>
+          );
+        }
         return (
           <Pressable key={href} asChild haptic>
             <Link

@@ -9,13 +9,19 @@ const sendLoginOtpWhatsappMock = vi.fn();
 const mintBuyerSessionMock = vi.fn();
 const mintSellerSessionMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
+const acquireBuyerForStorefrontMock = vi.fn();
+const mintBuyerHandoffLinkMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   findAllLoginCandidates: (...args: unknown[]) => findAllLoginCandidatesMock(...args),
   findBuyerLoginCandidates: (...args: unknown[]) => findBuyerLoginCandidatesMock(...args),
   mintBuyerSession: (...args: unknown[]) => mintBuyerSessionMock(...args),
   mintSellerSession: (...args: unknown[]) => mintSellerSessionMock(...args),
-  toBuyerLoginCandidate: (c: unknown) => c, // identity — already in BuyerLoginCandidate shape for tests
+  toBuyerLoginCandidate: (c: unknown) => c,
+  filterLoginCandidatesToTenant: (candidates: Array<{ tenant_id: string; kind?: string }>, tenantId: string) =>
+    candidates.filter((candidate) => candidate.tenant_id === tenantId && candidate.kind !== 'seller'),
+  acquireBuyerForStorefront: (...args: unknown[]) => acquireBuyerForStorefrontMock(...args),
+  mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
 }));
 
 vi.mock('@/lib/server/whatsapp', () => ({
@@ -28,6 +34,63 @@ vi.mock('@/lib/server/buyer-app-activity', () => ({
 
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: { schema: vi.fn() },
+}));
+
+vi.mock('@/lib/server/phone-consent', () => ({
+  // Tests below aren't exercising consent behavior — treat every phone as
+  // already consented so redirects reflect the storefront-home logic being
+  // tested, not an incidental lookup-error fallback.
+  requirePhoneConsentRedirect: async () => null,
+  hasPhoneConsented: async () => true,
+  stampPhoneConsent: async () => {},
+}));
+
+const otpMemory = vi.hoisted(() => {
+  const { createHash } = require('crypto') as typeof import('crypto');
+  const store = new Map<string, Record<string, unknown>>();
+  function hash(otp: string): string {
+    return createHash('sha256').update(otp).digest('hex');
+  }
+  return {
+    store,
+    hash,
+    api: {
+      async sendCooldownRemainingMs(): Promise<number> {
+        return 0;
+      },
+      async insert(record: { kind: string; otp?: string }): Promise<string> {
+        const ref = `ref-${store.size + 1}`;
+        const stored = record.kind === 'pending'
+          ? { ...record, otp: hash(record.otp ?? '') }
+          : { ...record };
+        store.set(ref, stored);
+        return ref;
+      },
+      async get(ref: string) {
+        return store.get(ref) ?? null;
+      },
+      async set(ref: string, record: Record<string, unknown>) {
+        store.set(ref, record);
+      },
+      async delete(ref: string) {
+        store.delete(ref);
+      },
+    },
+  };
+});
+
+vi.mock('@/lib/server/buyer-otp-store', () => ({
+  hashOtp: otpMemory.hash,
+  buyerOtpStore: otpMemory.api,
+  writeVerifiedCandidatesRecord: (
+    phone: string,
+    candidates: unknown[],
+  ) => otpMemory.api.insert({
+    kind: 'verified',
+    phone,
+    expiresAt: Date.now() + 60_000,
+    candidates,
+  } as never),
 }));
 
 const eligibleBuyerCandidate = {
@@ -59,6 +122,9 @@ describe('buyer phone otp routes', () => {
     mintBuyerSessionMock.mockReset();
     mintSellerSessionMock.mockReset();
     recordBuyerAppActivitySafeMock.mockReset();
+    acquireBuyerForStorefrontMock.mockReset();
+    mintBuyerHandoffLinkMock.mockReset();
+    otpMemory.store.clear();
   });
 
   it('sends OTP only for registered enabled buyer principals', async () => {
@@ -67,6 +133,27 @@ describe('buyer phone otp routes', () => {
     const { POST } = await import('../../../app/api/auth/phone-otp/send/route');
     const response = await POST(new Request('http://localhost/api/auth/phone-otp/send', {
       method: 'POST',
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.registered).toBe(true);
+    expect(body.outcome).toBe('otp_sent');
+    expect(typeof body.ref_id).toBe('string');
+    expect(sendLoginOtpWhatsappMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends OTP for unknown phones on a tenant host so verify can acquire', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([]);
+
+    const { POST } = await import('../../../app/api/auth/phone-otp/send/route');
+    const response = await POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-verified-tenant-id': 'tenant-1',
+      },
       body: JSON.stringify({ phoneNumber: '9876543210' }),
     }) as any);
     const body = await response.json();
@@ -93,7 +180,7 @@ describe('buyer phone otp routes', () => {
     expect(body.registered).toBe(false);
     expect(body.outcome).toBe('unregistered');
     expect(body.ref_id).toBeNull();
-    expect(body.message).toBe("We couldn't find your number.");
+    expect(body.message).toBe("We couldn't find your number");
     expect(body.seller_name).toBeNull();
     expect(body.seller_whatsapp_number).toBeNull();
   });
@@ -168,6 +255,102 @@ describe('buyer phone otp routes', () => {
     });
 
     const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    // Simulate OTP happening directly on tenant-1's own storefront host — the
+    // still-supported local flow, as opposed to catalog.useyukti.in (no
+    // x-verified-tenant-id header there), which triggers the cross-origin
+    // handoff instead of a same-origin session mint.
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: { 'x-verified-tenant-id': 'tenant-1' },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: { 'x-verified-tenant-id': 'tenant-1' },
+      body: JSON.stringify({ ref_id: sendBody.ref_id, otp: pending && pending.kind === 'pending' ? pending.otp : '000000' }),
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    // On a tenant host (x-verified-tenant-id present) the storefront root path
+    // is '/' — the '/buy/home' legacy path is only the fallback for a bare
+    // host with no tenant context.
+    expect(body.redirect).toBe('/');
+    expect(body.session.access_token).toBe('access-token');
+    expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
+    expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        eventName: 'session_started',
+      }),
+    );
+  });
+
+  it('acquires a buyer on tenant-host verify when candidate has no buyer_id', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([]);
+    acquireBuyerForStorefrontMock.mockResolvedValue({
+      ...eligibleBuyerCandidate,
+      buyer_id: 'acquired-1',
+      business_name: 'Customer 9876543210',
+    });
+    mintBuyerSessionMock.mockResolvedValue({
+      session: {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+      },
+    });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-verified-tenant-id': 'tenant-1',
+      },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-verified-tenant-id': 'tenant-1',
+      },
+      body: JSON.stringify({ ref_id: sendBody.ref_id, otp: pending && pending.kind === 'pending' ? pending.otp : '000000' }),
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.redirect).toBe('/');
+    expect(acquireBuyerForStorefrontMock).toHaveBeenCalledWith('tenant-1', '9876543210');
+    expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands off to the tenant\'s own origin instead of minting a session when verified off-tenant-host (e.g. catalog.useyukti.in)', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([eligibleBuyerCandidate]);
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-abc', buyerId: 'buyer-1' });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    // No x-verified-tenant-id header — simulates catalog.useyukti.in or a bare
+    // host, where the request isn't scoped to any one tenant.
     const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
       method: 'POST',
       body: JSON.stringify({ phoneNumber: '9876543210' }),
@@ -176,7 +359,7 @@ describe('buyer phone otp routes', () => {
 
     const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
     const storeModule = await import('@/lib/server/buyer-otp-store');
-    const pending = storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
     const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
       method: 'POST',
       body: JSON.stringify({ ref_id: sendBody.ref_id, otp: pending && pending.kind === 'pending' ? pending.otp : '000000' }),
@@ -188,16 +371,163 @@ describe('buyer phone otp routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.redirect).toBe('/buy/home');
-    expect(body.session.access_token).toBe('access-token');
-    expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
-    expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        tenantId: 'tenant-1',
-        buyerId: 'buyer-1',
-        eventName: 'session_started',
+    expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=token-abc');
+    expect(body.handoff_url).toContain(eligibleBuyerCandidate.tenant_slug);
+    expect(body.session).toBeUndefined();
+    expect(body.redirect).toBeUndefined();
+    expect(mintBuyerHandoffLinkMock).toHaveBeenCalledTimes(1);
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('carries a validated return_to through to the handoff URL as `next`', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([eligibleBuyerCandidate]);
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-abc', buyerId: 'buyer-1' });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: `https://${eligibleBuyerCandidate.tenant_slug}.useyukti.in/product/55`,
       }),
-    );
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.handoff_url).toContain('next=%2Fproduct%2F55');
+  });
+
+  it('skips workspace picker on catalog when return_to matches one of multiple buyer tenants', async () => {
+    const otherTenant = {
+      ...eligibleBuyerCandidate,
+      tenant_id: 'tenant-2',
+      tenant_slug: 'tenant-two',
+      tenant_name: 'Tenant Two',
+      buyer_id: 'buyer-2',
+    };
+    findAllLoginCandidatesMock.mockResolvedValue([eligibleBuyerCandidate, otherTenant]);
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-abc', buyerId: 'buyer-1' });
+    mintBuyerSessionMock.mockResolvedValue({
+      session: { access_token: 'access-token', refresh_token: 'refresh-token' },
+    });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: 'https://tenant-one.useyukti.in/',
+      }),
+    }), {
+      nextUrl: new URL('http://catalog.useyukti.in/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.handoff_url).toContain('tenant-one');
+    expect(body.contexts).toBeUndefined();
+    expect(body.ref_id).toBeUndefined();
+  });
+
+  it('drops a return_to that does not resolve to the destination tenant host', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([eligibleBuyerCandidate]);
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-abc', buyerId: 'buyer-1' });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: 'https://evil.example.com/phish',
+      }),
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.handoff_url).not.toContain('next=');
+    expect(body.handoff_url).not.toContain('evil.example.com');
+  });
+
+  it('does not mint a session for a fresh self-registration pending approval (buyer_app_enabled: false)', async () => {
+    findAllLoginCandidatesMock.mockResolvedValue([]);
+    acquireBuyerForStorefrontMock.mockResolvedValue({
+      ...eligibleBuyerCandidate,
+      buyer_id: 'acquired-2',
+      business_name: 'Customer 9876543210',
+      buyer_app_enabled: false,
+    });
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-verified-tenant-id': 'tenant-1',
+      },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-verified-tenant-id': 'tenant-1',
+      },
+      body: JSON.stringify({ ref_id: sendBody.ref_id, otp: pending && pending.kind === 'pending' ? pending.otp : '000000' }),
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(false);
+    expect(body.outcome).toBe('pending_approval');
+    expect(body.session).toBeUndefined();
+    expect(body.redirect).toBeUndefined();
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
   });
 });

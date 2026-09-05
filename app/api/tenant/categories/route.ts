@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { CreateCategoryInputSchema } from '@/types/tenant-categories';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest) {
       ts: nowIso,
     });
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ data: { category: inserted }, error: null }, { status: 201 });
   } catch {
     return jsonError(401, 'Unauthorized', 'UNAUTHORIZED');

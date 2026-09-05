@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Repeat, User, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { formatWhatsappDestination } from '@/lib/phone';
 import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
 import { useBuyerSession } from '@/hooks/useBuyerSession';
@@ -15,8 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-
-const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
+import { catalogOriginForRequest } from '@/lib/storefront-host';
 
 interface BuyerInvoice {
   id: string;
@@ -572,19 +571,11 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSwitchAccount = async () => {
+  const handleSwitchAccount = () => {
     setSwitchPending(true);
     try {
-      const res = await apiPost('/api/auth/switch-context', {});
-      const body = await res.json();
-      if (!res.ok || !body.contexts || !body.ref_id) {
-        toast.error(body.error ?? 'No other accounts linked to this number.');
-        return;
-      }
-      sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(body.contexts));
-      router.push(`/login/select-context?ref_id=${encodeURIComponent(body.ref_id)}`);
-    } catch {
-      toast.error('Network error. Please try again.');
+      const catalogOrigin = catalogOriginForRequest(window.location.host);
+      window.location.assign(`${catalogOrigin}/`);
     } finally {
       setSwitchPending(false);
     }
@@ -683,8 +674,8 @@ export default function ProfilePage() {
           <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
             <AccountRow
               icon={<Repeat className="h-5 w-5" />}
-              title="Switch account"
-              subtitle="Use another account linked to this number"
+              title="Other suppliers you buy from"
+              subtitle="Switch to another approved catalog with this number"
               onClick={() => { void handleSwitchAccount(); }}
               action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
             />

@@ -17,6 +17,7 @@ import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { setBuyerRailPathname } from '@/hooks/useBuyerRailPathnameOverride';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import {
   useBuyerBrands,
   useBuyerCatalogList,
@@ -24,18 +25,33 @@ import {
 } from '@/hooks/useBuyerProducts';
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
-import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { BUYER_INFINITE_SCROLL_RATIO, guestPriceReveal } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
+import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
 interface CatalogFilteredBrowseProps {
   mode: CatalogFilteredMode;
   id: string;
+  /** SSR-seeded first page (authenticated buyers only) — see loadInitialCatalogListData. */
+  initialCatalogPage?: BuyerCatalogResponse | null;
+  initialBrands?: BuyerBrand[];
+  initialCategories?: BuyerCategory[];
 }
 
-export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
+export function CatalogFilteredBrowse({
+  mode,
+  id,
+  initialCatalogPage,
+  initialBrands,
+  initialCategories,
+}: CatalogFilteredBrowseProps): React.ReactNode {
   const posthog = usePostHog();
+  const { data: me } = useBuyerMe();
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const priceReveal = isGuest ? guestPriceReveal(me?.guest_pricing_mode) : undefined;
   const { setCampaignId } = useCart();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
@@ -59,12 +75,12 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     data: categories,
     isLoading: categoriesLoading,
     refetch: refetchCategories,
-  } = useBuyerCategories();
+  } = useBuyerCategories(initialCategories);
   const {
     data: brands,
     isLoading: brandsLoading,
     refetch: refetchBrands,
-  } = useBuyerBrands();
+  } = useBuyerBrands(initialBrands);
 
   const {
     data: categoryRecos,
@@ -77,7 +93,22 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     refetch: refetchBrandRecos,
   } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
+  // initialData re-seeds ANY new queryKey miss, not just the key it was
+  // fetched for — TanStack Query applies it whenever the current queryKey
+  // has no cache entry, regardless of which key the data actually belongs
+  // to. initialCatalogPage is SSR data for this page's own `id`/empty
+  // search only; once the rail nav switches activeId (no real navigation,
+  // `id` prop never changes) or the user types a search, the queryKey
+  // changes but the stale initialCatalogPage would otherwise get reapplied
+  // as if it were fresh data for the new key — exactly the bug where
+  // switching category/brand silently kept showing the original list.
+  const isInitialDataStillValid = activeId === id && !debouncedSearch.trim();
+  const listQuery = useBuyerCatalogList(
+    mode,
+    activeId,
+    debouncedSearch,
+    isInitialDataStillValid ? initialCatalogPage : undefined,
+  );
   const pages = listQuery.data?.pages ?? [];
   const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
@@ -194,8 +225,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
     const nextPath =
       mode === 'category'
-        ? `/buy/home/category/${nextId}`
-        : `/buy/home/brand/${nextId}`;
+        ? STOREFRONT.category(nextId)
+        : STOREFRONT.brand(nextId);
     window.history.replaceState(window.history.state, '', nextPath);
     setBuyerRailPathname(nextPath);
   }, [mode]);
@@ -234,7 +265,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
       <BuyerDetailShell
         title={title}
         hideDesktopHeader
-        backFallbackHref="/buy/home"
+        backFallbackHref={STOREFRONT.home}
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -281,6 +312,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w5_category_trending"
                 items={categoryRecos ?? []}
                 isLoading={showCategoryRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -292,6 +324,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w6_brand_trending"
                 items={brandRecos ?? []}
                 isLoading={showBrandRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -330,6 +363,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
                 showPromotionBadge={mode !== 'list'}
+                priceReveal={priceReveal}
               />
 
               {!showProductsSkeleton && items.length === 0 ? (
@@ -351,7 +385,7 @@ function NoProductsFoundState(): React.ReactNode {
       description="Try a different search or switch filters to explore more products."
       action={(
         <Link
-          href="/buy/home"
+          href={STOREFRONT.home}
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
         >
           Browse Catalog

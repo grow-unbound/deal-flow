@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import { z } from 'zod';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
@@ -162,6 +163,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ imported, skipped, results }, { status: 200 });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

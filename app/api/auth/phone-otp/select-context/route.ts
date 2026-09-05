@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
+import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
+import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
+import { isCatalogRequest } from '@/lib/server/catalog-request';
 
 /**
  * POST /api/auth/phone-otp/select-context
@@ -72,37 +75,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, redirect: '/dashboard', session });
     }
 
-    const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+    const buyerCandidate = toBuyerLoginCandidate(candidate);
+    const currentTenantId = request.headers.get('x-verified-tenant-id');
+    const onCatalogHost = isCatalogRequest(request);
     const { supabaseAdmin } = await import('@/lib/supabase');
-    if (supabaseAdmin && candidate.buyer_id) {
-      void recordBuyerAppActivitySafe(supabaseAdmin as any, {
-        tenantId: candidate.tenant_id,
-        buyerId: candidate.buyer_id,
-        eventName: 'session_started',
-        path: request.nextUrl.pathname,
-        context: {
-          role: candidate.role,
-          principal_type: candidate.principal_type,
-        },
-      });
-    }
-    // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
-    // the consent checkbox before /buy/home.
-    let redirect = '/buy/home';
-    if (candidate.buyer_id) {
-      const { supabaseAdmin } = await import('@/lib/supabase');
-      if (supabaseAdmin) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const db = supabaseAdmin as any;
-        const { data } = await db
-          .schema('app')
-          .from('buyers')
-          .select('whatsapp_consent_at')
-          .eq('id', candidate.buyer_id)
-          .maybeSingle();
-        if (data && !data.whatsapp_consent_at) redirect = '/consent';
+
+    const recordSessionStart = (): void => {
+      if (supabaseAdmin && candidate.buyer_id) {
+        void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+          tenantId: candidate.tenant_id,
+          buyerId: candidate.buyer_id,
+          eventName: 'session_started',
+          path: request.nextUrl.pathname,
+          context: {
+            role: candidate.role,
+            principal_type: candidate.principal_type,
+          },
+        });
       }
+    };
+
+    if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+      const destinationHost = tenantStorefrontHostForRequest(
+        request.headers.get('host') ?? '',
+        buyerCandidate.tenant_slug,
+      );
+      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken);
+
+      if (onCatalogHost) {
+        const { session } = await mintBuyerSession(buyerCandidate);
+        recordSessionStart();
+        return NextResponse.json({ success: true, handoff_url: handoffUrl, session });
+      }
+
+      return NextResponse.json({ success: true, handoff_url: handoffUrl });
     }
+
+    const { session } = await mintBuyerSession(buyerCandidate);
+    recordSessionStart();
+    // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
+    // the consent checkbox before /buy/home. Phone-level now — a phone that
+    // already consented on any other tenant relationship isn't asked again.
+    const redirect = await requirePhoneConsentRedirect(candidate.phone) ?? '/buy/home';
     return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);

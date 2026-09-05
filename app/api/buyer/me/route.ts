@@ -6,6 +6,7 @@ import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { normalizeIndianPhone } from '@/lib/phone';
 import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
+import { getCachedGuestPricingContext, type CatalogPricingMode } from '@/lib/server/public-catalog';
 
 interface BuyerMeResponse {
   mode: BuyerAppMode;
@@ -15,7 +16,7 @@ interface BuyerMeResponse {
   phone: string;
   gstin: string | null;
   session_person_name: string | null;
-  session_person_kind: 'buyer' | 'buyer_user' | 'preview';
+  session_person_kind: 'buyer' | 'buyer_user' | 'preview' | 'guest';
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -61,6 +62,8 @@ interface BuyerMeResponse {
   // the explicit consent checkbox — the buyer-side client redirects to /consent
   // until this clears. Always false for seller preview (no real buyer row).
   whatsapp_consent_required: boolean;
+  /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
+  guest_pricing_mode?: CatalogPricingMode | null;
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -198,6 +201,45 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
         whatsapp_consent_required: false,
+      };
+
+      return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
+    }
+
+    if (context.mode === 'guest') {
+      if (!profile.tenant) {
+        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+      }
+
+      const tenant = profile.tenant;
+      const guestPricing = await getCachedGuestPricingContext(context.tenant_id!);
+      const payload: BuyerMeResponse = {
+        mode: 'guest',
+        buyer_id: 'guest',
+        business_name: tenant.business_name,
+        contact_name: '',
+        phone: '—',
+        gstin: null,
+        session_person_name: null,
+        session_person_kind: 'guest',
+        credit_limit: 0,
+        credit_used: 0,
+        open_orders_count: 0,
+        seller_preview: false,
+        support_whatsapp_number: process.env.WHATSAPP_ADMIN_NUMBER ?? null,
+        tenant: {
+          id: tenant.id,
+          name: tenant.business_name,
+          slug: tenant.slug,
+          logo_url: tenantLogoUrl,
+          outlets: [],
+        },
+        greeting_name: tenant.business_name,
+        order_features: orderFeatures,
+        business_policy: businessPolicy,
+        stock_visibility: stockVisibility,
+        whatsapp_consent_required: false,
+        guest_pricing_mode: guestPricing?.mode ?? null,
       };
 
       return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { type RefObject } from 'react';
-import { ProductCard } from './ProductCard';
+import { ProductCard, type ProductCardPriceReveal } from './ProductCard';
 import { LoadingSkeleton, ProductCardSkeletonItem } from './LoadingSkeleton';
 import { BUYER_PRODUCT_GRID_CLASS } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -14,6 +14,7 @@ interface ProductGridProps {
   sentinelIndex?: number;
   sentinelRef?: RefObject<HTMLDivElement | null>;
   showPromotionBadge?: boolean;
+  priceReveal?: ProductCardPriceReveal;
 }
 
 export function ProductGrid({
@@ -23,6 +24,7 @@ export function ProductGrid({
   sentinelIndex = -1,
   sentinelRef,
   showPromotionBadge = true,
+  priceReveal,
 }: ProductGridProps) {
   if (loading) return <LoadingSkeleton count={6} />;
 
@@ -36,7 +38,7 @@ export function ProductGrid({
           ref={index === sentinelIndex ? sentinelRef : undefined}
           className="min-w-0"
         >
-          <ProductCard item={item} showPromotionBadge={showPromotionBadge} />
+          <ProductCard item={item} showPromotionBadge={showPromotionBadge} priceReveal={priceReveal} />
         </div>
       ))}
       {loadingMore ? (

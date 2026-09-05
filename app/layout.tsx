@@ -34,8 +34,12 @@ const baloo2 = Baloo_2({
 });
 
 export const metadata: Metadata = {
-  title: 'Yukti | Distributor Command Center',
+  title: {
+    default: 'Yukti | Distributor Command Center',
+    template: '%s | Yukti',
+  },
   description: 'Manage multibrand catalogs, publish cohort pricing, capture orders.',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: [
       { url: '/brand/favicon.svg', type: 'image/svg+xml' },

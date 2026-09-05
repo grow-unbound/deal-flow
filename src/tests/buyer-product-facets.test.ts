@@ -6,6 +6,9 @@ vi.mock('@/lib/server/buyer-access', () => ({
 vi.mock('@/lib/server/buyer-routing', () => ({
   resolveNearestBuyerLocation: vi.fn(),
 }));
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: { schema: vi.fn(() => ({ rpc: vi.fn(), from: vi.fn() })) },
+}));
 
 import { fetchBuyerBrands, fetchBuyerCategories } from '@/lib/server/buyer-product-data';
 

@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(12);
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Fixtures
@@ -230,6 +230,72 @@ SELECT ok(
     ) -> 'claims'
   ) ? 'tenant_id',
   'orphan user: tenant_id claim is absent'
+);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 6: buyer-owner branch (app.buyers.user_id direct) honors current_buyer_id
+-- / current_tenant_id when one auth.users id is shared across multiple buyers
+-- rows (fix_buyer_owner_hook_context_preference) — the shape the
+-- buyer-identity-consolidation work relies on being safe.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_shared_uid uuid := gen_random_uuid();
+  v_buyer_a_id uuid := gen_random_uuid();
+  v_buyer_b_id uuid := gen_random_uuid();
+  v_tenant_id  uuid := (SELECT val FROM _fixture WHERE key = 'tenant_id');
+  v_tenant2_id uuid := (SELECT val FROM _fixture WHERE key = 'tenant2_id');
+BEGIN
+  INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+  VALUES (v_shared_uid, 'shared-buyer@test.local', 'x', now(), now(), now(), '{}', '{}');
+
+  -- Same auth.users id linked directly (buyers.user_id) to two different
+  -- tenants' buyer records — the case the un-patched hook could not disambiguate.
+  INSERT INTO app.buyers (id, tenant_id, business_name, user_id, buyer_app_enabled, is_active, created_at, updated_at)
+  VALUES
+    (v_buyer_a_id, v_tenant_id,  'Business A', v_shared_uid, true, true, now(), now()),
+    (v_buyer_b_id, v_tenant2_id, 'Business B', v_shared_uid, true, true, now() + interval '1 second', now());
+
+  INSERT INTO _fixture VALUES
+    ('shared_uid',  v_shared_uid),
+    ('buyer_a_id',  v_buyer_a_id),
+    ('buyer_b_id',  v_buyer_b_id);
+END $$;
+
+SELECT is(
+  (
+    SELECT (public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'shared_uid'),
+        'claims',  jsonb_build_object(
+          'app_metadata', jsonb_build_object(
+            'current_tenant_id', (SELECT val FROM _fixture WHERE key = 'tenant2_id'),
+            'current_buyer_id',  (SELECT val FROM _fixture WHERE key = 'buyer_b_id')
+          )
+        )
+      )
+    ) -> 'claims' ->> 'buyer_id')::uuid
+  ),
+  (SELECT val FROM _fixture WHERE key = 'buyer_b_id'),
+  'shared user_id: current_buyer_id=B resolves buyer_id claim to B, not the earlier-created A'
+);
+
+SELECT is(
+  (
+    SELECT (public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'shared_uid'),
+        'claims',  jsonb_build_object(
+          'app_metadata', jsonb_build_object(
+            'current_tenant_id', (SELECT val FROM _fixture WHERE key = 'tenant_id'),
+            'current_buyer_id',  (SELECT val FROM _fixture WHERE key = 'buyer_a_id')
+          )
+        )
+      )
+    ) -> 'claims' ->> 'buyer_id')::uuid
+  ),
+  (SELECT val FROM _fixture WHERE key = 'buyer_a_id'),
+  'shared user_id: current_buyer_id=A resolves buyer_id claim to A'
 );
 
 SELECT * FROM finish();

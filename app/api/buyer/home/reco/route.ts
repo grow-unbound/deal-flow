@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import type { BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
-import { loadBuyerHomeReco } from '@/lib/server/buyer-home-reco';
+import { loadBuyerHomeReco, loadGuestHomeReco } from '@/lib/server/buyer-home-reco';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -20,6 +20,10 @@ export async function GET(
     }
 
     if (!profile.buyer?.id) {
+      if (profile.context.mode === 'guest') {
+        const payload = await loadGuestHomeReco(supabaseAdmin, profile.context.tenant_id);
+        return NextResponse.json(payload, { headers: BUYER_CACHE_PRICED });
+      }
       const previewPayload: BuyerHomeRecoResponse = {
         order_again_preview: [],
         bestsellers: [],

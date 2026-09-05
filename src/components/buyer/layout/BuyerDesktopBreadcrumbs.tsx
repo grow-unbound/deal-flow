@@ -12,7 +12,8 @@ import {
 } from '@/hooks/useBuyerProducts';
 import { useBuyerEffectivePathname } from '@/hooks/useBuyerRailPathnameOverride';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { isBuyerCampaignShareRoute, shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+import { isBuyerCampaignShareRoute, normalizeBuyerPathname, shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+import { STOREFRONT } from '@/lib/storefront-paths';
 
 interface Crumb {
   label: string;
@@ -24,34 +25,36 @@ function buildCrumbs(
   hasShareToken: boolean,
   labels: { category?: string; categoryId?: string; brand?: string; product?: string; campaign?: string },
 ): Crumb[] {
-  const crumbs: Crumb[] = [{ label: 'Home', href: '/buy/home' }];
+  const crumbs: Crumb[] = [{ label: 'Home', href: STOREFRONT.home }];
+  const path = normalizeBuyerPathname(pathname);
 
-  if (isBuyerCampaignShareRoute(pathname, hasShareToken)) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
-  if (pathname === '/buy/orders') return [...crumbs, { label: 'Orders' }];
-  if (pathname.startsWith('/buy/orders/')) return [...crumbs, { label: 'Orders', href: '/buy/orders' }, { label: 'Order details' }];
-  if (pathname.startsWith('/buy/estimates/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=enquiries' }, { label: 'Enquiry details' }];
-  if (pathname.startsWith('/buy/invoices/')) return [...crumbs, { label: 'Orders', href: '/buy/orders?tab=invoices' }, { label: 'Invoice details' }];
-  if (pathname === '/buy/profile') return [...crumbs, { label: 'Profile' }];
-  if (pathname.startsWith('/buy/home/category/')) return [...crumbs, { label: labels.category ?? 'Category browse' }];
-  if (pathname.startsWith('/buy/home/brand/')) return [...crumbs, { label: labels.brand ?? 'Brand browse' }];
-  if (pathname.startsWith('/buy/home/list/')) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
-  if (pathname.startsWith('/buy/product/')) {
+  if (isBuyerCampaignShareRoute(path, hasShareToken)) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
+  if (path === '/buy/orders') return [...crumbs, { label: 'Orders' }];
+  if (path.startsWith('/buy/orders/')) return [...crumbs, { label: 'Orders', href: STOREFRONT.orders }, { label: 'Order details' }];
+  if (path.startsWith('/buy/estimates/')) return [...crumbs, { label: 'Orders', href: `${STOREFRONT.orders}?tab=enquiries` }, { label: 'Enquiry details' }];
+  if (path.startsWith('/buy/invoices/')) return [...crumbs, { label: 'Orders', href: `${STOREFRONT.orders}?tab=invoices` }, { label: 'Invoice details' }];
+  if (path === '/buy/profile') return [...crumbs, { label: 'Profile' }];
+  if (path.startsWith('/buy/home/category/')) return [...crumbs, { label: labels.category ?? 'Category browse' }];
+  if (path.startsWith('/buy/home/brand/')) return [...crumbs, { label: labels.brand ?? 'Brand browse' }];
+  if (path.startsWith('/buy/home/list/')) return [...crumbs, { label: labels.campaign ?? 'Campaign browse' }];
+  if (path.startsWith('/buy/product/')) {
     if (labels.product && labels.category) {
       return [
         ...crumbs,
-        { label: labels.category, href: labels.categoryId ? `/buy/home/category/${labels.categoryId}` : undefined },
+        { label: labels.category, href: labels.categoryId ? STOREFRONT.category(labels.categoryId) : undefined },
         { label: labels.product },
       ];
     }
     return [...crumbs, { label: labels.product ?? 'Product details' }];
   }
-  if (pathname === '/buy/search') return [...crumbs, { label: 'Search' }];
-  if (pathname === '/buy/location') return [...crumbs, { label: 'Select location' }];
+  if (path === '/buy/search') return [...crumbs, { label: 'Search' }];
+  if (path === '/buy/location') return [...crumbs, { label: 'Select location' }];
   return crumbs;
 }
 
 export function BuyerDesktopBreadcrumbs() {
-  const pathname = useBuyerEffectivePathname(usePathname());
+  const rawPathname = useBuyerEffectivePathname(usePathname());
+  const pathname = normalizeBuyerPathname(rawPathname);
   const searchParams = useSearchParams();
   const hasShareToken = Boolean(searchParams?.get('share_token'));
   if (!shouldShowBuyerDesktopBreadcrumbs(pathname) && !isBuyerCampaignShareRoute(pathname, hasShareToken)) return null;

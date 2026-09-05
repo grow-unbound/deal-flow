@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { WarehousesLandingClient } from '@/components/seller/warehouses/WarehousesLandingClient';
@@ -12,6 +13,8 @@ import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
 // via useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams`
 // from Next.js, and the list now lives here so it can stay mounted across
 // /warehouses <-> /warehouses/[id].
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.warehouses);
+
 export default async function WarehousesLayout({ children }: { children: ReactNode }) {
   const claims = await getSellerServerClaims();
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) return <RoleForbiddenPage />;

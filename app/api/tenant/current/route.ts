@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { canonicalStorefrontHost, storefrontOriginForRequest } from '@/lib/storefront-host';
 
 export async function GET(request: NextRequest) {
   // Fast path reads middleware-verified JWT claims (no Auth network call); only falls
@@ -44,14 +45,22 @@ export async function GET(request: NextRequest) {
     workspaceTenantSlug = workspace.tenant_slug as string | null;
   }
 
-  const [{ data: tRow }, { data: tsRow }] = await Promise.all([
+  const [{ data: tRow }, { data: tsRow }, { data: catalogRow }] = await Promise.all([
     supabaseAdmin
       .schema('app')
       .from('tenants')
-      .select('business_name, plan, gstin, primary_state, settings, created_at, updated_at')
+      .select('business_name, plan, gstin, primary_state, settings, created_at, updated_at, slug')
       .eq('id', tenantId)
       .maybeSingle(),
     supabaseAdmin.schema('app').from('tenant_settings').select('settings').eq('tenant_id', tenantId).maybeSingle(),
+    supabaseAdmin
+      .schema('app')
+      .from('catalogs')
+      .select('live_at')
+      .eq('tenant_id', tenantId)
+      .eq('kind', 'public')
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
 
   const planRaw = (tRow?.plan as string | undefined) ?? 'starter';
@@ -64,11 +73,13 @@ export async function GET(request: NextRequest) {
 
   const tenant = {
     id: tenantId,
-    slug: (workspaceTenantSlug ?? tenantId) as string,
+    slug: (workspaceTenantSlug ?? (tRow?.slug as string | undefined) ?? tenantId) as string,
     business_name: (workspaceTenantName ??
       (tRow?.business_name as string | undefined) ??
       'My Business') as string,
-    subdomain: `${workspaceTenantSlug ?? tenantId}.yukti.so`,
+    subdomain: canonicalStorefrontHost(
+      (workspaceTenantSlug ?? (tRow?.slug as string | undefined) ?? tenantId) as string,
+    ),
     plan: plan as 'lite' | 'starter' | 'growth' | 'scale',
     gstin: (tRow?.gstin as string | null | undefined) ?? null,
     primary_state: (tRow?.primary_state as string | null | undefined) ?? null,
@@ -81,5 +92,7 @@ export async function GET(request: NextRequest) {
     tenant,
     role: workspaceRole,
     workspace_type: workspaceType,
+    public_catalog_live: Boolean((catalogRow as { live_at?: string | null } | null)?.live_at),
+    storefront_url: storefrontOriginForRequest(request.headers.get('host') ?? '', tenant.slug),
   }, { headers: SELLER_CACHE_PERSONAL });
 }

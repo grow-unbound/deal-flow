@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import { useAuth } from './AuthContext';
+import { canonicalStorefrontHost } from '@/lib/storefront-host';
 
 export interface Tenant {
   id: string;
@@ -14,6 +15,8 @@ export interface Tenant {
   settings: Record<string, any>;
   created_at: string;
   updated_at: string;
+  public_catalog_live?: boolean;
+  storefront_url?: string;
 }
 
 export interface TenantContextType {
@@ -38,15 +41,17 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       id: tenantId,
       slug: tenantProfile?.tenant_slug ?? tenantId,
       business_name: tenantProfile?.tenant_name ?? 'My Business',
-      subdomain: `${tenantProfile?.tenant_slug ?? tenantId}.yukti.so`,
+      subdomain: canonicalStorefrontHost(tenantProfile?.tenant_slug ?? tenantId),
       plan: 'starter',
       gstin: undefined,
       primary_state: undefined,
       settings: {},
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      public_catalog_live: tenantProfile?.public_catalog_live === true,
+      storefront_url: tenantProfile?.storefront_url,
     };
-  }, [session?.user?.id, currentTenantId, tenantProfile?.tenant_id, tenantProfile?.tenant_name, tenantProfile?.tenant_slug]);
+  }, [session?.user?.id, currentTenantId, tenantProfile?.tenant_id, tenantProfile?.tenant_name, tenantProfile?.tenant_slug, tenantProfile?.public_catalog_live, tenantProfile?.storefront_url]);
 
   const tenants = useMemo(() => (tenant ? [tenant] : []), [tenant]);
 

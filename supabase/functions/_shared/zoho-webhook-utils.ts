@@ -46,6 +46,7 @@ const ENTITY_BODY_KEY: Record<string, string> = {
   estimates: 'estimate',
   invoices: 'invoice',
   salesorders: 'salesorder',
+  customerpayments: 'payment',
 };
 
 // Parse request body — handles JSON and form-encoded (Zoho sends both)
@@ -123,6 +124,7 @@ const ID_FIELDS: Record<string, string> = {
   estimates: 'estimate_id',
   invoices: 'invoice_id',
   salesorders: 'salesorder_id',
+  customerpayments: 'payment_id',
 };
 
 export function resolveExternalId(

@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage, RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
@@ -9,6 +10,7 @@ import type { BrandsLandingMetricsV4 } from '@/hooks/useBrands';
 import { FLAGS, getFlag } from '@/lib/flags';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
 
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.brands);
 export const dynamic = 'force-dynamic';
 
 // Note: `?search=` seeding now happens client-side inside BrandsLandingClient via
@@ -18,6 +20,7 @@ export const dynamic = 'force-dynamic';
 // Brands is a Growth-section module scoped to seller_admin only, same as
 // Locations/Categories/Warehouses/Cohorts — see app/(seller)/categories/layout.tsx
 // for the reference pattern.
+
 export default async function BrandsLayout({ children }: { children: ReactNode }) {
   const claims = await getSellerServerClaims();
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) return <RoleForbiddenPage />;
