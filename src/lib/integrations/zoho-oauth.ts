@@ -28,6 +28,10 @@ export const ZOHO_OAUTH_SCOPES_BY_INTEGRATION: Record<ZohoOAuthIntegrationTypeId
     'ZohoBooks.estimates.ALL',
     'ZohoBooks.settings.ALL',
     'ZohoBooks.customerpayments.ALL',
+    // Read-only, granted ahead of use — no sync code calls /bills yet.
+    // For an upcoming costing feature (vendor bill cost tracking). Kept
+    // READ (not .ALL) since nothing here needs to write vendor bills.
+    'ZohoBooks.bills.READ',
   ].join(','),
   zoho_inventory: [
     'ZohoInventory.fullaccess.all',

@@ -314,7 +314,8 @@ INSERT INTO catalog.integration_types (
         'ZohoBooks.invoices.ALL',
         'ZohoBooks.estimates.ALL',
         'ZohoBooks.settings.ALL',
-        'ZohoBooks.customerpayments.ALL'
+        'ZohoBooks.customerpayments.ALL',
+        'ZohoBooks.bills.READ'
       ),
       'fields', jsonb_build_array(
         jsonb_build_object(

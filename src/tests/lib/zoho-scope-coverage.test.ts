@@ -23,6 +23,10 @@ const PATH_PREFIX_TO_SCOPE: Record<string, string> = {
   '/invoices': 'ZohoBooks.invoices.ALL',
   '/estimates': 'ZohoBooks.estimates.ALL',
   '/customerpayments': 'ZohoBooks.customerpayments.ALL',
+  // Reserved ahead of use for an upcoming costing feature — no sync code
+  // calls /bills yet, but the scope is already granted (READ-only) so
+  // reconnect isn't a second blocker when that feature ships.
+  '/bills': 'ZohoBooks.bills.READ',
   // Org-level settings surface: webhooks/workflows registration, users,
   // price books/lists, and locations all live under Zoho Books "Settings".
   '/settings': 'ZohoBooks.settings.ALL',

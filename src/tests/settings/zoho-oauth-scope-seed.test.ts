@@ -24,6 +24,7 @@ describe('zoho oauth seed config', () => {
       'ZohoBooks.estimates.ALL',
       'ZohoBooks.settings.ALL',
       'ZohoBooks.customerpayments.ALL',
+      'ZohoBooks.bills.READ',
     ]) {
       expect(seedSql).toContain(`'${scope}'`);
     }
