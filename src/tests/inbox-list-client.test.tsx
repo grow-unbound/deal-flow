@@ -58,4 +58,11 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
   });
+
+  it('shows an error state instead of the empty state when the fetch fails', () => {
+    useInboxEntriesMock.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch: vi.fn() });
+    renderWithClient(<InboxListClient />);
+    expect(screen.getByText(/couldn't load inbox/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+  });
 });

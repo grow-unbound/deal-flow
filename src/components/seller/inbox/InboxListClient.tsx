@@ -8,6 +8,17 @@ import { groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { TIME_BUCKET_LABEL, type InboxEntryType } from '@/lib/inbox/inbox-types';
 import { InboxEntryRow } from './InboxEntryRow';
 import { InboxEmptyState } from './InboxEmptyState';
+import { ErrorState } from '@/components/ui/empty-state';
+
+function InboxListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 p-4" aria-hidden>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-16 animate-pulse rounded-[12px] bg-cream-100" />
+      ))}
+    </div>
+  );
+}
 
 const FILTER_CHIPS: Array<{ label: string; types: InboxEntryType[] }> = [
   { label: 'Approvals', types: ['business_approval', 'new_user_login'] },
@@ -23,7 +34,7 @@ export function InboxListClient() {
   const [activeChip, setActiveChip] = useState<string | null>(null);
 
   const chipTypes = activeChip ? FILTER_CHIPS.find((c) => c.label === activeChip)?.types : undefined;
-  const { data, isLoading } = useInboxEntries(tab, chipTypes);
+  const { data, isLoading, isError, refetch } = useInboxEntries(tab, chipTypes);
 
   const sections = useMemo(
     () => groupEntriesByDateAndCustomer(data?.entries ?? []),
@@ -59,7 +70,15 @@ export function InboxListClient() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {isLoading ? null : sections.length === 0 ? (
+        {isLoading ? (
+          <InboxListSkeleton />
+        ) : isError ? (
+          <ErrorState
+            heading="Couldn't load Inbox"
+            description="There was a problem fetching your Inbox entries."
+            onRetry={() => refetch()}
+          />
+        ) : sections.length === 0 ? (
           <InboxEmptyState tab={tab} />
         ) : (
           sections.map(({ bucket, buyers }) => (
