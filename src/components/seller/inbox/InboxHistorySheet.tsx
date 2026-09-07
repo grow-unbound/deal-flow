@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useEntryHistory, type EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import { ACTION_LABELS } from './InboxActionBar';
@@ -30,11 +30,11 @@ export function InboxHistorySheet({ open, onOpenChange, buyerId, buyerName, loca
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="max-w-md">
-        <SheetHeader className="border-b border-cream-200 px-6 py-5">
+        <SheetHeader>
           <SheetTitle>{buyerName}</SheetTitle>
           <p className="text-sm text-cream-500">Activity across every item for this customer</p>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <SheetBody>
           {isLoading ? (
             <p className="text-sm text-cream-500">Loading…</p>
           ) : merged.length === 0 ? (
@@ -53,7 +53,7 @@ export function InboxHistorySheet({ open, onOpenChange, buyerId, buyerName, loca
               ))}
             </ol>
           )}
-        </div>
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );
