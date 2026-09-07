@@ -90,6 +90,23 @@ describe('phone-otp select-context route', () => {
     return refId;
   }
 
+  it('reloads verified contexts by ref_id for cross-origin account switching', async () => {
+    const refId = await writeVerifiedRecord([buyerCandidate]);
+    const { GET } = await import('../../../app/api/auth/phone-otp/contexts/route');
+    const request = Object.assign(new Request(`https://catalog.useyukti.in/api/auth/phone-otp/contexts?ref_id=${refId}`, {
+      headers: { host: 'catalog.useyukti.in' },
+    }), {
+      nextUrl: new URL(`https://catalog.useyukti.in/api/auth/phone-otp/contexts?ref_id=${refId}`),
+    });
+
+    const response = await GET(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(body.contexts).toEqual([buyerCandidate]);
+  });
+
   it('mints a local session when picked on the candidate\'s own tenant host', async () => {
     mintBuyerSessionMock.mockResolvedValue({
       session: { access_token: 'access-token', refresh_token: 'refresh-token' },
@@ -125,10 +142,11 @@ describe('phone-otp select-context route', () => {
 
     const refId = await writeVerifiedRecord([buyerCandidate]);
     const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
-    // No x-verified-tenant-id header — simulates catalog.useyukti.in.
-    const response = await POST(new Request('http://localhost/api/auth/phone-otp/select-context', {
+    // No x-verified-tenant-id header, catalog host — this is the workspace
+    // picker flow after OTP verification on catalog.useyukti.in.
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
       body: JSON.stringify({
         ref_id: refId,
         kind: 'buyer',
@@ -136,7 +154,10 @@ describe('phone-otp select-context route', () => {
         buyer_id: 'buyer-1',
         role: 'buyer_admin',
       }),
-    }) as any);
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+    const response = await POST(request as any);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -146,6 +167,14 @@ describe('phone-otp select-context route', () => {
     expect(body.session).toBeUndefined();
     expect(body.redirect).toBeUndefined();
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        eventName: 'session_started',
+      }),
+    );
   });
 
   it('mints a seller session unaffected by the handoff branch (seller kind never handed off)', async () => {

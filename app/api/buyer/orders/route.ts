@@ -21,6 +21,7 @@ import { resolveAuthoritativePrices } from '@/lib/server/buyer-price-resolution'
 import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
+import { syncOrderEntrySafe } from '@/lib/server/inbox-entries';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -300,6 +301,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       console.error('[POST /api/buyer/orders] Items insert error:', itemsError);
       return NextResponse.json({ success: false, error: 'Failed to create order items' }, { status: 500 });
     }
+
+    syncOrderEntrySafe(db as any, typed.id);
 
     // Fire-and-forget: the order row above is already committed (and is what the
     // realtime channel notifies on), so don't hold the HTTP response hostage on

@@ -5,7 +5,7 @@ import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, acquireBuye
 import { buyerOtpStore, writeVerifiedCandidatesRecord, hashOtp, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
-import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl, safeReturnToPath } from '@/lib/storefront-host';
+import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
 import { buildRequestAccessMessage } from '@/constants/auth-login-copy';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import {
@@ -207,10 +207,10 @@ async function mintCandidateSession(
       request.headers.get('host') ?? '',
       buyerCandidate.tenant_slug,
     );
-    const returnPath = safeReturnToPath(returnTo, destinationHost);
 
     if (onCatalogHost) {
-      const { session } = await mintBuyerSession(buyerCandidate);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
       const { supabaseAdmin } = await import('@/lib/supabase');
       if (supabaseAdmin && buyerCandidate.buyer_id) {
         void recordBuyerAppActivitySafe(supabaseAdmin as any, {
@@ -224,15 +224,7 @@ async function mintCandidateSession(
           },
         });
       }
-
-      if (returnPath) {
-        const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
-        const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
-        return { pending: false, handoffUrl, session };
-      }
-
-      const redirect = await requirePhoneConsentRedirect(buyerCandidate.phone) ?? '/';
-      return { pending: false, session, redirect };
+      return { pending: false, handoffUrl };
     }
 
     const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);

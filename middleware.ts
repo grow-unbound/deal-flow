@@ -47,6 +47,7 @@ import { resolveTenantFlags } from '@/lib/server/tenant-flags-resolve';
 import type { Database } from '@/types/database';
 import {
   WINEYARD_SLUG,
+  catalogHostForRequest,
   parseRequestHost,
   sellerAppHostForRequest,
   tenantStorefrontHostForRequest,
@@ -211,20 +212,19 @@ export async function middleware(request: NextRequest) {
 }
 
 /**
- * Slug to send a buyer-role session on app.useyukti.in to, when redirecting them
- * to their own tenant's canonical storefront. Prefers the session's own
- * tenant_id (so a buyer of tenant #2+ lands on their own storefront, not
- * WineYard's); WINEYARD_SLUG is only a fallback for a session-less legacy
- * /buy/* bookmark from before the subdomain cutover, when there is no tenant
- * to resolve from.
+ * Host to send buyer traffic on app.useyukti.in to. Prefers the session's own
+ * tenant_id; catalog.useyukti.in is the safe fallback for a buyer-role session
+ * with stale/unresolvable tenant claims. WINEYARD_SLUG is only a fallback for a
+ * session-less legacy /buy/* bookmark from before the subdomain cutover.
  */
-async function resolveBuyerRedirectSlug(claims: Claims | null): Promise<string> {
+async function resolveBuyerRedirectHost(claims: Claims | null, hostHeader: string): Promise<string> {
   const tenantId = claims?.tenant_id;
   if (tenantId) {
     const slug = await resolveTenantSlugById(tenantId);
-    if (slug) return slug;
+    if (slug) return tenantStorefrontHostForRequest(hostHeader, slug);
+    if (sessionRole(claims)?.startsWith('buyer_')) return catalogHostForRequest(hostHeader);
   }
-  return WINEYARD_SLUG;
+  return tenantStorefrontHostForRequest(hostHeader, WINEYARD_SLUG);
 }
 
 async function handleAppHost(
@@ -243,8 +243,8 @@ async function handleAppHost(
 
   if (isBuyPath) {
     const publicPath = toPublicStorefrontPath(pathname) ?? '/';
-    const slug = await resolveBuyerRedirectSlug(auth.claims);
-    return redirectPreservingPath(request, tenantStorefrontHostForRequest(hostHeader, slug), publicPath);
+    const destinationHost = await resolveBuyerRedirectHost(auth.claims, hostHeader);
+    return redirectPreservingPath(request, destinationHost, publicPath);
   }
 
   if (!auth.claims) {
@@ -253,8 +253,8 @@ async function handleAppHost(
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('buyer_')) {
-    const slug = await resolveBuyerRedirectSlug(auth.claims);
-    return redirectPreservingPath(request, tenantStorefrontHostForRequest(hostHeader, slug), '/');
+    const destinationHost = await resolveBuyerRedirectHost(auth.claims, hostHeader);
+    return redirectPreservingPath(request, destinationHost, '/');
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -364,7 +364,18 @@ async function handleTenantHost(
   const guestPage = isGuestStorefrontPagePath(pathname);
   const storefrontPage = isStorefrontPagePath(pathname);
 
-  if (!live && (guestApi || (guestPage && pathname !== '/login' && pathname !== '/not-live'))) {
+  const auth = await readSession(request);
+  const hasSession = Boolean(auth.claims);
+  const role = sessionRole(auth.claims);
+  const sessionTenantId = (auth.claims?.tenant_id as string | undefined) ?? null;
+  const buyerMatchesHost = Boolean(
+    role?.startsWith('buyer_')
+    && sessionTenantId
+    && storefront
+    && sessionTenantId === storefront.tenantId,
+  );
+
+  if (!live && !buyerMatchesHost && (guestApi || (guestPage && pathname !== '/login' && pathname !== '/not-live'))) {
     if (guestApi) {
       return new NextResponse(JSON.stringify({ error: 'Catalog is not live' }), {
         status: 404,
@@ -377,17 +388,6 @@ async function handleTenantHost(
       return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
     }
   }
-
-  const auth = await readSession(request);
-  const hasSession = Boolean(auth.claims);
-  const role = sessionRole(auth.claims);
-  const sessionTenantId = (auth.claims?.tenant_id as string | undefined) ?? null;
-  const buyerMatchesHost = Boolean(
-    role?.startsWith('buyer_')
-    && sessionTenantId
-    && storefront
-    && sessionTenantId === storefront.tenantId,
-  );
 
   if (!hasSession && isGuestRateLimitedPath(pathname)) {
     const kind = isGuestSearchApiPath(pathname, request.nextUrl.search) ? 'search' : 'browse';

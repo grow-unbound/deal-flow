@@ -9,7 +9,7 @@ import { type Role } from '@/constants';
 import { clearClientAuthSnapshot, setClientAuthSnapshot } from '@/lib/auth-client-store';
 import posthog from 'posthog-js';
 import { resolveUserDisplayName } from '@/lib/user-display-name';
-import { parseRequestHost } from '@/lib/storefront-host';
+import { catalogOriginForRequest, parseRequestHost } from '@/lib/storefront-host';
 
 export interface AuthUser {
   id: string;
@@ -98,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const manualSignOutRef = React.useRef(false);
+  const manualSignOutRedirectRef = React.useRef<string | null>(null);
   const claimsKeyRef = React.useRef<string | null>(null);
   const tenantProfileRef = React.useRef<TenantProfile | null>(null);
 
@@ -116,6 +117,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const redirectToLogin = () => {
     if (typeof window === 'undefined') return;
     window.location.replace('/login');
+  };
+
+  const manualSignOutRedirectTarget = async () => {
+    if (typeof window === 'undefined') return '/login';
+    const hostKind = parseRequestHost(window.location.hostname);
+    if (hostKind.kind !== 'tenant') return '/login';
+
+    const profile = tenantProfileRef.current;
+    if (profile?.public_catalog_live === true) return '/';
+    if (profile?.public_catalog_live === false) return `${catalogOriginForRequest(window.location.host)}/login`;
+
+    try {
+      const res = await fetch(`/api/public/tenant-branding?slug=${encodeURIComponent(hostKind.slug)}`, {
+        cache: 'no-store',
+      });
+      const data = (await res.json()) as { is_live?: boolean };
+      return data.is_live === false ? `${catalogOriginForRequest(window.location.host)}/login` : '/';
+    } catch {
+      return '/';
+    }
   };
 
   const readSessionClaims = (activeSession: Session): SessionClaims => {
@@ -365,7 +386,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           typeof window !== 'undefined'
         ) {
           if (wasManualSignOut) {
-            redirectToLogin();
+            const redirectTarget = manualSignOutRedirectRef.current ?? '/login';
+            manualSignOutRedirectRef.current = null;
+            resetAuthState();
+            window.location.replace(redirectTarget);
             return;
           }
 
@@ -397,6 +421,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     manualSignOutRef.current = true;
+    const redirectTarget = await manualSignOutRedirectTarget();
+    manualSignOutRedirectRef.current = redirectTarget;
     queryClient.clear();
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -404,7 +430,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // This avoids a 403 blocking the logout flow.
       await supabase.auth.signOut({ scope: 'local' } as any);
     }
-    redirectToLogin();
+    manualSignOutRedirectRef.current = null;
+    window.location.replace(redirectTarget);
   };
 
   const switchTenant = (tenantId: string) => {

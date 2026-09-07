@@ -7,6 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 import { DispatchSalesOrderBodySchema } from '@/types/tenant-sales-orders';
+import { touchEntryForSourceSafe } from '@/lib/server/inbox-entries';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,6 +109,15 @@ export async function PATCH(
       distinctId: claims.sub ?? claims.tenant_id,
       event: 'sales_order_dispatched',
       properties: { ...withTenantSellerIds(claims), order_id: id, carrier: parsed.data.carrier ?? null },
+    });
+
+    touchEntryForSourceSafe(db, {
+      tenantId: claims.tenant_id,
+      entryType: 'order_dispatch_needed',
+      sourceEntityType: 'order',
+      sourceEntityId: id,
+      action: 'mark_dispatched',
+      actorUserId: claims.sub,
     });
 
     return NextResponse.json({ data: { id, status: 'dispatched' } });

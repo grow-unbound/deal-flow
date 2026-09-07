@@ -97,9 +97,9 @@ function VerifyOtpForm() {
       }
 
       // Cross-origin handoff: OTP was verified on a host other than the
-      // buyer's own tenant (e.g. catalog.useyukti.in). When the server also
-      // returns a catalog session, set it first so catalog keeps a first-party
-      // cookie before redeeming the tenant handoff link.
+      // buyer's own tenant (e.g. catalog.useyukti.in). Tenant-host redemption
+      // owns the buyer catalog session; a session here is only for legacy
+      // server responses that still include one.
       if (data.handoff_url) {
         if (data.session?.access_token && data.session?.refresh_token) {
           await supabaseBrowser.auth.setSession({

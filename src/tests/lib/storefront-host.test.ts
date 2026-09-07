@@ -15,6 +15,7 @@ import {
 } from '@/lib/storefront-host';
 import {
   isGuestCatalogApiPath,
+  isGuestIsrPagePath,
   isGuestStorefrontPagePath,
   toInternalBuyPath,
   toPublicStorefrontPath,
@@ -159,6 +160,13 @@ describe('storefront paths', () => {
     expect(toInternalBuyPath('/cart')).toBe('/buy/cart');
   });
 
+  it('does not treat public static brand assets as storefront brand pages', () => {
+    expect(toInternalBuyPath('/brand/mark-ink.svg')).toBeNull();
+    expect(toInternalBuyPath('/brand/app-icon-copper.svg')).toBeNull();
+    expect(isGuestStorefrontPagePath('/brand/mark-ink.svg')).toBe(false);
+    expect(isGuestIsrPagePath('/brand/app-icon-copper.svg')).toBe(false);
+  });
+
   it('301s /buy URLs to unprefixed storefront paths', () => {
     expect(toPublicStorefrontPath('/buy/home')).toBe('/');
     expect(toPublicStorefrontPath('/buy/product/abc')).toBe('/product/abc');
@@ -166,10 +174,10 @@ describe('storefront paths', () => {
     expect(toPublicStorefrontPath('/buy/cart')).toBe('/cart');
   });
 
-  it('allows guests on browse pages, not cart or orders', () => {
+  it('allows guests on browse and empty-cart pages, not orders', () => {
     expect(isGuestStorefrontPagePath('/')).toBe(true);
     expect(isGuestStorefrontPagePath('/product/x')).toBe(true);
-    expect(isGuestStorefrontPagePath('/cart')).toBe(false);
+    expect(isGuestStorefrontPagePath('/cart')).toBe(true);
     expect(isGuestStorefrontPagePath('/orders')).toBe(false);
     expect(isGuestCatalogApiPath('/api/buyer/catalog')).toBe(true);
     expect(isGuestCatalogApiPath('/api/buyer/orders')).toBe(false);

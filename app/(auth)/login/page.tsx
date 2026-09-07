@@ -17,11 +17,12 @@ import {
 import { StorefrontPhoneLogin } from '@/components/buyer/auth/StorefrontPhoneLogin';
 import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHero';
 import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
-import { parseRequestHost, sellerAppHostForRequest } from '@/lib/storefront-host';
+import { catalogLoginUrlForRequest, parseRequestHost, sellerAppHostForRequest } from '@/lib/storefront-host';
 
 type LoginView = 'otp' | 'email';
 type LoginResolution =
   | { kind: 'unregistered' }
+  | { kind: 'buyer_moved'; catalogUrl: string }
   | {
       kind: 'blocked';
       reason: 'seller_disabled' | 'buyer_disabled';
@@ -33,11 +34,12 @@ type LoginResolution =
 interface PhoneOtpSendResponse {
   ref_id: string | null;
   registered: boolean;
-  outcome: 'otp_sent' | 'unregistered' | 'seller_disabled' | 'buyer_disabled';
+  outcome: 'otp_sent' | 'unregistered' | 'seller_disabled' | 'buyer_disabled' | 'buyer_moved';
   message: string;
   seller_name: string | null;
   seller_whatsapp_number: string | null;
   buyer_name: string | null;
+  catalog_url?: string;
 }
 
 function isPhoneOtpSendResponse(
@@ -70,6 +72,21 @@ function safeNext(raw: string | null): string | null {
   return null;
 }
 
+function buyerRoleFromAccessToken(accessToken: string | undefined): string | null {
+  if (!accessToken) return null;
+  try {
+    const payload = accessToken.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const role = claims.user_role ?? claims.role;
+    return typeof role === 'string' && role.startsWith('buyer_') ? role : null;
+  } catch {
+    return null;
+  }
+}
+
 function LoginForm() {
   const router = useRouter();
   const posthog = usePostHog();
@@ -99,6 +116,7 @@ function LoginForm() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [resolution, setResolution] = useState<LoginResolution | null>(null);
+  const [signOutLoading, setSignOutLoading] = useState(false);
 
   const [identifier, setIdentifier] = useState(prefillEmail);
   const [password, setPassword] = useState('');
@@ -120,6 +138,23 @@ function LoginForm() {
   const sellerLoginUrl = typeof window !== 'undefined'
     ? `${window.location.protocol}//${sellerAppHostForRequest(window.location.host)}/login`
     : '/login';
+  const buyerLoginUrl = typeof window !== 'undefined'
+    ? catalogLoginUrlForRequest(window.location.host)
+    : '/login';
+
+  useEffect(() => {
+    if (isCatalogHost || typeof window === 'undefined') return;
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      if (buyerRoleFromAccessToken(data.session?.access_token)) {
+        setResolution({ kind: 'buyer_moved', catalogUrl: buyerLoginUrl });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [buyerLoginUrl, isCatalogHost]);
 
   async function handlePhoneSubmit(phoneNumber: string) {
     setPhoneError('');
@@ -156,14 +191,18 @@ function LoginForm() {
         return;
       }
 
-      if (data.outcome === 'unregistered') {
+      if (data.outcome === 'unregistered' || data.outcome === 'buyer_moved') {
         captureLoginFailed({
           method: 'phone_otp',
-          failure_type: 'unregistered_phone',
+          failure_type: data.outcome === 'buyer_moved' ? 'buyer_login_moved' : 'unregistered_phone',
           status: res.status,
           outcome: data.outcome,
         });
-        setResolution({ kind: 'unregistered' });
+        setResolution(
+          data.outcome === 'buyer_moved'
+            ? { kind: 'buyer_moved', catalogUrl: data.catalog_url ?? buyerLoginUrl }
+            : { kind: 'unregistered' },
+        );
         return;
       }
 
@@ -308,6 +347,22 @@ function LoginForm() {
     openWhatsAppShare(message);
   }
 
+  async function handleSignOutHere() {
+    setSignOutLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        await supabase.auth.signOut({ scope: 'local' } as never);
+      }
+      setResolution(null);
+      setPhoneError('');
+      setEmailError('');
+      setPhoneFormKey((current) => current + 1);
+    } finally {
+      setSignOutLoading(false);
+    }
+  }
+
   const inputCls =
     'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
   const labelCls =
@@ -378,7 +433,16 @@ function LoginForm() {
           {resolution ? (
             <div className="space-y-4">
               <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2">
-                {resolution.kind === 'unregistered' ? (
+                {resolution.kind === 'buyer_moved' ? (
+                  <>
+                    <p className="text-body-sm text-warning-700 font-medium">
+                      Buyer login has moved
+                    </p>
+                    <p className="text-body-sm text-warning-700/90">
+                      Buyer login has changed to a new URL: {resolution.catalogUrl}
+                    </p>
+                  </>
+                ) : resolution.kind === 'unregistered' ? (
                   <>
                     <p className="text-body-sm text-warning-700 font-medium">
                       {isCatalogHost
@@ -414,7 +478,24 @@ function LoginForm() {
               </div>
 
               <div className="space-y-3">
-                {resolution.kind === 'unregistered' ? (
+                {resolution.kind === 'buyer_moved' ? (
+                  <>
+                    <a
+                      href={resolution.catalogUrl}
+                      className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                    >
+                      Go to Buyer Login
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleSignOutHere}
+                      disabled={signOutLoading}
+                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                    >
+                      {signOutLoading ? 'Logging out…' : 'Log out on this device'}
+                    </button>
+                  </>
+                ) : resolution.kind === 'unregistered' ? (
                   isCatalogHost ? (
                     <a
                       href={sellerLoginUrl}
@@ -559,7 +640,13 @@ function LoginForm() {
       )}
 
       {!isCatalogHost ? (
-        <div className="mt-4 text-right">
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <a
+            href={buyerLoginUrl}
+            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+          >
+            Buyer Login
+          </a>
           <Link
             href="/signup"
             className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"

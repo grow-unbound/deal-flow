@@ -155,10 +155,10 @@ const nextConfig = {
 
     // No filesystem collision for these four — safe as `afterFiles`.
     const GUEST_ISR_ID_ROUTES = [
-      { source: '/category/:id', internalSuffix: '/home/category/:id' },
-      { source: '/brand/:id', internalSuffix: '/home/brand/:id' },
-      { source: '/list/:id', internalSuffix: '/home/list/:id' },
-      { source: '/product/:id', internalSuffix: '/product/:id' },
+      { source: '/category/:id([^/.]+)', internalSuffix: '/home/category/:id' },
+      { source: '/brand/:id([^/.]+)', internalSuffix: '/home/brand/:id' },
+      { source: '/list/:id([^/.]+)', internalSuffix: '/home/list/:id' },
+      { source: '/product/:id([^/.]+)', internalSuffix: '/product/:id' },
     ];
     const guestIsrIdRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.flatMap((suffix) =>
       GUEST_ISR_ID_ROUTES.map(({ source, internalSuffix }) => ({

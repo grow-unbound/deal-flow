@@ -263,6 +263,7 @@ export function CatalogDiscoveryLanding({
                         item={item}
                         variant="compact"
                         className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0`}
+                        priceReveal={priceReveal}
                       />
                     ))
                   )}

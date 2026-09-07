@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiFetchMock = vi.fn();
 const setRefreshFnMock = vi.fn();
 const useCartMock = vi.fn();
+const useBuyerMeMock = vi.fn();
 
 vi.mock('posthog-js/react', () => ({
   usePostHog: () => ({ capture: vi.fn() }),
@@ -25,6 +26,25 @@ vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(),
+      getUser: vi.fn(),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+  },
+  supabaseAdmin: null,
+}));
+
+vi.mock('@/lib/server/buyer-server-claims', () => ({
+  getBuyerServerClaims: vi.fn(async () => ({
+    tenant_id: 'tenant-1',
+    buyer_id: 'buyer-1',
+    role: 'buyer_admin',
+  })),
+}));
+
 vi.mock('@/contexts/BuyerRealtimeContext', () => ({
   useBuyerRealtimeContext: () => ({
     unreadCount: 0,
@@ -34,8 +54,23 @@ vi.mock('@/contexts/BuyerRealtimeContext', () => ({
   }),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: null,
+    currentTenantId: 'tenant-1',
+    currentBuyerId: null,
+    tenantProfile: null,
+    isLoading: false,
+    signOut: vi.fn(),
+  }),
+}));
+
 vi.mock('@/components/buyer/layout/BuyerNotificationDrawer', () => ({
   BuyerNotificationDrawer: () => null,
+}));
+
+vi.mock('@/components/buyer/layout/BuyerSelectionGate', () => ({
+  BuyerSelectionGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/contexts/BuyerCartContext', () => ({
@@ -48,16 +83,11 @@ vi.mock('@/hooks/useInfiniteScroll', () => ({
 }));
 
 vi.mock('@/hooks/useBuyerMe', () => ({
-  useBuyerMe: () => ({
-    data: {
-      greeting_name: 'Rajan',
-      contact_name: 'Rajan',
-      order_features: { enquiries: true, sales_orders: true, invoices: true },
-    },
-  }),
+  useBuyerMe: (...args: unknown[]) => useBuyerMeMock(...args),
 }));
 
 import HomePage from '../../app/(buyer)/buy/home/page';
+import { CatalogDiscoveryLanding } from '@/components/buyer/catalog/CatalogDiscoveryLanding';
 
 function jsonResponse(data: unknown) {
   return Promise.resolve({
@@ -78,6 +108,16 @@ describe('buyer home page', () => {
     window.sessionStorage.clear();
     apiFetchMock.mockReset();
     setRefreshFnMock.mockReset();
+    useBuyerMeMock.mockReset();
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        mode: 'buyer',
+        greeting_name: 'Rajan',
+        contact_name: 'Rajan',
+        tenant: { id: 'tenant-1', name: 'Yukti', logo_url: null },
+        order_features: { enquiries: true, sales_orders: true, invoices: true },
+      },
+    });
     useCartMock.mockReset();
     useCartMock.mockReturnValue({
       items: [],
@@ -91,28 +131,8 @@ describe('buyer home page', () => {
     } as typeof IntersectionObserver;
   });
 
-  it('renders the V4 KPI hierarchy and independent section fetches', async () => {
+  it('renders the catalog landing and independent section fetches', async () => {
     apiFetchMock.mockImplementation((url: string) => {
-      if (url === '/api/buyer/home/metrics') {
-        return jsonResponse({
-          period: {
-            period_key: 'this_quarter',
-            grain: 'quarter',
-            period_start: '2026-07-01',
-            period_end_exclusive: '2026-10-01',
-          },
-          spend_qtd: 3250000,
-          invoice_count_qtd: 47,
-          demand_qtd: 1854000,
-          demand_document_count_qtd: 12,
-          demand_kind: 'orders',
-          credit_limit: 250000,
-          outstanding: 240000,
-          overdue: 50000,
-          available_credit: 10000,
-          computed_at: '2026-08-04T06:30:00.000Z',
-        });
-      }
       if (url === '/api/buyer/home/promotions') {
         return jsonResponse({
           latest_promotions_preview: [
@@ -128,49 +148,82 @@ describe('buyer home page', () => {
           bestsellers: [],
         });
       }
-      if (url.startsWith('/api/buyer/activity?')) {
-        return jsonResponse({
-          items: [
-            {
-              id: 'order:1',
-              type: 'order',
-              entity_id: 'ord-1',
-              title: 'SO-001',
-              status: 'received',
-              amount: 4500,
-              timestamp: '2026-06-10T00:00:00.000Z',
-              href: '/buy/orders/ord-1',
-              meta: 'Sales order',
-            },
-          ],
-          next_cursor: null,
-        });
+      if (url === '/api/buyer/brands') {
+        return jsonResponse({ brands: [] });
+      }
+      if (url === '/api/buyer/categories') {
+        return jsonResponse({ categories: [] });
       }
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    renderWithQueryClient(<HomePage />);
+    renderWithQueryClient(await HomePage({ searchParams: Promise.resolve({}) }));
 
-    expect(await screen.findByRole('heading', { name: 'Your shelf, this quarter.' })).toBeInTheDocument();
-    expect(await screen.findByText(/Good (morning|afternoon|evening), Rajan/)).toBeInTheDocument();
-    expect(screen.getByText('Spend this quarter')).toBeInTheDocument();
-    expect(screen.getByText('Orders this quarter')).toBeInTheDocument();
-    expect(screen.getByText('₹32,50,000')).toBeInTheDocument();
-    expect(screen.getByText('47 invoices')).toBeInTheDocument();
-    expect(screen.getByText('Outstanding')).toBeInTheDocument();
-    expect(screen.getByText('Available credit')).toBeInTheDocument();
-    expect(screen.getByText(/as of /)).toBeInTheDocument();
-    expect(screen.getByText('Promotions')).toBeInTheDocument();
-    const seeAllLinks = screen.getAllByRole('link', { name: /see all/i });
-    expect(seeAllLinks.map((link) => link.getAttribute('href'))).toEqual(
-      expect.arrayContaining(['/buy/promotions', '/buy/orders']),
-    );
-    expect(screen.getByRole('link', { name: /spend this quarter/i })).toHaveAttribute('href', '/buy/orders?tab=invoices');
-    expect(screen.getByRole('link', { name: /orders this quarter/i })).toHaveAttribute('href', '/buy/orders?tab=orders');
+    expect(screen.getByText('Campaigns')).toBeInTheDocument();
+    expect(await screen.findByText('Monsoon Promo')).toBeInTheDocument();
+    expect(screen.getByText('Order Again')).toBeInTheDocument();
+    expect(screen.getByText('Cabernet Sauvignon')).toBeInTheDocument();
     await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/metrics');
       expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/promotions');
       expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/home/reco');
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/brands', undefined);
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/categories', undefined);
     });
+  });
+
+  it('shows guest public-catalog price visibility on home bestsellers', async () => {
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        mode: 'guest',
+        guest_pricing_mode: 'hidden_until_login',
+        tenant: { id: 'tenant-1', name: 'Yukti', logo_url: null },
+        order_features: { enquiries: true, sales_orders: true, invoices: true },
+      },
+    });
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/api/buyer/catalog?')) {
+        return jsonResponse({ items: [], total: 0, has_more: false });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    renderWithQueryClient(
+      <CatalogDiscoveryLanding
+        initialReco={{
+          order_again_preview: [],
+          bestsellers: [
+            {
+              id: 'tp-best-1',
+              tenant_product_id: 'tp-best-1',
+              campaign_id: null,
+              campaign_name: null,
+              campaign_valid_until: null,
+              internal_sku: 'BEST-001',
+              display_name: 'Public Bestseller Camera',
+              brand_id: null,
+              brand_name: 'CP Plus',
+              category_id: null,
+              category_name: null,
+              mrp: 10000,
+              price: null,
+              resolved_price: null,
+              has_campaign_price: false,
+              default_uom: 'box',
+              pack_size: null,
+              image_urls: [],
+              stock_status: 'available',
+              on_hand: 0,
+            },
+          ],
+        }}
+        initialBrands={[]}
+        initialCategories={[]}
+      />,
+    );
+
+    expect(await screen.findByText('Bestsellers')).toBeInTheDocument();
+    expect(screen.getByText('Public Bestseller Camera')).toBeInTheDocument();
+    expect(screen.getByText('Login for Price')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Price hidden')).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
 import { CancelSalesOrderBodySchema } from '@/types/tenant-sales-orders';
+import { touchEntryForSourceSafe } from '@/lib/server/inbox-entries';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,25 @@ export async function PATCH(
       distinctId: claims.sub ?? claims.tenant_id,
       event: 'sales_order_cancelled',
       properties: { ...withTenantSellerIds(claims), order_id: id, reason: reasonLabel },
+    });
+
+    touchEntryForSourceSafe(db, {
+      tenantId: claims.tenant_id,
+      entryType: 'new_order_confirmation',
+      sourceEntityType: 'order',
+      sourceEntityId: id,
+      action: 'reject',
+      actorUserId: claims.sub,
+      note: notes,
+    });
+    touchEntryForSourceSafe(db, {
+      tenantId: claims.tenant_id,
+      entryType: 'order_dispatch_needed',
+      sourceEntityType: 'order',
+      sourceEntityId: id,
+      action: 'cancel_order',
+      actorUserId: claims.sub,
+      note: notes,
     });
 
     return NextResponse.json({ data: { id, status: 'cancelled' } });

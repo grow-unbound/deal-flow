@@ -19,9 +19,9 @@ import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationCon
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { redirectToBuyerAccountSelector } from '@/lib/buyer-switch-account';
 import { triggerHaptic } from '@/lib/haptics';
 import { normalizeBuyerPathname } from '@/lib/buyer-routes';
-import { catalogOriginForRequest } from '@/lib/storefront-host';
 import { STOREFRONT } from '@/lib/storefront-paths';
 import { cn } from '@/lib/utils';
 
@@ -168,12 +168,12 @@ export function BuyerDesktopHeader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
 
-  function handleSwitchAccount() {
+  async function handleSwitchAccount() {
     setSwitchPending(true);
     try {
-      const catalogOrigin = catalogOriginForRequest(window.location.host);
-      window.location.assign(`${catalogOrigin}/`);
-    } finally {
+      await redirectToBuyerAccountSelector();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not switch accounts. Please try again.');
       setSwitchPending(false);
     }
   }

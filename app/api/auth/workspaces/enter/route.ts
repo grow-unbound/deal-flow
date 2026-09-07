@@ -3,12 +3,10 @@ import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { BUYER_ROLES } from '@/constants';
 import {
-  findBuyerLoginCandidates,
+  findBuyerWorkspaceCandidatesForUser,
   mintBuyerHandoffLink,
-  mintBuyerSession,
 } from '@/lib/server/buyer-access';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { resolveCallerPhone } from '@/lib/server/resolve-auth-phone';
 import { buildStorefrontHandoffUrl, tenantStorefrontHostForRequest } from '@/lib/storefront-host';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -38,12 +36,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'tenant_id, buyer_id, and role are required' }, { status: 400 });
     }
 
-    const phone = await resolveCallerPhone(claims.sub, claims.role);
-    if (!phone) {
-      return NextResponse.json({ error: 'No phone number on file for this account.' }, { status: 400 });
-    }
-
-    const candidates = await findBuyerLoginCandidates(phone);
+    const candidates = await findBuyerWorkspaceCandidatesForUser(claims.sub);
     const match = candidates.find(
       (candidate) =>
         candidate.tenant_id === parsed.data.tenant_id
@@ -56,7 +49,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const buyerCandidate = match;
-    const { session } = await mintBuyerSession(buyerCandidate);
     const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
     const destinationHost = tenantStorefrontHostForRequest(
       request.headers.get('host') ?? '',
@@ -78,7 +70,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    return NextResponse.json({ session, handoff_url: handoffUrl });
+    return NextResponse.json({ handoff_url: handoffUrl });
   } catch (err) {
     console.error('[POST /api/auth/workspaces/enter]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

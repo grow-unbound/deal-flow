@@ -187,6 +187,10 @@ export function catalogOriginForRequest(hostHeader: string): string {
   return `${protocol}://${host}`;
 }
 
+export function catalogLoginUrlForRequest(hostHeader: string): string {
+  return `${catalogOriginForRequest(hostHeader)}/login`;
+}
+
 export function buildStorefrontHandoffUrl(
   destinationHost: string,
   hashedToken: string,

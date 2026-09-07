@@ -104,9 +104,8 @@ export async function POST(request: NextRequest) {
       const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken);
 
       if (onCatalogHost) {
-        const { session } = await mintBuyerSession(buyerCandidate);
         recordSessionStart();
-        return NextResponse.json({ success: true, handoff_url: handoffUrl, session });
+        return NextResponse.json({ success: true, handoff_url: handoffUrl });
       }
 
       return NextResponse.json({ success: true, handoff_url: handoffUrl });

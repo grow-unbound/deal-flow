@@ -8,6 +8,7 @@ import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import { firstNameFromValue, normalizeIndianPhone } from '@/lib/phone';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { syncBuyerEntrySafe } from '@/lib/server/inbox-entries';
 
 export interface BuyerLoginCandidate {
   tenant_id: string;
@@ -81,12 +82,42 @@ export interface BuyerVisibleCatalog {
   hero_image_url: string | null;
 }
 
+type BuyerCandidateRpcRow = {
+  kind: 'owner' | 'delegate';
+  id: string;
+  tenant_id: string;
+  business_name: string | null;
+  contact_name: string | null;
+  buyer_id: string;
+  role: string;
+  user_id: string | null;
+  buyer_user_id?: string | null;
+  phone?: string | null;
+  buyer_app_enabled: boolean | null;
+  buyer_is_active?: boolean | null;
+  buyer_deleted_at?: string | null;
+  tenant_business_name: string | null;
+  tenant_slug: string | null;
+  tenant_whatsapp_number?: string | null;
+  tenant_whatsapp_display_name?: string | null;
+  tenant_logo_url?: string | null;
+};
+
 const BUYER_SESSION_PASSWORD_LENGTH = 32;
 
 function buyerAppMetadataFromSettings(
   settings: Record<string, unknown> | null | undefined,
   logoUrl: string | null = null,
 ): TenantBuyerAppMetadata {
+  const settingsBusiness = settings?.business;
+  const settingsLogoUrl = settingsBusiness
+    && typeof settingsBusiness === 'object'
+    && 'logo_url' in settingsBusiness
+    && typeof (settingsBusiness as { logo_url?: unknown }).logo_url === 'string'
+    && (settingsBusiness as { logo_url: string }).logo_url.trim()
+      ? (settingsBusiness as { logo_url: string }).logo_url.trim()
+      : null;
+  const resolvedLogoUrl = logoUrl?.trim() || settingsLogoUrl;
   const buyerApp = settings?.buyer_app;
   if (buyerApp && typeof buyerApp === 'object' && 'enabled' in buyerApp) {
     const typedBuyerApp = buyerApp as {
@@ -105,7 +136,7 @@ function buyerAppMetadataFromSettings(
         typeof typedBuyerApp.whatsapp_display_name === 'string' && typedBuyerApp.whatsapp_display_name.trim()
           ? typedBuyerApp.whatsapp_display_name.trim()
           : null,
-      logo_url: logoUrl,
+      logo_url: resolvedLogoUrl,
     };
   }
 
@@ -113,7 +144,7 @@ function buyerAppMetadataFromSettings(
     enabled: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.enabled,
     whatsapp_number: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_number || null,
     whatsapp_display_name: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_display_name || null,
-    logo_url: logoUrl,
+    logo_url: resolvedLogoUrl,
   };
 }
 
@@ -277,27 +308,11 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
     throw new Error(`Buyer login candidate lookup failed: ${error.message}`);
   }
 
-  type CandidateRow = {
-    kind: 'owner' | 'delegate';
-    id: string;
-    tenant_id: string;
-    business_name: string | null;
-    contact_name: string | null;
-    buyer_id: string;
-    role: string;
-    user_id: string | null;
-    buyer_app_enabled: boolean | null;
-    buyer_is_active: boolean | null;
-    buyer_deleted_at: string | null;
-    tenant_business_name: string | null;
-    tenant_slug: string | null;
-  };
-
   const tenantIds = new Set<string>();
   const ownerCandidates: BuyerLoginCandidate[] = [];
   const delegateCandidates: BuyerLoginCandidate[] = [];
 
-  for (const row of (rows ?? []) as CandidateRow[]) {
+  for (const row of (rows ?? []) as BuyerCandidateRpcRow[]) {
     if (row.kind === 'owner') {
       const candidate: BuyerLoginCandidate = {
         tenant_id: String(row.tenant_id),
@@ -354,6 +369,45 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
     tenant_whatsapp_number: metadataByTenant.get(candidate.tenant_id)?.whatsapp_number ?? null,
     tenant_whatsapp_display_name: metadataByTenant.get(candidate.tenant_id)?.whatsapp_display_name ?? null,
     tenant_logo_url: metadataByTenant.get(candidate.tenant_id)?.logo_url ?? null,
+  }));
+}
+
+export async function findBuyerWorkspaceCandidatesForUser(userId: string): Promise<BuyerLoginCandidate[]> {
+  if (!supabaseAdmin) {
+    throw new Error('Server configuration error');
+  }
+
+  const { data: rows, error } = await supabaseAdmin
+    .schema('app')
+    .rpc('find_buyer_workspace_candidates_for_user', { p_user_id: userId });
+
+  if (error) {
+    throw new Error(`Buyer workspace candidate lookup failed: ${error.message}`);
+  }
+
+  const typedRows = (rows ?? []) as BuyerCandidateRpcRow[];
+  const tenantIds = Array.from(new Set(typedRows.map((row) => String(row.tenant_id)).filter(Boolean)));
+  const metadataByTenant = await loadTenantBuyerAppMetadata(tenantIds);
+
+  return typedRows.map((row) => ({
+    tenant_id: String(row.tenant_id),
+    tenant_name: String(row.tenant_business_name ?? ''),
+    tenant_slug: String(row.tenant_slug ?? ''),
+    tenant_whatsapp_number: row.tenant_whatsapp_number ?? null,
+    tenant_whatsapp_display_name: row.tenant_whatsapp_display_name ?? null,
+    tenant_logo_url: row.tenant_logo_url?.trim() || metadataByTenant.get(String(row.tenant_id))?.logo_url || null,
+    buyer_id: String(row.buyer_id ?? row.id),
+    role: row.kind === 'owner'
+      ? 'buyer_admin'
+      : (String(row.role ?? 'buyer_assistant') as 'buyer_admin' | 'buyer_assistant'),
+    principal_type: row.kind === 'owner' ? 'buyer' : 'delegate',
+    user_id: row.user_id,
+    buyer_user_id: row.kind === 'delegate' ? String(row.buyer_user_id ?? row.id) : null,
+    phone: String(row.phone ?? ''),
+    business_name: String(row.business_name ?? ''),
+    contact_name: row.contact_name,
+    buyer_app_enabled: Boolean(row.buyer_app_enabled),
+    tenant_app_enabled: true,
   }));
 }
 
@@ -733,6 +787,10 @@ export async function acquireBuyerForStorefront(
     // acquisition (see the insert branch below), silently re-enable
     // themselves by retrying. Reactivation is a seller action (Manage
     // Access) or an explicit approval, never a side effect of login.
+    if (row.buyer_app_enabled === false) {
+      syncBuyerEntrySafe(db as any, row.id);
+    }
+
     return {
       tenant_id: tenantId,
       tenant_name: tenant.business_name as string,
@@ -770,6 +828,7 @@ export async function acquireBuyerForStorefront(
       payment_terms_days: 0,
       buyer_app_enabled: false,
       is_active: true,
+      custom_fields: { storefront_self_registered: true },
     })
     .select('id, business_name, contact_name, user_id')
     .single();
@@ -783,6 +842,8 @@ export async function acquireBuyerForStorefront(
     contact_name: string | null;
     user_id: string | null;
   };
+
+  syncBuyerEntrySafe(db as any, createdRow.id);
 
   return {
     tenant_id: tenantId,

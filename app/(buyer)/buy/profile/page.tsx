@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-import { catalogOriginForRequest } from '@/lib/storefront-host';
+import { redirectToBuyerAccountSelector } from '@/lib/buyer-switch-account';
 
 interface BuyerInvoice {
   id: string;
@@ -571,12 +571,12 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSwitchAccount = () => {
+  const handleSwitchAccount = async () => {
     setSwitchPending(true);
     try {
-      const catalogOrigin = catalogOriginForRequest(window.location.host);
-      window.location.assign(`${catalogOrigin}/`);
-    } finally {
+      await redirectToBuyerAccountSelector();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not switch accounts. Please try again.');
       setSwitchPending(false);
     }
   };

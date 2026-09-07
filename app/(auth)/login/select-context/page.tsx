@@ -128,40 +128,63 @@ function SelectContextForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Load contexts from sessionStorage
   useEffect(() => {
-    if (!ref_id) {
-      router.replace('/login');
-      return;
-    }
-    try {
-      const raw = sessionStorage.getItem(SESSION_CONTEXTS_KEY);
-      if (!raw) {
-        router.replace('/login');
-        return;
-      }
-      const parsed: LoginOtpCandidate[] = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        router.replace('/login');
-        return;
-      }
+    let cancelled = false;
+    const applyContexts = (rows: LoginOtpCandidate[]) => {
       // app.useyukti.in is seller-only now (buyer sessions are bounced off it
       // entirely) — catalog.useyukti.in is the buyer-only workspace-finder.
       // Sellers and buyers only ever see their own switcher, never a mixed list.
       const hostKind = parseRequestHost(window.location.hostname);
       const scoped = hostKind.kind === 'app'
-        ? parsed.filter((ctx) => ctx.kind === 'seller')
+        ? rows.filter((ctx) => ctx.kind === 'seller')
         : (hostKind.kind === 'reserved' && hostKind.label === 'catalog')
-          ? parsed.filter((ctx) => ctx.kind === 'buyer')
-          : parsed;
+          ? rows.filter((ctx) => ctx.kind === 'buyer')
+          : rows;
       if (scoped.length === 0) {
         router.replace('/login');
         return;
       }
       setContexts(dedupeContexts(scoped));
-    } catch {
+    };
+
+    if (!ref_id) {
       router.replace('/login');
+      return;
     }
+
+    try {
+      const raw = sessionStorage.getItem(SESSION_CONTEXTS_KEY);
+      if (raw) {
+        const parsed: LoginOtpCandidate[] = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          applyContexts(parsed);
+          return () => {
+            cancelled = true;
+          };
+        }
+      }
+    } catch {
+      // Fall through to the server-backed ref_id reload below.
+    }
+
+    fetch(`/api/auth/phone-otp/contexts?ref_id=${encodeURIComponent(ref_id)}`, { cache: 'no-store' })
+      .then(async (res) => {
+        const data = (await res.json()) as { contexts?: LoginOtpCandidate[]; error?: string };
+        if (!res.ok || !Array.isArray(data.contexts) || data.contexts.length === 0) {
+          throw new Error(data.error ?? 'Session expired. Please log in again.');
+        }
+        return data.contexts;
+      })
+      .then((rows) => {
+        if (!cancelled) applyContexts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace('/login');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [ref_id, router]);
 
   async function handleSelect(ctx: LoginOtpCandidate) {
@@ -301,7 +324,7 @@ function SelectContextForm() {
   // read as a wide, visual gallery rather than a narrow form.
   if (viewMode === 'catalog') {
     return (
-      <div className="relative left-1/2 w-screen max-w-full -translate-x-1/2 px-4 sm:px-6">
+      <div className="relative left-1/2 w-dvw -translate-x-1/2 px-4 sm:px-6">
         <div className="mx-auto max-w-[1440px]">
           <div className="mb-7 flex justify-center">
             <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />

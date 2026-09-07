@@ -221,7 +221,7 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBe('https://acme.useyukti.in/');
   });
 
-  it('falls back to WineYard when a buyer session has no resolvable tenant slug', async () => {
+  it('falls back to catalog when a buyer session has no resolvable tenant slug', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 'b3', tenant_id: 'tenant-unknown', user_role: 'buyer_admin', buyer_id: 'buyer-3' } },
       error: null,
@@ -230,7 +230,7 @@ describe('middleware auth redirects', () => {
     const { middleware } = await import('../../../middleware');
     const response = await middleware(tenantRequest('/dashboard', 'app.useyukti.in'));
     expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/');
   });
 
   it('does not serve products on an unpublished tenant host', async () => {
@@ -248,6 +248,46 @@ describe('middleware auth redirects', () => {
     expect(page.status).toBe(200);
     const api = await middleware(tenantRequest('/api/buyer/catalog', 'acme.useyukti.in'));
     expect(api.status).toBe(404);
+  });
+
+  it('lets an authenticated buyer reach their tenant experience even when the public catalog is not live', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: null,
+      pricingMode: null,
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const page = await middleware(tenantRequest('/', 'wineyard.useyukti.in'));
+    expect(page.status).toBe(200);
+    expect(page.headers.get('x-middleware-rewrite')).toContain('/buy/home');
+
+    const api = await middleware(tenantRequest('/api/buyer/catalog', 'wineyard.useyukti.in'));
+    expect(api.status).toBe(200);
+    expect(api.headers.get('location')).toBeNull();
+  });
+
+  it('serves public brand assets without rewriting them as authenticated buyer brand pages', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const mark = await middleware(tenantRequest('/brand/mark-ink.svg'));
+    expect(mark.status).toBe(200);
+    expect(mark.headers.get('x-middleware-rewrite')).toBeNull();
+
+    const appIcon = await middleware(tenantRequest('/brand/app-icon-copper.svg'));
+    expect(appIcon.status).toBe(200);
+    expect(appIcon.headers.get('x-middleware-rewrite')).toBeNull();
   });
 
   it('rewrites to a real 404 page for a slug with no matching tenant at all — not the not-live page', async () => {

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { WorkspaceLookbook } from '@/components/buyer/workspace/WorkspaceLookbook';
 import { writeStoredBuyAsBuyerId } from '@/lib/buy-as-storage';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { WorkspaceAccount, WorkspaceTenantGroup } from '@/lib/server/workspaces';
 
 interface WorkspacesResponse {
@@ -16,27 +15,6 @@ export default function WorkspacesPage() {
   const [tenants, setTenants] = useState<WorkspaceTenantGroup[] | null>(null);
   const [error, setError] = useState('');
   const [pendingAccountKey, setPendingAccountKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/auth/workspaces')
-      .then(async (res) => {
-        const data = (await res.json()) as WorkspacesResponse;
-        if (!res.ok) {
-          throw new Error(data.error ?? 'Failed to load workspaces');
-        }
-        return data.tenants;
-      })
-      .then((rows) => {
-        if (!cancelled) setTenants(rows);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleSelectAccount = useCallback(async (tenant: WorkspaceTenantGroup, account: WorkspaceAccount) => {
     const key = `${tenant.tenant_id}:${account.buyer_id}:${account.role}`;
@@ -55,28 +33,49 @@ export default function WorkspacesPage() {
       });
 
       const data: {
-        session?: { access_token: string; refresh_token: string };
         handoff_url?: string;
         error?: string;
       } = await res.json();
 
-      if (!res.ok || !data.handoff_url || !data.session) {
+      if (!res.ok || !data.handoff_url) {
         setError(data.error ?? 'Could not open this catalog. Please try again.');
         setPendingAccountKey(null);
         return;
       }
 
       writeStoredBuyAsBuyerId(tenant.tenant_id, account.buyer_id);
-      await supabaseBrowser.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-      });
       window.location.assign(data.handoff_url);
     } catch {
       setError('Network error. Please try again.');
       setPendingAccountKey(null);
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/workspaces')
+      .then(async (res) => {
+        const data = (await res.json()) as WorkspacesResponse;
+        if (!res.ok) {
+          throw new Error(data.error ?? 'Failed to load workspaces');
+        }
+        return data.tenants;
+      })
+      .then((rows) => {
+        if (cancelled) return;
+        if (rows.length === 1 && rows[0].accounts.length === 1) {
+          void handleSelectAccount(rows[0], rows[0].accounts[0]);
+          return;
+        }
+        setTenants(rows);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [handleSelectAccount]);
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6">

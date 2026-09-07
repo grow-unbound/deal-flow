@@ -25,8 +25,12 @@ function initialsForName(name: string): string {
 }
 
 function resolveLogoSrc(logoUrl: string): string {
-  if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
-  return r2Url(logoUrl) ?? logoUrl;
+  const trimmed = logoUrl.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return trimmed;
+  const resolved = r2Url(trimmed);
+  if (resolved && resolved !== trimmed) return resolved;
+  return `/${trimmed.replace(/^\/+/, '')}`;
 }
 
 /**
@@ -40,14 +44,18 @@ export function TenantLogo({
   logoUrl,
   size = 48,
   className,
+  shape = 'circle',
 }: {
   name: string;
   logoUrl?: string | null;
   size?: number;
   className?: string;
+  shape?: 'circle' | 'square';
 }) {
   const [imgError, setImgError] = useState(false);
-  const resolvedSrc = logoUrl && !imgError ? resolveLogoSrc(logoUrl) : null;
+  const resolvedSrc = logoUrl?.trim() && !imgError ? resolveLogoSrc(logoUrl) : null;
+  const shapeClass = shape === 'square' ? 'rounded-xl' : 'rounded-full';
+  const fitClass = shape === 'square' ? 'object-contain' : 'object-cover';
 
   if (resolvedSrc) {
     return (
@@ -57,7 +65,7 @@ export function TenantLogo({
         width={size}
         height={size}
         unoptimized
-        className={`rounded-full object-cover ${className ?? ''}`}
+        className={`${shapeClass} ${fitClass} ${className ?? ''}`}
         style={{ width: size, height: size }}
         onError={() => setImgError(true)}
       />
@@ -68,7 +76,7 @@ export function TenantLogo({
     <div
       role="img"
       aria-label={`${name} logo`}
-      className={`flex shrink-0 items-center justify-center rounded-full font-semibold text-white ${className ?? ''}`}
+      className={`flex shrink-0 items-center justify-center ${shapeClass} font-semibold text-white ${className ?? ''}`}
       style={{
         width: size,
         height: size,
