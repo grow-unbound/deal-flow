@@ -81,7 +81,7 @@ export function useInboxActiveCount() {
   return useQuery({
     queryKey: ['inbox-active-count'],
     queryFn: async () => {
-      const res = await apiFetch('/api/tenant/entries/count');
+      const res = await apiFetch('/api/tenant/entries/count', { fresh: true });
       if (!res.ok) throw new Error('Failed to load count');
       return (await res.json()) as { count: number };
     },
