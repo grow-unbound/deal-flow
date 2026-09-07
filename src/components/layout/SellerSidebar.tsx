@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
+import { useInboxActiveCount } from '@/hooks/useInboxEntries';
 import { Pressable } from '@/components/ui/pressable';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRole } from '@/hooks/useRole';
@@ -69,6 +70,7 @@ export const navGroups: NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
+      { label: 'Today', href: '/today', icon: TodayIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
       { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
       { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_estimates' },
       { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_sales_orders' },
@@ -109,6 +111,7 @@ export interface CollectPrefetchHrefsInput {
 }
 
 const ASSISTANT_NAV_ORDER = [
+  '/today',
   '/dashboard',
   '/estimates',
   '/sales-orders',
@@ -160,6 +163,7 @@ export function SellerSidebar({
   const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
   const pathname = usePathname();
   const { isSellerAssistant, role } = useRole();
+  const { data: todayCount } = useInboxActiveCount();
   const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;
   const showExpandedContent = !isCollapsed || isHoverExpanded;
   const asideWidth = isCollapsed && isHoverExpanded ? '248px' : 'var(--sidebar-w)';
@@ -212,11 +216,22 @@ export function SellerSidebar({
             active
               ? 'bg-[rgba(181,100,47,0.12)] font-semibold text-cream-950'
               : 'font-medium text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
+            showExpandedContent ? '' : 'relative',
           ].join(' ')}
           title={!showExpandedContent ? item.label : undefined}
         >
           <item.icon size={17} className={active ? 'text-ember-500' : 'text-[#3D3630]'} />
           {showExpandedContent && item.label}
+          {item.href === '/today' && todayCount && todayCount.count > 0 ? (
+            <span
+              className={[
+                'ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ember-500 px-1.5 text-[11px] font-semibold text-white',
+                showExpandedContent ? '' : 'absolute right-1 top-1 h-4 min-w-4 text-[9px]',
+              ].join(' ')}
+            >
+              {todayCount.count > 99 ? '99+' : todayCount.count}
+            </span>
+          ) : null}
         </Link>
       </Pressable>
     );
@@ -298,6 +313,14 @@ export function SellerSidebar({
 
 // ─── Icon functions ────────────────────────────────────────────────────────────
 
+function TodayIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  );
+}
 function DashboardIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
