@@ -11,6 +11,7 @@ export const SELLER_PAGE_TITLES = {
   brands: 'Brands',
   categories: 'Categories',
   customers: 'Customers',
+  today: 'Today',
   customerGroups: 'Customer Groups',
   priceLists: 'Price Lists',
   campaigns: 'Campaigns',
