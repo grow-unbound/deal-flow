@@ -1,13 +1,15 @@
 'use client';
 
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { History, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { InboxEntryCard } from './InboxEntryCard';
+import { InboxActionBar } from './InboxActionBar';
 import { InboxHistorySheet } from './InboxHistorySheet';
 import { InboxRecordSheet } from './InboxRecordSheet';
 
@@ -19,6 +21,15 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(query.matches);
+    const onChange = () => setIsDesktop(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
 
   const allEntries = data?.entries ?? [];
   const buyerEntries = useMemo(
@@ -103,17 +114,45 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
-        {buyerEntries.map((entry) => (
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        {singleItem ? (
           <InboxEntryCard
-            key={entry.id}
-            entry={entry}
-            expanded={singleItem || expandedId === entry.id}
-            onToggle={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
+            entry={buyerEntries[0]}
+            expanded
+            onToggle={() => {}}
             tenantId={tenantId}
             applyLocalAction={applyLocalAction}
           />
-        ))}
+        ) : isDesktop ? (
+          <div className="space-y-4">
+            {buyerEntries.map((entry) => (
+              <InboxEntryCard
+                key={entry.id}
+                entry={entry}
+                expanded={expandedId === entry.id}
+                onToggle={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
+                tenantId={tenantId}
+                applyLocalAction={applyLocalAction}
+              />
+            ))}
+          </div>
+        ) : (
+          <Accordion
+            type="single"
+            collapsible
+            value={expandedId ?? undefined}
+            onValueChange={(value) => setExpandedId(value || null)}
+          >
+            {buyerEntries.map((entry) => (
+              <AccordionItem key={entry.id} value={entry.id}>
+                <AccordionTrigger aria-label={entry.summary}>{entry.summary}</AccordionTrigger>
+                <AccordionContent>
+                  <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
       </div>
 
       <InboxHistorySheet
