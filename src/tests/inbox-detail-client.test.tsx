@@ -16,6 +16,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { InboxDetailClient } from '@/components/seller/inbox/InboxDetailClient';
+import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 
 const ENTRIES = [
   {
@@ -66,5 +67,19 @@ describe('InboxDetailClient', () => {
     fireEvent.click(screen.getByText(/18,400/));
     expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
+  it('renders a close-pane button that calls the context close function when clicked', () => {
+    const closeMock = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SplitPaneCloseContext.Provider value={closeMock}>
+          <InboxDetailClient buyerId="b1" />
+        </SplitPaneCloseContext.Provider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close detail pane' }));
+    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 });

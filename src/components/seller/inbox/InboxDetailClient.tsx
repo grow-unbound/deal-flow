@@ -1,17 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
+import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxHistorySheet } from './InboxHistorySheet';
 import { InboxRecordSheet } from './InboxRecordSheet';
 
 export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const router = useRouter();
+  const closePane = useContext(SplitPaneCloseContext);
   const { data } = useInboxEntries('active');
   const { overrides, localEvents, applyLocalAction } = useLocalEntryActions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -88,6 +90,16 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
+          {closePane ? (
+            <button
+              type="button"
+              onClick={closePane}
+              aria-label="Close detail pane"
+              className="p-2 text-cream-600 hover:bg-cream-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
         </div>
       </div>
 
