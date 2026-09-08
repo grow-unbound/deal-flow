@@ -1,13 +1,16 @@
 'use client';
 
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { History, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DetailActions, DetailHeader } from '@/components/seller/detail';
+import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
+import { ENTRY_TYPE_LABEL, getInitials } from '@/lib/inbox/inbox-entry-copy';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxActionBar } from './InboxActionBar';
 import { InboxHistorySheet } from './InboxHistorySheet';
@@ -15,7 +18,6 @@ import { InboxRecordSheet } from './InboxRecordSheet';
 
 export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const router = useRouter();
-  const closePane = useContext(SplitPaneCloseContext);
   const { data } = useInboxEntries('active');
   const { overrides, localEvents, applyLocalAction } = useLocalEntryActions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -58,63 +60,70 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const buyerPhone = buyerEntries[0].buyer_phone;
   const tenantId = buyerEntries[0].tenant_id;
   const singleItem = buyerEntries.length === 1;
+  const openCount = buyerEntries.length;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-cream-200 px-6 py-5">
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold text-cream-950">{buyerName}</h1>
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            className="mt-1 inline-flex items-center gap-1.5 text-sm text-cream-500 hover:text-cream-700"
-          >
-            <History className="h-3.5 w-3.5" aria-hidden />
-            Show history
-          </button>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setRecordOpen(true)}
-            className="rounded-full border border-cream-300 px-3 py-1.5 text-sm font-medium text-cream-700 hover:bg-cream-100"
-          >
-            View {buyerName}
-          </button>
-          <div className="flex items-center overflow-hidden rounded-full border border-cream-300">
-            <button
-              type="button"
-              disabled={!prevBuyerKey}
-              onClick={() => prevBuyerKey && router.push(`/today/${prevBuyerKey}`)}
-              className="p-2 text-cream-600 hover:bg-cream-100 disabled:opacity-30"
-              aria-label="Previous customer"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!nextBuyerKey}
-              onClick={() => nextBuyerKey && router.push(`/today/${nextBuyerKey}`)}
-              className="p-2 text-cream-600 hover:bg-cream-100 disabled:opacity-30"
-              aria-label="Next customer"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          {closePane ? (
-            <button
-              type="button"
-              onClick={closePane}
-              aria-label="Close detail pane"
-              className="p-2 text-cream-600 hover:bg-cream-100"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          ) : null}
-        </div>
+    <div className="mx-auto flex h-full w-full max-w-[1920px] flex-col">
+      <div className="shrink-0 px-4 py-4 md:px-6 md:py-4">
+        {/* Today has no "closed" state — a customer is always open, so the pane's
+            close (X) affordance (rendered automatically by DetailHeader whenever
+            SplitPaneCloseContext is present) is suppressed here on purpose. */}
+        <SplitPaneCloseContext.Provider value={null}>
+          <DetailHeader
+            avatar={{ kind: 'customer', initials: getInitials(buyerName), hue: 'cream' }}
+            title={buyerName}
+            status={{
+              label: `${openCount} open issue${openCount === 1 ? '' : 's'}`,
+              tone: openCount > 0 ? 'warning' : 'success',
+            }}
+            subtitle={[
+              <button
+                key="history"
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className="inline-flex items-center gap-1.5 text-cream-500 hover:text-cream-700"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden />
+                Show history
+              </button>,
+              buyerPhone ?? 'No phone on file',
+            ]}
+            actions={
+              <DetailActions
+                inline={
+                  <>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setRecordOpen(true)}>
+                      View {buyerName}
+                    </Button>
+                    <div className="flex items-center overflow-hidden rounded-full border border-cream-300">
+                      <button
+                        type="button"
+                        disabled={!prevBuyerKey}
+                        onClick={() => prevBuyerKey && router.push(`/today/${prevBuyerKey}`)}
+                        className="p-2 text-cream-600 hover:bg-cream-100 disabled:opacity-30"
+                        aria-label="Previous customer"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!nextBuyerKey}
+                        onClick={() => nextBuyerKey && router.push(`/today/${nextBuyerKey}`)}
+                        className="p-2 text-cream-600 hover:bg-cream-100 disabled:opacity-30"
+                        aria-label="Next customer"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </>
+                }
+              />
+            }
+          />
+        </SplitPaneCloseContext.Provider>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 md:px-6">
         {singleItem ? (
           <InboxEntryCard
             entry={buyerEntries[0]}
@@ -145,7 +154,9 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
           >
             {buyerEntries.map((entry) => (
               <AccordionItem key={entry.id} value={entry.id}>
-                <AccordionTrigger aria-label={entry.summary}>{entry.summary}</AccordionTrigger>
+                <AccordionTrigger aria-label={ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}>
+                  {ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}
+                </AccordionTrigger>
                 <AccordionContent>
                   <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
                 </AccordionContent>

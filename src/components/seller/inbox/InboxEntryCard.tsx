@@ -1,6 +1,9 @@
+import { ChevronDown } from 'lucide-react';
 import { StatusPill } from '@/components/ui/status-pill';
+import { cn } from '@/lib/utils';
 import { InboxActionBar } from './InboxActionBar';
 import { isPinnedEntry } from '@/lib/inbox/inbox-grouping';
+import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
 
 const AGING_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = {
@@ -25,20 +28,37 @@ interface InboxEntryCardProps {
 
 export function InboxEntryCard({ entry, expanded, onToggle, tenantId, applyLocalAction }: InboxEntryCardProps) {
   const agingTier = typeof entry.metadata.aging_tier === 'string' ? entry.metadata.aging_tier : null;
+  const amountLabel = buildEntryAmountLabel(entry);
+  const title = ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type;
 
   return (
-    <div className="relative rounded-[16px] border border-cream-200 bg-white px-5 py-4">
+    <section className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       {isPinnedEntry(entry) ? (
         <span className="absolute right-4 top-4 h-2 w-2 rounded-full bg-ember-400" aria-label="Pinned — needs attention first" />
       ) : null}
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left">
-        <div>
-          <p className="text-base font-medium text-cream-900">{entry.summary}</p>
-          {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} className="mt-2" /> : null}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          'flex w-full items-start justify-between gap-4 px-5 py-4 text-left',
+          expanded ? 'border-b border-cream-200' : undefined,
+        )}
+      >
+        <div className="min-w-0">
+          <h3 className="font-display text-md text-cream-900">{title}</h3>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {amountLabel ? <p className="text-sm text-cream-600">{amountLabel}</p> : null}
+            {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} /> : null}
+          </div>
         </div>
+        <ChevronDown
+          size={16}
+          className={cn('mt-1 shrink-0 text-cream-500 transition-transform duration-200', expanded && 'rotate-180')}
+          aria-hidden
+        />
       </button>
       {expanded ? (
-        <div className="mt-4 space-y-4 border-t border-cream-100 pt-4">
+        <div className="space-y-4 px-5 py-4">
           {entry.metadata.last_reminder_at ? (
             <p className="text-sm leading-relaxed text-cream-600">
               Last reminder sent {new Date(String(entry.metadata.last_reminder_at)).toLocaleDateString()}.
@@ -47,6 +67,6 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, applyLocal
           <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }

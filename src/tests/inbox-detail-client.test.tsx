@@ -78,7 +78,7 @@ describe('InboxDetailClient', () => {
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
   });
 
-  it('renders a close-pane button that calls the context close function when clicked', () => {
+  it('never renders a close-pane button — Today has no closed state, even when the shell provides a close callback', () => {
     const closeMock = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -88,7 +88,12 @@ describe('InboxDetailClient', () => {
         </SplitPaneCloseContext.Provider>
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Close detail pane' }));
-    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Close detail pane' })).not.toBeInTheDocument();
+  });
+
+  it('shows the customer name and open-issue count in the header', () => {
+    renderDetail();
+    expect(screen.getByText('Sri Krishna Enterprises')).toBeInTheDocument();
+    expect(screen.getByText('2 open issues')).toBeInTheDocument();
   });
 });

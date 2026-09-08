@@ -1,16 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const useInboxEntriesMock = vi.fn();
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
 
 vi.mock('@/hooks/useInboxEntries', () => ({
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
 }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
-  useParams: () => ({}),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  useParams: () => ({ id: 'b1' }),
 }));
 
 import { InboxListClient } from '@/components/seller/inbox/InboxListClient';
@@ -36,21 +37,22 @@ describe('InboxListClient', () => {
   beforeEach(() => {
     useInboxEntriesMock.mockReset();
     pushMock.mockReset();
+    replaceMock.mockReset();
   });
 
   it('renders date sections with customer rows', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    expect(screen.getByText('Today')).toBeInTheDocument();
+    expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
-    expect(screen.getByText(/16 days overdue/)).toBeInTheDocument();
+    expect(screen.getByText(/Invoice overdue · 22,000/)).toBeInTheDocument();
   });
 
-  it('navigates to the buyer detail route on row click', () => {
+  it('links the row to the buyer detail route', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    fireEvent.click(screen.getByText('Ramesh Traders'));
-    expect(pushMock).toHaveBeenCalledWith('/today/b1');
+    const link = screen.getByText('Ramesh Traders').closest('a');
+    expect(link).toHaveAttribute('href', '/today/b1');
   });
 
   it('shows the empty state when there are no active entries', () => {

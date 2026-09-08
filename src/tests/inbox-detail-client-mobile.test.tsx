@@ -67,15 +67,15 @@ describe('InboxDetailClient on mobile', () => {
 
   it('renders items as accordion rows with per-item action CTAs when expanded', () => {
     renderDetail();
-    expect(screen.getByRole('button', { name: /58,000/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /58,000/ }));
+    expect(screen.getByRole('button', { name: 'New order' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'New order' }));
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
   });
 
   it('enforces single-expand accordion behavior: opening one row collapses the other', () => {
     renderDetail();
-    const firstTrigger = screen.getByRole('button', { name: /58,000/ });
-    const secondTrigger = screen.getByRole('button', { name: /18,400/ });
+    const firstTrigger = screen.getByRole('button', { name: 'New order' });
+    const secondTrigger = screen.getByRole('button', { name: 'Invoice due' });
 
     // Initially both rows are collapsed.
     expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
