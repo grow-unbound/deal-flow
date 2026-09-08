@@ -71,6 +71,14 @@ export function isCanonicalStorefrontSuffix(suffix: string): boolean {
   return suffix === CANONICAL_STOREFRONT_SUFFIX;
 }
 
+export function isVercelPreviewEnvironment(): boolean {
+  return process.env.VERCEL_ENV === 'preview';
+}
+
+function shouldPreservePreviewSuffix(suffix: string): boolean {
+  return isVercelPreviewEnvironment() && suffix === LEGACY_STOREFRONT_SUFFIX;
+}
+
 export function isLocalStorefrontSuffix(suffix: string): boolean {
   return suffix === LOCAL_STOREFRONT_SUFFIX;
 }
@@ -78,6 +86,7 @@ export function isLocalStorefrontSuffix(suffix: string): boolean {
 export function toCanonicalHost(hostKind: StorefrontHostKind): string | null {
   if (hostKind.kind === 'local') return null;
   if ('suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) return null;
+  if ('suffix' in hostKind && shouldPreservePreviewSuffix(hostKind.suffix)) return null;
   if (hostKind.kind === 'app') {
     return isCanonicalStorefrontSuffix(hostKind.suffix) ? null : `app.${CANONICAL_STOREFRONT_SUFFIX}`;
   }
@@ -104,6 +113,9 @@ export function sellerAppHostForRequest(hostHeader: string): string {
     const port = extractPort(hostHeader);
     return `app.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
   }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && shouldPreservePreviewSuffix(hostKind.suffix)) {
+    return `app.${LEGACY_STOREFRONT_SUFFIX}`;
+  }
   return `app.${CANONICAL_STOREFRONT_SUFFIX}`;
 }
 
@@ -112,6 +124,9 @@ export function tenantStorefrontHostForRequest(hostHeader: string, slug: string)
   if (hostKind.kind !== 'local' && 'suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) {
     const port = extractPort(hostHeader);
     return `${slug}.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
+  }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && shouldPreservePreviewSuffix(hostKind.suffix)) {
+    return `${slug}.${LEGACY_STOREFRONT_SUFFIX}`;
   }
   return canonicalStorefrontHost(slug);
 }
@@ -127,7 +142,7 @@ export function storefrontOriginForRequest(hostHeader: string, slug: string): st
     const host = `${slug}.${LOCAL_STOREFRONT_SUFFIX}`;
     return `http://${host}${port ? `:${port}` : ''}`;
   }
-  return canonicalStorefrontUrl(slug);
+  return `https://${tenantStorefrontHostForRequest(hostHeader, slug)}`;
 }
 
 // Host-only everywhere — never a shared `.useyukti.in` domain cookie. Seller
@@ -177,6 +192,9 @@ export function catalogHostForRequest(hostHeader: string): string {
   if (hostKind.kind !== 'local' && 'suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) {
     const port = extractPort(hostHeader);
     return `catalog.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
+  }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && shouldPreservePreviewSuffix(hostKind.suffix)) {
+    return `catalog.${LEGACY_STOREFRONT_SUFFIX}`;
   }
   return `catalog.${CANONICAL_STOREFRONT_SUFFIX}`;
 }

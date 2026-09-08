@@ -493,6 +493,29 @@ describe('middleware auth redirects', () => {
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
   });
+
+  it('serves yukti.so hosts on Vercel preview without canonicalizing to useyukti.in', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+      const { middleware } = await import('../../../middleware');
+
+      const appResponse = await middleware(tenantRequest('/', 'app.yukti.so'));
+      expect(appResponse.status).toBe(307);
+      expect(appResponse.headers.get('location')).toBe('https://app.yukti.so/login?next=%2F');
+
+      const tenantResponse = await middleware(tenantRequest('/', 'wineyard.yukti.so'));
+      expect(tenantResponse.headers.get('location')).toBeNull();
+      expect(tenantResponse.headers.get('x-tenant-subdomain')).toBe('wineyard');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
 });
 
 describe('catalog host middleware', () => {
@@ -568,5 +591,24 @@ describe('catalog host middleware', () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('serves catalog.yukti.so on Vercel preview without canonicalizing to catalog.useyukti.in', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+      const { middleware } = await import('../../../middleware');
+      const response = await middleware(catalogRequest('/', 'catalog.yukti.so'));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe('https://catalog.yukti.so/login?next=%2F');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
   });
 });
