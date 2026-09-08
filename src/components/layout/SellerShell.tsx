@@ -10,6 +10,7 @@ import { SellerMobileBottomTabs, SellerMobileTopbar } from './SellerMobileChrome
 import { SellerSidebarSkeleton, SellerGlobalHeaderSkeleton } from './SellerShellSkeletons';
 import { resolveSellerSidebarLayout } from './seller-sidebar-layout';
 import { SellerRealtimeProvider } from '@/contexts/SellerRealtimeContext';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 interface SellerShellProps {
@@ -29,10 +30,15 @@ const SHELL_REVALIDATE_THROTTLE_MS = 15_000;
 function isMobileBottomTabRoute(pathname: string) {
   return (
     pathname === '/dashboard' ||
+    pathname === SELLER_ROUTES.today ||
+    pathname === SELLER_ROUTES.pulse ||
     pathname === '/customers' ||
     pathname === '/products' ||
     pathname === '/estimates' ||
+    pathname === SELLER_ROUTES.sales.estimates ||
     pathname === '/sales-orders' ||
+    pathname === SELLER_ROUTES.sales.orders ||
+    pathname === SELLER_ROUTES.sales.invoices ||
     pathname === '/invoices'
   );
 }

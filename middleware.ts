@@ -192,6 +192,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(callbackUrl);
   }
 
+  if (hostKind.kind !== 'tenant' && (pathname === '/orders' || pathname.startsWith('/orders/'))) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname === '/orders' ? '/sales-orders' : `/sales-orders/${pathname.slice('/orders/'.length)}`;
+    return NextResponse.redirect(url, 301);
+  }
+
   if (hostKind.kind === 'app') {
     return handleAppHost(request, requestHeaders, pathname);
   }
@@ -253,8 +259,9 @@ async function handleAppHost(
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('buyer_')) {
-    const destinationHost = await resolveBuyerRedirectHost(auth.claims, hostHeader);
-    return redirectPreservingPath(request, destinationHost, '/');
+    const response = redirectToLogin(request, pathname);
+    clearSupabaseAuthCookies(response, request);
+    return response;
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -552,6 +559,51 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   return NextResponse.redirect(loginUrl);
 }
 
+function isChunkLikeCookieName(cookieName: string, key: string): boolean {
+  return cookieName === key || cookieName.startsWith(`${key}.`);
+}
+
+function supabaseAuthStorageKey(): string | null {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return null;
+  try {
+    const hostname = new URL(supabaseUrl).hostname;
+    const projectRef = hostname.split('.')[0];
+    return projectRef ? `sb-${projectRef}-auth-token` : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSupabaseAuthCookies(response: NextResponse, request: NextRequest) {
+  const storageKey = supabaseAuthStorageKey();
+  const storageKeys = storageKey
+    ? [storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`]
+    : [];
+  const cookieNames = new Set<string>();
+
+  for (const cookie of request.cookies.getAll()) {
+    if (
+      storageKeys.some((key) => isChunkLikeCookieName(cookie.name, key))
+      || /^sb-[a-z0-9-]+-auth-token(?:[.][0-9]+)?$/i.test(cookie.name)
+    ) {
+      cookieNames.add(cookie.name);
+    }
+  }
+
+  for (const key of storageKeys) {
+    cookieNames.add(key);
+  }
+
+  for (const name of cookieNames) {
+    response.cookies.set(name, '', withAuthCookieDomain({
+      path: '/',
+      sameSite: 'lax' as const,
+      maxAge: 0,
+    }));
+  }
+}
+
 async function authenticateSellerOrLogin(
   request: NextRequest,
   requestHeaders: Headers,
@@ -611,6 +663,8 @@ async function finalizeAuthenticated(
     || isStorefrontPagePath(pathname)
     || pathname.startsWith('/workspaces')
     || pathname.startsWith('/consent')
+    || pathname.startsWith('/onboarding')
+    || pathname.startsWith('/pending')
     || pathname.startsWith('/api')
     || pathname.startsWith('/auth')
     || isPublicRoute(pathname);

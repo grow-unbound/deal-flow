@@ -75,9 +75,9 @@ export function DesktopTransactionDetailPane({
             </div>
             <div className="h-4 w-56 animate-pulse rounded-full bg-cream-200" />
           </div>
-          <div className="h-56 animate-pulse rounded-[18px] border border-cream-200 bg-cream-100" />
-          <div className="h-32 animate-pulse rounded-[18px] border border-cream-200 bg-cream-100" />
-          <div className="h-24 animate-pulse rounded-[18px] border border-cream-200 bg-cream-100" />
+          <div className="h-56 animate-pulse rounded-[18px] border border-cream-200 bg-[var(--bg-surface)]" />
+          <div className="h-32 animate-pulse rounded-[18px] border border-cream-200 bg-[var(--bg-surface)]" />
+          <div className="h-24 animate-pulse rounded-[18px] border border-cream-200 bg-[var(--bg-surface)]" />
         </div>
         <div className="border-t border-cream-200 px-5 py-4">
           <div className="h-11 w-full animate-pulse rounded-xl bg-cream-200" />

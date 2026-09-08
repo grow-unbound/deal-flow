@@ -33,7 +33,7 @@ export function BuyerCatalogLandingHeader({
   const { data: me, isLoading: meLoading } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
   const tenantLoading = meLoading && !me;
-  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const isGuest = !tenantLoading && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
@@ -80,11 +80,16 @@ export function BuyerCatalogLandingHeader({
                   )}
                 </div>
               </div>
-              {isGuest ? (
+              {tenantLoading ? (
+                <div
+                  className="h-9 w-24 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
+                  aria-label="Loading buyer account action"
+                />
+              ) : isGuest ? (
                 <button
                   type="button"
                   onClick={openLogin}
-                  className="max-w-[42vw] shrink-0 rounded-[12px] px-3 py-2 text-sm font-semibold text-[var(--teal-500)]"
+                  className="max-w-[42vw] shrink-0 rounded-[12px] bg-cream-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream-950/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]"
                 >
                   Log in
                 </button>

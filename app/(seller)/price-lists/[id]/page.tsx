@@ -29,6 +29,7 @@ import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
 import { formatNumberValue } from '@/lib/utils';
 import { PriceListFormSheet } from '@/components/seller/price-lists/PriceListFormSheet';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type { ProductMembershipRules } from '@/lib/zod';
 import { PriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -198,7 +199,7 @@ export default function PriceListDetailPage() {
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => priceListAction.mutate({ action: 'archive' }, { onSuccess: () => router.push('/price-lists') })}
+                  onClick={() => priceListAction.mutate({ action: 'archive' }, { onSuccess: () => router.push(SELLER_ROUTES.market.pricing) })}
                 >
                   <Archive size={14} aria-hidden />
                   Archive

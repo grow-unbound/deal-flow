@@ -184,8 +184,9 @@
   --success-500: #2F5733;
   --danger-500:  #C93D27;
 
-  --bg-base:    #FAF7F2;
-  --bg-page:    #FAF7F2;
+  /* Reversible buyer catalog visual test: canvas matches product-card info surface. */
+  --bg-base:    var(--bg-surface);
+  --bg-page:    var(--bg-surface);
   --bg-surface: #FFFFFF;
 
   /* Buyer type scale — single source of truth; change --b-base to shift all sizes */

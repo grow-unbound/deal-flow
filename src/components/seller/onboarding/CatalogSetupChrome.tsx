@@ -43,7 +43,7 @@ export function CatalogSetupChrome({
         </div>
         <Button asChild variant="ghost" size="sm" className="shrink-0">
           <Link
-            href="/dashboard"
+            href="/pulse"
             prefetch
             onPointerDown={() => router.prefetch('/dashboard')}
           >

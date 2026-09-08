@@ -8,7 +8,7 @@ export function BuyerTransactionDetailRouteLoading({ label }: { label: string })
         className="sticky top-0 z-[15]"
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
-          background: 'rgba(250, 247, 242, 0.92)',
+          background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
         }}
       >
         <div className="flex min-h-14 items-center gap-2 px-3 py-2">
@@ -28,14 +28,17 @@ export function BuyerTransactionDetailRouteLoading({ label }: { label: string })
           </div>
           <div className="h-4 w-52 animate-pulse rounded-full bg-cream-200" />
         </div>
-        <div className="h-40 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        <div className="h-28 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        <div className="h-40 animate-pulse rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]" />
+        <div className="h-28 animate-pulse rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]" />
+        <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]" />
       </div>
 
       <BuyerFixedFooter
-        className="left-0 right-0 border-t border-cream-200 bg-cream-100/95 px-4 py-3"
-        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        className="left-0 right-0 border-t border-cream-200 px-4 py-3"
+        style={{
+          paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+          background: 'color-mix(in srgb, var(--bg-surface) 95%, transparent)',
+        }}
       >
         <div className="mx-auto h-11 max-w-[840px] animate-pulse rounded-xl bg-cream-200" />
       </BuyerFixedFooter>

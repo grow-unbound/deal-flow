@@ -79,7 +79,7 @@ const BACK_BTN: React.CSSProperties = {
 
 const STICKY_HEADER: React.CSSProperties = {
   height: 'var(--header-h, 56px)',
-  background: 'rgba(250, 247, 242, 0.92)',
+  background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
   backdropFilter: 'blur(14px)',
   WebkitBackdropFilter: 'blur(14px)',
   borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
@@ -508,7 +508,7 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <>
+      <div className="min-h-full bg-[var(--bg-page)]">
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
           <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0 transition-opacity active:opacity-60" style={BACK_BTN} aria-label="Go back">
             <ChevronLeft className="h-6 w-6" />
@@ -544,12 +544,12 @@ export default function CartPage() {
             Browse Catalog
           </button>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="min-h-full bg-[var(--bg-page)]">
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
         <button onClick={() => navigateBuyerBack(router)} className="flex items-center justify-center shrink-0 p-0 transition-opacity active:opacity-60" style={BACK_BTN} aria-label="Go back">
@@ -743,7 +743,7 @@ export default function CartPage() {
           transform: 'translateX(-50%)',
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
           paddingBottom: 'calc(0.875rem + env(safe-area-inset-bottom, 0px))',
-          background: 'rgba(250, 247, 242, 0.94)',
+          background: 'color-mix(in srgb, var(--bg-surface) 94%, transparent)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid var(--border-1)',
@@ -833,7 +833,7 @@ export default function CartPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
 

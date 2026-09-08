@@ -12,6 +12,7 @@ const mintSellerSessionMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
 const acquireBuyerForStorefrontMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
+const resolvePendingBuyerRedirectMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   findAllLoginCandidates: (...args: unknown[]) => findAllLoginCandidatesMock(...args),
@@ -24,6 +25,7 @@ vi.mock('@/lib/server/buyer-access', () => ({
     candidates.filter((candidate) => candidate.tenant_id === tenantId && candidate.kind !== 'seller'),
   acquireBuyerForStorefront: (...args: unknown[]) => acquireBuyerForStorefrontMock(...args),
   mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
+  resolvePendingBuyerRedirect: (...args: unknown[]) => resolvePendingBuyerRedirectMock(...args),
 }));
 
 vi.mock('@/lib/server/whatsapp', () => ({
@@ -148,6 +150,8 @@ describe('buyer phone otp routes', () => {
     recordBuyerAppActivitySafeMock.mockReset();
     acquireBuyerForStorefrontMock.mockReset();
     mintBuyerHandoffLinkMock.mockReset();
+    resolvePendingBuyerRedirectMock.mockReset();
+    resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
     otpMemory.store.clear();
   });
 
@@ -613,7 +617,7 @@ describe('buyer phone otp routes', () => {
     expect(body.handoff_url).not.toContain('evil.example.com');
   });
 
-  it('does not mint a session for a fresh self-registration pending approval (buyer_app_enabled: false)', async () => {
+  it('mints a restricted session and routes to /onboarding for a fresh self-registration pending approval (buyer_app_enabled: false)', async () => {
     findAllLoginCandidatesMock.mockResolvedValue([]);
     acquireBuyerForStorefrontMock.mockResolvedValue({
       ...eligibleBuyerCandidate,
@@ -621,6 +625,13 @@ describe('buyer phone otp routes', () => {
       business_name: 'Customer 9876543210',
       buyer_app_enabled: false,
     });
+    mintBuyerSessionMock.mockResolvedValue({
+      session: {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+      },
+    });
+    resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
 
     const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
     const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
@@ -650,10 +661,10 @@ describe('buyer phone otp routes', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.success).toBe(false);
-    expect(body.outcome).toBe('pending_approval');
-    expect(body.session).toBeUndefined();
-    expect(body.redirect).toBeUndefined();
-    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    expect(body.success).toBe(true);
+    expect(body.redirect).toBe('/onboarding');
+    expect(body.session).toEqual({ access_token: 'access-token', refresh_token: 'refresh-token' });
+    expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
+    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2');
   });
 });

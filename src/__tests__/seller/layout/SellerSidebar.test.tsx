@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 
-const mockPathname = vi.fn(() => '/dashboard');
+const mockPathname = vi.fn(() => '/pulse');
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
@@ -75,7 +75,7 @@ function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): 
 describe('SellerSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPathname.mockReturnValue('/dashboard');
+    mockPathname.mockReturnValue('/pulse');
     mockUseAuth.mockReturnValue(makeAuth('seller_admin'));
     try {
       localStorage.removeItem('df_sidebar_settings_expanded');
@@ -89,7 +89,7 @@ describe('SellerSidebar', () => {
       render(<SellerSidebar isCollapsed={false} featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
     });
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
-    expect(screen.getByText('GROWTH')).toBeInTheDocument();
+    expect(screen.getByText('MARKET')).toBeInTheDocument();
     expect(screen.getByText('SETUP')).toBeInTheDocument();
   });
 
@@ -98,17 +98,18 @@ describe('SellerSidebar', () => {
       render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
     });
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
-    expect(screen.queryByText('GROWTH')).not.toBeInTheDocument();
+    expect(screen.queryByText('MARKET')).not.toBeInTheDocument();
     expect(screen.queryByText('SETUP')).not.toBeInTheDocument();
   });
 
-  it('hides Estimates when df_estimates flag is off', async () => {
+  it('keeps Sales visible when one transaction flag is off', async () => {
     await act(async () => {
       render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures({ estimates: false }))} />);
     });
     expect(screen.queryByText('Estimates')).not.toBeInTheDocument();
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Pulse')).toBeInTheDocument();
+    expect(screen.getByText('Sales')).toBeInTheDocument();
   });
 
   it('does not render the account footer in the sidebar', async () => {
@@ -126,15 +127,15 @@ describe('SellerSidebar', () => {
     });
     expect(prefetchSpy).toHaveBeenCalled();
     const paths = prefetchSpy.mock.calls[0][0] as string[];
-    expect(paths).toContain('/dashboard');
-    expect(paths).toContain('/estimates');
-    expect(paths).toContain('/sales-orders');
+    expect(paths).toContain('/today');
+    expect(paths).toContain('/pulse');
+    expect(paths).toContain('/sales/invoices');
     expect(paths).toContain('/settings');
-    expect(paths).toContain('/settings/team');
     expect(paths).not.toContain('/settings/modules');
-    expect(paths).toContain('/locations');
-    expect(paths).toContain('/settings/integrations');
-    expect(paths).toContain('/settings/billing');
+    expect(paths).toContain('/business/branches');
+    expect(paths).toContain('/catalogs');
+    expect(paths).toContain('/pricing');
+    expect(paths).toContain('/recommendations');
   });
 
   it('hides Integrations when df_integrations is off', async () => {
@@ -144,13 +145,14 @@ describe('SellerSidebar', () => {
     expect(screen.queryByRole('link', { name: 'Integrations' })).not.toBeInTheDocument();
   });
 
-  it('shows settings children when pathname is under /settings', async () => {
+  it('keeps Settings active without rendering settings child nav items', async () => {
     mockPathname.mockReturnValue('/settings/team');
     await act(async () => {
       render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
     });
-    expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Billing & Plan' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Team' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Billing & Plan' })).not.toBeInTheDocument();
   });
 
   it('excludes admin-only and flag-off routes from prefetch for assistant', async () => {
@@ -166,7 +168,8 @@ describe('SellerSidebar', () => {
     expect(paths).not.toContain('/settings/integrations');
     expect(paths).not.toContain('/settings/billing');
     expect(paths).not.toContain('/estimates');
-    expect(paths).toContain('/dashboard');
+    expect(paths).toContain('/pulse');
+    expect(paths).toContain('/sales/invoices');
   });
 
   it('renders assistant nav as a flat ordered list with no section headings', async () => {
@@ -176,10 +179,9 @@ describe('SellerSidebar', () => {
     });
 
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
-    expect(screen.queryByText('GROWTH')).not.toBeInTheDocument();
+    expect(screen.queryByText('MARKET')).not.toBeInTheDocument();
     expect(screen.queryByText('SETUP')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Invoices/i })).toBeInTheDocument();
-    const orderedItems = ['Dashboard', 'Estimates', 'Sales Orders', 'Customers', 'Products'];
+    const orderedItems = ['Today', 'Pulse', 'Sales', 'Customers', 'Products'];
     orderedItems.forEach((label) => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     });
@@ -216,7 +218,7 @@ describe('SellerSidebar', () => {
     await act(async () => {
       render(<SellerSidebar isCollapsed featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
     });
-    const dashboardLink = screen.getByRole('link', { name: 'Dashboard' });
+    const dashboardLink = screen.getByRole('link', { name: 'Pulse' });
     expect(dashboardLink.className).toContain('justify-center');
     expect(dashboardLink.className).toContain('px-0');
   });
@@ -236,7 +238,7 @@ describe('SellerSidebar', () => {
     fireEvent.mouseEnter(aside!);
 
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Pulse')).toBeInTheDocument();
   });
 });
 
@@ -251,7 +253,7 @@ describe('resolveSellerSidebarLayout', () => {
     ).toEqual({
       isCollapsed: false,
       canCollapse: false,
-      sidebarWidth: '248px',
+      sidebarWidth: '216px',
     });
   });
 
@@ -290,19 +292,19 @@ describe('collectPrefetchHrefs', () => {
       role: 'seller_admin',
       getFlag: () => true,
     });
-    expect(hrefs).toContain('/estimates');
+    expect(hrefs).toContain('/sales/invoices');
     expect(hrefs).toContain('/settings');
-    expect(hrefs).toContain('/settings/team');
-    expect(hrefs).toContain('/settings/billing');
+    expect(hrefs).toContain('/business/branches');
+    expect(hrefs).toContain('/pricing');
   });
 
-  it('excludes paths when getFlag returns false', () => {
+  it('keeps Sales prefetch when one transaction flag is false', () => {
     const hrefs = collectPrefetchHrefs(navGroups, {
       role: 'seller_admin',
       getFlag: (k) => k !== 'df_estimates',
     });
     expect(hrefs).not.toContain('/estimates');
-    expect(hrefs).toContain('/sales-orders');
+    expect(hrefs).toContain('/sales/invoices');
   });
 
   it('excludes integrations path when integrations flag is off', () => {
@@ -311,6 +313,7 @@ describe('collectPrefetchHrefs', () => {
       getFlag: (k) => k !== 'df_integrations',
     });
     expect(hrefs).not.toContain('/settings/integrations');
+    expect(hrefs).toContain('/settings');
   });
 
   it('includes price lists but excludes admin-only routes for assistants', () => {
@@ -321,6 +324,6 @@ describe('collectPrefetchHrefs', () => {
     expect(hrefs).not.toContain('/brands');
     expect(hrefs).not.toContain('/catalogs');
     expect(hrefs).not.toContain('/settings');
-    expect(hrefs).not.toContain('/price-lists');
+    expect(hrefs).not.toContain('/pricing');
   });
 });

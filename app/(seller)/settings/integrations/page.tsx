@@ -1,5 +1,4 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
-import { PageWrap } from '@/components/seller/layout';
 import { IntegrationsSettingsClient } from '@/components/seller/settings/IntegrationsSettingsClient';
 import { getFlag, FLAGS } from '@/lib/flags';
 import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
@@ -17,9 +16,5 @@ export default async function SettingsIntegrationsPage() {
 
   if (!flagEnabled && !payload.catalog.some((integration) => integration.integration !== null)) return <FeatureForbiddenPage />;
 
-  return (
-    <PageWrap>
-      <IntegrationsSettingsClient initialData={payload} />
-    </PageWrap>
-  );
+  return <IntegrationsSettingsClient initialData={payload} />;
 }

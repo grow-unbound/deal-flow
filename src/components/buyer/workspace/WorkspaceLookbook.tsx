@@ -39,7 +39,7 @@ export function WorkspaceLookbook({
             BUYER_CARD_RADIUS_CLASS,
           )}
         >
-          <div className="flex min-h-[168px] items-center justify-center border-b border-cream-200 bg-cream-50 px-8 py-8">
+          <div className="flex min-h-[168px] items-center justify-center border-b border-cream-200 bg-[var(--bg-surface)] px-8 py-8">
             <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl border border-cream-200 bg-white p-2 shadow-sm">
               <TenantLogo name={tenant.tenant_name} logoUrl={tenant.logo_url} size={96} shape="square" className="max-h-full max-w-full" />
             </div>

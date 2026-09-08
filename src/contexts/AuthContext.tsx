@@ -7,6 +7,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
 import { clearClientAuthSnapshot, setClientAuthSnapshot } from '@/lib/auth-client-store';
+import { clearApiAuthCache } from '@/lib/api-fetch';
 import posthog from 'posthog-js';
 import { resolveUserDisplayName } from '@/lib/user-display-name';
 import { catalogOriginForRequest, parseRequestHost } from '@/lib/storefront-host';
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetAuthState = () => {
     clearAuthClientStorage();
+    clearApiAuthCache();
     clearClientAuthSnapshot();
     setSession(null);
     setUser(null);
@@ -237,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const syncClientSnapshot = (activeSession: Session | null) => {
       if (!activeSession?.access_token) {
+        clearApiAuthCache();
         clearClientAuthSnapshot();
         return;
       }

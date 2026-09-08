@@ -13,6 +13,7 @@ import {
 } from '@/lib/server/seller-location-access';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type {
   SellerDashboardResponse,
   SellerDashboardMetric,
@@ -326,7 +327,7 @@ async function fetchSellerDashboardData(
       label: 'Open estimates',
       value: estimates.filter((estimate) => estimate.status === 'draft' || estimate.status === 'sent').length,
       sub: 'Awaiting customer response',
-      href: '/estimates',
+      href: SELLER_ROUTES.sales.estimates,
     });
   }
   if (featureAvailability.salesOrders) {
@@ -335,7 +336,7 @@ async function fetchSellerDashboardData(
       value: orders.filter((order) => order.status === 'received').length,
       sub: 'Received and pending confirmation',
       tone: 'warn',
-      href: '/sales-orders',
+      href: SELLER_ROUTES.sales.orders,
     });
   }
   if (lowStockFeatureEnabled) {
@@ -389,14 +390,14 @@ async function fetchSellerDashboardData(
     feeds.push({
       id: 'estimates',
       title: 'Estimates',
-      href: '/estimates',
+      href: SELLER_ROUTES.sales.estimates,
       empty_label: 'No estimates yet',
       rows: buildRecentFeedRows(
         allEstimatesSorted.slice(0, 5),
         buyersById,
         (row) => ({
           id: row.id,
-          href: `/estimates/${row.id}`,
+          href: `${SELLER_ROUTES.sales.estimates}/${row.id}`,
           document_number: row.estimate_number ?? 'Draft estimate',
           status: { label: orderStatusLabel(row.status), tone: estimateStatusTone(row.status) },
         }),
@@ -407,14 +408,14 @@ async function fetchSellerDashboardData(
     feeds.push({
       id: 'sales_orders',
       title: 'Sales Orders',
-      href: '/sales-orders',
+      href: SELLER_ROUTES.sales.orders,
       empty_label: 'No orders yet',
       rows: buildRecentFeedRows(
         allOrdersSorted.slice(0, 5),
         buyersById,
         (row) => ({
           id: row.id,
-          href: `/sales-orders/${row.id}`,
+          href: `${SELLER_ROUTES.sales.orders}/${row.id}`,
           document_number: row.order_number,
           status: { label: orderStatusLabel(row.status), tone: statusToneForOrder(row.status) },
         }),
@@ -425,14 +426,14 @@ async function fetchSellerDashboardData(
     feeds.push({
       id: 'invoices',
       title: 'Invoices',
-      href: '/invoices',
+      href: SELLER_ROUTES.sales.invoices,
       empty_label: 'No invoices yet',
       rows: buildRecentFeedRows(
         allInvoicesSorted.slice(0, 5),
         buyersById,
         (row) => ({
           id: row.id,
-          href: `/invoices/${row.id}`,
+          href: `${SELLER_ROUTES.sales.invoices}/${row.id}`,
           document_number: row.invoice_number,
           status: invoicePresentation(row),
         }),

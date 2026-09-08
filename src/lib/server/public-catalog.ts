@@ -154,7 +154,9 @@ export function guestUnitPrice(params: {
 }): number | null {
   if (params.mode === 'hidden_until_login') return null;
   if (params.mode === 'assigned_price_list') {
-    return params.assignedPrice != null ? Number(params.assignedPrice) : null;
+    return params.assignedPrice != null
+      ? Number(params.assignedPrice)
+      : (params.baseSellingPrice != null ? Number(params.baseSellingPrice) : null);
   }
   return params.baseSellingPrice != null ? Number(params.baseSellingPrice) : null;
 }

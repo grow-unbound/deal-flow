@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, acquireBuyerForStorefront, mintBuyerHandoffLink } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, acquireBuyerForStorefront, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
 import { buyerOtpStore, writeVerifiedCandidatesRecord, hashOtp, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
 import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
-import { buildRequestAccessMessage } from '@/constants/auth-login-copy';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import {
   filterBuyerCandidatesForReturnTo,
@@ -137,15 +136,6 @@ async function buildMintedCandidateResponse(
   returnTo: string | null,
 ): Promise<NextResponse> {
   const result = await mintCandidateSession(request, candidate, returnTo);
-  if (result.pending) {
-    return NextResponse.json({
-      success: false,
-      outcome: 'pending_approval',
-      message: result.message,
-      seller_name: result.sellerName,
-      seller_whatsapp_number: result.sellerWhatsappNumber,
-    });
-  }
   if ('handoffUrl' in result) {
     if ('session' in result && result.session) {
       return NextResponse.json({
@@ -161,8 +151,7 @@ async function buildMintedCandidateResponse(
 
 type MintResult =
   | { pending: false; session: unknown; redirect: string }
-  | { pending: false; handoffUrl: string; session?: unknown }
-  | { pending: true; message: string; sellerName: string; sellerWhatsappNumber: string | null };
+  | { pending: false; handoffUrl: string; session?: unknown };
 
 async function mintCandidateSession(
   request: NextRequest,
@@ -182,21 +171,16 @@ async function mintCandidateSession(
     ? toBuyerLoginCandidate(candidate)
     : await acquireBuyerForStorefront(candidate.tenant_id, candidate.phone);
 
-  // Fresh self-registration (or a still-suspended known buyer) — do not mint
-  // a session. custom_access_token_hook would only return empty claims for
-  // it anyway (AND b.buyer_app_enabled = true), so a session here would just
-  // be a useless cookie; better to tell the buyer plainly that approval is
-  // pending, same messaging pattern phone-otp/send already uses for blocked
-  // candidates.
+  // Not yet approved (fresh self-registration, or a still-suspended known
+  // buyer) — mint a real (but restricted) session anyway. custom_access_token_hook
+  // grants a `buyer_pending` role for this case (tenant_id + buyer_id claims,
+  // nothing else) so the buyer can revisit the intake/blocked screens without
+  // re-OTPing, while every buyer_app_enabled-gated RLS policy still shuts them
+  // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
   if (!buyerCandidate.buyer_app_enabled) {
-    const sellerName = buyerCandidate.tenant_name || 'the seller';
-    const buyerName = buyerCandidate.contact_name?.trim() || buyerCandidate.business_name || null;
-    return {
-      pending: true,
-      message: buildRequestAccessMessage({ sellerName, buyerName }),
-      sellerName,
-      sellerWhatsappNumber: buyerCandidate.tenant_whatsapp_number ?? null,
-    };
+    const { session } = await mintBuyerSession(buyerCandidate);
+    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
+    return { pending: false, session, redirect };
   }
 
   const currentTenantId = request.headers.get('x-verified-tenant-id');

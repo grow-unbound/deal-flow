@@ -28,7 +28,7 @@ export function BuyerTransactionFilterChips<T extends string>({
               'shrink-0 rounded-full border px-3.5 py-1.5 text-[length:var(--b-text-label)] font-medium transition-colors',
               isActive
                 ? 'border-[var(--teal-500)] bg-[var(--teal-500)] text-white'
-                : 'border-[var(--cream-400)] bg-[var(--cream-50)] text-[var(--cream-800)]',
+                : 'border-[var(--cream-400)] bg-[var(--bg-surface)] text-[var(--cream-800)]',
             )}
           >
             {chip}

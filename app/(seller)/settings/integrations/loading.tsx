@@ -1,5 +1,5 @@
-import { IntegrationsSettingsPageSkeleton } from '@/components/seller/settings/IntegrationsSettingsSkeleton';
+import { IntegrationsSettingsContentSkeleton } from '@/components/seller/settings/IntegrationsSettingsSkeleton';
 
 export default function SettingsIntegrationsLoading() {
-  return <IntegrationsSettingsPageSkeleton />;
+  return <IntegrationsSettingsContentSkeleton />;
 }

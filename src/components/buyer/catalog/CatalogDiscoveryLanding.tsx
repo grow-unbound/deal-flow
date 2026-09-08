@@ -233,7 +233,7 @@ export function CatalogDiscoveryLanding({
             {!isGuest && (showRecoSkeleton || orderAgainItems.length > 0) ? (
               <section className="pt-14">
                 <BuyerSectionRow title="Order Again" className="px-1 pb-3" />
-                <BuyerHorizontalScroll className="gap-2.5 px-1">
+                <BuyerHorizontalScroll className="gap-3.5 px-1">
                   {showRecoSkeleton ? (
                     <ProductRailSkeleton />
                   ) : (
@@ -253,7 +253,7 @@ export function CatalogDiscoveryLanding({
             {showRecoSkeleton || bestsellers.length > 0 ? (
               <section className="pt-12">
                 <BuyerSectionRow title="Bestsellers" className="px-1 pb-3" />
-                <BuyerHorizontalScroll className="gap-2.5 px-1">
+                <BuyerHorizontalScroll className="gap-3.5 px-1">
                   {showRecoSkeleton ? (
                     <ProductRailSkeleton />
                   ) : (
@@ -277,7 +277,7 @@ export function CatalogDiscoveryLanding({
                 {showBrandsSkeleton ? (
                   <BrandScrollSkeleton />
                 ) : (
-                  <BuyerHorizontalScroll className="items-stretch gap-2 px-1">
+                  <BuyerHorizontalScroll className="items-stretch gap-3 px-1">
                     {brands.slice(0, 24).map((brand) => (
                       <DiscoveryThumbTile
                         key={brand.id}
@@ -300,7 +300,7 @@ export function CatalogDiscoveryLanding({
                 {showCategoriesSkeleton ? (
                   isGuest ? <CategoryScrollSkeleton /> : <CategoryGridSkeleton />
                 ) : isGuest ? (
-                  <BuyerHorizontalScroll className="items-stretch gap-2 px-1">
+                  <BuyerHorizontalScroll className="items-stretch gap-3 px-1">
                     {categories.map((category) => (
                       <DiscoveryThumbTile
                         key={category.id}
@@ -407,7 +407,7 @@ function CampaignTilesSkeleton() {
   return (
     <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading campaigns">
       {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-cream-50', BUYER_CARD_RADIUS_CLASS)}>
+        <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)]', BUYER_CARD_RADIUS_CLASS)}>
           <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
           <div className="space-y-2 bg-white px-5 py-4">
             {/* min-h-[2.4em] is relative to font-size -- must match CatalogLookbookCard's
@@ -425,9 +425,9 @@ function CampaignTilesSkeleton() {
 
 function ProductRailSkeleton() {
   return (
-    <BuyerHorizontalScroll className="gap-2.5 px-1" role="status" aria-label="Loading recommendations">
+    <BuyerHorizontalScroll className="gap-3.5 px-1" role="status" aria-label="Loading recommendations">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-cream-50 ${BUYER_CARD_RADIUS_CLASS}`}>
+        <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`}>
           <div className="aspect-square animate-pulse bg-cream-100" />
           <div className="px-2 pb-2 pt-1.5">
             {/* fontSize must match ProductCard's compact-variant title (var(--b-text-label))
@@ -444,7 +444,7 @@ function ProductRailSkeleton() {
 
 function BrandScrollSkeleton() {
   return (
-    <div className="flex gap-2 overflow-hidden px-1" role="status" aria-label="Loading brands">
+    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading brands">
       {Array.from({ length: 5 }).map((_, index) => (
         <div
           key={index}
@@ -465,7 +465,7 @@ function BrandScrollSkeleton() {
 
 function CategoryScrollSkeleton() {
   return (
-    <div className="flex gap-2 overflow-hidden px-1" role="status" aria-label="Loading categories">
+    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading categories">
       {Array.from({ length: 6 }).map((_, index) => (
         <div key={index} className="flex w-[160px] shrink-0 flex-col sm:w-[180px]">
           <div className="aspect-square w-full animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />

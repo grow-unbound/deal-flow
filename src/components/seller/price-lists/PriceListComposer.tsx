@@ -41,6 +41,7 @@ import {
   useSavePriceListComposer,
 } from '@/hooks/usePriceLists';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type { PriceListPricingStrategy } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -449,7 +450,7 @@ export function PriceListComposer({
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [isDirty]);
 
-  const closeTarget = mode === 'edit' && priceListId ? `/price-lists/${priceListId}` : '/price-lists';
+  const closeTarget = mode === 'edit' && priceListId ? `${SELLER_ROUTES.market.pricing}/${priceListId}` : SELLER_ROUTES.market.pricing;
   const dirtyGuard = useDirtyCloseGuard({
     isDirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -518,11 +519,11 @@ export function PriceListComposer({
     });
 
     if (saveMode === 'publish') {
-      router.push(`/price-lists/${result.price_list.id}`);
+      router.push(`${SELLER_ROUTES.market.pricing}/${result.price_list.id}`);
       return;
     }
 
-    router.push(mode === 'edit' && priceListId ? `/price-lists/${priceListId}` : '/price-lists');
+    router.push(mode === 'edit' && priceListId ? `${SELLER_ROUTES.market.pricing}/${priceListId}` : SELLER_ROUTES.market.pricing);
   }
 
   function toggleMany(

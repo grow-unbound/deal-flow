@@ -9,6 +9,7 @@ import { Pressable } from '@/components/ui/pressable';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRole } from '@/hooks/useRole';
 import { ROLES } from '@/constants';
+import { SELLER_ROUTES, isBusinessPath, isProductsWorkspacePath, isSalesPath, isSettingsPath } from '@/lib/seller-routes';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 export type NavFlagKey =
@@ -44,6 +45,7 @@ export interface NavItem {
   roles: Array<typeof ROLES.SELLER_ADMIN | typeof ROLES.SELLER_ASSISTANT>;
   /** PostHog flag key — item hidden when resolved flag is `false` */
   flagKey?: NavFlagKey;
+  activeMatch?: (pathname: string) => boolean;
 }
 
 export interface NavGroup {
@@ -69,35 +71,29 @@ export const navGroups: NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
-      { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_estimates' },
-      { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_sales_orders' },
-      { label: 'Invoices', href: '/invoices', icon: ReceiptIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_invoices' },
+      { label: 'Today', href: SELLER_ROUTES.today, icon: TodayIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
+      { label: 'Pulse', href: SELLER_ROUTES.pulse, icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], activeMatch: (pathname) => pathname === '/dashboard' || pathname.startsWith('/pulse') },
+      { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], activeMatch: isSalesPath },
       { label: 'Customers', href: '/customers', icon: BuyersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_customer_master' },
-      { label: 'Products', href: '/products', icon: ProductsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master' },
+      { label: 'Products', href: SELLER_ROUTES.products.root, icon: ProductsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master', activeMatch: isProductsWorkspacePath },
     ],
   },
   {
-    label: 'GROWTH',
+    label: 'MARKET',
     items: [
-      { label: 'Buyer App', href: '/buyer-app', icon: BuyerAppIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_buyer_app' },
+      { label: 'Catalogs', href: SELLER_ROUTES.market.catalogs, icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
       { label: 'Campaigns', href: '/campaigns', icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
+      { label: 'Announcements', href: SELLER_ROUTES.market.announcements, icon: AnnouncementsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
+      { label: 'Pricing', href: SELLER_ROUTES.market.pricing, icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
       { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
-      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
-      { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
-      { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Warehouses', href: '/warehouses', icon: WarehousesIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Categories', href: '/categories', icon: TagIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
+      { label: 'Recommendations', href: SELLER_ROUTES.market.recommendations, icon: RecommendationsIcon, roles: [ROLES.SELLER_ADMIN] },
     ],
   },
   {
     label: 'SETUP',
     items: [
-      { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Team', href: '/settings/team', icon: TeamIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Integrations', href: '/settings/integrations', icon: IntegrationsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_integrations' },
-      { label: 'Recommendations', href: '/settings/recommendations', icon: RecommendationsIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Billing & Plan', href: '/settings/billing', icon: BillingIcon, roles: [ROLES.SELLER_ADMIN] },
+      { label: 'Business', href: SELLER_ROUTES.business.branches, icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN], activeMatch: isBusinessPath },
+      { label: 'Settings', href: SELLER_ROUTES.settings.general, icon: SettingsIcon, roles: [ROLES.SELLER_ADMIN], activeMatch: isSettingsPath },
     ],
   },
 ];
@@ -109,12 +105,11 @@ export interface CollectPrefetchHrefsInput {
 }
 
 const ASSISTANT_NAV_ORDER = [
-  '/dashboard',
-  '/estimates',
-  '/sales-orders',
-  '/invoices',
+  SELLER_ROUTES.today,
+  SELLER_ROUTES.pulse,
+  SELLER_ROUTES.sales.invoices,
   '/customers',
-  '/products',
+  SELLER_ROUTES.products.root,
 ] as const;
 
 /** Pure helper for tests — mirrors sidebar prefetch href derivation from `navGroups`. */
@@ -197,11 +192,12 @@ export function SellerSidebar({
 
   function renderNavItem(item: NavItem) {
     // /settings is exact-match only — sub-pages have their own nav items in Group 3
-    const active =
-      pathname === item.href ||
-      (item.href !== '/dashboard' &&
-        item.href !== '/settings' &&
-        pathname.startsWith(`${item.href}/`));
+    const active = item.activeMatch
+      ? item.activeMatch(pathname)
+      : pathname === item.href ||
+        (item.href !== '/dashboard' &&
+          item.href !== '/settings' &&
+          pathname.startsWith(`${item.href}/`));
     return (
       <Pressable key={item.href} asChild haptic>
         <Link
@@ -308,6 +304,14 @@ function DashboardIcon({ size = 16, className = '' }) {
     </svg>
   );
 }
+function TodayIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
 function EstimatesIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -383,6 +387,14 @@ function CatalogsIcon({ size = 16, className = '' }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  );
+}
+function AnnouncementsIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m3 11 18-5v12L3 14z" />
+      <path d="M7 14v5a2 2 0 0 0 2 2h1" />
     </svg>
   );
 }

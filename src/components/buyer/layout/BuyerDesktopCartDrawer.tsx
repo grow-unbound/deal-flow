@@ -67,14 +67,14 @@ const BACK_BTN: React.CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 999,
-  background: 'var(--bg-surface)',
+  background: 'var(--bg-surface, #fff)',
   border: '1px solid var(--border-1)',
   color: 'var(--cream-800)',
 };
 
 const STICKY_HEADER: React.CSSProperties = {
   height: 'var(--header-h, 56px)',
-  background: 'rgba(250, 247, 242, 0.92)',
+  background: 'color-mix(in srgb, var(--bg-surface, #fff) 92%, transparent)',
   backdropFilter: 'blur(14px)',
   WebkitBackdropFilter: 'blur(14px)',
   borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
@@ -648,9 +648,10 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        data-app="buyer"
         side="right"
         showCloseButton={false}
-        className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-[var(--cream-50)] p-0"
+        className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-[var(--bg-surface)] p-0"
       >
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
           <button type="button" onClick={closeDrawer} className="flex shrink-0 items-center justify-center p-0" style={BACK_BTN} aria-label="Close cart">
@@ -675,7 +676,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         </header>
 
         {confirmation ? (
-          <div className="flex flex-1 flex-col overflow-y-auto">
+          <div className="flex flex-1 flex-col overflow-y-auto bg-[var(--bg-surface)]">
             <BuyerTransactionConfirmation
               kind={confirmation.kind}
               id={confirmation.id}
@@ -703,7 +704,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
             />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--bg-surface)] px-6 py-24 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--cream-100)' }}>
               <ShoppingCart className="h-8 w-8" style={{ color: 'var(--cream-400)' }} />
             </div>
@@ -731,7 +732,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: '8.5rem' }}>
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-surface)] px-4 pt-4" style={{ paddingBottom: '8.5rem' }}>
               <div className="space-y-3">
                 <div className="pb-1">
                   <p className="mb-0.5 font-semibold uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
@@ -893,7 +894,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
               className="mt-auto border-t px-4 pt-2.5"
               style={{
                 paddingBottom: 'calc(0.875rem + env(safe-area-inset-bottom, 0px))',
-                background: 'rgba(250, 247, 242, 0.94)',
+                background: 'color-mix(in srgb, var(--bg-surface, #fff) 94%, transparent)',
                 backdropFilter: 'blur(12px)',
                 WebkitBackdropFilter: 'blur(12px)',
                 borderTopColor: 'var(--border-1)',

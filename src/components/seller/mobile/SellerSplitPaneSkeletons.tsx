@@ -67,6 +67,7 @@ export function SellerSplitPaneLandingSkeleton({
   eyebrowWidth,
   titleWidth,
   subtitleWidth,
+  showHeader = true,
 }: {
   ariaLabel: string;
   showTransactionTabs?: boolean;
@@ -75,15 +76,18 @@ export function SellerSplitPaneLandingSkeleton({
   eyebrowWidth?: string;
   titleWidth?: string;
   subtitleWidth?: string;
+  showHeader?: boolean;
 }) {
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
       <div role="status" aria-label={ariaLabel}>
-      <StickyListHeader>
-        <SellerSplitPaneHeaderSkeleton eyebrowWidth={eyebrowWidth} titleWidth={titleWidth} subtitleWidth={subtitleWidth} />
-        {showTransactionTabs ? <SellerSplitPaneTransactionTabsSkeleton /> : null}
-        <SellerSplitPaneFilterSkeleton />
-      </StickyListHeader>
+      {showHeader ? (
+        <StickyListHeader>
+          <SellerSplitPaneHeaderSkeleton eyebrowWidth={eyebrowWidth} titleWidth={titleWidth} subtitleWidth={subtitleWidth} />
+          {showTransactionTabs ? <SellerSplitPaneTransactionTabsSkeleton /> : null}
+          <SellerSplitPaneFilterSkeleton />
+        </StickyListHeader>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <SellerMobileListSkeleton count={6} forceVisible variant={variant} showLeading={showLeading} />
       </div>

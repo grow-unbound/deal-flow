@@ -34,6 +34,7 @@ import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTabl
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { PriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { PriceListFormSheet } from './PriceListFormSheet';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
@@ -71,7 +72,7 @@ function PriceListsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/price-lists');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.market.pricing);
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -80,7 +81,7 @@ function PriceListsLandingContent({
   const { isSellerAssistant } = useRole();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
-    pathnameOverride: '/price-lists',
+    pathnameOverride: SELLER_ROUTES.market.pricing,
     version: 3,
     initialState: {
       search: '',
@@ -99,7 +100,7 @@ function PriceListsLandingContent({
   const kpiCard = (id: string) => metricsData?.cards.find((card) => card.id === id);
   useRouteScrollRestoration({
     storageKey: 'seller-price-lists-landing',
-    pathnameOverride: '/price-lists',
+    pathnameOverride: SELLER_ROUTES.market.pricing,
     ready: !isLoading,
   });
   const statusFilter = filters.status ?? [];
@@ -219,10 +220,10 @@ function PriceListsLandingContent({
           >
           <PageHeader
             eyebrow={isPaneOpen ? 'Price Lists' : 'Pricing'}
-            title={isPaneOpen ? selectedOption.label : 'Price Lists'}
+            title={isPaneOpen ? selectedOption.label : 'Pricing'}
             subtitle={isPaneOpen
               ? `${selectedOption.value} · ${selectedOption.sub}`
-              : `${data?.total ?? allRows.length} Pricelists · ${data?.kpis.active_lists ?? 0} active.`}
+              : 'Control custom rates, buyer-specific terms, and group pricing.'}
             horizon="Now"
             {...(isSellerAssistant ? {} : {
               primary: 'Add a price list',
@@ -313,7 +314,7 @@ function PriceListsLandingContent({
             const strategySub = formatStrategySummary(row.pricing_strategy, row.strategy_value);
             return {
               id: row.id,
-              href: `/price-lists/${row.id}`,
+              href: `${SELLER_ROUTES.market.pricing}/${row.id}`,
               eyebrow: titleCaseStatus(row.status),
               primary: row.name,
               supporting: joinSplitListMeta(
@@ -343,7 +344,7 @@ function PriceListsLandingContent({
                   'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
                   row.id === openId ? 'bg-ember-50' : 'bg-white',
                 )}
-                onClick={() => router.push(`/price-lists/${row.id}`)}
+                onClick={() => router.push(`${SELLER_ROUTES.market.pricing}/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
                 <td className="px-3 py-3 text-base text-cream-900">

@@ -53,7 +53,7 @@ describe('public catalog product select', () => {
       mode: 'assigned_price_list',
       assignedPrice: null,
       baseSellingPrice: 120,
-    })).toBeNull();
+    })).toBe(120);
   });
 
   it('scopes assigned list prices through price_lists, not price_list_items.tenant_id', () => {

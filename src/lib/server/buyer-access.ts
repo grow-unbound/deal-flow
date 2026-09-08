@@ -46,11 +46,14 @@ interface BuyerRow {
   tenant_id: string;
   business_name: string;
   contact_name: string | null;
+  email?: string | null;
   credit_limit: number | null;
   phone: string | null;
   gstin: string | null;
   buyer_app_enabled: boolean | null;
-  geography?: { state?: string; city?: string; zone?: string } | null;
+  geography?: { state?: string; city?: string; zone?: string; pincode?: string } | null;
+  billing_address?: Record<string, unknown> | null;
+  custom_fields?: Record<string, unknown> | null;
   whatsapp_consent_at?: string | null;
   whatsapp_opt_out_at?: string | null;
 }
@@ -816,6 +819,13 @@ export async function acquireBuyerForStorefront(
   // (ERP-synced, CSV-imported, seller-added) are provisioned true elsewhere;
   // this path is specifically "a stranger just OTP'd in," which should not
   // be equivalent to a seller-vetted customer until approved.
+  //
+  // existing_yukti_identity records (once, at creation) whether this phone
+  // already had an auth.users identity from another tenant relationship —
+  // the intake screen (Yukti_Inbox_Feature-Spec_v1.md §7.1) uses this to
+  // choose "new to Yukti" vs "new to this distributor" copy without
+  // re-deriving it later.
+  const existingUserId = await findExistingAuthUserIdForPhone(normalizedPhone);
   const { data: created, error: insertError } = await db
     .schema('app')
     .from('buyers')
@@ -828,7 +838,10 @@ export async function acquireBuyerForStorefront(
       payment_terms_days: 0,
       buyer_app_enabled: false,
       is_active: true,
-      custom_fields: { storefront_self_registered: true },
+      custom_fields: {
+        storefront_self_registered: true,
+        existing_yukti_identity: Boolean(existingUserId),
+      },
     })
     .select('id, business_name, contact_name, user_id')
     .single();
@@ -863,6 +876,30 @@ export async function acquireBuyerForStorefront(
     buyer_app_enabled: false,
     tenant_app_enabled: true,
   };
+}
+
+/**
+ * Where to send a `buyer_pending` session next: /onboarding if this is a
+ * fresh self-registration that hasn't submitted the intake form yet,
+ * /pending for everything else still awaiting approval (intake already
+ * submitted, or a known buyer a seller disabled outright).
+ * Yukti_Inbox_Feature-Spec_v1.md §7.1.
+ */
+export async function resolvePendingBuyerRedirect(buyerId: string): Promise<string> {
+  if (!supabaseAdmin) return '/pending';
+
+  const { data } = await supabaseAdmin
+    .schema('app')
+    .from('buyers')
+    .select('custom_fields')
+    .eq('id', buyerId)
+    .maybeSingle();
+
+  const customFields = (data as { custom_fields?: Record<string, unknown> | null } | null)?.custom_fields;
+  const selfRegistered = customFields?.storefront_self_registered === true;
+  const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
+
+  return selfRegistered && !intakeSubmitted ? '/onboarding' : '/pending';
 }
 
 export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<{ session: Session; user: User }> {
@@ -956,14 +993,17 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
   let buyerLookup = db
     .schema('app')
     .from('buyers')
-    .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography, whatsapp_consent_at, whatsapp_opt_out_at')
+    .select('id, tenant_id, business_name, contact_name, email, credit_limit, phone, gstin, buyer_app_enabled, geography, billing_address, custom_fields, whatsapp_consent_at, whatsapp_opt_out_at')
     .eq('id', context.buyer_id)
     .eq('tenant_id', context.tenant_id)
     .eq('is_active', true)
     .is('deleted_at', null);
 
   // Seller preview bypasses buyer_app_enabled — that gate controls buyer login, not preview.
-  if (context.mode !== 'preview') {
+  // A `buyer_pending` session (self-registered, not yet approved) must also read its OWN
+  // row — that's how /api/buyer/me and the intake screen work — but nothing else in this
+  // codebase should ever add 'buyer_pending' to a buyer_app_enabled-gated query/policy.
+  if (context.mode !== 'preview' && context.role !== 'buyer_pending') {
     buyerLookup = buyerLookup.or('buyer_app_enabled.eq.true,buyer_app_enabled.is.null');
   }
 

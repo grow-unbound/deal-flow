@@ -11,7 +11,7 @@ interface RecoCarouselProps {
   priceReveal?: ProductCardPriceReveal;
 }
 
-export function RecoCarousel({ items, scrollClassName = 'gap-3 px-4', priceReveal }: RecoCarouselProps) {
+export function RecoCarousel({ items, scrollClassName = 'gap-3.5 px-4', priceReveal }: RecoCarouselProps) {
   if (items.length === 0) return null;
 
   return (

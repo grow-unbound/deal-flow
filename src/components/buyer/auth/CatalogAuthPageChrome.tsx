@@ -16,7 +16,7 @@ function detectCatalogHost(): boolean {
 
 function CatalogAuthChromeFallback({ children }: { children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-cream-50">
+    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-[var(--bg-page)]">
       <main className="flex flex-1 items-center justify-center px-4 py-6 pt-8">
         <div className="w-full max-w-md">{children}</div>
       </main>
@@ -30,7 +30,7 @@ function StandardLoginChrome({ children }: { children: ReactNode }) {
     AUTH_LOGIN_COPY.login;
 
   return (
-    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-cream-50">
+    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-[var(--bg-page)]">
       <header className="shrink-0 px-4 py-3 sm:px-6">
         <a
           href={homeHref}
@@ -84,7 +84,7 @@ function CatalogAuthChromeInner({ children }: { children: ReactNode }) {
   const showTopLogo = !returnTo || (!tenantLoading && !hasTenantContext);
 
   return (
-    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-cream-50">
+    <div className="fixed inset-0 z-10 flex min-h-dvh flex-col overflow-y-auto bg-[var(--bg-page)]">
       {showTopLogo ? (
         <header className="shrink-0 px-4 py-3 sm:px-6">
           <a

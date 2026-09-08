@@ -85,7 +85,7 @@ export interface BuyerResolvedProductsResponse {
   missing_ids: string[];
 }
 
-export type BuyerAppMode = 'buyer' | 'preview' | 'guest';
+export type BuyerAppMode = 'buyer' | 'preview' | 'guest' | 'pending';
 
 export interface BuyerSiblingRow {
   buyer_id: string;

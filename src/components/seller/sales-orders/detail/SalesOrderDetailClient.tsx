@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import {
   useCancelSalesOrder,
@@ -149,7 +150,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
     const label = formatEstimateChipLabel(data.estimate.estimate_number);
     return (
       <Link
-        href={`/estimates/${data.estimate.id}`}
+        href={`${SELLER_ROUTES.sales.estimates}/${data.estimate.id}`}
         className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-sm font-medium text-teal-800 hover:bg-cream-100"
       >
         From: {label}
@@ -320,7 +321,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
                   icon: <Edit2 size={14} />,
                   onClick: () => {
                     void prefetchSalesOrderComposer(queryClient, id);
-                    router.push(`/sales-orders/${id}/edit`);
+                    router.push(`${SELLER_ROUTES.sales.orders}/${id}/edit`);
                   },
                 } satisfies DetailActionItem] : []),
                 ...(showCancel ? [{

@@ -8,6 +8,7 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { WarehousesLandingMetricsV4 } from '@/types/tenant-warehouses';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=` seeding now happens client-side inside WarehousesLandingClient
 // via useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams`
@@ -22,13 +23,13 @@ export default async function WarehousesLayout({ children }: { children: ReactNo
 
   return (
     <EntitySplitShell
-      basePath="/warehouses"
+      basePath={SELLER_ROUTES.business.warehouses}
       listSlot={
         <SellerBootstrapBoundary<WarehousesLandingMetricsV4>
           path="/api/tenant/warehouses/metrics"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/warehouses"
+              basePath={SELLER_ROUTES.business.warehouses}
               ariaLabel="Loading warehouses"
               expandedFallback={<WarehousesLandingSkeleton />}
             />

@@ -9,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { InvoicesLandingMetricsV4 } from '@/hooks/useInvoices';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // InvoicesLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -23,13 +24,13 @@ export default async function InvoicesLayout({ children }: { children: ReactNode
 
   return (
     <EntitySplitShell
-      basePath="/invoices"
+      basePath={SELLER_ROUTES.sales.invoices}
       listSlot={
         <SellerBootstrapBoundary<InvoicesLandingMetricsV4>
           path={`/api/tenant/invoices/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/invoices"
+              basePath={SELLER_ROUTES.sales.invoices}
               ariaLabel="Loading invoices"
               showTransactionTabs
               variant="transaction"

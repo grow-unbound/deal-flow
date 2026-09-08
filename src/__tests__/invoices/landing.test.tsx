@@ -12,18 +12,28 @@ function render(ui: ReactElement) {
 const pushMock = vi.fn();
 const useTenantInvoicesMock = vi.fn();
 const useTenantInvoicesInfiniteMock = vi.fn();
+const useTenantInvoicesMetricsMock = vi.fn();
 const useFlagStateMock = vi.fn();
 const useCreateFlagsMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => '/invoices',
+  usePathname: () => '/sales/invoices',
   useParams: () => ({}),
   useSearchParams: () => new URLSearchParams(),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    currentTenantId: 'tenant-1',
+    user: { id: 'user-1' },
+    tenantProfile: { id: 'profile-1', role: 'seller_admin' },
+  }),
+}));
+
 vi.mock('@/hooks/useInvoices', () => ({
   useTenantInvoices: () => useTenantInvoicesMock(),
+  useTenantInvoicesMetrics: (...args: unknown[]) => useTenantInvoicesMetricsMock(...args),
   useTenantInvoicesInfinite: (...args: unknown[]) => useTenantInvoicesInfiniteMock(...args),
 }));
 
@@ -46,7 +56,7 @@ vi.mock('@/hooks/useSellerLandingPeriod', () => ({
 }));
 
 import { InvoicesLandingClient } from '@/components/seller/invoices/InvoicesLandingClient';
-import type { TenantInvoicesResponse } from '@/hooks/useInvoices';
+import type { InvoicesLandingMetricsV4, TenantInvoicesResponse } from '@/hooks/useInvoices';
 
 const basePeriod: TenantInvoicesResponse['period'] = {
   selected: 'month',
@@ -200,11 +210,33 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
   };
 }
 
+function mockInvoiceMetrics(): InvoicesLandingMetricsV4 {
+  return {
+    page_key: 'invoices',
+    period: {
+      period_key: 'this_month',
+      grain: 'month',
+      period_start: '2026-06-01T00:00:00.000Z',
+      period_end_exclusive: '2026-07-01T00:00:00.000Z',
+      label: 'This month',
+    },
+    computed_at: '2026-06-20T00:00:00.000Z',
+    source_watermark: null,
+    cards: [
+      { id: 'invoiced_sales', value: 15000, entity_count: 2, document_count: 2, time_basis: 'This month' },
+      { id: 'outstanding_dues', value: 10000, entity_count: 2, document_count: 2, time_basis: 'Open' },
+      { id: 'overdue_receivables', value: 5000, entity_count: 1, document_count: 1, time_basis: 'Open' },
+      { id: 'due_7d', value: 8000, entity_count: 3, document_count: 3, time_basis: 'Next 7 days' },
+    ],
+  };
+}
+
 describe('invoices landing page', () => {
   beforeEach(() => {
     sessionStorage.clear();
     pushMock.mockReset();
     useTenantInvoicesMock.mockReset();
+    useTenantInvoicesMetricsMock.mockReset();
     useFlagStateMock.mockReset();
     useCreateFlagsMock.mockReset();
     useTenantInvoicesInfiniteMock.mockReset();
@@ -216,6 +248,11 @@ describe('invoices landing page', () => {
       isLoading: false,
       isError: false,
       data: mockInvoiceResponse(),
+    });
+    useTenantInvoicesMetricsMock.mockReturnValue({
+      data: mockInvoiceMetrics(),
+      isLoading: false,
+      isError: false,
     });
     useTenantInvoicesInfiniteMock.mockImplementation((_period: unknown, filters: { status?: string[] }) => {
       const overdueOnly = filters?.status?.includes('Overdue');
@@ -284,49 +321,41 @@ describe('invoices landing page', () => {
 
   it('subtitle shows invoice count for the table period', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getByText('2 invoices in this month.')).toBeInTheDocument();
+    expect(screen.getByText('Create, track, and close invoices, orders, and estimates.')).toBeInTheDocument();
   });
 
   it('renders invoice KPI strip and callout rail', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
     expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
     expect(screen.queryByText('Showing')).not.toBeInTheDocument();
-    expect(screen.getByText('Invoiced sales')).toBeInTheDocument();
-    expect(screen.getByText('Outstanding amount')).toBeInTheDocument();
-    expect(screen.getByText('Overdue amount')).toBeInTheDocument();
+    expect(screen.getByText('Invoiced Sales')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding dues')).toBeInTheDocument();
+    expect(screen.getByText('Overdue receivables')).toBeInTheDocument();
     expect(screen.getByText('Due in 7 days')).toBeInTheDocument();
-    expect(screen.getByText('2 invoices this period')).toBeInTheDocument();
-    expect(screen.getByText('2 invoices · 2 customers')).toBeInTheDocument();
-    expect(screen.getByText('1 invoices · 1 customers')).toBeInTheDocument();
-    expect(screen.getByText('Largest overdue balances')).toBeInTheDocument();
-    expect(screen.getByText('High-value invoices due soon')).toBeInTheDocument();
-    expect(screen.getByText('Newly overdue invoices')).toBeInTheDocument();
+    expect(screen.getAllByText('2 customers · 2 invoices').length).toBeGreaterThan(0);
+    expect(screen.getByText('1 customers · 1 invoices')).toBeInTheDocument();
+    expect(screen.getByText('Invoice Number')).toBeInTheDocument();
   });
 
-  it('renders invoice supporting text and opens the callout detail sheet', () => {
+  it('renders invoice supporting text', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getAllByText('INV-2026-0002 · Due 01 Jun 2026').length).toBeGreaterThan(0);
-    expect(screen.getByText('INV-2026-0003 · Due 14 Jun 2026')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /open full largest overdue balances list/i }));
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getAllByText('Beta').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('INV-2026-0002').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('01 Jun 2026').length).toBeGreaterThan(0);
   });
 
   it('Overdue filter hides non-overdue invoices', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Overdue' }));
-    expect(screen.getByText('INV-2026-0002')).toBeInTheDocument();
+    expect(screen.getAllByText('INV-2026-0002').length).toBeGreaterThan(0);
     expect(screen.queryByText('INV-2026-0001')).not.toBeInTheDocument();
   });
 
   it('renders place of supply, source support text, and outstanding amount in the table', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getByText('Place of Supply')).toBeInTheDocument();
+    expect(screen.getByText('Location')).toBeInTheDocument();
     expect(screen.getByText('Outstanding')).toBeInTheDocument();
-    expect(screen.getAllByText('MH').length).toBeGreaterThan(0);
+    expect(screen.getByText('Mumbai HQ')).toBeInTheDocument();
     expect(screen.getByText('SO-2026-0042')).toBeInTheDocument();
     expect(screen.queryByText('seller_app')).not.toBeInTheDocument();
     expect(screen.getAllByText('₹5,000').length).toBeGreaterThanOrEqual(2);
@@ -334,8 +363,10 @@ describe('invoices landing page', () => {
 
   it('row click navigates to invoice detail', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    fireEvent.click(screen.getByText('INV-2026-0002').closest('tr')!);
-    expect(pushMock).toHaveBeenCalledWith('/invoices/inv-overdue');
+    const rowLabel = screen.getAllByText('INV-2026-0002').find((el) => Boolean(el.closest('tr')));
+    expect(rowLabel).toBeTruthy();
+    fireEvent.click(rowLabel!.closest('tr')!);
+    expect(pushMock).toHaveBeenCalledWith('/sales/invoices/inv-overdue');
   });
 
   it('df_invoices OFF shows flag-off empty state', () => {

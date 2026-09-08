@@ -32,6 +32,10 @@ vi.mock('@/contexts/BuyerCartContext', () => ({
   useCart: (...args: unknown[]) => useCartMock(...args),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ signOut: vi.fn() }),
+}));
+
 vi.mock('@/hooks/useCartBundles', () => ({
   useCartBundles: (...args: unknown[]) => useCartBundlesMock(...args),
 }));
@@ -411,8 +415,10 @@ describe('buyer orders page tab URL precedence', () => {
     renderWithQueryClient(<OrdersPage />);
 
     await waitFor(() => {
-      const ordersTab = screen.getByRole('button', { name: /orders/i });
-      expect(ordersTab).toHaveStyle({ background: '#fff' });
+      const ordersTab = screen.getAllByRole('tab', { name: /orders/i })
+        .find((tab) => tab.getAttribute('aria-selected') === 'true');
+      expect(ordersTab).toBeDefined();
+      expect(ordersTab).toHaveStyle({ background: 'var(--bg-surface)' });
     });
   });
 });

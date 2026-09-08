@@ -158,6 +158,8 @@ describe('storefront paths', () => {
     expect(toInternalBuyPath('/category/c1')).toBe('/buy/home/category/c1');
     expect(toInternalBuyPath('/brand/b1')).toBe('/buy/home/brand/b1');
     expect(toInternalBuyPath('/cart')).toBe('/buy/cart');
+    expect(toInternalBuyPath('/orders')).toBe('/buy/orders');
+    expect(toInternalBuyPath('/orders/o1')).toBe('/buy/orders/o1');
   });
 
   it('does not treat public static brand assets as storefront brand pages', () => {
@@ -172,6 +174,8 @@ describe('storefront paths', () => {
     expect(toPublicStorefrontPath('/buy/product/abc')).toBe('/product/abc');
     expect(toPublicStorefrontPath('/buy/home/category/c1')).toBe('/category/c1');
     expect(toPublicStorefrontPath('/buy/cart')).toBe('/cart');
+    expect(toPublicStorefrontPath('/buy/orders')).toBe('/orders');
+    expect(toPublicStorefrontPath('/buy/orders/o1')).toBe('/orders/o1');
   });
 
   it('allows guests on browse and empty-cart pages, not orders', () => {

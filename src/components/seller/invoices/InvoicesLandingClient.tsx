@@ -17,6 +17,7 @@ import {
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSalesWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
@@ -41,6 +42,7 @@ import { INVOICES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-lan
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Outstanding (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
@@ -109,7 +111,7 @@ function InvoicesLandingContent({
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/invoices');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.sales.invoices);
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -121,7 +123,7 @@ function InvoicesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
-    pathnameOverride: '/invoices',
+    pathnameOverride: SELLER_ROUTES.sales.invoices,
     version: 4,
     initialState: {
       search: '',
@@ -160,7 +162,7 @@ function InvoicesLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
-    pathnameOverride: '/invoices',
+    pathnameOverride: SELLER_ROUTES.sales.invoices,
     ready: !isLoading,
   });
 
@@ -228,7 +230,7 @@ function InvoicesLandingContent({
   const showRefreshingState = isLoading && !data;
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading invoices" showTransactionTabs variant="transaction" />
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading invoices" showHeader={false} showTransactionTabs variant="transaction" />
     ) : (
       <InvoicesLandingSkeleton />
     );
@@ -277,18 +279,19 @@ function InvoicesLandingContent({
           showTransactionTabs
         >
         <PageHeader
-          eyebrow={isPaneOpen ? 'Invoices' : 'Billing'}
+          eyebrow={isPaneOpen ? 'Invoices' : 'Sales'}
           title={isPaneOpen ? selectedOption?.label ?? 'Invoices' : 'Invoices'}
-          subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+          subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : 'Create, track, and close invoices, orders, and estimates.'}
           horizon={horizonLabel}
           showHorizonControl={false}
           primary={createInvoices ? 'Add an invoice' : undefined}
           onPrimaryClick={createInvoices ? () => {
             captureCta('add_invoice');
-            router.push('/invoices/new');
+            router.push(`${SELLER_ROUTES.sales.invoices}/new`);
           } : undefined}
           compact={isPaneOpen}
         />
+        <SellerSalesWorkspaceTabs />
         <SellerMobileTransactionTabs active="invoices" />
 
         {isPaneOpen ? null : (
@@ -355,7 +358,7 @@ function InvoicesLandingContent({
               action={
                 createInvoices ? (
                   <Button variant="accent" asChild>
-                    <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
+                    <Link href={`${SELLER_ROUTES.sales.invoices}/new`} className="inline-flex items-center gap-1.5">
                       <Plus size={13} />
                       Add an invoice
                     </Link>
@@ -374,7 +377,7 @@ function InvoicesLandingContent({
               sentinelRef={sentinelRef}
               rows={displayRows.map((row) => ({
                 id: row.id,
-                href: `/invoices/${row.id}`,
+                href: `${SELLER_ROUTES.sales.invoices}/${row.id}`,
                 document_number: row.invoice_number,
                 is_buyer_app: row.source_kind === 'buyer_app' || row.source_detail === 'BUYER_APP',
                 source_kind: row.source_kind,

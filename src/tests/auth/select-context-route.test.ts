@@ -6,12 +6,14 @@ const mintBuyerSessionMock = vi.fn();
 const mintSellerSessionMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
+const resolvePendingBuyerRedirectMock = vi.fn().mockResolvedValue('/pending');
 
 vi.mock('@/lib/server/buyer-access', () => ({
   mintBuyerSession: (...args: unknown[]) => mintBuyerSessionMock(...args),
   mintSellerSession: (...args: unknown[]) => mintSellerSessionMock(...args),
   toBuyerLoginCandidate: (c: unknown) => c,
   mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
+  resolvePendingBuyerRedirect: (...args: unknown[]) => resolvePendingBuyerRedirectMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-app-activity', () => ({
@@ -73,6 +75,7 @@ const buyerCandidate = {
   phone: '9876543210',
   business_name: 'Buyer One',
   contact_name: 'Rajan Mehta',
+  buyer_app_enabled: true,
 };
 
 describe('phone-otp select-context route', () => {

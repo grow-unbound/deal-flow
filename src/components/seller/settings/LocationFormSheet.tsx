@@ -333,11 +333,11 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
     },
   });
 
-  const title = useMemo(() => (isEdit ? 'Edit location' : 'Add location'), [isEdit]);
+  const title = useMemo(() => (isEdit ? 'Edit branch' : 'Add branch'), [isEdit]);
   const description = useMemo(
     () =>
       isEdit
-        ? "Update this location's details."
+        ? "Update this branch's details."
         : 'Add a branch location for documents, routing, and team access.',
     [isEdit],
   );
@@ -483,9 +483,9 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Location name</FormLabel>
+                    <FormLabel>Branch name</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g. Mumbai Warehouse" autoComplete="off" />
+                      <Input {...field} placeholder="e.g. Karmanghat branch" autoComplete="off" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

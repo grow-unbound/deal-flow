@@ -48,7 +48,7 @@ function NotificationRow({ n, onClose }: { n: AppNotification; onClose: () => vo
     <Link
       href={n.href}
       onClick={() => { markRead(n.id); onClose(); }}
-      className="flex items-start gap-3 rounded-[10px] px-3 py-3.5 no-underline transition-colors hover:bg-cream-50"
+      className="flex items-start gap-3 rounded-[10px] px-3 py-3.5 no-underline transition-colors hover:bg-[var(--bg-surface)]"
     >
       <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-cream-100">
         <Icon size={16} strokeWidth={1.85} className="text-cream-600" />

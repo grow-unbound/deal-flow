@@ -1,6 +1,6 @@
-// List rendering now lives in ./layout.tsx (EntitySplitShell) so it stays
-// mounted across /locations <-> /locations/[id]. This page only exists so
-// `/locations` itself is a routable segment.
+import { redirect } from 'next/navigation';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
+
 export default function LocationsPage() {
-  return null;
+  redirect(SELLER_ROUTES.business.branches);
 }

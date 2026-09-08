@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
 
 export interface BuyerMeData {
-  mode: 'buyer' | 'preview' | 'guest';
+  mode: 'buyer' | 'preview' | 'guest' | 'pending';
   buyer_id: string;
   business_name: string;
   contact_name: string;
@@ -57,6 +57,14 @@ export interface BuyerMeData {
   whatsapp_consent_required: boolean;
   /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
   guest_pricing_mode?: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | null;
+  /** mode:'pending' only — self-registered, awaiting seller approval. */
+  pending?: {
+    intake_submitted: boolean;
+    is_returning_yukti_user: boolean;
+    seller_whatsapp_number: string | null;
+    prefill_full_name: string | null;
+    prefill_email: string | null;
+  };
 }
 
 export function useBuyerMe() {

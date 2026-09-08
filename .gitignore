@@ -71,3 +71,4 @@ Specs files
 specs/
 CLAUDE_OUTPUTS/
 WineYard/
+.worktrees/

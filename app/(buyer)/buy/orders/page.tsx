@@ -68,7 +68,7 @@ function parseInvoiceStatusFromUrl(status: string | null): BuyerInvoiceStatusChi
 function PreviewPlaceholder({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
     <div className="px-4 pt-3">
-      <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
+      <div className="rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-5 text-center">
         <div className="mb-2 text-[28px]">{icon}</div>
         <p className="text-[var(--b-text-body)] font-semibold text-[var(--cream-800)]">{title}</p>
         <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">{description}</p>
@@ -109,7 +109,7 @@ function OrdersKpiGrid({ metrics }: { metrics?: BuyerHomeMetricsV4 }) {
       {cards.map((card) => (
         <article
           key={card.label}
-          className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4 md:rounded-[14px] md:border-cream-300 md:bg-white md:px-[18px] md:py-[16px]"
+          className="rounded-[18px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4 md:rounded-[14px] md:border-cream-300 md:px-[18px] md:py-[16px]"
         >
           <p className="font-semibold uppercase tracking-[0.14em] text-cream-500 md:text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
             {card.label}
@@ -145,7 +145,7 @@ function OrdersMobileKpiRibbon({
   if (activeTab === 'invoices') {
     return (
       <div className="px-4 pt-3">
-        <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4">
+        <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="min-w-0">
               <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
@@ -199,7 +199,7 @@ function OrdersMobileKpiRibbon({
 
   return (
     <div className="px-4 pt-3">
-      <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-4">
+      <section className="rounded-[18px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="min-w-0">
             <p className="font-semibold uppercase tracking-[0.14em] text-cream-500" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
@@ -285,7 +285,7 @@ function OrdersTabButtons({
 
   return (
     <div className="px-4 pb-3 pt-3">
-      <div className="flex rounded-[10px] bg-[var(--cream-200)] p-[3px]" role="tablist" aria-orientation="horizontal">
+      <div className="flex rounded-[10px] bg-[var(--bg-page)] p-[3px]" role="tablist" aria-orientation="horizontal">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
@@ -298,7 +298,7 @@ function OrdersTabButtons({
               onClick={() => onChange(tab.id)}
               className="flex h-8 flex-1 items-center justify-center rounded-lg border-none px-2 transition"
               style={{
-                background: isActive ? '#fff' : 'transparent',
+                background: isActive ? 'var(--bg-surface)' : 'transparent',
                 boxShadow: isActive ? '0 1px 2px rgba(31,58,52,0.06)' : 'none',
               }}
             >
@@ -329,7 +329,7 @@ function OrdersSearchField({
 }) {
   return (
     <div
-      className={`flex items-center gap-2.5 rounded-[12px] border border-cream-300 bg-transparent px-3.5 ${compact ? 'py-2.5' : 'py-3'}`}
+      className={`flex items-center gap-2.5 rounded-[12px] border border-cream-300 bg-[var(--bg-surface)] px-3.5 ${compact ? 'py-2.5' : 'py-3'}`}
     >
       <Search className="h-4 w-4 text-cream-600" />
       <input
@@ -727,7 +727,7 @@ function OrdersPageInner() {
               filterRow={null}
             />
             <div className="px-4 pt-6">
-              <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center">
+              <div className="rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-5 text-center">
                 <p className="text-[var(--b-text-body)] font-semibold text-[var(--cream-800)]">Orders are unavailable</p>
                 <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
                   Your distributor has not enabled document tracking for this account yet.
@@ -757,7 +757,7 @@ function OrdersPageInner() {
           <OrdersLandingSkeleton />
         ) : tabs.length === 0 ? (
           <div className="px-6 py-6 xl:px-8">
-            <div className="rounded-[20px] border border-[var(--border-1)] bg-white px-5 py-6 text-center">
+            <div className="rounded-[20px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-5 py-6 text-center">
               <p className="text-base font-semibold text-cream-800">Orders are unavailable</p>
               <p className="mt-2 text-sm text-cream-600">Your distributor has not enabled document tracking for this account yet.</p>
             </div>
@@ -800,7 +800,7 @@ function OrdersPageInner() {
                           pickDoc={detailConfig.pickDoc}
                         />
                       ) : (
-                        <div className="flex h-full min-h-0 items-center justify-center rounded-[20px] border border-cream-200 bg-white px-6 text-center text-sm text-cream-600">
+                        <div className="flex h-full min-h-0 items-center justify-center rounded-[20px] border border-cream-200 bg-[var(--bg-surface)] px-6 text-center text-sm text-cream-600">
                           Select a transaction to inspect its details.
                         </div>
                       )}

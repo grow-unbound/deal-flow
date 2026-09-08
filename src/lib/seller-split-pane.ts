@@ -22,3 +22,10 @@ export function isSplitPaneDetailPath(
 
   return true;
 }
+
+export const SPLIT_PANE_DETAIL_QUERY_KEY = 'pane';
+export const SPLIT_PANE_DETAIL_QUERY_VALUE = 'detail';
+
+export function isSplitPaneDetailQuery(value: string | null | undefined): boolean {
+  return value === SPLIT_PANE_DETAIL_QUERY_VALUE;
+}

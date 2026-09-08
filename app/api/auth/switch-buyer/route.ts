@@ -32,7 +32,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'buyer_id is required' }, { status: 400 });
     }
 
-    const phone = await resolveCallerPhone(claims.sub, claims.role);
+    const phone = await resolveCallerPhone(claims.sub, claims.role, {
+      tenantId: claims.tenant_id,
+      buyerId: claims.buyer_id,
+    });
     if (!phone) {
       return NextResponse.json({ error: 'No phone number on file for this account.' }, { status: 400 });
     }

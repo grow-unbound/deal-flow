@@ -9,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { BrandsLandingMetricsV4 } from '@/hooks/useBrands';
 import { FLAGS, getFlag } from '@/lib/flags';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.brands);
 export const dynamic = 'force-dynamic';
@@ -32,13 +33,13 @@ export default async function BrandsLayout({ children }: { children: ReactNode }
 
   return (
     <EntitySplitShell
-      basePath="/brands"
+      basePath={SELLER_ROUTES.products.brands}
       listSlot={
         <SellerBootstrapBoundary<BrandsLandingMetricsV4>
           path="/api/tenant/brands/metrics"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/brands"
+              basePath={SELLER_ROUTES.products.brands}
               ariaLabel="Loading brands"
               showLeading
               eyebrowWidth="w-16"

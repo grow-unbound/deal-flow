@@ -106,7 +106,8 @@ export function BuyerDesktopHeader() {
   const { items } = useCart();
   const { signOut } = useAuth();
   const { openLogin } = useStorefrontLogin();
-  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const buyerContextResolving = isBuyerLoading && !me;
+  const isGuest = !buyerContextResolving && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const [switchPending, setSwitchPending] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
@@ -214,7 +215,7 @@ export function BuyerDesktopHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
+      <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--bg-surface)] md:block">
         <div
           className="mx-auto flex min-h-[64px] w-full items-center gap-4 px-5 py-2.5"
           style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
@@ -253,22 +254,27 @@ export function BuyerDesktopHeader() {
                 value={searchInput}
                 onChange={(event) => handleSearchInputChange(event.target.value)}
                 placeholder="Search products, SKU, brand…"
-                className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--cream-50)] pl-11 pr-20 text-[length:var(--b-text-sub)] text-cream-950 outline-none transition-colors hover:border-cream-400 focus:border-cream-400 focus:ring-2 focus:ring-ember-400/20 placeholder:text-cream-500"
+                className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--bg-surface)] pl-11 pr-20 text-[length:var(--b-text-sub)] text-cream-950 outline-none transition-colors hover:border-cream-400 focus:border-cream-400 focus:ring-2 focus:ring-ember-400/20 placeholder:text-cream-500"
                 aria-label="Search products"
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+              <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-[var(--bg-surface)] px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
                 Ctrl/Cmd+K
               </span>
             </div>
           </div>
 
           <div className="flex min-w-0 shrink-0 justify-end">
-            {isGuest ? (
+            {buyerContextResolving ? (
+              <div className="flex shrink-0 items-center gap-1.5" aria-label="Loading buyer account actions">
+                <div className="h-10 w-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+                <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+                <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+              </div>
+            ) : isGuest ? (
               <Button
                 type="button"
-                variant="ghost"
                 haptic
-                className="h-10 rounded-[12px] px-3 text-[length:var(--b-text-body)] font-semibold text-[var(--teal-500)]"
+                className="h-10 rounded-[12px] bg-cream-950 px-4 text-[length:var(--b-text-body)] font-semibold text-white shadow-sm hover:bg-cream-900 focus-visible:ring-2 focus-visible:ring-cream-950/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cream-50)]"
                 onClick={openLogin}
               >
                 Log in
@@ -302,7 +308,7 @@ export function BuyerDesktopHeader() {
                   </span>
                 </button>
               </PopoverTrigger>
-            <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[18px] border border-cream-200 bg-cream-50 p-0 shadow-xl">
+            <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[18px] border border-cream-200 bg-[var(--bg-surface)] p-0 shadow-xl">
               <div className="border-b border-cream-200 px-4 py-4">
                 <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 border border-cream-200">

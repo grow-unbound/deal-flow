@@ -233,7 +233,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                     <button
                       type="button"
                       onClick={openLogin}
-                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-3 py-1.5 font-medium text-cream-600 transition-colors duration-fast [@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-cream-50 [@media(hover:hover)]:hover:text-cream-800"
+                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-cream-600 transition-colors duration-fast [@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-[var(--bg-surface)] [@media(hover:hover)]:hover:text-cream-800"
                       style={{ fontSize: 'var(--b-text-label)' }}
                     >
                       Login for Price
