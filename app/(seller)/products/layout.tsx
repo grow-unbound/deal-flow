@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
-import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
-import { ProductsLandingClient } from '@/components/seller/products/ProductsLandingClient';
-import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
-import { SplitPaneBootstrapFallback } from '@/components/seller/mobile';
-import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootstrapBoundary';
-import { EntitySplitShell } from '@/components/seller/layout';
-import type { ProductsLandingMetricsV4 } from '@/hooks/useProducts';
-import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
-import { SELLER_ROUTES } from '@/lib/seller-routes';
+import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
+import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
+import { ProductsWorkspaceShell } from '@/components/seller/products/ProductsWorkspaceShell';
 
 export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.products);
 
@@ -16,30 +10,8 @@ export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.products);
 // useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams` from
 // Next.js, and the list now lives here so it can stay mounted across /products <-> /products/[id].
 export default async function ProductsLayout({ children }: { children: ReactNode }) {
-  await requireSellerServerTenantId();
+  const claims = await getSellerServerClaims();
+  if (!claims.tenant_id || !claims.role?.startsWith('seller_')) return <RoleForbiddenPage />;
 
-  return (
-    <EntitySplitShell
-      basePath={SELLER_ROUTES.products.root}
-      listSlot={
-        <SellerBootstrapBoundary<ProductsLandingMetricsV4>
-          path="/api/tenant/products/metrics"
-          fallback={
-            <SplitPaneBootstrapFallback
-              basePath={SELLER_ROUTES.products.root}
-              ariaLabel="Loading products"
-              showLeading
-              expandedFallback={<ProductsLandingSkeleton />}
-            />
-          }
-          render={(initialData, status) => {
-            if (status === 403) return <FeatureForbiddenPage />;
-            return <ProductsLandingClient initialMetrics={initialData} />;
-          }}
-        />
-      }
-    >
-      {children}
-    </EntitySplitShell>
-  );
+  return <ProductsWorkspaceShell canManageTaxonomy={claims.role === 'seller_admin'}>{children}</ProductsWorkspaceShell>;
 }
