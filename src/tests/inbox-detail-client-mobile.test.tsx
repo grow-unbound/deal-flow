@@ -71,4 +71,30 @@ describe('InboxDetailClient on mobile', () => {
     fireEvent.click(screen.getByRole('button', { name: /58,000/ }));
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
   });
+
+  it('enforces single-expand accordion behavior: opening one row collapses the other', () => {
+    renderDetail();
+    const firstTrigger = screen.getByRole('button', { name: /58,000/ });
+    const secondTrigger = screen.getByRole('button', { name: /18,400/ });
+
+    // Initially both rows are collapsed.
+    expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+
+    // Expand the first row.
+    fireEvent.click(firstTrigger);
+    expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
+    expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+
+    // Expanding the second row must collapse the first (type="single" collapsible).
+    fireEvent.click(secondTrigger);
+    expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(secondTrigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
 });

@@ -21,7 +21,7 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
     const query = window.matchMedia('(min-width: 768px)');
