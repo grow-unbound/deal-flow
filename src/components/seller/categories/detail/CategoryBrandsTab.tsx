@@ -14,6 +14,7 @@ import {
   flattenDetailRows,
   useCategoryBrandsDetail,
 } from '@/hooks/useDetailTabSearch';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { formatNumberValue } from '@/lib/utils';
 
 interface CategoryBrandsTabProps {
@@ -107,7 +108,7 @@ export function CategoryBrandsTab({ categoryId }: CategoryBrandsTabProps) {
               ) : null}
             <tr
               className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100"
-              onClick={() => router.push(`/brands/${b.id}`)}
+              onClick={() => router.push(`${SELLER_ROUTES.products.brands}/${b.id}`)}
               onPointerDown={() => triggerHaptic()}
             >
               <td className="px-3 py-3">

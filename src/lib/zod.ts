@@ -192,6 +192,35 @@ export const BuyerUpdateSchema = BuyerCreateSchema.partial().extend({
 });
 export type BuyerUpdateInput = z.infer<typeof BuyerUpdateSchema>;
 
+// Self-registration intake form (Yukti_Inbox_Feature-Spec_v1.md §7.1) —
+// captured once, before a pending buyer can proceed past /onboarding.
+export const BuyerIntakeSchema = z
+  .object({
+    full_name: z.string().trim().min(1, 'Full name is required'),
+    email: z.string().trim().email('Invalid email').optional().or(z.literal('')),
+    is_business: z.boolean(),
+    business_name: z.string().trim().optional().or(z.literal('')),
+    gstin: z.string().trim().optional().or(z.literal('')),
+    city: z.string().trim().optional().or(z.literal('')),
+    state: z.string().trim().optional().or(z.literal('')),
+    pincode: z.string().trim().optional().or(z.literal('')),
+    address_line1: z.string().trim().optional().or(z.literal('')),
+    address_line2: z.string().trim().optional().or(z.literal('')),
+  })
+  .refine((data) => !data.is_business || Boolean(data.business_name?.trim()), {
+    message: 'Business name is required',
+    path: ['business_name'],
+  })
+  .refine((data) => !data.gstin?.trim() || Boolean(data.state?.trim()), {
+    message: 'State is required when GSTIN is provided',
+    path: ['state'],
+  })
+  .refine((data) => !data.gstin?.trim() || Boolean(data.pincode?.trim()), {
+    message: 'Pincode is required when GSTIN is provided',
+    path: ['pincode'],
+  });
+export type BuyerIntakeInput = z.infer<typeof BuyerIntakeSchema>;
+
 export const BuyerUserSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),

@@ -9,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { OrdersLandingMetricsV4 } from '@/hooks/useOrders';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // SalesOrdersLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -23,13 +24,13 @@ export default async function SalesOrdersLayout({ children }: { children: ReactN
 
   return (
     <EntitySplitShell
-      basePath="/sales-orders"
+      basePath={SELLER_ROUTES.sales.orders}
       listSlot={
         <SellerBootstrapBoundary<OrdersLandingMetricsV4>
           path={`/api/tenant/orders/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/sales-orders"
+              basePath={SELLER_ROUTES.sales.orders}
               ariaLabel="Loading sales orders"
               showTransactionTabs
               variant="transaction"

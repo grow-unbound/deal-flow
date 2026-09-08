@@ -18,6 +18,7 @@ import {
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSalesWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
@@ -43,6 +44,7 @@ import { ORDERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landi
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Recent first' | 'Order value (high → low)' | 'Items (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Order value (high → low)', 'Items (high → low)'];
@@ -120,7 +122,7 @@ function SalesOrdersLandingContent({
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/sales-orders');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.sales.orders);
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -133,7 +135,7 @@ function SalesOrdersLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
-    pathnameOverride: '/sales-orders',
+    pathnameOverride: SELLER_ROUTES.sales.orders,
     version: 4,
     initialState: {
       search: '',
@@ -163,7 +165,7 @@ function SalesOrdersLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
-    pathnameOverride: '/sales-orders',
+    pathnameOverride: SELLER_ROUTES.sales.orders,
     ready: !isLoading,
   });
   const sortBy = routeState.sortBy;
@@ -226,7 +228,7 @@ function SalesOrdersLandingContent({
 
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading sales orders" showTransactionTabs variant="transaction" />
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading sales orders" showHeader={false} showTransactionTabs variant="transaction" />
     ) : (
       <SalesOrdersLandingSkeleton />
     );
@@ -277,18 +279,19 @@ function SalesOrdersLandingContent({
             showTransactionTabs
           >
           <PageHeader
-            eyebrow={isPaneOpen ? 'Sales Orders' : 'Transactions'}
-            title={isPaneOpen ? selectedOption?.label ?? 'Sales Orders' : 'Sales Orders'}
-            subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+            eyebrow={isPaneOpen ? 'Orders' : 'Sales'}
+            title={isPaneOpen ? selectedOption?.label ?? 'Orders' : 'Orders'}
+            subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : 'Create, track, and close invoices, orders, and estimates.'}
             horizon={horizonLabel}
             showHorizonControl={false}
-            primary={createSalesOrders ? 'Add a sales order' : undefined}
+            primary={createSalesOrders ? 'Add an order' : undefined}
             onPrimaryClick={createSalesOrders ? () => {
               captureCta('add_sales_order');
-              router.push('/sales-orders/new');
+              router.push(`${SELLER_ROUTES.sales.orders}/new`);
             } : undefined}
             compact={isPaneOpen}
           />
+          <SellerSalesWorkspaceTabs />
           <SellerMobileTransactionTabs active="orders" />
 
           {isPaneOpen ? null : (
@@ -355,7 +358,7 @@ function SalesOrdersLandingContent({
                 action={
                   createSalesOrders ? (
                     <Button variant="accent" asChild>
-                      <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
+                      <Link href={`${SELLER_ROUTES.sales.orders}/new`} className="inline-flex items-center gap-1.5">
                         <Plus size={13} />
                         Add a sales order
                       </Link>
@@ -374,7 +377,7 @@ function SalesOrdersLandingContent({
                 sentinelRef={sentinelRef}
                 rows={visibleRows.map((row) => ({
                   id: row.id,
-                  href: `/sales-orders/${row.id}`,
+                  href: `${SELLER_ROUTES.sales.orders}/${row.id}`,
                   document_number: row.order_id,
                   is_buyer_app: row.source_kind === 'buyer_app' || row.source_detail === 'BUYER_APP',
                   realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,

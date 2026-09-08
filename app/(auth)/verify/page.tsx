@@ -8,7 +8,7 @@ import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHe
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
-import { AUTH_LOGIN_COPY, buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
+import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
 import { markLoggedInOnDevice } from '@/lib/auth-device-login';
 import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
 
@@ -29,11 +29,6 @@ function VerifyOtpForm() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pending, setPending] = useState<{
-    message: string;
-    sellerName: string;
-    sellerWhatsappNumber: string | null;
-  } | null>(null);
   const {
     isCatalogHost,
     tenant: returnToTenant,
@@ -69,27 +64,13 @@ function VerifyOtpForm() {
 
       const data: {
         success?: boolean;
-        outcome?: string;
         redirect?: string;
         handoff_url?: string;
         contexts?: LoginOtpContext[];
         ref_id?: string;
         session?: SessionPayload;
-        message?: string;
-        seller_name?: string;
-        seller_whatsapp_number?: string | null;
         error?: string;
       } = await res.json();
-
-      if (data.outcome === 'pending_approval') {
-        shouldResetLoading = false;
-        setPending({
-          message: data.message ?? '',
-          sellerName: data.seller_name ?? 'the seller',
-          sellerWhatsappNumber: data.seller_whatsapp_number ?? null,
-        });
-        return;
-      }
 
       if (!res.ok || !data.success) {
         setError(data.error ?? 'Verification failed. Please try again.');
@@ -97,9 +78,9 @@ function VerifyOtpForm() {
       }
 
       // Cross-origin handoff: OTP was verified on a host other than the
-      // buyer's own tenant (e.g. catalog.useyukti.in). When the server also
-      // returns a catalog session, set it first so catalog keeps a first-party
-      // cookie before redeeming the tenant handoff link.
+      // buyer's own tenant (e.g. catalog.useyukti.in). Tenant-host redemption
+      // owns the buyer catalog session; a session here is only for legacy
+      // server responses that still include one.
       if (data.handoff_url) {
         if (data.session?.access_token && data.session?.refresh_token) {
           await supabaseBrowser.auth.setSession({
@@ -163,65 +144,6 @@ function VerifyOtpForm() {
   }
 
   if (!ref_id) return null; // redirecting
-
-  if (pending) {
-    return (
-      <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-        {isCatalogHost ? (
-          <CatalogBuyerAuthHero
-            variant="pending"
-            tenant={returnToTenant}
-            tenantLoading={returnToTenantLoading}
-          />
-        ) : (
-          <>
-            <div className="mb-7 flex justify-center">
-              <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
-            </div>
-            <h1 className="text-h3 font-display text-cream-900 mb-1">Request sent</h1>
-          </>
-        )}
-        {isCatalogHost && returnToTenant ? (
-          <p className="mb-6 text-body-sm text-cream-600">
-            You can keep browsing the catalog in the meantime — we&apos;ll let you know once you&apos;re
-            approved.
-          </p>
-        ) : (
-          <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2 mb-6">
-            <p className="text-body-sm text-warning-700 font-medium">
-              {pending.sellerName} needs to approve your access before you can view pricing or place orders.
-            </p>
-            <p className="text-body-sm text-warning-700/90">
-              You can keep browsing the catalog in the meantime — we&apos;ll let you know once you&apos;re
-              approved.
-            </p>
-          </div>
-        )}
-        {pending.sellerWhatsappNumber && (
-          <button
-            type="button"
-            onClick={() =>
-              window.open(
-                buildWhatsAppChatUrl(pending.sellerWhatsappNumber!, pending.message),
-                '_blank',
-                'noopener,noreferrer',
-              )
-            }
-            className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base mb-3"
-          >
-            Message {pending.sellerName} on WhatsApp
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => router.replace('/')}
-          className="w-full text-caption text-cream-600 hover:text-cream-800 transition-colors"
-        >
-          Back to browsing
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">

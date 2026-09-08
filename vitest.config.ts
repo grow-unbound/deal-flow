@@ -1,5 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import fs from 'fs';
+
+// Test runs need the same NEXT_PUBLIC_SUPABASE_* vars the dev server reads from
+// .env.local (createBrowserClient() in src/lib/supabase-browser.ts calls eagerly
+// at module load) — Next.js loads .env.local itself, but a bare vitest run doesn't.
+if (fs.existsSync(path.resolve(__dirname, '.env.local'))) {
+  process.loadEnvFile(path.resolve(__dirname, '.env.local'));
+}
 
 export default defineConfig({
   esbuild: {

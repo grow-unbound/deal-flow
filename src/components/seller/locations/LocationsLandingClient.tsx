@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerBusinessWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
@@ -40,6 +41,7 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { LocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Sales (high → low)' | 'Open demand (high → low)' | 'Overdue (high → low)';
 type LocationLandingFilters = { status: string[]; attention: string[] };
@@ -77,7 +79,7 @@ function LocationsLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/locations');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.business.branches);
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -88,7 +90,7 @@ function LocationsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
     scopeKey: 'v4-this-month',
-    pathnameOverride: '/locations',
+    pathnameOverride: SELLER_ROUTES.business.branches,
     version: 5,
     initialState: {
       search: '',
@@ -113,7 +115,7 @@ function LocationsLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
     scopeKey: 'v4-this-month',
-    pathnameOverride: '/locations',
+    pathnameOverride: SELLER_ROUTES.business.branches,
     ready: !isLoading,
   });
   const rows = landingData?.locations ?? [];
@@ -147,8 +149,8 @@ function LocationsLandingContent({
     return (
       <PageWrap>
         <ErrorState
-          heading="Couldn't load locations"
-          description="There was a problem fetching your locations. Please try again."
+          heading="Couldn't load branches"
+          description="There was a problem fetching your branches. Please try again."
           onRetry={() => refetch()}
         />
       </PageWrap>
@@ -161,10 +163,11 @@ function LocationsLandingContent({
   if (showRefreshingState) {
     return isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
-        ariaLabel="Loading locations"
+        ariaLabel="Loading branches"
         eyebrowWidth="w-20"
         titleWidth="w-44"
         subtitleWidth="w-52"
+        showHeader={false}
       />
     ) : (
       <LocationsLandingSkeleton />
@@ -179,7 +182,7 @@ function LocationsLandingContent({
         sub: kpiSupportingText(LOCATIONS_KPI_COPY, selectedCard),
       }
     : {
-        label: 'Locations',
+        label: 'Branches',
         value: formatNumberValue(totalLocations, 'COUNT'),
         sub: horizonLabel,
       };
@@ -193,19 +196,20 @@ function LocationsLandingContent({
           isError={isError}
         >
         <PageHeader
-          eyebrow={isPaneOpen ? 'Locations' : 'Operations'}
-          title={isPaneOpen ? selectedOption.label : 'Locations'}
+          eyebrow={isPaneOpen ? 'Branches' : 'Business'}
+          title={isPaneOpen ? selectedOption.label : 'Branches'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${totalLocations} location${totalLocations === 1 ? '' : 's'} · This month activity.`}
+            : 'Manage branches, warehouses, and team access.'}
           horizon={horizonLabel}
-          primary="Add location"
+          primary="Add branch"
           onPrimaryClick={() => {
             captureCta('add_location');
             setSheetOpen(true);
           }}
           compact={isPaneOpen}
         />
+        <SellerBusinessWorkspaceTabs />
 
         {isPaneOpen ? null : (
           <InsightStrip4
@@ -227,8 +231,8 @@ function LocationsLandingContent({
         )}
 
         <FilterBar
-          count={`${rows.length} locations`}
-          searchPlaceholder="Search location…"
+          count={`${rows.length} branches`}
+          searchPlaceholder="Search branch…"
           chips={[]}
           activeChip=""
           sortBy={sortBy}
@@ -246,8 +250,8 @@ function LocationsLandingContent({
       <div className="min-h-0 flex-1 overflow-y-auto">
       {isError ? (
         <ErrorState
-          heading="Couldn't load locations"
-          description="There was a problem fetching your locations. Please try again."
+          heading="Couldn't load branches"
+          description="There was a problem fetching your branches. Please try again."
           onRetry={() => refetch()}
         />
       ) : (
@@ -261,7 +265,7 @@ function LocationsLandingContent({
           ) : rows.length === 0 && !isFetching ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
-              heading={search.trim() || filterPreset ? 'No matching locations' : 'No locations yet'}
+              heading={search.trim() || filterPreset ? 'No matching branches' : 'No branches yet'}
               description={
                 search.trim() || filterPreset
                   ? 'Try a different search or filter.'
@@ -271,7 +275,7 @@ function LocationsLandingContent({
           ) : (
           <LandingTable
             columns={[
-                { label: 'Location', width: 220, minWidth: 200, maxWidth: 360, className: 'px-5' },
+                { label: 'Branch', width: 220, minWidth: 200, maxWidth: 360, className: 'px-5' },
                 { label: 'Active customers', align: 'right', minWidth: 100, maxWidth: 150, className: 'px-5' },
                 { label: 'Overdue amount', align: 'right', minWidth: 100, maxWidth: 150, className: 'px-5' },
                 { label: 'Sales · month', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
@@ -287,7 +291,7 @@ function LocationsLandingContent({
               sentinelRef={sentinelRef}
               mobileRows={rows.map((row) => ({
                 id: row.id,
-                href: `/locations/${row.id}`,
+                href: `${SELLER_ROUTES.business.branches}/${row.id}`,
                 eyebrow: row.city || row.address_text || '—',
                 primary: row.name,
                 supporting: joinSplitListMeta(
@@ -309,7 +313,7 @@ function LocationsLandingContent({
                   </tr>
                 ) : null}
                 <tr
-                  onClick={() => router.push(`/locations/${row.id}`)}
+                  onClick={() => router.push(`${SELLER_ROUTES.business.branches}/${row.id}`)}
                   onPointerDown={() => triggerHaptic()}
                   className={cn(
                     'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',

@@ -38,7 +38,7 @@ export function DiscoveryThumbTile({
       href={href}
       onClick={onNavigate}
       className={cn(
-        'flex h-full flex-col text-left no-underline transition-colors',
+        'group flex h-full flex-col text-left no-underline transition-[background-color,border-color,box-shadow] duration-200 ease-standard',
         isBrand
           ? 'items-center'
           : cn(BUYER_CARD_RADIUS_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TILE_HOVER_CLASS),
@@ -60,7 +60,11 @@ export function DiscoveryThumbTile({
             src={imageUrl!}
             alt={label}
             fill
-            className={cn(isBrand ? 'object-cover' : 'object-contain', !isBrand && 'p-1.5')}
+            className={cn(
+              'transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]',
+              isBrand ? 'object-cover' : 'object-contain',
+              !isBrand && 'p-1.5',
+            )}
             sizes={variant === 'grid' && !isBrand ? BUYER_CARD_IMAGE_SIZES : variant === 'grid' ? '120px' : '88px'}
             onError={() => setImgError(true)}
             unoptimized

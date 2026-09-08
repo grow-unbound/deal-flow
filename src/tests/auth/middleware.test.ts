@@ -108,6 +108,45 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBe('http://localhost/login?next=%2Fdashboard');
   });
 
+  it('redirects app host root to login when the session is missing', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: null,
+      error: { message: 'Auth session missing' },
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/', 'app.useyukti.in'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://app.useyukti.in/login?next=%2F');
+  });
+
+  it('redirects app host root to Today for authenticated sellers', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'seller-user-1', tenant_id: 'tenant-1', user_role: 'seller_admin' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/', 'app.useyukti.in'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://app.useyukti.in/today');
+  });
+
+  it('redirects authenticated sellers away from app login to Today', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'seller-user-1', tenant_id: 'tenant-1', user_role: 'seller_admin' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/login', 'app.useyukti.in'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://app.useyukti.in/today');
+  });
+
   it('redirects to /login when the JWT fails signature verification', async () => {
     getClaimsMock.mockResolvedValue({
       data: null,
@@ -135,9 +174,17 @@ describe('middleware auth redirects', () => {
     });
 
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(new NextRequest('http://localhost/orders'));
+    const response = await middleware(new NextRequest('http://localhost/sales-orders'));
 
     expect(response.headers.get('x-tenant-subdomain')).toBe('');
+  });
+
+  it('redirects legacy seller /orders only on the seller host', async () => {
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(new NextRequest('http://localhost/orders'));
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe('http://localhost/sales-orders');
   });
 
   it('lets guests browse a live tenant host without login', async () => {
@@ -146,6 +193,20 @@ describe('middleware auth redirects', () => {
     const response = await middleware(tenantRequest('/'));
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('rewrites authenticated buyer /orders on a tenant host to the buyer orders page', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/orders'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('x-middleware-rewrite')).toContain('/buy/orders');
   });
 
   it('lets a guest reach the delivery-location picker without being bounced to /login (BuyerSelectionGate sends every visitor there, guests included, before rendering home)', async () => {
@@ -196,41 +257,73 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
   });
 
-  it('rejects buyer-only sessions on the seller app host, resolving their own tenant slug', async () => {
+  it('clears buyer-only sessions on the seller app host and redirects to catalog login', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
       error: null,
     });
-    resolveTenantSlugMock.mockResolvedValue('wineyard');
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/dashboard', 'app.useyukti.in'));
-    expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
-    expect(resolveTenantSlugMock).toHaveBeenCalledWith('tenant-wy');
+    const request = tenantRequest('/dashboard', 'app.useyukti.in');
+    request.cookies.set('sb-test-ref-auth-token', 'stale-buyer-session');
+    request.cookies.set('sb-test-ref-auth-token.0', 'stale-buyer-session-chunk');
+
+    const response = await middleware(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/login');
+    const setCookie = response.headers.getSetCookie().join('\n');
+    expect(setCookie).toContain('sb-test-ref-auth-token=;');
+    expect(setCookie).toContain('sb-test-ref-auth-token.0=;');
+    expect(setCookie).toContain('Max-Age=0');
+    expect(resolveTenantSlugMock).not.toHaveBeenCalled();
   });
 
-  it('redirects a buyer session for a different tenant to that tenant\'s own storefront, not WineYard', async () => {
+  it('clears buyer-only sessions on app login and redirects to catalog login', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const request = tenantRequest('/login', 'app.useyukti.in');
+    request.cookies.set('sb-test-ref-auth-token', 'stale-buyer-session');
+
+    const response = await middleware(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/login');
+    expect(response.headers.getSetCookie().join('\n')).toContain('sb-test-ref-auth-token=;');
+  });
+
+  it('clears buyer-only sessions on app / before seller bootstrap can render buyer UI', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 'b2', tenant_id: 'tenant-acme', user_role: 'buyer_admin', buyer_id: 'buyer-2' } },
       error: null,
     });
-    resolveTenantSlugMock.mockResolvedValue('acme');
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/dashboard', 'app.useyukti.in'));
-    expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('https://acme.useyukti.in/');
+    const request = tenantRequest('/', 'app.useyukti.in');
+    request.cookies.set('sb-test-ref-auth-token', 'stale-buyer-session');
+
+    const response = await middleware(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/login');
+    expect(response.headers.getSetCookie().join('\n')).toContain('sb-test-ref-auth-token=;');
   });
 
-  it('falls back to WineYard when a buyer session has no resolvable tenant slug', async () => {
+  it('clears buyer-only sessions on app.localhost and redirects to catalog.localhost', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 'b3', tenant_id: 'tenant-unknown', user_role: 'buyer_admin', buyer_id: 'buyer-3' } },
       error: null,
     });
-    resolveTenantSlugMock.mockResolvedValue(null);
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/dashboard', 'app.useyukti.in'));
-    expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
+    const request = new NextRequest('http://app.localhost:3000/', { headers: { host: 'app.localhost:3000' } });
+    request.cookies.set('sb-test-ref-auth-token', 'stale-buyer-session');
+
+    const response = await middleware(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://catalog.localhost:3000/login');
+    expect(response.headers.getSetCookie().join('\n')).toContain('sb-test-ref-auth-token=;');
   });
 
   it('does not serve products on an unpublished tenant host', async () => {
@@ -245,9 +338,90 @@ describe('middleware auth redirects', () => {
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
     const page = await middleware(tenantRequest('/', 'acme.useyukti.in'));
-    expect(page.status).toBe(200);
+    expect(page.status).toBe(307);
+    expect(page.headers.get('location')).toBe(
+      'https://catalog.useyukti.in/login?return_to=https%3A%2F%2Facme.useyukti.in%2F',
+    );
     const api = await middleware(tenantRequest('/api/buyer/catalog', 'acme.useyukti.in'));
     expect(api.status).toBe(404);
+  });
+
+  it('redirects anonymous unpublished tenant pages to catalog login, not tenant-local login', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-x',
+      slug: 'acme',
+      catalogId: 'cat-1',
+      liveAt: null,
+      pricingMode: null,
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+
+    const ordersPage = await middleware(tenantRequest('/orders', 'acme.useyukti.in'));
+    expect(ordersPage.status).toBe(307);
+    expect(ordersPage.headers.get('location')).toBe(
+      'https://catalog.useyukti.in/login?return_to=https%3A%2F%2Facme.useyukti.in%2Forders',
+    );
+
+    const loginPage = await middleware(tenantRequest('/login', 'acme.useyukti.in'));
+    expect(loginPage.status).toBe(307);
+    expect(loginPage.headers.get('location')).toBe(
+      'https://catalog.useyukti.in/login?return_to=https%3A%2F%2Facme.useyukti.in%2Flogin',
+    );
+  });
+
+  it('lets an authenticated buyer reach their tenant experience even when the public catalog is not live', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: null,
+      pricingMode: null,
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const page = await middleware(tenantRequest('/', 'wineyard.useyukti.in'));
+    expect(page.status).toBe(200);
+    expect(page.headers.get('x-middleware-rewrite')).toContain('/buy/home');
+
+    const api = await middleware(tenantRequest('/api/buyer/catalog', 'wineyard.useyukti.in'));
+    expect(api.status).toBe(200);
+    expect(api.headers.get('location')).toBeNull();
+  });
+
+  it('redirects authenticated buyers from tenant login back to the tenant home screen', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/login'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/');
+  });
+
+  it('serves public brand assets without rewriting them as authenticated buyer brand pages', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const mark = await middleware(tenantRequest('/brand/mark-ink.svg'));
+    expect(mark.status).toBe(200);
+    expect(mark.headers.get('x-middleware-rewrite')).toBeNull();
+
+    const appIcon = await middleware(tenantRequest('/brand/app-icon-copper.svg'));
+    expect(appIcon.status).toBe(200);
+    expect(appIcon.headers.get('x-middleware-rewrite')).toBeNull();
   });
 
   it('rewrites to a real 404 page for a slug with no matching tenant at all — not the not-live page', async () => {
@@ -353,15 +527,26 @@ describe('catalog host middleware', () => {
     expect(response.headers.get('location')).toBeNull();
   });
 
-  it('rewrites buyer session on catalog / to /workspaces', async () => {
+  it('redirects buyer session on catalog / to /workspaces', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
       error: null,
     });
     const { middleware } = await import('../../../middleware');
     const response = await middleware(catalogRequest('/'));
-    expect(response.status).toBe(200);
-    expect(response.headers.get('x-middleware-rewrite')).toContain('/workspaces');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/workspaces');
+  });
+
+  it('redirects buyer session on catalog /login to /workspaces', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(catalogRequest('/login'));
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/workspaces');
   });
 
   it('redirects seller session on catalog host to app.useyukti.in', async () => {
@@ -371,8 +556,8 @@ describe('catalog host middleware', () => {
     });
     const { middleware } = await import('../../../middleware');
     const response = await middleware(catalogRequest('/workspaces'));
-    expect(response.status).toBe(301);
-    expect(response.headers.get('location')).toBe('https://app.useyukti.in/dashboard');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://app.useyukti.in/today');
   });
 
   it('serves catalog.localhost without canonical redirect', async () => {

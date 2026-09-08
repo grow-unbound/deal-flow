@@ -25,10 +25,10 @@ function RecoCarouselSkeleton() {
       {Array.from({ length: 3 }).map((_, index) => (
         <div
           key={index}
-          className="w-[178px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-50"
+          className="w-[178px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)]"
         >
           <div className="aspect-square animate-pulse bg-cream-100" />
-          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+          <div className="bg-[var(--bg-surface)] px-3 pb-3 pt-2.5">
             <div className="line-clamp-2 min-h-[2.4em] animate-pulse rounded bg-cream-200" />
             <div className="mt-0.5 h-3.5 w-2/5 animate-pulse rounded bg-cream-200" />
             <div className="mt-2 h-5 w-24 animate-pulse rounded bg-cream-200" />
@@ -50,7 +50,7 @@ function ProductGridSkeleton({ count = 6 }: { count?: number }) {
           <div className="relative aspect-square animate-pulse bg-cream-100">
             <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-cream-200" />
           </div>
-          <div className="flex flex-col gap-1.5 bg-cream-50 p-2.5">
+          <div className="flex flex-col gap-1.5 bg-[var(--bg-surface)] p-2.5">
             <div className="flex min-h-[2.4em] flex-col justify-center gap-1">
               <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-cream-200" />
               <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-cream-200" />
@@ -73,7 +73,7 @@ export function CatalogBrowseDetailLoading({
 }) {
   return (
     <div className="flex min-h-[50dvh] flex-col pb-8" role="status" aria-label={`Loading ${title}`}>
-      <div className="sticky top-0 z-[15] border-b border-cream-200 bg-cream-50">
+      <div className="sticky top-0 z-[15] border-b border-cream-200 bg-[var(--bg-surface)]">
         <div className="flex min-h-14 items-center gap-2 px-3 py-2">
           <div className="h-11 w-11 shrink-0 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
           <h1

@@ -121,8 +121,8 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
   if (isError || !data) {
     return (
       <ErrorState
-        heading="Couldn't load location"
-        description="There was a problem fetching this location detail page."
+        heading="Couldn't load branch"
+        description="There was a problem fetching this branch detail page."
         onRetry={() => refetch()}
       />
     );
@@ -186,7 +186,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         actions={
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
             <PencilIcon size={14} />
-            Edit location
+            Edit branch
           </Button>
         }
       />

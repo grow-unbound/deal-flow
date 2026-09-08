@@ -471,9 +471,9 @@ export function TransactionDetailPage({
               </div>
               <div className="h-4 w-52 animate-pulse rounded-full bg-cream-200" />
             </div>
-            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
-            <div className={`h-28 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
-            <div className={`h-24 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-40 animate-pulse border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-28 animate-pulse border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-24 animate-pulse border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`} />
           </div>
         ) : fetchError ? (
           <div className="p-4">

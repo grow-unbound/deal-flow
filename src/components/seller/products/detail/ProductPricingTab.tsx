@@ -18,6 +18,7 @@ import { useProductPriceListItemMutations } from '@/hooks/useProducts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { PriceListStatusBadge } from '@/components/seller/price-lists/PriceListStatusBadge';
 import { cn, formatDate, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 interface ProductPricingTabProps {
   productId: string;
@@ -296,7 +297,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                   <div className="flex items-center gap-3">
                     <EntityAvatar initials={getInitials(row.price_list_name)} hue="teal" size={38} />
                     <div className="min-w-0">
-                      <Link href={`/price-lists/${row.price_list_id}`} className="ent-name truncate font-medium text-cream-950 hover:text-ember-700">
+                      <Link href={`${SELLER_ROUTES.market.pricing}/${row.price_list_id}`} className="ent-name truncate font-medium text-cream-950 hover:text-ember-700">
                         {row.price_list_name}
                       </Link>
                       {row.is_managed_externally ? (

@@ -13,7 +13,6 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -577,19 +576,20 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
   return (
     <>
       <div className="space-y-6">
-        <SellerTopbar
-          eyebrow="Settings"
-          title="Integrations"
-          subtitle="Connect accounting and ERP tools."
-          action={
-            isSellerAdmin && (unconnectedAvailable.length > 0 || integrations.length === 0) ? (
-              <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Add integration
-              </Button>
-            ) : null
-          }
-        />
+        <div className="flex items-end justify-between gap-6">
+          <div>
+            <h2 className="font-display text-xl font-semibold text-cream-900">Integrations</h2>
+            <p className="mt-1 max-w-[60ch] text-md leading-[1.3] text-cream-700">
+              Connect accounting and ERP tools.
+            </p>
+          </div>
+          {isSellerAdmin && (unconnectedAvailable.length > 0 || integrations.length === 0) ? (
+            <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add integration
+            </Button>
+          ) : null}
+        </div>
 
         {/* ── Connected integration cards or empty state ───────────────────────── */}
         {integrations.length === 0 ? (

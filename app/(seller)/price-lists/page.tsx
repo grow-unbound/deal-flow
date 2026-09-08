@@ -1,6 +1,6 @@
-// List rendering now lives in ./layout.tsx (EntitySplitShell) so it stays
-// mounted across /price-lists <-> /price-lists/[id]. This page only exists so
-// `/price-lists` itself is a routable segment.
+import { redirect } from 'next/navigation';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
+
 export default function PriceListsPage() {
-  return null;
+  redirect(SELLER_ROUTES.market.pricing);
 }

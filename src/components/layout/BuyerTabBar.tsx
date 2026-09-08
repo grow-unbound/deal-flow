@@ -21,9 +21,10 @@ export function BuyerTabBar() {
   const pathname = usePathname();
   const normalizedPath = normalizeBuyerPathname(pathname);
   const { tabBarVisible } = useBuyerScrollChromeState();
-  const { data: me } = useBuyerMe();
+  const { data: me, isLoading: isBuyerLoading } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
-  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const buyerContextResolving = isBuyerLoading && !me;
+  const isGuest = !buyerContextResolving && me?.mode !== 'buyer' && me?.mode !== 'preview';
   useIdleRoutePrefetch([STOREFRONT.home, STOREFRONT.orders, STOREFRONT.profile, STOREFRONT.search, STOREFRONT.location]);
 
   if (isBuyerDeepRoute(pathname) || isBuyerChromelessRoute(pathname)) return null;

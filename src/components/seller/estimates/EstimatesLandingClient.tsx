@@ -18,6 +18,7 @@ import {
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
 import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSalesWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
@@ -42,6 +43,7 @@ import { ESTIMATES_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-la
 import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import { parseSellerLandingPeriod, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton, TableRowsSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Recent first' | 'Value (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
@@ -134,7 +136,7 @@ function EstimatesLandingContent({
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/estimates');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.sales.estimates);
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -147,7 +149,7 @@ function EstimatesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
-    pathnameOverride: '/estimates',
+    pathnameOverride: SELLER_ROUTES.sales.estimates,
     version: 5,
     initialState: {
       search: '',
@@ -185,7 +187,7 @@ function EstimatesLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
-    pathnameOverride: '/estimates',
+    pathnameOverride: SELLER_ROUTES.sales.estimates,
     ready: !isLoading,
   });
 
@@ -248,7 +250,7 @@ function EstimatesLandingContent({
 
   if (showRefreshingState) {
     return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading estimates" showTransactionTabs variant="transaction" />
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading estimates" showHeader={false} showTransactionTabs variant="transaction" />
     ) : (
       <EstimatesLandingSkeleton />
     );
@@ -298,18 +300,19 @@ function EstimatesLandingContent({
             showTransactionTabs
           >
             <PageHeader
-              eyebrow={isPaneOpen ? 'Estimates' : 'Enquiries'}
+              eyebrow={isPaneOpen ? 'Estimates' : 'Sales'}
               title={isPaneOpen ? selectedOption?.label ?? 'Estimates' : 'Estimates'}
-              subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : subtitle}
+              subtitle={isPaneOpen && selectedOption ? `${selectedOption.value} · ${selectedOption.sub}` : 'Create, track, and close invoices, orders, and estimates.'}
               horizon={horizonLabel}
               showHorizonControl={false}
               primary={createEstimates ? 'Add an estimate' : undefined}
               onPrimaryClick={createEstimates ? () => {
                 captureCta('add_estimate');
-                router.push('/estimates/new');
+                router.push(`${SELLER_ROUTES.sales.estimates}/new`);
               } : undefined}
               compact={isPaneOpen}
             />
+            <SellerSalesWorkspaceTabs />
             <SellerMobileTransactionTabs active="estimates" />
 
             {isPaneOpen ? null : (
@@ -376,7 +379,7 @@ function EstimatesLandingContent({
                 action={
                   createEstimates ? (
                     <Button variant="accent" asChild>
-                      <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
+                      <Link href={`${SELLER_ROUTES.sales.estimates}/new`} className="inline-flex items-center gap-1.5">
                         <Plus size={13} />
                         Add an estimate
                       </Link>
@@ -395,7 +398,7 @@ function EstimatesLandingContent({
                 sentinelRef={sentinelRef}
                 rows={filteredRows.map((row) => ({
                   id: row.id,
-                  href: `/estimates/${row.id}`,
+                  href: `${SELLER_ROUTES.sales.estimates}/${row.id}`,
                   document_number: row.estimate_number,
                   is_buyer_app: row.source_kind === 'buyer_app',
                   realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,

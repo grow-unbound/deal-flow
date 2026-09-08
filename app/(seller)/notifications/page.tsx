@@ -76,8 +76,8 @@ export default function NotificationsPage() {
   return (
     <PageWrap>
       <SellerTopbar
-        title="Notifications"
-        subtitle="Estimates, orders, and updates from your buyers."
+        title="Today"
+        subtitle="What needs action now across orders, collections, buyer requests, and follow-ups."
         action={
           unreadCount > 0 ? (
             <Button variant="ghost" size="sm" className="h-7 px-3 text-xs text-cream-600" onClick={markAllRead}>
@@ -90,7 +90,7 @@ export default function NotificationsPage() {
       {notifications.length === 0 ? (
         <div className="rounded-lg border border-cream-300 bg-white px-8 py-16 text-center shadow-xs">
           <p className="text-sm font-medium text-cream-700">You&apos;re all caught up</p>
-          <p className="mt-1 text-xs text-cream-500">New estimates and order updates will appear here.</p>
+          <p className="mt-1 text-xs text-cream-500">Orders, collections, buyer requests, and follow-ups will appear here.</p>
         </div>
       ) : (
         <div className="space-y-6">

@@ -28,6 +28,14 @@ for (let i = 0; i < filtered.length; i += 1) {
 const result = spawnSync('vitest', ['run', ...passthrough], {
   stdio: 'inherit',
   shell: true,
+  env: {
+    ...process.env,
+    // Node's own experimental global `localStorage` (stable-ish since Node 22+) shadows
+    // jsdom's `window.localStorage` when no --localstorage-file backing is configured,
+    // making `window.localStorage` undefined in any jsdom test that touches it. Disabling
+    // Node's own implementation lets jsdom's (the one tests actually want) take over.
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, '--no-experimental-webstorage'].filter(Boolean).join(' '),
+  },
 });
 
 process.exit(result.status ?? 1);

@@ -21,6 +21,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 interface LocationOrdersTabProps {
   locationId: string;
@@ -148,7 +149,7 @@ export function LocationOrdersTab({
   locationId,
   locationName,
   kind = 'order',
-  routeBase = '/sales-orders',
+  routeBase = SELLER_ROUTES.sales.orders,
 }: LocationOrdersTabProps) {
   const router = useRouter();
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;

@@ -29,6 +29,15 @@ vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   navigateBuyerBack: vi.fn(),
 }));
 
+vi.mock('@/hooks/useBuyerProducts', () => ({
+  buyerDeliveryStockSignature: () => 'no-delivery',
+  prefetchBuyerProductDetail: vi.fn(),
+}));
+
+vi.mock('@/lib/analytics-identity', () => ({
+  useBuyerAnalyticsIds: () => ({ buyer_id: 'buyer-1', tenant_id: 'tenant-1' }),
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
 }));
@@ -47,6 +56,7 @@ describe('buyer product card', () => {
     useBuyerMeMock.mockReset();
     useBuyerMeMock.mockReturnValue({
       data: {
+        mode: 'buyer',
         buyer_id: 'buyer-1',
         tenant: { id: 'tenant-1' },
         stock_visibility: { enabled: false, block_order_on_oos: false },
@@ -98,7 +108,7 @@ describe('buyer product card', () => {
     expect(screen.queryByText('MRP')).not.toBeInTheDocument();
     expect(screen.queryByText('CP Plus')).not.toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveClass('h-8', 'w-8');
+    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveClass('rounded-full');
   });
 
   it('shows readable out-of-stock badge without dimming the details panel', () => {
@@ -110,6 +120,7 @@ describe('buyer product card', () => {
     });
     useBuyerMeMock.mockReturnValue({
       data: {
+        mode: 'buyer',
         buyer_id: 'buyer-1',
         tenant: { id: 'tenant-1' },
         stock_visibility: { enabled: true, block_order_on_oos: false },

@@ -392,7 +392,7 @@ export function CatalogSetupClient(): React.ReactNode {
         progress={progress}
         footer={(
           <div className="flex w-full justify-end">
-            <Button type="button" onClick={() => router.push('/dashboard')}>
+            <Button type="button" onClick={() => router.push('/pulse')}>
               See it in action
             </Button>
           </div>
@@ -417,7 +417,7 @@ export function CatalogSetupClient(): React.ReactNode {
         <div className="flex w-full items-center justify-between">
           {step === 1 ? (
             <CatalogSetupNav
-              onBack={() => router.push('/dashboard')}
+              onBack={() => router.push('/pulse')}
               primaryLabel={showingMapping ? 'Mapping correct, import now' : 'Continue'}
               primaryDisabled={Boolean(importProgress) || countLoading || (showingMapping ? !skuMapped || duplicateFields.length > 0 : existingCount < 1)}
               onPrimary={() => {

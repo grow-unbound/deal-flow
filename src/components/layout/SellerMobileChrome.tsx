@@ -18,9 +18,10 @@ import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { ROLES } from '@/constants';
 import { cn } from '@/lib/utils';
+import { SELLER_ROUTES, isSalesPath } from '@/lib/seller-routes';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
-const SELLER_MOBILE_PREFETCH_HREFS = ['/dashboard', '/sales-orders', '/customers', '/products'];
+const SELLER_MOBILE_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.pulse, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
 const SCROLL_DELTA_THRESHOLD = 8;
 const CHROME_HIDE_AFTER_PX = 48;
 
@@ -46,22 +47,27 @@ function getInitials(value: string | null | undefined) {
 }
 
 function isTransactionsPath(pathname: string) {
-  return pathname.startsWith('/estimates') || pathname.startsWith('/sales-orders') || pathname.startsWith('/invoices');
+  return isSalesPath(pathname);
 }
 
 function isSellerMobileLandingPath(pathname: string) {
   return (
     pathname === '/dashboard' ||
+    pathname === '/today' ||
+    pathname === '/pulse' ||
     pathname === '/customers' ||
     pathname === '/products' ||
     pathname === '/estimates' ||
+    pathname === '/sales/estimates' ||
     pathname === '/sales-orders' ||
+    pathname === '/sales/orders' ||
+    pathname === '/sales/invoices' ||
     pathname === '/invoices'
   );
 }
 
 function isSellerMobileDashboardPath(pathname: string) {
-  return pathname === '/dashboard';
+  return pathname === '/dashboard' || pathname === '/pulse';
 }
 
 function isSellerMobileDeepPath(pathname: string) {
@@ -78,6 +84,22 @@ function getRouteTitle(pathname: string) {
   if (!segment) return 'Seller';
 
   if (action === 'edit') return 'Edit';
+  if (segment === 'today') return 'Today';
+  if (segment === 'pulse') return 'Pulse';
+  if (segment === 'sales') {
+    if (maybeId === 'orders') return 'Orders';
+    if (maybeId === 'estimates') return 'Estimates';
+    return 'Invoices';
+  }
+  if (segment === 'business') {
+    if (maybeId === 'warehouses') return 'Warehouses';
+    if (maybeId === 'team') return 'Team';
+    return 'Branches';
+  }
+  if (segment === 'catalogs') return 'Catalogs';
+  if (segment === 'announcements') return 'Announcements';
+  if (segment === 'pricing') return 'Pricing';
+  if (segment === 'recommendations') return 'Recommendations';
   if (segment === 'sales-orders') return maybeId ? 'Sales Order' : 'Sales Orders';
   if (segment === 'customer-groups') return maybeId ? 'Customer Group' : 'Customer Groups';
   if (segment === 'price-lists') return maybeId ? 'Price List' : 'Price Lists';
@@ -276,7 +298,7 @@ export function SellerMobileTopbar({
                 className="mt-1.5 font-semibold leading-[0.96] text-cream-900"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.022em' }}
               >
-                Dashboard
+                Pulse
               </h1>
               <p className="mt-1.5 max-w-[30rem] font-medium leading-5 text-cream-500" style={{ fontSize: 'var(--b-text-sub)', letterSpacing: '-0.01em' }}>
                 {tenantName}
@@ -332,8 +354,8 @@ export function SellerMobileTopbar({
 }
 
 const bottomTabs = [
-  { label: 'Dashboard', href: '/dashboard', icon: Home },
-  { label: 'Transactions', href: '/invoices', icon: ShoppingBag },
+  { label: 'Today', href: SELLER_ROUTES.today, icon: Home },
+  { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: ShoppingBag },
   { label: 'Search', href: '/search', icon: Search, center: true },
   { label: 'Customers', href: '/customers', icon: Users },
   { label: 'Products', href: '/products', icon: Package },

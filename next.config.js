@@ -104,10 +104,7 @@ const nextConfig = {
     ];
   },
   async redirects() {
-    return [
-      { source: '/orders', destination: '/sales-orders', permanent: true },
-      { source: '/orders/:id', destination: '/sales-orders/:id', permanent: true },
-    ];
+    return [];
   },
   async rewrites() {
     // Tenant-scoped guest-ISR routing (plan #4). Deliberately a next.config.js
@@ -155,10 +152,10 @@ const nextConfig = {
 
     // No filesystem collision for these four — safe as `afterFiles`.
     const GUEST_ISR_ID_ROUTES = [
-      { source: '/category/:id', internalSuffix: '/home/category/:id' },
-      { source: '/brand/:id', internalSuffix: '/home/brand/:id' },
-      { source: '/list/:id', internalSuffix: '/home/list/:id' },
-      { source: '/product/:id', internalSuffix: '/product/:id' },
+      { source: '/category/:id([^/.]+)', internalSuffix: '/home/category/:id' },
+      { source: '/brand/:id([^/.]+)', internalSuffix: '/home/brand/:id' },
+      { source: '/list/:id([^/.]+)', internalSuffix: '/home/list/:id' },
+      { source: '/product/:id([^/.]+)', internalSuffix: '/product/:id' },
     ];
     const guestIsrIdRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.flatMap((suffix) =>
       GUEST_ISR_ID_ROUTES.map(({ source, internalSuffix }) => ({

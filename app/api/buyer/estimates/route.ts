@@ -20,6 +20,7 @@ import { resolveAuthoritativePrices } from '@/lib/server/buyer-price-resolution'
 import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
+import { syncEstimateEntrySafe } from '@/lib/server/inbox-entries';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -286,6 +287,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     if (itemsError) {
       console.error('[buyer/estimates] Items insert error:', itemsError);
     }
+
+    syncEstimateEntrySafe(db as any, typed.id);
 
     // Fire-and-forget: the estimate row above is already committed (and is what
     // the realtime channel notifies on), so don't hold the HTTP response hostage

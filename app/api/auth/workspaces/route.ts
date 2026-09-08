@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { BUYER_ROLES } from '@/constants';
-import { findBuyerLoginCandidates } from '@/lib/server/buyer-access';
+import { findBuyerWorkspaceCandidatesForUser } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
-import { resolveCallerPhone } from '@/lib/server/resolve-auth-phone';
 import { groupBuyerCandidatesByTenant } from '@/lib/server/workspaces';
 
 /**
@@ -21,12 +20,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Buyer session required' }, { status: 403 });
     }
 
-    const phone = await resolveCallerPhone(claims.sub, claims.role);
-    if (!phone) {
-      return NextResponse.json({ error: 'No phone number on file for this account.' }, { status: 400 });
-    }
-
-    const candidates = await findBuyerLoginCandidates(phone);
+    const candidates = await findBuyerWorkspaceCandidatesForUser(claims.sub);
     const tenants = groupBuyerCandidatesByTenant(candidates);
 
     return NextResponse.json({ tenants }, { headers: BUYER_CACHE_PERSONAL });

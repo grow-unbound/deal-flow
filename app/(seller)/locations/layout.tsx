@@ -8,6 +8,7 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { LocationsLandingMetricsV4 } from '@/hooks/useLocations';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=` seeding now happens client-side inside LocationsLandingClient via
 // useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams` from
@@ -21,15 +22,15 @@ export default async function LocationsLayout({ children }: { children: ReactNod
 
   return (
     <EntitySplitShell
-      basePath="/locations"
+      basePath={SELLER_ROUTES.business.branches}
       listSlot={
         <SellerBootstrapBoundary<LocationsLandingMetricsV4>
           // Bootstrap Pulse cards only — table rows are fetched by the infinite query.
           path="/api/tenant/locations/metrics"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/locations"
-              ariaLabel="Loading locations"
+              basePath={SELLER_ROUTES.business.branches}
+              ariaLabel="Loading branches"
               eyebrowWidth="w-20"
               titleWidth="w-44"
               subtitleWidth="w-52"

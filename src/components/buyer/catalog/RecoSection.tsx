@@ -27,7 +27,7 @@ interface RecoSectionProps {
   linkLabel?: string;
   /** Override BuyerSectionRow horizontal padding (default px-4). */
   sectionClassName?: string;
-  /** Override horizontal scroll gutter (default gap-3 px-4). */
+  /** Override horizontal scroll gutter (default gap-3.5 px-4). */
   scrollClassName?: string;
   priceReveal?: ProductCardPriceReveal;
 }
@@ -42,7 +42,7 @@ export function RecoSection({
   href,
   linkLabel,
   sectionClassName = 'px-4 pb-3',
-  scrollClassName = 'gap-3 px-4',
+  scrollClassName = 'gap-3.5 px-4',
   priceReveal,
 }: RecoSectionProps): React.ReactNode {
   const posthog = usePostHog();
@@ -79,7 +79,7 @@ export function RecoSection({
 }
 
 export function RecoSectionSkeleton({
-  scrollClassName = 'gap-3 px-4',
+  scrollClassName = 'gap-3.5 px-4',
 }: {
   scrollClassName?: string;
 }): React.ReactNode {
@@ -91,7 +91,7 @@ export function RecoSectionSkeleton({
           className={cn(
             BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
             BUYER_CARD_RADIUS_CLASS,
-            'shrink-0 overflow-hidden border border-cream-200 bg-cream-50',
+            'shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)]',
           )}
         >
           <div className="aspect-square animate-pulse bg-cream-100" />

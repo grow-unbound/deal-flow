@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
@@ -76,6 +76,13 @@ export async function POST(request: NextRequest) {
     }
 
     const buyerCandidate = toBuyerLoginCandidate(candidate);
+
+    if (!buyerCandidate.buyer_app_enabled) {
+      const { session } = await mintBuyerSession(buyerCandidate);
+      const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
+      return NextResponse.json({ success: true, redirect, session });
+    }
+
     const currentTenantId = request.headers.get('x-verified-tenant-id');
     const onCatalogHost = isCatalogRequest(request);
     const { supabaseAdmin } = await import('@/lib/supabase');
@@ -104,9 +111,8 @@ export async function POST(request: NextRequest) {
       const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken);
 
       if (onCatalogHost) {
-        const { session } = await mintBuyerSession(buyerCandidate);
         recordSessionStart();
-        return NextResponse.json({ success: true, handoff_url: handoffUrl, session });
+        return NextResponse.json({ success: true, handoff_url: handoffUrl });
       }
 
       return NextResponse.json({ success: true, handoff_url: handoffUrl });

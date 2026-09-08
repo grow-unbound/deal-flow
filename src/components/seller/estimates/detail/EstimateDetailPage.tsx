@@ -51,6 +51,7 @@ import { TransactionOriginMark } from '@/components/seller/transactional/Transac
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 const noop = () => {};
 
@@ -181,7 +182,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
           toast.error('Duplicate succeeded but no id returned');
           return;
         }
-        router.push(`/estimates/${newIdStr}/edit`);
+        router.push(`${SELLER_ROUTES.sales.estimates}/${newIdStr}/edit`);
       },
     });
   }
@@ -193,9 +194,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
         setConvertOpen(false);
         toast.success('Sales order created');
         if (orderId) {
-          router.push(`/sales-orders/${orderId}`);
+          router.push(`${SELLER_ROUTES.sales.orders}/${orderId}`);
         } else {
-          router.push(`/estimates/${id}`);
+          router.push(`${SELLER_ROUTES.sales.estimates}/${id}`);
         }
       },
     });
@@ -208,9 +209,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
         setConvertOpen(false);
         toast.success('Invoice created');
         if (invoiceId) {
-          router.push(`/invoices/${invoiceId}`);
+          router.push(`${SELLER_ROUTES.sales.invoices}/${invoiceId}`);
         } else {
-          router.push(`/estimates/${id}`);
+          router.push(`${SELLER_ROUTES.sales.estimates}/${id}`);
         }
       },
     });
@@ -332,7 +333,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
                         icon: <Edit2 className="h-4 w-4" />,
                         onClick: () => {
                           seedEstimateComposerCache(queryClient, id, data);
-                          router.push(`/estimates/${id}/edit`);
+                          router.push(`${SELLER_ROUTES.sales.estimates}/${id}/edit`);
                         },
                       } satisfies DetailActionItem,
                     ]

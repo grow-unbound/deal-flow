@@ -8,6 +8,7 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=` seeding now happens client-side inside PriceListsLandingClient via
 // useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams` from
@@ -19,13 +20,13 @@ export default async function PriceListsLayout({ children }: { children: ReactNo
 
   return (
     <EntitySplitShell
-      basePath="/price-lists"
+      basePath={SELLER_ROUTES.market.pricing}
       listSlot={
         <SellerBootstrapBoundary<PriceListsLandingResponse>
           path="/api/price-lists?limit=50"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/price-lists"
+              basePath={SELLER_ROUTES.market.pricing}
               ariaLabel="Loading price lists"
               expandedFallback={<PriceListsLandingSkeleton />}
             />

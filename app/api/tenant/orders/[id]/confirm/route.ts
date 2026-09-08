@@ -7,6 +7,7 @@ import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
+import { syncOrderEntrySafe, touchEntryForSourceSafe } from '@/lib/server/inbox-entries';
 
 const ConfirmSchema = z.object({
   has_backorder: z.boolean().default(false),
@@ -114,6 +115,16 @@ export async function PATCH(
       event: 'sales_order_confirmed',
       properties: { ...withTenantSellerIds(claims), order_id: id },
     });
+
+    touchEntryForSourceSafe(db, {
+      tenantId: claims.tenant_id,
+      entryType: 'new_order_confirmation',
+      sourceEntityType: 'order',
+      sourceEntityId: id,
+      action: 'accept_order',
+      actorUserId: claims.sub,
+    });
+    syncOrderEntrySafe(db, id);
 
     return NextResponse.json({
       data: {

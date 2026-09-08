@@ -141,7 +141,7 @@ export default function PreviewSelectBuyerPage() {
                       void handleSelect(buyer.buyer_id);
                     }
                   }}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-cream-50 aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:pointer-events-none"
+                  className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface)] aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:pointer-events-none"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-cream-900">{label}</p>

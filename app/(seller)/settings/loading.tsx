@@ -1,12 +1,10 @@
 export default function SettingsLoading() {
   return (
-    <div className="mx-auto w-full max-w-[1920px] space-y-6 px-8 py-6">
-      <div className="space-y-2" role="status" aria-label="Loading settings page">
-        <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />
-        <div className="h-9 w-56 animate-pulse rounded bg-cream-200" />
-        <div className="h-4 w-full max-w-xl animate-pulse rounded bg-cream-200" />
+    <div className="space-y-6" role="status" aria-label="Loading settings tab">
+      <div className="flex justify-end gap-2">
+        <div className="h-10 w-20 animate-pulse rounded-md bg-cream-100" />
+        <div className="h-10 w-32 animate-pulse rounded-md bg-cream-100" />
       </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="overflow-hidden rounded-xl border border-cream-200 bg-cream-50">
           <div className="border-b border-cream-200 px-5 py-4">
@@ -61,11 +59,6 @@ export default function SettingsLoading() {
           <div className="h-14 animate-pulse border-b border-cream-100 bg-cream-50/50" />
           <div className="h-14 animate-pulse bg-cream-50/50" />
         </div>
-      </div>
-
-      <div className="flex justify-end gap-3">
-        <div className="h-10 w-28 animate-pulse rounded-md bg-cream-100" />
-        <div className="h-10 w-32 animate-pulse rounded-md bg-cream-100" />
       </div>
     </div>
   );

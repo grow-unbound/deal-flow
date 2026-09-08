@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-import { catalogOriginForRequest } from '@/lib/storefront-host';
+import { redirectToBuyerAccountSelector } from '@/lib/buyer-switch-account';
 
 interface BuyerInvoice {
   id: string;
@@ -287,7 +287,7 @@ function BusinessDetailsSheet({
           />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-[var(--bg-surface)] px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
@@ -347,7 +347,7 @@ function PhoneSheet({
           <BuyerSheetPhoneInput value={phone} onChange={setPhone} />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-[var(--bg-surface)] px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
@@ -571,12 +571,12 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSwitchAccount = () => {
+  const handleSwitchAccount = async () => {
     setSwitchPending(true);
     try {
-      const catalogOrigin = catalogOriginForRequest(window.location.host);
-      window.location.assign(`${catalogOrigin}/`);
-    } finally {
+      await redirectToBuyerAccountSelector();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not switch accounts. Please try again.');
       setSwitchPending(false);
     }
   };
@@ -584,7 +584,7 @@ export default function ProfilePage() {
   if (isError) {
     return (
       <div className="p-4">
-        <div className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-5 text-sm text-cream-700">
+        <div className="rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] px-4 py-5 text-sm text-cream-700">
           Couldn&apos;t load your profile right now.
         </div>
       </div>
@@ -855,7 +855,7 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              <div className="mt-5 flex items-center justify-between gap-3 rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
+              <div className="mt-5 flex items-center justify-between gap-3 rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] px-4 py-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Outstanding invoices</p>
                   <p className="mt-1 text-sm text-cream-600">Review unpaid invoices in the Orders section.</p>

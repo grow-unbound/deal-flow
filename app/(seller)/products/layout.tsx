@@ -8,6 +8,7 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { ProductsLandingMetricsV4 } from '@/hooks/useProducts';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.products);
 
@@ -19,13 +20,13 @@ export default async function ProductsLayout({ children }: { children: ReactNode
 
   return (
     <EntitySplitShell
-      basePath="/products"
+      basePath={SELLER_ROUTES.products.root}
       listSlot={
         <SellerBootstrapBoundary<ProductsLandingMetricsV4>
           path="/api/tenant/products/metrics"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/products"
+              basePath={SELLER_ROUTES.products.root}
               ariaLabel="Loading products"
               showLeading
               expandedFallback={<ProductsLandingSkeleton />}

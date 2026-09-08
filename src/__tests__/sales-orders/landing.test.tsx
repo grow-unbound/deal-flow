@@ -297,7 +297,7 @@ describe('sales orders landing page', () => {
     expect(screen.queryByText('Campaign')).not.toBeInTheDocument();
   });
 
-  it('default sort is recent first and row click navigates to /sales-orders/{id}', () => {
+  it('default sort is recent first and row click navigates to /sales/orders/{id}', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
     const orderNodes = screen.getAllByText(/^DF-/);
@@ -306,7 +306,7 @@ describe('sales orders landing page', () => {
     const rowLabel = screen.getAllByText('DF-NEW').find((el) => Boolean(el.closest('tr')));
     expect(rowLabel).toBeTruthy();
     fireEvent.click(rowLabel!.closest('tr')!);
-    expect(pushMock).toHaveBeenCalledWith('/sales-orders/o-new');
+    expect(pushMock).toHaveBeenCalledWith('/sales/orders/o-new');
   });
 
   it('renders flag-off empty state when df_order_management is off', () => {

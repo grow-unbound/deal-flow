@@ -59,7 +59,7 @@ function StorefrontHandoffInner({ branding }: { branding: StorefrontHandoffBrand
   }, [tokenHash, destination]);
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-cream-50 px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-[var(--bg-page)] px-4">
       <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8 max-w-sm w-full text-center">
         <div className="mb-5 flex justify-center">
           {branding ? (

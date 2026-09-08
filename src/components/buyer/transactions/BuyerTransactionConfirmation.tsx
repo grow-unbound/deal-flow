@@ -179,7 +179,7 @@ export function BuyerTransactionConfirmation({
       </p>
 
       <div className="mt-8 w-full rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] text-left">
-        <div className="border-b border-[var(--border-1)] px-4 py-3" style={{ background: 'var(--cream-50)' }}>
+        <div className="border-b border-[var(--border-1)] px-4 py-3" style={{ background: 'var(--bg-surface)' }}>
           <p className="font-semibold uppercase tracking-[0.18em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
             {documentLabel}
           </p>

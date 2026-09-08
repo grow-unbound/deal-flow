@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 export interface SellerMobileSegmentedTab {
   id: string;
@@ -92,19 +93,19 @@ export function SellerMobileTransactionTabs({ active }: { active: 'estimates' | 
     {
       id: 'estimates',
       label: 'Estimates',
-      href: '/estimates',
+      href: SELLER_ROUTES.sales.estimates,
       enabled: estimatesFlag !== false && features?.enquiries !== false,
     },
     {
       id: 'orders',
       label: 'Orders',
-      href: '/sales-orders',
+      href: SELLER_ROUTES.sales.orders,
       enabled: salesOrdersFlag !== false && features?.sales_orders !== false,
     },
     {
       id: 'invoices',
       label: 'Invoices',
-      href: '/invoices',
+      href: SELLER_ROUTES.sales.invoices,
       enabled: invoicesFlag !== false && features?.invoices !== false,
     },
   ].filter((tab) => tab.enabled);

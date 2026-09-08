@@ -10,6 +10,10 @@ type CachedAuth = {
 
 let authCache: CachedAuth | null = null;
 
+export function clearApiAuthCache(): void {
+  authCache = null;
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const now = Date.now();
   if (authCache && now < authCache.expiresAtMs) {

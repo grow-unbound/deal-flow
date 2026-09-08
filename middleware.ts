@@ -47,6 +47,7 @@ import { resolveTenantFlags } from '@/lib/server/tenant-flags-resolve';
 import type { Database } from '@/types/database';
 import {
   WINEYARD_SLUG,
+  catalogHostForRequest,
   parseRequestHost,
   sellerAppHostForRequest,
   tenantStorefrontHostForRequest,
@@ -120,7 +121,12 @@ function stripVerifiedHeaders(requestHeaders: Headers) {
   requestHeaders.delete('x-verified-tenant-slug');
 }
 
-function redirectPreservingPath(request: NextRequest, host: string, pathname = request.nextUrl.pathname): NextResponse {
+function redirectPreservingPath(
+  request: NextRequest,
+  host: string,
+  pathname = request.nextUrl.pathname,
+  status: 301 | 307 = 301,
+): NextResponse {
   const url = request.nextUrl.clone();
   // `host` may or may not already carry a port (tenantStorefrontHostForRequest /
   // sellerAppHostForRequest now include it for *.localhost; toCanonicalHost's
@@ -132,7 +138,7 @@ function redirectPreservingPath(request: NextRequest, host: string, pathname = r
   url.protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
   url.host = port ? `${hostnameOnly}:${port}` : hostnameOnly;
   url.pathname = pathname;
-  return NextResponse.redirect(url, 301);
+  return NextResponse.redirect(url, status);
 }
 
 function rewriteWithHeaders(request: NextRequest, requestHeaders: Headers, pathname?: string): NextResponse {
@@ -191,6 +197,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(callbackUrl);
   }
 
+  if (hostKind.kind !== 'tenant' && (pathname === '/orders' || pathname.startsWith('/orders/'))) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname === '/orders' ? '/sales-orders' : `/sales-orders/${pathname.slice('/orders/'.length)}`;
+    return NextResponse.redirect(url, 301);
+  }
+
   if (hostKind.kind === 'app') {
     return handleAppHost(request, requestHeaders, pathname);
   }
@@ -211,20 +223,19 @@ export async function middleware(request: NextRequest) {
 }
 
 /**
- * Slug to send a buyer-role session on app.useyukti.in to, when redirecting them
- * to their own tenant's canonical storefront. Prefers the session's own
- * tenant_id (so a buyer of tenant #2+ lands on their own storefront, not
- * WineYard's); WINEYARD_SLUG is only a fallback for a session-less legacy
- * /buy/* bookmark from before the subdomain cutover, when there is no tenant
- * to resolve from.
+ * Host to send buyer traffic on app.useyukti.in to. Prefers the session's own
+ * tenant_id; catalog.useyukti.in is the safe fallback for a buyer-role session
+ * with stale/unresolvable tenant claims. WINEYARD_SLUG is only a fallback for a
+ * session-less legacy /buy/* bookmark from before the subdomain cutover.
  */
-async function resolveBuyerRedirectSlug(claims: Claims | null): Promise<string> {
+async function resolveBuyerRedirectHost(claims: Claims | null, hostHeader: string): Promise<string> {
   const tenantId = claims?.tenant_id;
   if (tenantId) {
     const slug = await resolveTenantSlugById(tenantId);
-    if (slug) return slug;
+    if (slug) return tenantStorefrontHostForRequest(hostHeader, slug);
+    if (sessionRole(claims)?.startsWith('buyer_')) return catalogHostForRequest(hostHeader);
   }
-  return WINEYARD_SLUG;
+  return tenantStorefrontHostForRequest(hostHeader, WINEYARD_SLUG);
 }
 
 async function handleAppHost(
@@ -233,8 +244,9 @@ async function handleAppHost(
   pathname: string,
 ): Promise<NextResponse> {
   const isBuyPath = pathname === '/buy' || pathname.startsWith('/buy/');
+  const isLoginPath = pathname === '/login';
 
-  if (!isBuyPath && isPublicRoute(pathname)) {
+  if (!isBuyPath && !isLoginPath && isPublicRoute(pathname)) {
     return nextWithHeaders(request, requestHeaders);
   }
 
@@ -243,18 +255,26 @@ async function handleAppHost(
 
   if (isBuyPath) {
     const publicPath = toPublicStorefrontPath(pathname) ?? '/';
-    const slug = await resolveBuyerRedirectSlug(auth.claims);
-    return redirectPreservingPath(request, tenantStorefrontHostForRequest(hostHeader, slug), publicPath);
+    const destinationHost = await resolveBuyerRedirectHost(auth.claims, hostHeader);
+    return redirectPreservingPath(request, destinationHost, publicPath);
   }
 
   if (!auth.claims) {
+    if (isLoginPath) {
+      return nextWithHeaders(request, requestHeaders);
+    }
     return redirectToLogin(request, pathname);
   }
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('buyer_')) {
-    const slug = await resolveBuyerRedirectSlug(auth.claims);
-    return redirectPreservingPath(request, tenantStorefrontHostForRequest(hostHeader, slug), '/');
+    const response = redirectToCatalogLogin(request, { includeReturnTo: false });
+    clearSupabaseAuthCookies(response, request);
+    return response;
+  }
+
+  if (pathname === '/' || isLoginPath) {
+    return redirectPreservingPath(request, hostHeader, '/today', 307);
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -265,7 +285,9 @@ async function handleCatalogHost(
   requestHeaders: Headers,
   pathname: string,
 ): Promise<NextResponse> {
-  if (isPublicRoute(pathname)) {
+  const isCatalogEntryPath = pathname === '/' || pathname === '/login' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+
+  if (isPublicRoute(pathname) && !isCatalogEntryPath) {
     return nextWithHeaders(request, requestHeaders);
   }
 
@@ -273,18 +295,19 @@ async function handleCatalogHost(
   const hostHeader = request.headers.get('host') ?? '';
 
   if (!auth.claims) {
+    if (pathname === '/login') {
+      return nextWithHeaders(request, requestHeaders);
+    }
     return redirectToLogin(request, pathname);
   }
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('seller_')) {
-    return redirectPreservingPath(request, sellerAppHostForRequest(hostHeader), '/dashboard');
+    return redirectPreservingPath(request, sellerAppHostForRequest(hostHeader), '/today', 307);
   }
 
-  if (pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
-    return finalizeAuthenticated(request, requestHeaders, auth, pathname, {
-      rewritePath: '/workspaces',
-    });
+  if (isCatalogEntryPath) {
+    return redirectPreservingPath(request, hostHeader, '/workspaces', 307);
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -364,20 +387,6 @@ async function handleTenantHost(
   const guestPage = isGuestStorefrontPagePath(pathname);
   const storefrontPage = isStorefrontPagePath(pathname);
 
-  if (!live && (guestApi || (guestPage && pathname !== '/login' && pathname !== '/not-live'))) {
-    if (guestApi) {
-      return new NextResponse(JSON.stringify({ error: 'Catalog is not live' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
-      });
-    }
-    if (pathname !== '/not-live') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/not-live';
-      return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
-    }
-  }
-
   const auth = await readSession(request);
   const hasSession = Boolean(auth.claims);
   const role = sessionRole(auth.claims);
@@ -388,6 +397,20 @@ async function handleTenantHost(
     && storefront
     && sessionTenantId === storefront.tenantId,
   );
+
+  if (pathname === '/login' && buyerMatchesHost) {
+    return redirectPreservingPath(request, request.headers.get('host') ?? '', '/', 307);
+  }
+
+  if (!live && !buyerMatchesHost && (guestApi || !pathname.startsWith('/api/'))) {
+    if (guestApi) {
+      return new NextResponse(JSON.stringify({ error: 'Catalog is not live' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
+      });
+    }
+    return redirectToCatalogLogin(request);
+  }
 
   if (!hasSession && isGuestRateLimitedPath(pathname)) {
     const kind = isGuestSearchApiPath(pathname, request.nextUrl.search) ? 'search' : 'browse';
@@ -552,6 +575,66 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   return NextResponse.redirect(loginUrl);
 }
 
+function redirectToCatalogLogin(
+  request: NextRequest,
+  options: { includeReturnTo?: boolean } = {},
+): NextResponse {
+  const catalogHost = catalogHostForRequest(request.headers.get('host') ?? '');
+  const [hostnameOnly, portFromHost] = catalogHost.split(':');
+  const isLocal = hostnameOnly === 'localhost' || hostnameOnly.endsWith('.localhost');
+  const protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
+  const url = new URL(`${protocol}//${portFromHost ? `${hostnameOnly}:${portFromHost}` : hostnameOnly}/login`);
+  if (options.includeReturnTo !== false) {
+    url.searchParams.set('return_to', request.url);
+  }
+  return NextResponse.redirect(url);
+}
+
+function isChunkLikeCookieName(cookieName: string, key: string): boolean {
+  return cookieName === key || cookieName.startsWith(`${key}.`);
+}
+
+function supabaseAuthStorageKey(): string | null {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return null;
+  try {
+    const hostname = new URL(supabaseUrl).hostname;
+    const projectRef = hostname.split('.')[0];
+    return projectRef ? `sb-${projectRef}-auth-token` : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSupabaseAuthCookies(response: NextResponse, request: NextRequest) {
+  const storageKey = supabaseAuthStorageKey();
+  const storageKeys = storageKey
+    ? [storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`]
+    : [];
+  const cookieNames = new Set<string>();
+
+  for (const cookie of request.cookies.getAll()) {
+    if (
+      storageKeys.some((key) => isChunkLikeCookieName(cookie.name, key))
+      || /^sb-[a-z0-9-]+-auth-token(?:[.][0-9]+)?$/i.test(cookie.name)
+    ) {
+      cookieNames.add(cookie.name);
+    }
+  }
+
+  for (const key of storageKeys) {
+    cookieNames.add(key);
+  }
+
+  for (const name of cookieNames) {
+    response.cookies.set(name, '', withAuthCookieDomain({
+      path: '/',
+      sameSite: 'lax' as const,
+      maxAge: 0,
+    }));
+  }
+}
+
 async function authenticateSellerOrLogin(
   request: NextRequest,
   requestHeaders: Headers,
@@ -611,6 +694,8 @@ async function finalizeAuthenticated(
     || isStorefrontPagePath(pathname)
     || pathname.startsWith('/workspaces')
     || pathname.startsWith('/consent')
+    || pathname.startsWith('/onboarding')
+    || pathname.startsWith('/pending')
     || pathname.startsWith('/api')
     || pathname.startsWith('/auth')
     || isPublicRoute(pathname);

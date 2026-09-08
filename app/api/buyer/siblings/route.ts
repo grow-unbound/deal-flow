@@ -22,7 +22,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Buyer session required' }, { status: 403 });
     }
 
-    const phone = await resolveCallerPhone(claims.sub, claims.role);
+    const phone = await resolveCallerPhone(claims.sub, claims.role, {
+      tenantId: claims.tenant_id,
+      buyerId: claims.buyer_id,
+    });
     if (!phone) {
       return NextResponse.json({ error: 'No phone number on file for this account.' }, { status: 400 });
     }

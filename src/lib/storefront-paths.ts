@@ -49,12 +49,17 @@ const INTERNAL_EXACT_TO_PUBLIC: Record<string, string> = Object.fromEntries(
   Object.entries(PUBLIC_EXACT_TO_INTERNAL).map(([pub, intern]) => [intern, pub]),
 );
 
+function looksLikePublicAsset(pathname: string): boolean {
+  return /\/[^/]+\.[A-Za-z0-9]+$/.test(pathname);
+}
+
 /**
  * Browser URL → existing `app/(buyer)/buy/*` pathname for rewrite / classifiers.
  */
 export function toInternalBuyPath(pathname: string): string | null {
   if (pathname.startsWith('/buy/') || pathname === '/buy') return pathname;
   if (PUBLIC_EXACT_TO_INTERNAL[pathname]) return PUBLIC_EXACT_TO_INTERNAL[pathname];
+  if (looksLikePublicAsset(pathname)) return null;
   for (const [pub, intern] of PUBLIC_TO_INTERNAL) {
     if (pathname.startsWith(pub)) return intern + pathname.slice(pub.length);
   }
@@ -116,6 +121,7 @@ const GUEST_PUBLIC_PREFIXES = ['/product/', '/category/', '/brand/', '/list/', '
 /** Browse pages a guest may hit. Cart/orders/profile stay auth-gated. */
 export function isGuestStorefrontPagePath(pathname: string): boolean {
   if (GUEST_PUBLIC_EXACT.has(pathname)) return true;
+  if (looksLikePublicAsset(pathname)) return false;
   return GUEST_PUBLIC_PREFIXES.some((prefix) => pathname === prefix.slice(0, -1) || pathname.startsWith(prefix));
 }
 
@@ -129,6 +135,7 @@ const GUEST_ISR_PUBLIC_PREFIXES = ['/product/', '/category/', '/brand/', '/list/
 
 export function isGuestIsrPagePath(pathname: string): boolean {
   if (GUEST_ISR_PUBLIC_EXACT.has(pathname)) return true;
+  if (looksLikePublicAsset(pathname)) return false;
   return GUEST_ISR_PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 

@@ -99,13 +99,12 @@ describe('SellerSidebar nav gating', () => {
       await act(async () => {
         render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
       });
-      expect(screen.getByText('Dashboard')).toBeInTheDocument();
-      expect(screen.getByText('Estimates')).toBeInTheDocument();
-      expect(screen.getByText('Sales Orders')).toBeInTheDocument();
-      expect(screen.getByText('Invoices')).toBeInTheDocument();
+      expect(screen.getByText('Today')).toBeInTheDocument();
+      expect(screen.getByText('Pulse')).toBeInTheDocument();
+      expect(screen.getByText('Sales')).toBeInTheDocument();
       expect(screen.getByText('Customers')).toBeInTheDocument();
       expect(screen.getByText('Products')).toBeInTheDocument();
-      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pricing')).not.toBeInTheDocument();
       expect(screen.queryByText('Exports')).not.toBeInTheDocument();
     });
 
@@ -120,7 +119,7 @@ describe('SellerSidebar nav gating', () => {
       await act(async () => {
         render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
       });
-      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pricing')).not.toBeInTheDocument();
     });
 
     it('hides strategy modules and section headers', async () => {
@@ -133,6 +132,7 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('CUSTOMERS')).not.toBeInTheDocument();
       expect(screen.queryByText('CATALOG')).not.toBeInTheDocument();
       expect(screen.queryByText('ADMIN')).not.toBeInTheDocument();
+      expect(screen.queryByText('MARKET')).not.toBeInTheDocument();
     });
 
     it('hides Settings nav item', async () => {
@@ -154,7 +154,7 @@ describe('SellerSidebar nav gating', () => {
         render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
       });
       expect(screen.getByText('Customer Groups')).toBeInTheDocument();
-      expect(screen.getByText('Price Lists')).toBeInTheDocument();
+      expect(screen.getByText('Pricing')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 

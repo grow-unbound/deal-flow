@@ -9,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { EstimatesLandingMetricsV4 } from '@/types/tenant-estimates';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // EstimatesLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -23,13 +24,13 @@ export default async function EstimatesLayout({ children }: { children: ReactNod
 
   return (
     <EntitySplitShell
-      basePath="/estimates"
+      basePath={SELLER_ROUTES.sales.estimates}
       listSlot={
         <SellerBootstrapBoundary<EstimatesLandingMetricsV4>
           path={`/api/tenant/estimates/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/estimates"
+              basePath={SELLER_ROUTES.sales.estimates}
               ariaLabel="Loading estimates"
               showTransactionTabs
               variant="transaction"

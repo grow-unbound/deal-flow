@@ -6,6 +6,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { touchEntryForSourceSafe } from '@/lib/server/inbox-entries';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -128,6 +129,23 @@ export async function POST(
         return NextResponse.json({ error: error.message }, { status: 409 });
       }
       return NextResponse.json({ error: safeErrorMessage(error, 'Action failed') }, { status: 500 });
+    }
+
+    if (parsed.data.action !== 'duplicate') {
+      const inboxAction =
+        parsed.data.action === 'send'
+          ? 'reply_quote'
+          : parsed.data.action === 'convert_order' || parsed.data.action === 'convert_invoice'
+            ? 'mark_converted_manually'
+            : parsed.data.action;
+      touchEntryForSourceSafe(db, {
+        tenantId,
+        entryType: 'new_enquiry',
+        sourceEntityType: 'estimate',
+        sourceEntityId: id,
+        action: inboxAction,
+        actorUserId: actor,
+      });
     }
 
     return NextResponse.json({ data: (data ?? {}) as Record<string, unknown> });

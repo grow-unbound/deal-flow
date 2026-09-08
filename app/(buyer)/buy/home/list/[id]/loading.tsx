@@ -3,7 +3,7 @@ import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 function BrowseDetailHeaderSkeleton() {
   return (
     <div
-      className="sticky top-0 z-[15] min-h-14 border-b border-cream-200 bg-cream-100/95 px-3 py-2 backdrop-blur-md"
+      className="sticky top-0 z-[15] min-h-14 border-b border-cream-200 bg-[var(--bg-surface)] px-3 py-2 backdrop-blur-md"
       aria-hidden
     >
       <div className="flex h-full min-h-10 items-center gap-2">

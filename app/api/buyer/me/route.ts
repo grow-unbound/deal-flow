@@ -64,6 +64,14 @@ interface BuyerMeResponse {
   whatsapp_consent_required: boolean;
   /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
   guest_pricing_mode?: CatalogPricingMode | null;
+  /** mode:'pending' only — self-registered, awaiting seller approval. */
+  pending?: {
+    intake_submitted: boolean;
+    is_returning_yukti_user: boolean;
+    seller_whatsapp_number: string | null;
+    prefill_full_name: string | null;
+    prefill_email: string | null;
+  };
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -247,6 +255,78 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (!buyerId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Self-registered, not yet approved by the seller (Yukti_Inbox_Feature-Spec_v1.md
+    // §7.1). Short-circuits before any of the buyer_app_enabled-assuming queries
+    // below (orders, credit, outlets) — a pending buyer has none of that yet.
+    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      if (!profile.tenant) {
+        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+      }
+      const tenant = profile.tenant;
+      const buyer = profile.buyer;
+      const customFields = buyer.custom_fields ?? {};
+      const tenantBuyerApp = (rawBuyerApp ?? {}) as Record<string, unknown>;
+      const sellerWhatsappNumber =
+        typeof tenantBuyerApp.whatsapp_number === 'string' && tenantBuyerApp.whatsapp_number.trim()
+          ? tenantBuyerApp.whatsapp_number.trim()
+          : null;
+
+      let prefillFullName: string | null = null;
+      let prefillEmail: string | null = null;
+      if (customFields.existing_yukti_identity === true && context.sub) {
+        const { data: otherBuyer } = await db
+          .schema('app')
+          .from('buyers')
+          .select('contact_name, email')
+          .eq('user_id', context.sub)
+          .neq('id', buyer.id)
+          .not('contact_name', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const row = otherBuyer as { contact_name: string | null; email: string | null } | null;
+        prefillFullName = row?.contact_name?.trim() || null;
+        prefillEmail = row?.email?.trim() || null;
+      }
+
+      const payload: BuyerMeResponse = {
+        mode: 'pending',
+        buyer_id: buyer.id,
+        business_name: buyer.business_name,
+        contact_name: buyer.contact_name ?? '',
+        phone: buyer.phone ?? '—',
+        gstin: buyer.gstin ?? null,
+        session_person_name: buyer.contact_name?.trim() || null,
+        session_person_kind: 'buyer',
+        credit_limit: 0,
+        credit_used: 0,
+        open_orders_count: 0,
+        seller_preview: false,
+        support_whatsapp_number: process.env.WHATSAPP_ADMIN_NUMBER ?? null,
+        tenant: {
+          id: tenant.id,
+          name: tenant.business_name,
+          slug: tenant.slug,
+          logo_url: tenantLogoUrl,
+          outlets: [],
+        },
+        greeting_name: null,
+        order_features: orderFeatures,
+        business_policy: businessPolicy,
+        stock_visibility: stockVisibility,
+        whatsapp_consent_required: false,
+        pending: {
+          intake_submitted: Boolean(customFields.intake_submitted_at),
+          is_returning_yukti_user: customFields.existing_yukti_identity === true,
+          seller_whatsapp_number: sellerWhatsappNumber,
+          prefill_full_name: prefillFullName,
+          prefill_email: prefillEmail,
+        },
+      };
+
+      return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
     }
 
     const tenantId = context.tenant_id!;

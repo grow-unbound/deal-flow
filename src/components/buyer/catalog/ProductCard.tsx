@@ -180,7 +180,7 @@ export function ProductCard({
         BUYER_CARD_RADIUS_CLASS,
         BUYER_TILE_FRAME_CLASS,
         BUYER_TILE_HOVER_CLASS,
-        'relative flex h-full flex-col transition-colors',
+        'group relative flex h-full flex-col transition-[background-color,border-color,box-shadow] duration-200 ease-standard',
         className,
       )}
     >
@@ -216,7 +216,7 @@ export function ProductCard({
                     src={productImgSmall ?? productImg}
                     alt=""
                     fill
-                    className="object-contain p-1.5"
+                    className="object-contain p-1.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]"
                     sizes={`${BUYER_CARD_COMPACT_IMAGE_PX}px`}
                     onError={() => setProductImgError(true)}
                     unoptimized
@@ -227,7 +227,7 @@ export function ProductCard({
                       src={productImgSmall ?? productImg}
                       alt=""
                       fill
-                      className="object-contain p-2.5 sm:p-3 md:hidden"
+                      className="object-contain p-2.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045] sm:p-3 md:hidden"
                       sizes={BUYER_CARD_IMAGE_SIZES}
                       onError={() => setProductImgError(true)}
                       unoptimized
@@ -236,7 +236,7 @@ export function ProductCard({
                       src={productImgMedium ?? productImg}
                       alt=""
                       fill
-                      className="hidden object-contain p-2.5 sm:p-3 md:block"
+                      className="hidden object-contain p-2.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045] sm:p-3 md:block"
                       sizes={BUYER_CARD_IMAGE_SIZES}
                       onError={() => setProductImgError(true)}
                       unoptimized
@@ -247,7 +247,7 @@ export function ProductCard({
                     src={categoryImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
                     sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
                     onError={() => setCategoryImgError(true)}
                     unoptimized
@@ -257,7 +257,7 @@ export function ProductCard({
                     src={brandImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
                     sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
                     onError={() => setBrandImgError(true)}
                     unoptimized
@@ -380,7 +380,7 @@ export function ProductCard({
                     className={cn(
                       'inline-flex w-fit shrink-0 cursor-pointer items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-3 py-1 font-medium text-cream-600',
                       'transition-colors duration-fast',
-                      '[@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-cream-50 [@media(hover:hover)]:hover:text-cream-800',
+                      '[@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-[var(--bg-surface)] [@media(hover:hover)]:hover:text-cream-800',
                     )}
                     style={{ fontSize: 'var(--b-text-eyebrow)' }}
                     onClick={(event) => {

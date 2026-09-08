@@ -199,7 +199,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             { label: 'Email', className: 'px-5' },
             { label: 'Phone', className: 'px-5' },
             { label: 'Role', className: 'px-5' },
-            { label: 'Locations', className: 'px-5' },
+            { label: 'Branches', className: 'px-5' },
             { label: 'Status', className: 'px-5' },
             ...(isAdmin ? [{ label: 'Actions', align: 'right' as const, className: 'px-5' }] : []),
           ]}

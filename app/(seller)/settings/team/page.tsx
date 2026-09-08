@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLES } from '@/constants';
 import { PageWrap } from '@/components/seller/layout';
+import { SellerBusinessWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 
 export default function TeamPage() {
   const { tenantProfile, currentTenantId } = useAuth();
@@ -29,11 +30,12 @@ export default function TeamPage() {
     <>
       <PageWrap>
         <SellerTopbar
-          eyebrow="Settings"
+          eyebrow="Business"
           title="Team"
-          subtitle="Manage seller access for this tenant and keep role assignments tidy."
+          subtitle="Manage branches, warehouses, and team access."
           action={addUserAction}
         />
+        <SellerBusinessWorkspaceTabs />
         <div className="w-full">
           <TeamMembersTable
             tenantId={currentTenantId ?? ''}

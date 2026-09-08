@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
 import { DEVICE_HAS_LOGGED_IN_KEY } from '@/lib/auth-device-login';
 
@@ -7,7 +7,11 @@ let queryParams = new URLSearchParams();
 const fetchMock = vi.fn();
 const identifyMock = vi.fn();
 const setSessionMock = vi.fn();
+const getSessionMock = vi.fn();
+const signOutMock = vi.fn();
 const openMock = vi.fn();
+
+vi.setConfig({ testTimeout: 15_000 });
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -30,9 +34,19 @@ vi.mock('@/lib/supabase-browser', () => ({
   supabaseBrowser: {
     auth: {
       setSession: setSessionMock,
+      getSession: getSessionMock,
+      signOut: signOutMock,
     },
   },
 }));
+
+function testJwt(claims: Record<string, unknown>) {
+  return [
+    'eyJhbGciOiJub25lIn0',
+    btoa(JSON.stringify(claims)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+    'sig',
+  ].join('.');
+}
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -40,6 +54,10 @@ describe('LoginPage', () => {
     fetchMock.mockReset();
     identifyMock.mockReset();
     setSessionMock.mockReset();
+    getSessionMock.mockReset();
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    signOutMock.mockReset();
+    signOutMock.mockResolvedValue({ error: null });
     openMock.mockReset();
     const store = new Map<string, string>();
     Object.defineProperty(window, 'localStorage', {
@@ -68,6 +86,10 @@ describe('LoginPage', () => {
     });
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it('defaults to the otp entry point and does not show the email fallback there', async () => {
     const LoginPage = await import('../../../app/(auth)/login/page').then((mod) => mod.default);
 
@@ -77,6 +99,10 @@ describe('LoginPage', () => {
     expect(await screen.findByText(AUTH_LOGIN_COPY.login.welcomeSubtitle)).toBeInTheDocument();
     expect(screen.getByText(AUTH_LOGIN_COPY.login.landingBody)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Login with Email' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Buyer Login' })).toHaveAttribute(
+      'href',
+      'https://catalog.useyukti.in/login',
+    );
     expect(
       screen.getByRole('link', { name: AUTH_LOGIN_COPY.login.createSellerAccount }),
     ).toHaveAttribute('href', '/signup');
@@ -123,6 +149,57 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Send OTP' })).toBeInTheDocument();
+    });
+  });
+
+  it('shows the buyer-login moved state without proceeding to OTP verification', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ref_id: null,
+        registered: false,
+        outcome: 'buyer_moved',
+        message: 'Buyer login has moved to https://catalog.useyukti.in/login.',
+        seller_name: null,
+        seller_whatsapp_number: null,
+        buyer_name: null,
+        catalog_url: 'https://catalog.useyukti.in/login',
+      }),
+    });
+
+    const LoginPage = await import('../../../app/(auth)/login/page').then((mod) => mod.default);
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '9876543210' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send OTP' }));
+
+    expect(await screen.findByText('Buyer login has moved')).toBeInTheDocument();
+    expect(screen.getByText('Buyer login has changed to a new URL: https://catalog.useyukti.in/login')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to Buyer Login' })).toHaveAttribute(
+      'href',
+      'https://catalog.useyukti.in/login',
+    );
+    expect(screen.queryByText(/Enter the 6-digit code/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a logout escape hatch for an existing buyer session on the seller app login page', async () => {
+    getSessionMock.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: testJwt({ user_role: 'buyer_admin' }),
+        },
+      },
+      error: null,
+    });
+
+    const LoginPage = await import('../../../app/(auth)/login/page').then((mod) => mod.default);
+    render(<LoginPage />);
+
+    expect(await screen.findByText('Buyer login has moved')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Log out on this device' }));
+
+    await waitFor(() => {
+      expect(signOutMock).toHaveBeenCalledTimes(1);
     });
   });
 

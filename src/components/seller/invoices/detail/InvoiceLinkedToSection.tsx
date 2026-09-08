@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ClipboardCheck, FileText, PlusCircle } from 'lucide-react';
 import type { InvoiceDetailLinked } from '@/types/tenant-invoices';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { formatShortDate } from './invoice-detail-dates';
 
 interface InvoiceLinkedToSectionProps {
@@ -14,7 +15,7 @@ export function InvoiceLinkedToSection({ linked }: InvoiceLinkedToSectionProps) 
     return (
       <div className="px-5 py-4">
         <Link
-          href={`/sales-orders/${linked.order_id}`}
+          href={`${SELLER_ROUTES.sales.orders}/${linked.order_id}`}
           className="flex items-start gap-3 text-base font-semibold text-teal-700 hover:text-teal-800"
         >
           <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -31,7 +32,7 @@ export function InvoiceLinkedToSection({ linked }: InvoiceLinkedToSectionProps) 
     return (
       <div className="px-5 py-4">
         <Link
-          href={`/estimates/${linked.estimate_id}`}
+          href={`${SELLER_ROUTES.sales.estimates}/${linked.estimate_id}`}
           className="flex items-start gap-3 text-base font-semibold text-teal-700 hover:text-teal-800"
         >
           <FileText className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

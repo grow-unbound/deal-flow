@@ -11,7 +11,7 @@ interface PhoneInputProps {
 }
 
 const inputCls =
-  'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50';
+  'w-full px-3 py-2.5 rounded-md bg-[var(--bg-surface)] border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50';
 
 const labelCls =
   'block text-cream-700 font-semibold mb-1.5 text-xs uppercase tracking-[0.08em]';

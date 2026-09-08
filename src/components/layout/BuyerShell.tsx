@@ -167,6 +167,14 @@ export function BuyerShell({ children }: BuyerShellProps) {
     }
   }, [me?.whatsapp_consent_required, router]);
 
+  // Self-registered, not yet approved (Yukti_Inbox_Feature-Spec_v1.md §7.1) —
+  // bounce out of the catalog shell to the intake form or the blocked screen,
+  // same pattern as the WhatsApp consent gate above.
+  useEffect(() => {
+    if (me?.mode !== 'pending') return;
+    router.replace(me.pending?.intake_submitted ? '/pending' : '/onboarding');
+  }, [me?.mode, me?.pending?.intake_submitted, router]);
+
   return (
     <BuyerRealtimeProvider>
       <div data-app="buyer" className="min-h-dvh bg-[var(--bg-page)]">

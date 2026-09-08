@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { withSellerLandingSearch } from '@/lib/seller-search-navigation';
 import { cn } from '@/lib/utils';
 
@@ -70,17 +71,17 @@ const ENTITY_LABEL: Record<string, string> = {
 
 const ENTITY_LIST_URL: Record<string, string> = {
   product: '/products',
-  brand: '/brands',
+  brand: SELLER_ROUTES.products.brands,
   customer: '/customers',
-  category: '/categories',
-  location: '/locations',
-  warehouse: '/warehouses',
+  category: SELLER_ROUTES.products.categories,
+  location: SELLER_ROUTES.business.branches,
+  warehouse: SELLER_ROUTES.business.warehouses,
   cohort: '/customer-groups',
   campaign: '/campaigns',
-  price_list: '/price-lists',
-  order: '/sales-orders',
-  invoice: '/invoices',
-  estimate: '/estimates',
+  price_list: SELLER_ROUTES.market.pricing,
+  order: SELLER_ROUTES.sales.orders,
+  invoice: SELLER_ROUTES.sales.invoices,
+  estimate: SELLER_ROUTES.sales.estimates,
 };
 
 const RECENT_KEY = 'seller-search-recent';
