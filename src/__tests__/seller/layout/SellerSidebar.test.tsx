@@ -34,6 +34,11 @@ vi.mock('@/hooks/useIdleRoutePrefetch', () => ({
   useIdleRoutePrefetch: (paths: string[]) => prefetchSpy(paths),
 }));
 
+const mockUseInboxActiveCount = vi.fn(() => ({ data: undefined }));
+vi.mock('@/hooks/useInboxEntries', () => ({
+  useInboxActiveCount: () => mockUseInboxActiveCount(),
+}));
+
 function makeAuth(role: string) {
   return {
     session: null,
