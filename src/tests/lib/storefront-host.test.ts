@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   authCookieDomain,
   buildStorefrontHandoffUrl,
+  catalogHostForRequest,
   canonicalStorefrontHost,
   canonicalStorefrontUrl,
   isReservedStorefrontLabel,
@@ -135,6 +136,25 @@ describe('storefront host', () => {
     expect(toCanonicalHost(parseRequestHost('wineyard.useyukti.in'))).toBeNull();
     expect(toCanonicalHost(parseRequestHost('wineyard.localhost'))).toBeNull();
     expect(toCanonicalHost(parseRequestHost('app.localhost'))).toBeNull();
+  });
+
+  it('keeps yukti.so hosts on preview deployments', () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      expect(toCanonicalHost(parseRequestHost('wineyard.yukti.so'))).toBeNull();
+      expect(toCanonicalHost(parseRequestHost('app.yukti.so'))).toBeNull();
+      expect(sellerAppHostForRequest('catalog.yukti.so')).toBe('app.yukti.so');
+      expect(catalogHostForRequest('app.yukti.so')).toBe('catalog.yukti.so');
+      expect(tenantStorefrontHostForRequest('app.yukti.so', 'wineyard')).toBe('wineyard.yukti.so');
+      expect(storefrontOriginForRequest('app.yukti.so', 'wineyard')).toBe('https://wineyard.yukti.so');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
   });
 
   it('computes the canonical storefront URL from slug', () => {
