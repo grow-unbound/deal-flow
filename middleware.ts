@@ -121,7 +121,12 @@ function stripVerifiedHeaders(requestHeaders: Headers) {
   requestHeaders.delete('x-verified-tenant-slug');
 }
 
-function redirectPreservingPath(request: NextRequest, host: string, pathname = request.nextUrl.pathname): NextResponse {
+function redirectPreservingPath(
+  request: NextRequest,
+  host: string,
+  pathname = request.nextUrl.pathname,
+  status: 301 | 307 = 301,
+): NextResponse {
   const url = request.nextUrl.clone();
   // `host` may or may not already carry a port (tenantStorefrontHostForRequest /
   // sellerAppHostForRequest now include it for *.localhost; toCanonicalHost's
@@ -133,7 +138,7 @@ function redirectPreservingPath(request: NextRequest, host: string, pathname = r
   url.protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
   url.host = port ? `${hostnameOnly}:${port}` : hostnameOnly;
   url.pathname = pathname;
-  return NextResponse.redirect(url, 301);
+  return NextResponse.redirect(url, status);
 }
 
 function rewriteWithHeaders(request: NextRequest, requestHeaders: Headers, pathname?: string): NextResponse {
@@ -239,8 +244,9 @@ async function handleAppHost(
   pathname: string,
 ): Promise<NextResponse> {
   const isBuyPath = pathname === '/buy' || pathname.startsWith('/buy/');
+  const isLoginPath = pathname === '/login';
 
-  if (!isBuyPath && isPublicRoute(pathname)) {
+  if (!isBuyPath && !isLoginPath && isPublicRoute(pathname)) {
     return nextWithHeaders(request, requestHeaders);
   }
 
@@ -254,14 +260,21 @@ async function handleAppHost(
   }
 
   if (!auth.claims) {
+    if (isLoginPath) {
+      return nextWithHeaders(request, requestHeaders);
+    }
     return redirectToLogin(request, pathname);
   }
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('buyer_')) {
-    const response = redirectToLogin(request, pathname);
+    const response = redirectToCatalogLogin(request, { includeReturnTo: false });
     clearSupabaseAuthCookies(response, request);
     return response;
+  }
+
+  if (pathname === '/' || isLoginPath) {
+    return redirectPreservingPath(request, hostHeader, '/today', 307);
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -272,7 +285,9 @@ async function handleCatalogHost(
   requestHeaders: Headers,
   pathname: string,
 ): Promise<NextResponse> {
-  if (isPublicRoute(pathname)) {
+  const isCatalogEntryPath = pathname === '/' || pathname === '/login' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+
+  if (isPublicRoute(pathname) && !isCatalogEntryPath) {
     return nextWithHeaders(request, requestHeaders);
   }
 
@@ -280,18 +295,19 @@ async function handleCatalogHost(
   const hostHeader = request.headers.get('host') ?? '';
 
   if (!auth.claims) {
+    if (pathname === '/login') {
+      return nextWithHeaders(request, requestHeaders);
+    }
     return redirectToLogin(request, pathname);
   }
 
   const role = sessionRole(auth.claims);
   if (role?.startsWith('seller_')) {
-    return redirectPreservingPath(request, sellerAppHostForRequest(hostHeader), '/dashboard');
+    return redirectPreservingPath(request, sellerAppHostForRequest(hostHeader), '/today', 307);
   }
 
-  if (pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
-    return finalizeAuthenticated(request, requestHeaders, auth, pathname, {
-      rewritePath: '/workspaces',
-    });
+  if (isCatalogEntryPath) {
+    return redirectPreservingPath(request, hostHeader, '/workspaces', 307);
   }
 
   return finalizeAuthenticated(request, requestHeaders, auth, pathname);
@@ -382,18 +398,18 @@ async function handleTenantHost(
     && sessionTenantId === storefront.tenantId,
   );
 
-  if (!live && !buyerMatchesHost && (guestApi || (guestPage && pathname !== '/login' && pathname !== '/not-live'))) {
+  if (pathname === '/login' && buyerMatchesHost) {
+    return redirectPreservingPath(request, request.headers.get('host') ?? '', '/', 307);
+  }
+
+  if (!live && !buyerMatchesHost && (guestApi || !pathname.startsWith('/api/'))) {
     if (guestApi) {
       return new NextResponse(JSON.stringify({ error: 'Catalog is not live' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
       });
     }
-    if (pathname !== '/not-live') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/not-live';
-      return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
-    }
+    return redirectToCatalogLogin(request);
   }
 
   if (!hasSession && isGuestRateLimitedPath(pathname)) {
@@ -557,6 +573,21 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   const loginUrl = new URL('/login', request.url);
   loginUrl.searchParams.set('next', pathname + (request.nextUrl.search || ''));
   return NextResponse.redirect(loginUrl);
+}
+
+function redirectToCatalogLogin(
+  request: NextRequest,
+  options: { includeReturnTo?: boolean } = {},
+): NextResponse {
+  const catalogHost = catalogHostForRequest(request.headers.get('host') ?? '');
+  const [hostnameOnly, portFromHost] = catalogHost.split(':');
+  const isLocal = hostnameOnly === 'localhost' || hostnameOnly.endsWith('.localhost');
+  const protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
+  const url = new URL(`${protocol}//${portFromHost ? `${hostnameOnly}:${portFromHost}` : hostnameOnly}/login`);
+  if (options.includeReturnTo !== false) {
+    url.searchParams.set('return_to', request.url);
+  }
+  return NextResponse.redirect(url);
 }
 
 function isChunkLikeCookieName(cookieName: string, key: string): boolean {
