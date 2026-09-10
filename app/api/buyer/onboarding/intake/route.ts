@@ -67,6 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         p_gstin: data.gstin || null,
         p_geography: geography,
         p_billing_address: billingAddress,
+        p_document_ids: data.document_ids && data.document_ids.length > 0 ? data.document_ids : null,
       });
 
     if (error) {

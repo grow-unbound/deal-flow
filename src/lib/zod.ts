@@ -206,6 +206,7 @@ export const BuyerIntakeSchema = z
     pincode: z.string().trim().optional().or(z.literal('')),
     address_line1: z.string().trim().optional().or(z.literal('')),
     address_line2: z.string().trim().optional().or(z.literal('')),
+    document_ids: z.array(z.string().uuid()).optional(),
   })
   .refine((data) => !data.is_business || Boolean(data.business_name?.trim()), {
     message: 'Business name is required',
