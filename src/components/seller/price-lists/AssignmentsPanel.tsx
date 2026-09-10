@@ -24,6 +24,7 @@ import {
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LandingTable, LANDING_TABLE_CELL_CLASS } from '@/components/seller/layout/LandingTable';
 import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch } from '@/lib/api-fetch';
 import { useCohortComposerBuyers, type CohortComposerBuyer } from '@/hooks/useCohorts';
@@ -68,7 +69,7 @@ function useCohorts() {
 const TARGET_TYPE_LABELS: Record<TargetType, string> = {
   cohort: 'Customer group',
   buyer: 'Buyer',
-  all_buyers: 'All Buyers',
+  all_buyers: 'Default pricelist',
 };
 
 function AssignmentIcon({ type }: { type: TargetType }) {
@@ -77,10 +78,27 @@ function AssignmentIcon({ type }: { type: TargetType }) {
   return <Globe size={14} />;
 }
 
-function chipLabel(assignment: PriceListAssignment): string {
-  const typeName = TARGET_TYPE_LABELS[assignment.target_type] ?? assignment.target_type;
-  if (!assignment.target_id) return typeName;
-  return `${typeName}: ${assignment.target_id.slice(0, 8)}`;
+function assignmentName(assignment: PriceListAssignment): string {
+  if (assignment.target_type === 'all_buyers') return 'All buyers without a specific pricelist';
+  if (assignment.label) return assignment.label;
+  if (assignment.target_id) return assignment.target_id.slice(0, 8);
+  return 'Unassigned target';
+}
+
+function assignmentCoverage(assignment: PriceListAssignment): string {
+  if (assignment.target_type === 'all_buyers') return 'All buyers';
+  if (assignment.members != null) return `${assignment.members} ${assignment.members === 1 ? 'buyer' : 'buyers'}`;
+  if (assignment.target_type === 'buyer') return '1 buyer';
+  return 'Customer group';
+}
+
+function formatAssignedDate(value: string | null | undefined): string {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
@@ -106,6 +124,7 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
   const assignments = assignmentsData?.assignments ?? [];
   const buyers = buyersQuery.data?.pages[0]?.buyers ?? [];
   const cohorts = cohortsData?.cohorts ?? [];
+  const hasDefaultAssignment = assignments.some((assignment) => assignment.target_type === 'all_buyers');
   const selectedBuyer = targetId ? buyerCache[targetId] : undefined;
   const buyerResultsUpdating = buyerSearch.trim() !== debouncedBuyerSearch.trim()
     || buyersQuery.isFetching;
@@ -149,15 +168,29 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
   }
 
   return (
-    <div className="space-y-6 max-w-lg">
-      {/* Assignment form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <p className="text-sm font-medium text-cream-800 mb-2">Assign to</p>
+    <div className="space-y-4">
+      <section className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-cream-950">Assignment Details</h2>
+            <p className="mt-1 text-sm text-cream-600">
+              {hasDefaultAssignment
+                ? 'This pricelist is the default fallback unless a buyer or customer group has a more specific pricelist.'
+                : 'Assign this pricelist to a customer group, buyer, or make it the default fallback.'}
+            </p>
+          </div>
+          <span className="w-fit rounded-full border border-cream-200 bg-cream-50 px-3 py-1 text-sm font-medium text-cream-700">
+            {assignments.length} {assignments.length === 1 ? 'assignment' : 'assignments'}
+          </span>
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[1.15fr_1fr_auto] xl:items-end">
+          <div>
+            <p className="mb-2 text-sm font-medium text-cream-800">Assign to</p>
           <RadioGroup
             value={targetType}
             onValueChange={handleTypeChange}
-            className="flex gap-6"
+              className="flex flex-wrap gap-x-6 gap-y-3"
           >
             {(['cohort', 'buyer', 'all_buyers'] as TargetType[]).map((type) => (
               <div key={type} className="flex items-center gap-2">
@@ -255,8 +288,14 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
           </div>
         )}
 
+          {targetType === 'all_buyers' && (
+            <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-4 py-3 text-sm text-cream-700">
+              This becomes the only default pricelist. Any previous default will be replaced.
+            </div>
+          )}
+
         {formError && (
-          <p className="text-sm text-red-600">{formError}</p>
+            <p className="text-sm text-red-600 xl:col-span-3">{formError}</p>
         )}
 
         <MutationButton
@@ -266,45 +305,83 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
           disabled={
             (targetType !== 'all_buyers' && !targetId)
           }
-          className="bg-teal-500 text-cream-50 hover:bg-teal-600"
+            className="w-fit bg-teal-500 text-cream-50 hover:bg-teal-600"
         >
           Assign
         </MutationButton>
       </form>
+      </section>
 
-      {/* Assignments list */}
-      <div>
-        <p className="text-sm font-medium text-cream-800 mb-3">Current Assignments</p>
-        {assignmentsLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-56 rounded-full" />
-            <Skeleton className="h-8 w-48 rounded-full" />
-            <Skeleton className="h-8 w-64 rounded-full" />
+      <section className="rounded-[14px] border border-cream-300 bg-white">
+        <div className="flex items-center justify-between gap-3 px-5 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-cream-950">Current Assignments</h3>
+            <p className="text-sm text-cream-600">The most specific matching assignment wins during price resolution.</p>
           </div>
-        ) : assignments.length === 0 ? (
-          <p className="text-sm text-cream-500">No assignments yet.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {assignments.map((a) => (
-              <span
-                key={a.id}
-                className="flex items-center gap-1.5 bg-teal-50 text-teal-700 rounded-full px-3 py-1 text-sm"
-              >
-                <AssignmentIcon type={a.target_type} />
-                {chipLabel(a)}
-                <button
-                  type="button"
-                  onClick={() => deleteAssignment.mutate(a.id)}
-                  disabled={deleteAssignment.isPending}
-                  aria-label="Remove assignment"
-                >
-                  <X size={12} className="ml-1 cursor-pointer hover:text-teal-900" />
-                </button>
-              </span>
+        </div>
+        {assignmentsLoading ? (
+          <div className="space-y-2 border-t border-cream-200 p-5">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-14 rounded-[10px]" />
             ))}
           </div>
+        ) : (
+          <LandingTable
+            columns={[
+              { label: 'Type', width: 190 },
+              { label: 'Assignment', minWidth: 280 },
+              { label: 'Coverage', width: 150 },
+              { label: 'Assigned', width: 150 },
+              { label: '', width: 88, align: 'right' },
+            ]}
+            horizontalScrollOnly
+            tableMinWidth={860}
+            showEmptyState={assignments.length === 0}
+            emptyState={(
+              <div className="px-5 py-8 text-sm text-cream-500">
+                No assignments yet.
+              </div>
+            )}
+          >
+            {assignments.map((assignment) => (
+              <tr key={assignment.id} className="border-b border-cream-200 last:border-b-0">
+                <td className={LANDING_TABLE_CELL_CLASS}>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1 text-sm font-medium text-cream-800">
+                    <AssignmentIcon type={assignment.target_type} />
+                    {TARGET_TYPE_LABELS[assignment.target_type]}
+                  </span>
+                </td>
+                <td className={LANDING_TABLE_CELL_CLASS}>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-cream-950">{assignmentName(assignment)}</p>
+                    {assignment.target_id ? (
+                      <p className="truncate text-xs text-cream-500">{assignment.target_id}</p>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={`${LANDING_TABLE_CELL_CLASS} text-cream-700`}>
+                  {assignmentCoverage(assignment)}
+                </td>
+                <td className={`${LANDING_TABLE_CELL_CLASS} text-cream-700`}>
+                  {formatAssignedDate(assignment.created_at)}
+                </td>
+                <td className={`${LANDING_TABLE_CELL_CLASS} text-right`}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteAssignment.mutate(assignment.id)}
+                    disabled={deleteAssignment.isPending}
+                    aria-label="Remove assignment"
+                  >
+                    <X size={16} />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </LandingTable>
         )}
-      </div>
+      </section>
     </div>
   );
 }

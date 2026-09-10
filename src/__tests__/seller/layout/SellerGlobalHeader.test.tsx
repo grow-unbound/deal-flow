@@ -13,6 +13,7 @@ const tenantHolder = vi.hoisted(() => ({
     slug: 'acme',
     business_name: 'Acme Dist',
     public_catalog_live: true,
+    storefront_url: 'https://acme.useyukti.in',
   },
 }));
 
@@ -79,6 +80,7 @@ describe('SellerGlobalHeader', () => {
       slug: 'acme',
       business_name: 'Acme Dist',
       public_catalog_live: true,
+      storefront_url: 'https://acme.useyukti.in',
     };
   });
 
@@ -91,6 +93,16 @@ describe('SellerGlobalHeader', () => {
     expect(screen.getByRole('link', { name: /Open Catalog/i })).toHaveAttribute('href', 'https://acme.useyukti.in');
     expect(screen.getByRole('button', { name: /Notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open account menu for Priya Shah/i })).toBeInTheDocument();
+  });
+
+  it('keeps the Open Catalog link on the current preview suffix when provided by tenant hydration', async () => {
+    tenantHolder.current.storefront_url = 'https://acme.yukti.so';
+
+    await act(async () => {
+      render(<SellerGlobalHeader tenantBrandingPromise={Promise.resolve({ tenantName: 'Acme Dist', tenantLogoUrl: null })} />);
+    });
+
+    expect(screen.getByRole('link', { name: /Open Catalog/i })).toHaveAttribute('href', 'https://acme.yukti.so');
   });
 
   it('blocks unpublished catalogs instead of opening preview impersonation', async () => {

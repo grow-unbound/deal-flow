@@ -53,6 +53,7 @@ const tenantHolder = vi.hoisted(() => ({
     slug: 'wineyard',
     business_name: 'WineYard',
     public_catalog_live: false as boolean,
+    storefront_url: 'https://wineyard.useyukti.in',
   },
 }));
 
@@ -255,6 +256,7 @@ describe('SellerDashboardClient', () => {
 
   it('shows the live share card after the public catalog is published', () => {
     tenantHolder.current.public_catalog_live = true;
+    tenantHolder.current.storefront_url = 'https://wineyard.useyukti.in';
     useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
 
     render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
@@ -262,6 +264,17 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
     expect(screen.getByText('wineyard.useyukti.in')).toBeInTheDocument();
+  });
+
+  it('shows the live share card on the preview suffix supplied by tenant hydration', () => {
+    tenantHolder.current.public_catalog_live = true;
+    tenantHolder.current.storefront_url = 'https://wineyard.yukti.so';
+    useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
+
+    render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
+
+    expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
+    expect(screen.getByText('wineyard.yukti.so')).toBeInTheDocument();
   });
 
   it('does not render a Recent activity card in the admin section', () => {

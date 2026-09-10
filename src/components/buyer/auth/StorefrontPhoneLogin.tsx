@@ -1,6 +1,6 @@
 'use client';
 
-import { CANONICAL_STOREFRONT_SUFFIX, LOCAL_STOREFRONT_SUFFIX } from '@/lib/storefront-host';
+import { catalogLoginUrlForCurrentBrowserHost } from '@/lib/storefront-host';
 
 /**
  * OTP now happens exclusively on catalog.useyukti.in (the central login /
@@ -21,11 +21,8 @@ import { CANONICAL_STOREFRONT_SUFFIX, LOCAL_STOREFRONT_SUFFIX } from '@/lib/stor
  * /auth/storefront-handoff link as that page's own `next`.
  */
 function catalogLoginUrl(returnTo: string): string {
-  const isLocal = typeof window !== 'undefined' && window.location.hostname.endsWith(`.${LOCAL_STOREFRONT_SUFFIX}`);
-  const host = isLocal ? `catalog.${LOCAL_STOREFRONT_SUFFIX}` : `catalog.${CANONICAL_STOREFRONT_SUFFIX}`;
-  const protocol = isLocal ? window.location.protocol : 'https:';
-  const port = isLocal && window.location.port ? `:${window.location.port}` : '';
-  return `${protocol}//${host}${port}/login?return_to=${encodeURIComponent(returnTo)}`;
+  if (typeof window === 'undefined') return `/login?return_to=${encodeURIComponent(returnTo)}`;
+  return `${catalogLoginUrlForCurrentBrowserHost(window.location.host, window.location.protocol)}?return_to=${encodeURIComponent(returnTo)}`;
 }
 
 export function StorefrontPhoneLogin({

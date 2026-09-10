@@ -463,6 +463,7 @@ export const PriceListFormPayloadSchema = z
     priority: z.coerce.number().int().min(0).default(0),
     pricing_strategy: PriceListSimplePricingStrategySchema.default('edit_each'),
     strategy_value: z.coerce.number().nonnegative().nullable().optional(),
+    default_pricelist: z.boolean().default(false),
     membership_mode: MembershipModeSchema.default('manual'),
     selected_product_ids: z.array(z.string().uuid('Invalid product ID')).default([]),
     rules: ProductMembershipRulesSchema.optional(),

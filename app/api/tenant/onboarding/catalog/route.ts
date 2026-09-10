@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ...preview,
-      storefrontHost: `${preview.slug}.useyukti.in`,
+      storefrontHost: new URL(storefrontOriginForRequest(req.headers.get('host') ?? '', preview.slug)).host,
     });
   } catch (error) {
     console.error('[GET /api/tenant/onboarding/catalog]', error);

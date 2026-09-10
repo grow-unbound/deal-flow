@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { canonicalStorefrontHost, storefrontOriginForRequest } from '@/lib/storefront-host';
+import { storefrontOriginForRequest } from '@/lib/storefront-host';
 
 export async function GET(request: NextRequest) {
   // Fast path reads middleware-verified JWT claims (no Auth network call); only falls
@@ -71,15 +71,17 @@ export async function GET(request: NextRequest) {
   const settingsFromLegacy = (tRow?.settings as Record<string, unknown> | undefined) ?? {};
   const settings = (tsRow != null ? (settingsFromTs ?? {}) : settingsFromLegacy) as Record<string, unknown>;
 
+  const storefrontUrl = storefrontOriginForRequest(
+    request.headers.get('host') ?? '',
+    (workspaceTenantSlug ?? (tRow?.slug as string | undefined) ?? tenantId) as string,
+  );
   const tenant = {
     id: tenantId,
     slug: (workspaceTenantSlug ?? (tRow?.slug as string | undefined) ?? tenantId) as string,
     business_name: (workspaceTenantName ??
       (tRow?.business_name as string | undefined) ??
       'My Business') as string,
-    subdomain: canonicalStorefrontHost(
-      (workspaceTenantSlug ?? (tRow?.slug as string | undefined) ?? tenantId) as string,
-    ),
+    subdomain: new URL(storefrontUrl).host,
     plan: plan as 'lite' | 'starter' | 'growth' | 'scale',
     gstin: (tRow?.gstin as string | null | undefined) ?? null,
     primary_state: (tRow?.primary_state as string | null | undefined) ?? null,
@@ -93,6 +95,6 @@ export async function GET(request: NextRequest) {
     role: workspaceRole,
     workspace_type: workspaceType,
     public_catalog_live: Boolean((catalogRow as { live_at?: string | null } | null)?.live_at),
-    storefront_url: storefrontOriginForRequest(request.headers.get('host') ?? '', tenant.slug),
+    storefront_url: storefrontUrl,
   }, { headers: SELLER_CACHE_PERSONAL });
 }

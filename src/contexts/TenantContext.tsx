@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import { useAuth } from './AuthContext';
-import { canonicalStorefrontHost } from '@/lib/storefront-host';
 
 export interface Tenant {
   id: string;
@@ -30,6 +29,15 @@ export interface TenantContextType {
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
+function hostFromStorefrontUrl(storefrontUrl: string | undefined): string | undefined {
+  if (!storefrontUrl) return undefined;
+  try {
+    return new URL(storefrontUrl).host;
+  } catch {
+    return undefined;
+  }
+}
+
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const { currentTenantId, session, tenantProfile } = useAuth();
   const tenant = useMemo<Tenant | null>(() => {
@@ -41,7 +49,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       id: tenantId,
       slug: tenantProfile?.tenant_slug ?? tenantId,
       business_name: tenantProfile?.tenant_name ?? 'My Business',
-      subdomain: canonicalStorefrontHost(tenantProfile?.tenant_slug ?? tenantId),
+      subdomain: hostFromStorefrontUrl(tenantProfile?.storefront_url),
       plan: 'starter',
       gstin: undefined,
       primary_state: undefined,

@@ -26,6 +26,7 @@ import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer'
 
 export function OnboardingPreviewFrame({
   slug,
+  storefrontHost,
   businessName,
   logoUrl,
   items,
@@ -34,6 +35,7 @@ export function OnboardingPreviewFrame({
   pricingMode,
 }: {
   slug: string;
+  storefrontHost?: string;
   businessName: string;
   logoUrl?: string | null;
   items: BuyerCatalogItem[];
@@ -41,7 +43,7 @@ export function OnboardingPreviewFrame({
   categories: BuyerCategory[];
   pricingMode?: CatalogPricingMode | '' | null;
 }): React.ReactNode {
-  const host = `${slug || 'your-catalog'}.useyukti.in`;
+  const host = storefrontHost ?? `${slug || 'your-catalog'}.useyukti.in`;
   const priceReveal = guestPriceReveal(pricingMode);
 
   return (

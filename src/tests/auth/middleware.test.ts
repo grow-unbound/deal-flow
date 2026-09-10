@@ -326,6 +326,32 @@ describe('middleware auth redirects', () => {
     expect(response.headers.getSetCookie().join('\n')).toContain('sb-test-ref-auth-token=;');
   });
 
+  it('clears buyer-only sessions on app.yukti.so preview and redirects to catalog.yukti.so', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      getClaimsMock.mockResolvedValue({
+        data: { claims: { sub: 'b4', tenant_id: 'tenant-unknown', user_role: 'buyer_admin', buyer_id: 'buyer-4' } },
+        error: null,
+      });
+      const { middleware } = await import('../../../middleware');
+      const request = tenantRequest('/today', 'app.yukti.so');
+      request.cookies.set('sb-test-ref-auth-token', 'stale-buyer-session');
+
+      const response = await middleware(request);
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe('https://catalog.yukti.so/login');
+      expect(response.headers.getSetCookie().join('\n')).toContain('sb-test-ref-auth-token=;');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
+
   it('does not serve products on an unpublished tenant host', async () => {
     resolveStorefrontMock.mockResolvedValue({
       tenantId: 'tenant-x',
@@ -344,6 +370,58 @@ describe('middleware auth redirects', () => {
     );
     const api = await middleware(tenantRequest('/api/buyer/catalog', 'acme.useyukti.in'));
     expect(api.status).toBe(404);
+  });
+
+  it('preserves yukti.so in unpublished tenant return_to on Vercel preview', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      resolveStorefrontMock.mockResolvedValue({
+        tenantId: 'tenant-x',
+        slug: 'wineyard',
+        catalogId: 'cat-1',
+        liveAt: null,
+        pricingMode: null,
+        priceListId: null,
+      });
+      getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+      const { middleware } = await import('../../../middleware');
+      const response = await middleware(tenantRequest('/orders', 'wineyard.yukti.so'));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe(
+        'https://catalog.yukti.so/login?return_to=https%3A%2F%2Fwineyard.yukti.so%2Forders',
+      );
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
+
+  it('preserves localhost and port in unpublished tenant return_to', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-x',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: null,
+      pricingMode: null,
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(
+      new NextRequest('http://wineyard.localhost:3000/orders', {
+        headers: { host: 'wineyard.localhost:3000' },
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      'http://catalog.localhost:3000/login?return_to=http%3A%2F%2Fwineyard.localhost%3A3000%2Forders',
+    );
   });
 
   it('redirects anonymous unpublished tenant pages to catalog login, not tenant-local login', async () => {
@@ -603,6 +681,28 @@ describe('catalog host middleware', () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get('location')).toBe('https://catalog.yukti.so/login?next=%2F');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
+
+  it('redirects seller session on catalog.yukti.so preview to app.yukti.so', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      getClaimsMock.mockResolvedValue({
+        data: { claims: { sub: 's1', tenant_id: 'tenant-wy', user_role: 'seller_admin' } },
+        error: null,
+      });
+      const { middleware } = await import('../../../middleware');
+      const response = await middleware(catalogRequest('/workspaces', 'catalog.yukti.so'));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe('https://app.yukti.so/today');
     } finally {
       if (original === undefined) {
         delete process.env.VERCEL_ENV;

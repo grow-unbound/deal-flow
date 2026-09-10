@@ -69,4 +69,20 @@ describe('onboarding catalog preview', () => {
     expect(screen.queryByText(/items/i)).not.toBeInTheDocument();
     expect(screen.getByText('Orders')).toBeInTheDocument();
   });
+
+  it('renders the suffix-aware storefront host from onboarding preview data', () => {
+    renderPreview(
+      <OnboardingPreviewFrame
+        slug="mehta-electricals"
+        storefrontHost="mehta-electricals.yukti.so"
+        businessName="Mehta Electricals"
+        items={[]}
+        brands={[]}
+        categories={[]}
+      />,
+    );
+
+    expect(screen.getByText('mehta-electricals.yukti.so')).toBeInTheDocument();
+    expect(screen.queryByText('mehta-electricals.useyukti.in')).not.toBeInTheDocument();
+  });
 });

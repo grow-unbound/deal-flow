@@ -57,6 +57,7 @@ import {
 import { uploadMatchedPhotos } from '@/lib/onboarding/upload-matched-photos';
 import { filterReviewAnomalies, reviewCountLabel, reviewRowKey } from '@/lib/onboarding/review-anomalies';
 import { ONBOARDING_YUKTI_FIELDS, type ColumnMappingEntry, type ImportAnomaly, type OnboardingYuktiFieldOption } from '@/lib/onboarding/types';
+import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
 import { cn } from '@/lib/utils';
 import type { CatalogPricingMode } from '@/lib/server/public-catalog';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
@@ -79,6 +80,7 @@ interface PreviewState {
   categories: BuyerCategory[];
   anomalies: ImportAnomaly[];
   slug: string;
+  storefrontHost: string;
   businessName: string;
   live: boolean;
   priceLists: Array<{ id: string; name: string }>;
@@ -329,7 +331,11 @@ export function CatalogSetupClient(): React.ReactNode {
         toast.error(json.error ?? 'Publish failed');
         return;
       }
-      setLiveUrl(json.storefront_url ?? `https://${slug}.useyukti.in`);
+      setLiveUrl(json.storefront_url ?? (
+        typeof window !== 'undefined'
+          ? storefrontOriginForCurrentBrowserHost(window.location.host, slug, window.location.protocol)
+          : preview?.storefrontHost ? `https://${preview.storefrontHost}` : ''
+      ));
       setStep('done');
       if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         void confetti({ particleCount: 120, spread: 70, origin: { y: 0.35 } });
@@ -735,7 +741,9 @@ export function CatalogSetupClient(): React.ReactNode {
                 <div className="mt-1 flex items-stretch">
                   <Input id="catalog-slug" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} className="rounded-r-none font-mono" />
                   <span className="inline-flex items-center rounded-r-[8px] border border-l-0 border-cream-400 bg-cream-200 px-3 text-body-sm text-cream-700">
-                    .useyukti.in
+                    {preview?.storefrontHost
+                      ? `.${preview.storefrontHost.split('.').slice(1).join('.')}`
+                      : '.useyukti.in'}
                   </span>
                 </div>
                 <p className="mt-1 text-body-sm text-cream-600">Updates the preview address bar live.</p>
@@ -884,6 +892,7 @@ export function CatalogSetupClient(): React.ReactNode {
               brands={preview?.brands ?? []}
               categories={preview?.categories ?? []}
               pricingMode={pricingMode}
+              storefrontHost={preview?.storefrontHost}
             />
             {reviewOpen ? (
               <div className="absolute inset-0 z-30 hidden overflow-hidden rounded-xl border border-cream-300 bg-cream-50 lg:flex">

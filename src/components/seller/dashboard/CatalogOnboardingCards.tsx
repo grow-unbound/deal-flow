@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusPill } from '@/components/ui/status-pill';
 import { useTenant } from '@/contexts/TenantContext';
-import { CANONICAL_STOREFRONT_SUFFIX } from '@/lib/storefront-host';
+import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
 
 export function CatalogUnpublishedIntercept(): React.ReactNode {
   return (
@@ -34,8 +34,12 @@ export function CatalogUnpublishedIntercept(): React.ReactNode {
 export function CatalogLiveShareCard(): React.ReactNode {
   const { currentTenant } = useTenant();
   const slug = currentTenant?.slug ?? '';
-  const href = currentTenant?.storefront_url ?? (slug ? `https://${slug}.${CANONICAL_STOREFRONT_SUFFIX}` : '');
-  const host = slug ? `${slug}.${CANONICAL_STOREFRONT_SUFFIX}` : '';
+  const href = currentTenant?.storefront_url ?? (
+    slug && typeof window !== 'undefined'
+      ? storefrontOriginForCurrentBrowserHost(window.location.host, slug, window.location.protocol)
+      : ''
+  );
+  const host = href ? href.replace(/^https?:\/\//, '') : '';
 
   async function copyLink() {
     if (!href) return;

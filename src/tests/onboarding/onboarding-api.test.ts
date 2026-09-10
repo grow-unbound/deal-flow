@@ -17,10 +17,11 @@ vi.mock('@/lib/server/r2-presign-entity', () => ({
 }));
 
 const loadOnboardingCatalogSummaryMock = vi.fn();
+const loadOnboardingPreviewMock = vi.fn();
 
 vi.mock('@/lib/server/onboarding-catalog-preview', () => ({
   loadOnboardingCatalogSummary: (...args: unknown[]) => loadOnboardingCatalogSummaryMock(...args),
-  loadOnboardingPreview: vi.fn(),
+  loadOnboardingPreview: (...args: unknown[]) => loadOnboardingPreviewMock(...args),
 }));
 
 import { POST as batchPresign } from '../../../app/api/uploads/r2/batch/route';
@@ -99,6 +100,18 @@ describe('GET /api/tenant/onboarding/catalog', () => {
       slug: 'acme',
       businessName: 'Acme',
     });
+    loadOnboardingPreviewMock.mockResolvedValue({
+      productCount: 17,
+      items: [],
+      brands: [],
+      categories: [],
+      anomalies: [],
+      slug: 'acme',
+      businessName: 'Acme',
+      live: false,
+      priceLists: [],
+      photoTargets: [],
+    });
   });
 
   it('returns the metrics snapshot summary without loading preview rows', async () => {
@@ -112,6 +125,30 @@ describe('GET /api/tenant/onboarding/catalog', () => {
       businessName: 'Acme',
     });
     expect(loadOnboardingCatalogSummaryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a storefront host on the current review suffix', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      const res = await getOnboardingCatalog(
+        new NextRequest('https://app.yukti.so/api/tenant/onboarding/catalog', {
+          headers: { host: 'app.yukti.so' },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toMatchObject({
+        slug: 'acme',
+        storefrontHost: 'acme.yukti.so',
+      });
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
   });
 });
 

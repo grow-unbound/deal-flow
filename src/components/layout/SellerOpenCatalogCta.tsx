@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
-import { canonicalStorefrontUrl } from '@/lib/storefront-host';
+import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
 import { cn } from '@/lib/utils';
 
 interface SellerOpenCatalogCtaProps {
@@ -35,7 +35,11 @@ export function SellerOpenCatalogCta({
   const [unpublishedOpen, setUnpublishedOpen] = useState(false);
   const slug = currentTenant?.slug ?? null;
   const live = currentTenant?.public_catalog_live === true;
-  const href = slug ? canonicalStorefrontUrl(slug) : null;
+  const href = currentTenant?.storefront_url ?? (
+    slug && typeof window !== 'undefined'
+      ? storefrontOriginForCurrentBrowserHost(window.location.host, slug, window.location.protocol)
+      : null
+  );
 
   function captureClick(destination: string) {
     posthog?.capture('seller_open_catalog_clicked', {
