@@ -15,7 +15,7 @@ export const SELLER_PAGE_TITLES = {
   customerGroups: 'Customer Groups',
   priceLists: 'Pricing',
   campaigns: 'Campaigns',
-  catalogs: 'Catalogs',
+  catalogs: 'Catalog',
   announcements: 'Announcements',
   pricing: 'Pricing',
   estimates: 'Estimates',

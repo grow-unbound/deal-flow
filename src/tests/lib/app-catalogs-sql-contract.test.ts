@@ -6,6 +6,10 @@ const sql = readFileSync(
   resolve('supabase/migrations/20260902055517_app_catalogs_public_storefront.sql'),
   'utf8',
 );
+const settingsMvpSql = readFileSync(
+  resolve('supabase/migrations/20260911062439_buyer_catalog_settings_mvp.sql'),
+  'utf8',
+);
 
 describe('app.catalogs public storefront SQL contract', () => {
   it('creates catalogs + exclusions with catalog-scoped pricing columns', () => {
@@ -40,5 +44,15 @@ describe('app.catalogs public storefront SQL contract', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS app.public_catalog_rate_limits');
     expect(sql).toContain('REVOKE ALL ON TABLE app.public_catalog_rate_limits FROM anon, authenticated');
     expect(sql).toContain('GRANT ALL ON TABLE app.public_catalog_rate_limits TO service_role');
+  });
+
+  it('adds only the MVP buyer catalog settings columns', () => {
+    expect(settingsMvpSql).toContain("ADD COLUMN IF NOT EXISTS access_mode text NOT NULL DEFAULT 'public_link'");
+    expect(settingsMvpSql).toContain('ADD COLUMN IF NOT EXISTS collect_target_unit_price_range boolean NOT NULL DEFAULT false');
+    expect(settingsMvpSql).toContain("ADD COLUMN IF NOT EXISTS product_display_mode text NOT NULL DEFAULT 'sku_list'");
+    expect(settingsMvpSql).toContain("'hide_price_collect_enquiry'");
+    expect(settingsMvpSql).toContain("access_mode IN ('public_link', 'approved_buyers_only')");
+    expect(settingsMvpSql).toContain("product_display_mode IN ('sku_list', 'group_variants')");
+    expect(settingsMvpSql).toContain("NEW.pricing_mode IS DISTINCT FROM 'hide_price_collect_enquiry'");
   });
 });

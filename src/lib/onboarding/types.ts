@@ -64,7 +64,7 @@ export interface OnboardingImportChunkResult {
   anomalies: ImportAnomaly[];
 }
 
-export type CatalogPricingMode = 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list';
+export type CatalogPricingMode = 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list';
 
 export interface OnboardingCatalogState {
   productCount: number;

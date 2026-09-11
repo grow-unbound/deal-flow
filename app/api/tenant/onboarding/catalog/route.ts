@@ -4,12 +4,11 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { loadOnboardingCatalogSummary, loadOnboardingPreview } from '@/lib/server/onboarding-catalog-preview';
-import { isReservedStorefrontLabel, storefrontOriginForRequest } from '@/lib/storefront-host';
-import { onboardingSlugify } from '@/lib/onboarding/slugify';
+import { storefrontOriginForRequest } from '@/lib/storefront-host';
 import type { CatalogPricingMode } from '@/lib/server/public-catalog';
-import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
+import { CatalogSetupValidationError, saveCatalogSetupState } from '@/lib/server/catalog-setup';
 
-const PreviewQuerySchema = z.enum(['hidden_until_login', 'base_selling_rate', 'assigned_price_list']).optional();
+const PreviewQuerySchema = z.enum(['hidden_until_login', 'hide_price_collect_enquiry', 'base_selling_rate', 'assigned_price_list']).optional();
 
 export async function GET(req: NextRequest) {
   try {
@@ -51,8 +50,12 @@ export async function GET(req: NextRequest) {
 
 const PublishSchema = z.object({
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/),
-  pricing_mode: z.enum(['hidden_until_login', 'base_selling_rate', 'assigned_price_list']),
+  pricing_mode: z.enum(['hidden_until_login', 'hide_price_collect_enquiry', 'base_selling_rate', 'assigned_price_list']),
   price_list_id: z.string().uuid().nullable().optional(),
+  access_mode: z.enum(['public_link', 'approved_buyers_only']).optional(),
+  collect_target_unit_price_range: z.boolean().optional(),
+  product_display_mode: z.enum(['sku_list', 'group_variants']).optional(),
+  settings: z.record(z.unknown()).optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -71,59 +74,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Choose a pricing mode and a valid slug' }, { status: 400 });
     }
 
-    const slug = onboardingSlugify(parsed.data.slug);
-    if (!slug || isReservedStorefrontLabel(slug)) {
-      return NextResponse.json({ error: 'That slug is reserved' }, { status: 400 });
-    }
-    if (parsed.data.pricing_mode === 'assigned_price_list' && !parsed.data.price_list_id) {
-      return NextResponse.json({ error: 'Pick a price list' }, { status: 400 });
-    }
-
-    const { data: slugTaken } = await supabaseAdmin
-      .schema('app')
-      .from('tenants')
-      .select('id')
-      .eq('slug', slug)
-      .neq('id', claims.tenant_id)
-      .maybeSingle();
-    if (slugTaken) {
-      return NextResponse.json({ error: 'That catalog link is already taken' }, { status: 409 });
-    }
-
     const actorId = claims.sub ?? claims.tenant_id;
-    const { error: slugError } = await supabaseAdmin
-      .schema('app')
-      .from('tenants')
-      .update({ slug, updated_at: new Date().toISOString(), updated_by: actorId })
-      .eq('id', claims.tenant_id);
-    if (slugError) {
-      return NextResponse.json({ error: slugError.message }, { status: 500 });
-    }
-
-    const pricingMode = parsed.data.pricing_mode as CatalogPricingMode;
-    const { data: catalogRows, error: catalogError } = await supabaseAdmin
-      .schema('app')
-      .from('catalogs')
-      .update({
-        pricing_mode: pricingMode,
-        price_list_id: pricingMode === 'assigned_price_list' ? parsed.data.price_list_id : null,
-        live_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        updated_by: actorId,
-      })
-      .eq('tenant_id', claims.tenant_id)
-      .eq('kind', 'public')
-      .is('deleted_at', null)
-      .select('id');
-
-    if (catalogError) {
-      return NextResponse.json({ error: catalogError.message }, { status: 500 });
-    }
-    if (!catalogRows?.length) {
-      return NextResponse.json({ error: 'Public catalog row missing' }, { status: 500 });
-    }
-
-    revalidatePublicCatalogCache(claims.tenant_id);
+    const result = await saveCatalogSetupState(supabaseAdmin, {
+      tenantId: claims.tenant_id,
+      actorId,
+      patch: {
+        ...parsed.data,
+        settings: parsed.data.settings,
+        publish: true,
+      },
+    });
+    const slug = result.slug ?? parsed.data.slug;
 
     return NextResponse.json({
       ok: true,
@@ -131,6 +92,9 @@ export async function PATCH(req: NextRequest) {
       storefront_url: storefrontOriginForRequest(req.headers.get('host') ?? '', slug),
     });
   } catch (error) {
+    if (error instanceof CatalogSetupValidationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('[PATCH /api/tenant/onboarding/catalog]', error);
     return NextResponse.json({ error: 'Failed to publish catalog' }, { status: 500 });
   }

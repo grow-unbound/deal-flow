@@ -81,9 +81,10 @@ export function hasVisibleBuyerPrice(price: number | null | undefined): price is
  * identically.
  */
 export function guestPriceReveal(
-  mode: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | '' | null | undefined,
+  mode: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | '' | null | undefined,
 ): 'hidden_bar' | 'login_cta' | 'amount' {
   if (mode === 'hidden_until_login') return 'login_cta';
+  if (mode === 'hide_price_collect_enquiry') return 'hidden_bar';
   if (mode === 'base_selling_rate' || mode === 'assigned_price_list') return 'amount';
   return 'hidden_bar';
 }

@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -71,7 +72,7 @@ import {
 const ONBOARDING_TITLE_CLASS = 'font-display text-h2 font-medium text-cream-900';
 const CHUNK = 120;
 
-type WizardStep = 1 | 2 | 'done';
+type WizardStep = 0 | 1 | 2 | 'done';
 
 interface PreviewState {
   productCount: number;
@@ -84,6 +85,11 @@ interface PreviewState {
   businessName: string;
   live: boolean;
   priceLists: Array<{ id: string; name: string }>;
+  pricingMode: CatalogPricingMode | null;
+  priceListId: string | null;
+  accessMode: 'public_link' | 'approved_buyers_only';
+  collectTargetUnitPriceRange: boolean;
+  productDisplayMode: 'sku_list' | 'group_variants';
   photoTargets: Array<{
     key: string;
     entityId: string;
@@ -95,7 +101,18 @@ interface PreviewState {
 export function CatalogSetupClient(): React.ReactNode {
   const router = useRouter();
   const { currentTenant } = useTenant();
-  const [step, setStep] = useState<WizardStep>(1);
+  const [step, setStep] = useState<WizardStep>(0);
+  const [businessName, setBusinessName] = useState('');
+  const [businessPhone, setBusinessPhone] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappDisplayName, setWhatsappDisplayName] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressState, setAddressState] = useState('');
+  const [addressPincode, setAddressPincode] = useState('');
+  const [demandMode, setDemandMode] = useState<'enquiries' | 'orders' | 'both'>('both');
+  const [documentMode, setDocumentMode] = useState<'yukti' | 'external'>('yukti');
   const [fileName, setFileName] = useState<string | null>(null);
   const [rowCount, setRowCount] = useState(0);
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
@@ -106,6 +123,9 @@ export function CatalogSetupClient(): React.ReactNode {
   const [slug, setSlug] = useState('');
   const [pricingMode, setPricingMode] = useState<CatalogPricingMode | ''>('');
   const [priceListId, setPriceListId] = useState<string>('');
+  const [accessMode, setAccessMode] = useState<'public_link' | 'approved_buyers_only'>('public_link');
+  const [collectTarget, setCollectTarget] = useState(false);
+  const [productDisplayMode, setProductDisplayMode] = useState<'sku_list' | 'group_variants'>('sku_list');
   const [assignedByList, setAssignedByList] = useState<Record<string, AssignedPriceMap>>({});
   const [photoStatus, setPhotoStatus] = useState<string | null>(null);
   const [unmatchedPhotos, setUnmatchedPhotos] = useState(0);
@@ -138,6 +158,34 @@ export function CatalogSetupClient(): React.ReactNode {
     }
   }, [currentTenant?.public_catalog_live, router]);
 
+  useEffect(() => {
+    const settings = currentTenant?.settings as {
+      business?: {
+        company_name?: string;
+        phone?: string;
+        address?: { line1?: string; line2?: string; city?: string; state?: string; pincode?: string };
+      };
+      buyer_app?: { whatsapp_number?: string; whatsapp_display_name?: string };
+      orders?: { features?: { enquiries?: boolean; sales_orders?: boolean; create_enquiries?: boolean; create_sales_orders?: boolean } };
+    } | undefined;
+    const business = settings?.business;
+    const buyerApp = settings?.buyer_app;
+    const features = settings?.orders?.features;
+    setBusinessName((prev) => prev || business?.company_name || currentTenant?.business_name || '');
+    setBusinessPhone((prev) => prev || business?.phone || '');
+    setWhatsappNumber((prev) => prev || buyerApp?.whatsapp_number || business?.phone || '');
+    setWhatsappDisplayName((prev) => prev || buyerApp?.whatsapp_display_name || business?.company_name || currentTenant?.business_name || '');
+    setAddressLine1((prev) => prev || business?.address?.line1 || '');
+    setAddressLine2((prev) => prev || business?.address?.line2 || '');
+    setAddressCity((prev) => prev || business?.address?.city || '');
+    setAddressState((prev) => prev || business?.address?.state || currentTenant?.primary_state || '');
+    setAddressPincode((prev) => prev || business?.address?.pincode || '');
+    if (features?.enquiries === true && features.sales_orders !== true) setDemandMode('enquiries');
+    if (features?.sales_orders === true && features.enquiries !== true) setDemandMode('orders');
+    if (features?.enquiries === true && features.sales_orders === true) setDemandMode('both');
+    if (features?.create_enquiries === false || features?.create_sales_orders === false) setDocumentMode('external');
+  }, [currentTenant]);
+
   const loadPreview = useCallback(async (assignedListId?: string) => {
     const params = new URLSearchParams();
     if (assignedListId) {
@@ -150,6 +198,11 @@ export function CatalogSetupClient(): React.ReactNode {
     setPreview(data);
     setCatalogCount(data.productCount);
     setSlug((prev) => prev || data.slug);
+    setPricingMode((prev) => prev || data.pricingMode || '');
+    setPriceListId((prev) => prev || data.priceListId || '');
+    setAccessMode(data.accessMode ?? 'public_link');
+    setCollectTarget(data.collectTargetUnitPriceRange === true);
+    setProductDisplayMode(data.productDisplayMode ?? 'sku_list');
     if (assignedListId) {
       setAssignedByList((prev) => ({
         ...prev,
@@ -314,6 +367,38 @@ export function CatalogSetupClient(): React.ReactNode {
     await loadPreview();
   }
 
+  function buildOnboardingSettingsPatch() {
+    const enquiriesEnabled = demandMode === 'enquiries' || demandMode === 'both';
+    const salesOrdersEnabled = demandMode === 'orders' || demandMode === 'both';
+    const createInYukti = documentMode === 'yukti';
+
+    return {
+      business: {
+        company_name: businessName.trim(),
+        phone: businessPhone.trim(),
+        address: {
+          line1: addressLine1.trim(),
+          line2: addressLine2.trim(),
+          city: addressCity.trim(),
+          state: addressState.trim().toUpperCase(),
+          pincode: addressPincode.trim(),
+        },
+      },
+      buyer_app: {
+        whatsapp_number: whatsappNumber.trim(),
+        whatsapp_display_name: whatsappDisplayName.trim() || businessName.trim(),
+      },
+      orders: {
+        features: {
+          enquiries: enquiriesEnabled,
+          sales_orders: salesOrdersEnabled,
+          create_enquiries: enquiriesEnabled ? createInYukti : false,
+          create_sales_orders: salesOrdersEnabled ? createInYukti : false,
+        },
+      },
+    };
+  }
+
   async function publish() {
     if (!pricingMode) {
       toast.error('Pick a pricing visibility option');
@@ -325,6 +410,10 @@ export function CatalogSetupClient(): React.ReactNode {
         slug,
         pricing_mode: pricingMode,
         price_list_id: pricingMode === 'assigned_price_list' ? priceListId : null,
+        access_mode: accessMode,
+        collect_target_unit_price_range: pricingMode === 'hide_price_collect_enquiry' ? collectTarget : false,
+        product_display_mode: productDisplayMode,
+        settings: buildOnboardingSettingsPatch(),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string; storefront_url?: string };
       if (!res.ok) {
@@ -388,8 +477,14 @@ export function CatalogSetupClient(): React.ReactNode {
       .filter((m) => m.yuktiField !== 'unmapped')
       .map((m) => [m.yuktiField, m.sourceHeader] as const),
   );
-  const progress = step === 1 ? 40 : step === 2 ? 80 : 100;
-  const stepLabel = step === 1 ? 'Step 1 of 2 · Bring products in' : step === 2 ? 'Step 2 of 2 · Review & publish' : 'Done · Your catalog is live';
+  const progress = step === 0 ? 24 : step === 1 ? 56 : step === 2 ? 84 : 100;
+  const stepLabel = step === 0
+    ? 'Step 0 of 2 · Business setup'
+    : step === 1
+      ? 'Step 1 of 2 · Bring products in'
+      : step === 2
+        ? 'Step 2 of 2 · Review, configure & publish'
+        : 'Done · Your catalog is live';
 
   if (step === 'done') {
     return (
@@ -421,7 +516,14 @@ export function CatalogSetupClient(): React.ReactNode {
       containViewport={step === 2}
       footer={(
         <div className="flex w-full items-center justify-between">
-          {step === 1 ? (
+          {step === 0 ? (
+            <CatalogSetupNav
+              onBack={() => router.push('/pulse')}
+              primaryLabel="Continue"
+              primaryDisabled={businessName.trim().length === 0}
+              onPrimary={() => setStep(1)}
+            />
+          ) : step === 1 ? (
             <CatalogSetupNav
               onBack={() => router.push('/pulse')}
               primaryLabel={showingMapping ? 'Mapping correct, import now' : 'Continue'}
@@ -449,7 +551,108 @@ export function CatalogSetupClient(): React.ReactNode {
         </div>
       )}
     >
-      {step === 1 ? (
+      {step === 0 ? (
+        <div className="mx-auto max-w-3xl">
+          <h1 className={ONBOARDING_TITLE_CLASS}>Confirm your business setup</h1>
+          <p className="mt-2 text-body text-cream-600">
+            These details appear in your catalog and help Yukti set up your workflow. You can edit them later in Settings.
+          </p>
+
+          <div className="mt-6 space-y-5">
+            <section className="rounded-xl border border-cream-200 bg-white p-5">
+              <h2 className="text-h4 font-semibold text-cream-950">What business name should buyers see?</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="business-name">Company name</Label>
+                  <Input id="business-name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="business-phone">Business phone</Label>
+                  <Input id="business-phone" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-cream-200 bg-white p-5">
+              <h2 className="text-h4 font-semibold text-cream-950">Which address should appear on documents?</h2>
+              <div className="mt-4 grid gap-4">
+                <div>
+                  <Label htmlFor="address-line-1">Address line 1</Label>
+                  <Input id="address-line-1" value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="address-line-2">Address line 2</Label>
+                  <Input id="address-line-2" value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_6rem_9rem]">
+                  <div>
+                    <Label htmlFor="address-city">City</Label>
+                    <Input id="address-city" value={addressCity} onChange={(e) => setAddressCity(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="address-state">State code</Label>
+                    <Input id="address-state" value={addressState} onChange={(e) => setAddressState(e.target.value.slice(0, 2).toUpperCase())} />
+                  </div>
+                  <div>
+                    <Label htmlFor="address-pincode">Pincode</Label>
+                    <Input id="address-pincode" value={addressPincode} onChange={(e) => setAddressPincode(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-cream-200 bg-white p-5">
+              <h2 className="text-h4 font-semibold text-cream-950">What WhatsApp should buyers contact?</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="whatsapp-number">Buyer WhatsApp number</Label>
+                  <Input id="whatsapp-number" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="whatsapp-display-name">WhatsApp display name</Label>
+                  <Input id="whatsapp-display-name" value={whatsappDisplayName} onChange={(e) => setWhatsappDisplayName(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-cream-200 bg-white p-5">
+              <h2 className="text-h4 font-semibold text-cream-950">How do you usually handle buyer demand?</h2>
+              <RadioGroup className="mt-4 grid gap-2 sm:grid-cols-3" value={demandMode} onValueChange={(value) => setDemandMode(value as typeof demandMode)}>
+                {[
+                  { value: 'enquiries', title: 'I take enquiries first' },
+                  { value: 'orders', title: 'I take orders directly' },
+                  { value: 'both', title: 'I do both' },
+                ].map((option) => (
+                  <label key={option.value} className="flex cursor-pointer gap-3 rounded-xl border border-cream-300 bg-white p-4">
+                    <RadioGroupItem value={option.value} className="mt-0.5" />
+                    <span className="font-medium text-cream-900">{option.title}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </section>
+
+            <section className="rounded-xl border border-cream-200 bg-white p-5">
+              <h2 className="text-h4 font-semibold text-cream-950">Where do you create sales documents?</h2>
+              <RadioGroup className="mt-4 grid gap-2 sm:grid-cols-2" value={documentMode} onValueChange={(value) => setDocumentMode(value as typeof documentMode)}>
+                <label className="flex cursor-pointer gap-3 rounded-xl border border-cream-300 bg-white p-4">
+                  <RadioGroupItem value="yukti" className="mt-0.5" />
+                  <span>
+                    <span className="block font-medium text-cream-900">Create in Yukti</span>
+                    <span className="mt-1 block text-body-sm text-cream-600">Yukti creates enquiry and order documents.</span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer gap-3 rounded-xl border border-cream-300 bg-white p-4">
+                  <RadioGroupItem value="external" className="mt-0.5" />
+                  <span>
+                    <span className="block font-medium text-cream-900">Track here, create elsewhere</span>
+                    <span className="mt-1 block text-body-sm text-cream-600">Use Yukti for the buyer workflow while Zoho, Tally, or another system owns documents.</span>
+                  </span>
+                </label>
+              </RadioGroup>
+            </section>
+          </div>
+        </div>
+      ) : step === 1 ? (
         <div className="mx-auto max-w-3xl">
           <h1 className={ONBOARDING_TITLE_CLASS}>Bring your products in</h1>
           <p className="mt-2 text-body text-cream-600">Upload the price list you already use. Excel or CSV, any layout.</p>
@@ -707,7 +910,7 @@ export function CatalogSetupClient(): React.ReactNode {
               <Store className="h-4 w-4" />
               Preview Catalog
             </Button>
-              <h1 className={ONBOARDING_TITLE_CLASS}>Review & publish</h1>
+              <h1 className={ONBOARDING_TITLE_CLASS}>Review, configure & publish</h1>
               <p className="mt-2 text-body text-cream-600">
                 {preview?.productCount ?? 0} products are ready. Real photos can wait — category icons stand in until you add them.
               </p>
@@ -749,13 +952,47 @@ export function CatalogSetupClient(): React.ReactNode {
                 <p className="mt-1 text-body-sm text-cream-600">Updates the preview address bar live.</p>
               </div>
               <div className="mt-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">Pricing visibility</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">Who can browse your catalog?</p>
+                <RadioGroup
+                  className="mt-3 space-y-2"
+                  value={accessMode}
+                  onValueChange={(value) => setAccessMode(value as typeof accessMode)}
+                >
+                  <label
+                    className={cn(
+                      'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
+                      accessMode === 'public_link' ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15' : 'border-cream-300 bg-white',
+                    )}
+                  >
+                    <RadioGroupItem value="public_link" className="mt-0.5" />
+                    <span>
+                      <span className="block font-medium text-cream-900">Anyone with the link</span>
+                      <span className="mt-0.5 block text-body-sm text-cream-600">Buyers can browse before logging in.</span>
+                    </span>
+                  </label>
+                  <label
+                    className={cn(
+                      'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
+                      accessMode === 'approved_buyers_only' ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15' : 'border-cream-300 bg-white',
+                    )}
+                  >
+                    <RadioGroupItem value="approved_buyers_only" className="mt-0.5" />
+                    <span>
+                      <span className="block font-medium text-cream-900">Approved buyers only</span>
+                      <span className="mt-0.5 block text-body-sm text-cream-600">Visitors log in before browsing.</span>
+                    </span>
+                  </label>
+                </RadioGroup>
+              </div>
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">How buyers buy</p>
                 <RadioGroup
                   className="mt-3 space-y-2"
                   value={pricingMode || undefined}
                   onValueChange={(value) => {
                     const next = value as CatalogPricingMode;
                     setPricingMode(next);
+                    if (next !== 'hide_price_collect_enquiry') setCollectTarget(false);
                     if (needsAssignedPriceFetch(next, priceListId, assignedByList)) {
                       void loadPreview(priceListId);
                     }
@@ -777,6 +1014,31 @@ export function CatalogSetupClient(): React.ReactNode {
                       </span>
                     </span>
                   </label>
+                  <label
+                    className={cn(
+                      'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
+                      pricingMode === 'hide_price_collect_enquiry'
+                        ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15'
+                        : 'border-cream-300 bg-white',
+                    )}
+                  >
+                    <RadioGroupItem value="hide_price_collect_enquiry" className="mt-0.5" />
+                    <span>
+                      <span className="block font-medium text-cream-900">Hide prices and collect enquiries</span>
+                      <span className="mt-0.5 block text-body-sm text-cream-600">
+                        Buyers choose products and quantities. Your team responds with prices.
+                      </span>
+                    </span>
+                  </label>
+                  {pricingMode === 'hide_price_collect_enquiry' ? (
+                    <label className="flex cursor-pointer gap-3 rounded-xl border border-cream-300 bg-cream-50 px-4 py-3">
+                      <Checkbox checked={collectTarget} onCheckedChange={(checked) => setCollectTarget(checked === true)} className="mt-0.5" />
+                      <span>
+                        <span className="block font-medium text-cream-900">Ask buyers for target unit price range</span>
+                        <span className="mt-0.5 block text-body-sm text-cream-600">Optional per-unit target rate. This is not treated as seller price.</span>
+                      </span>
+                    </label>
+                  ) : null}
                   <label
                     className={cn(
                       'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
@@ -838,6 +1100,41 @@ export function CatalogSetupClient(): React.ReactNode {
                   </label>
                 </RadioGroup>
               </div>
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">How products appear</p>
+                <RadioGroup
+                  className="mt-3 space-y-2"
+                  value={productDisplayMode}
+                  onValueChange={(value) => setProductDisplayMode(value as typeof productDisplayMode)}
+                >
+                  <label
+                    className={cn(
+                      'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
+                      productDisplayMode === 'sku_list' ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15' : 'border-cream-300 bg-white',
+                    )}
+                  >
+                    <RadioGroupItem value="sku_list" className="mt-0.5" />
+                    <span>
+                      <span className="block font-medium text-cream-900">Show SKUs directly</span>
+                      <span className="mt-0.5 block text-body-sm text-cream-600">Each SKU appears as its own catalog item.</span>
+                    </span>
+                  </label>
+                  <label
+                    className={cn(
+                      'flex cursor-pointer gap-3 rounded-xl border px-4 py-3',
+                      productDisplayMode === 'group_variants' ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15' : 'border-cream-300 bg-white',
+                    )}
+                  >
+                    <RadioGroupItem value="group_variants" className="mt-0.5" />
+                    <span>
+                      <span className="block font-medium text-cream-900">Group variants under products</span>
+                      <span className="mt-0.5 block text-body-sm text-cream-600">
+                        We found SKUs that may work as variants. Group them where existing attributes are clear.
+                      </span>
+                    </span>
+                  </label>
+                </RadioGroup>
+              </div>
               <div
                 className="mt-6 rounded-xl border border-dashed border-cream-400 p-4"
                 onDragOver={(event) => event.preventDefault()}
@@ -893,6 +1190,8 @@ export function CatalogSetupClient(): React.ReactNode {
               categories={preview?.categories ?? []}
               pricingMode={pricingMode}
               storefrontHost={preview?.storefrontHost}
+              collectTargetUnitPriceRange={collectTarget}
+              productDisplayMode={productDisplayMode}
             />
             {reviewOpen ? (
               <div className="absolute inset-0 z-30 hidden overflow-hidden rounded-xl border border-cream-300 bg-cream-50 lg:flex">

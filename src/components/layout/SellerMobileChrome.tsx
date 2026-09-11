@@ -96,7 +96,8 @@ function getRouteTitle(pathname: string) {
     if (maybeId === 'team') return 'Team';
     return 'Branches';
   }
-  if (segment === 'catalogs') return 'Catalogs';
+  if (segment === 'catalog') return 'Catalog';
+  if (segment === 'catalogs') return 'Catalog';
   if (segment === 'announcements') return 'Announcements';
   if (segment === 'pricing') return 'Pricing';
   if (segment === 'recommendations') return 'Recommendations';

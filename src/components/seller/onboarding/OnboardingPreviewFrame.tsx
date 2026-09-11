@@ -33,6 +33,8 @@ export function OnboardingPreviewFrame({
   brands,
   categories,
   pricingMode,
+  collectTargetUnitPriceRange = false,
+  productDisplayMode = 'sku_list',
 }: {
   slug: string;
   storefrontHost?: string;
@@ -42,9 +44,12 @@ export function OnboardingPreviewFrame({
   brands: BuyerBrand[];
   categories: BuyerCategory[];
   pricingMode?: CatalogPricingMode | '' | null;
+  collectTargetUnitPriceRange?: boolean;
+  productDisplayMode?: 'sku_list' | 'group_variants';
 }): React.ReactNode {
   const host = storefrontHost ?? `${slug || 'your-catalog'}.useyukti.in`;
   const priceReveal = guestPriceReveal(pricingMode);
+  const enquiryMode = pricingMode === 'hide_price_collect_enquiry';
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-cream-300 bg-white shadow-sm">
@@ -85,6 +90,21 @@ export function OnboardingPreviewFrame({
           <PreviewMobileHeader businessName={businessName} logoUrl={logoUrl} />
           <PreviewDesktopHeader businessName={businessName} logoUrl={logoUrl} />
           <div className="mx-auto w-full max-w-[1440px] px-3 pb-8 pt-4 md:px-5">
+            <div className="mb-4 rounded-[12px] border border-cream-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-body-sm font-semibold text-cream-950">
+                {enquiryMode ? 'Enquiry catalog preview' : 'Priced catalog preview'}
+              </p>
+              <p className="mt-1 text-body-sm text-cream-600">
+                {enquiryMode
+                  ? `Product cards show enquiry language${collectTargetUnitPriceRange ? ' and buyers can add target unit rates.' : '.'}`
+                  : 'Product cards show buyer-visible rates when available.'}
+              </p>
+              {productDisplayMode === 'group_variants' ? (
+                <p className="mt-2 rounded-[8px] bg-cream-100 px-3 py-2 text-body-sm text-cream-700">
+                  Variants will be grouped where SKU attributes are already clear. Rows without enough metadata stay as SKU cards.
+                </p>
+              ) : null}
+            </div>
             {brands.length > 0 ? (
               <section>
                 <BuyerSectionRow title="Brands" className="px-1 pb-3" />

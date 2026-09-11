@@ -56,7 +56,7 @@ export interface BuyerMeData {
   };
   whatsapp_consent_required: boolean;
   /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
-  guest_pricing_mode?: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | null;
+  guest_pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
   /** mode:'pending' only — self-registered, awaiting seller approval. */
   pending?: {
     intake_submitted: boolean;

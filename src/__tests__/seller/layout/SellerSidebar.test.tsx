@@ -138,7 +138,7 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/settings');
     expect(paths).not.toContain('/settings/modules');
     expect(paths).toContain('/business/branches');
-    expect(paths).toContain('/catalogs');
+    expect(paths).toContain('/catalog');
     expect(paths).toContain('/pricing');
     expect(paths).toContain('/recommendations');
   });
@@ -191,7 +191,7 @@ describe('SellerSidebar', () => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     });
     expect(screen.queryByRole('link', { name: 'Brands' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Catalogs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
@@ -327,7 +327,7 @@ describe('collectPrefetchHrefs', () => {
       getFlag: () => true,
     });
     expect(hrefs).not.toContain('/brands');
-    expect(hrefs).not.toContain('/catalogs');
+    expect(hrefs).not.toContain('/catalog');
     expect(hrefs).not.toContain('/settings');
     expect(hrefs).not.toContain('/pricing');
   });

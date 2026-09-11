@@ -1,5 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { TENANT_PRODUCT_PUBLIC_SELECT, guestUnitPrice, loadAssignedPriceListPrices, type CatalogPricingMode } from '@/lib/server/public-catalog';
+import {
+  TENANT_PRODUCT_PUBLIC_SELECT,
+  guestUnitPrice,
+  loadAssignedPriceListPrices,
+  type CatalogAccessMode,
+  type CatalogPricingMode,
+  type CatalogProductDisplayMode,
+} from '@/lib/server/public-catalog';
 import { r2Url } from '@/lib/r2-url';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import type { ImportAnomaly } from '@/lib/onboarding/types';
@@ -76,6 +83,9 @@ export interface OnboardingPreviewPayload {
   live: boolean;
   pricingMode: CatalogPricingMode | null;
   priceListId: string | null;
+  accessMode: CatalogAccessMode;
+  collectTargetUnitPriceRange: boolean;
+  productDisplayMode: CatalogProductDisplayMode;
   priceLists: Array<{ id: string; name: string }>;
   photoTargets: Array<{
     key: string;
@@ -93,7 +103,7 @@ export async function loadOnboardingPreview(
 ): Promise<OnboardingPreviewPayload> {
   const [{ data: tenant }, { data: catalog }, { count }, { data: priceListRows }] = await Promise.all([
     db.schema('app').from('tenants').select('slug, business_name').eq('id', tenantId).maybeSingle(),
-    db.schema('app').from('catalogs').select('live_at, pricing_mode, price_list_id').eq('tenant_id', tenantId).eq('kind', 'public').is('deleted_at', null).maybeSingle(),
+    db.schema('app').from('catalogs').select('live_at, pricing_mode, price_list_id, access_mode, collect_target_unit_price_range, product_display_mode').eq('tenant_id', tenantId).eq('kind', 'public').is('deleted_at', null).maybeSingle(),
     db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true).is('deleted_at', null),
     db.schema('app').from('price_lists').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null).limit(200),
   ]);
@@ -266,6 +276,9 @@ export async function loadOnboardingPreview(
     live: Boolean((catalog as { live_at?: string | null } | null)?.live_at),
     pricingMode: ((catalog as { pricing_mode?: CatalogPricingMode | null } | null)?.pricing_mode) ?? null,
     priceListId: ((catalog as { price_list_id?: string | null } | null)?.price_list_id) ?? null,
+    accessMode: ((catalog as { access_mode?: CatalogAccessMode | null } | null)?.access_mode) ?? 'public_link',
+    collectTargetUnitPriceRange: ((catalog as { collect_target_unit_price_range?: boolean | null } | null)?.collect_target_unit_price_range) === true,
+    productDisplayMode: ((catalog as { product_display_mode?: CatalogProductDisplayMode | null } | null)?.product_display_mode) ?? 'sku_list',
     priceLists: ((priceListRows ?? []) as Array<{ id: string; name: string }>).map((pl) => ({ id: pl.id, name: pl.name })),
     photoTargets,
   };
