@@ -23,6 +23,29 @@ import {
  *    any row is written (buyer_documents has no client-writable RLS policy —
  *    every write here goes through supabaseAdmin, confirmed against live
  *    grants before this route was written).
+ *
+ * DEFERRED (post-launch review of task 7, 2026-09, Important #1): the
+ * business-scope expected-key-prefix check below derives its GSTIN purely
+ * from the request body with no session binding — any authenticated session
+ * can plant a buyer_documents row (and a real R2 object) under an arbitrary,
+ * including a victim's, GSTIN, since nothing here proves the caller actually
+ * owns/represents that business. Left unfixed this pass, deliberately:
+ *  - reuse-confirm now rejects ALL business-scope reuse-copy requests (see
+ *    that route's file-level comment), so a planted row can no longer be
+ *    exfiltrated via the reuse flow — the immediate cross-tenant read risk
+ *    the review flagged is closed at the consumption side.
+ *  - a planted row is otherwise only readable by the tenant that owns it and
+ *    the buyer who created it (per the existing buyer_documents RLS/SELECT
+ *    grants) — no other buyer/tenant can read it, so the remaining exposure
+ *    is "pollutes a disabled feature's reuse-candidate pool with a row that
+ *    doesn't really belong to that GSTIN," not data exfiltration.
+ *  - properly fixing this needs real GSTIN-ownership verification (a GST API
+ *    check), which is explicitly out of scope for this round per the backend
+ *    spec — any fix here now would just be a different, still-unverified
+ *    heuristic.
+ * Tracked as a required follow-up for whenever business-scope reuse is
+ * re-enabled with real GSTIN verification — do not re-enable reuse-confirm's
+ * business path without also closing this gap.
  */
 
 const BodySchema = z

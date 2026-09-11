@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { z } from 'zod';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
+import { normalizeGstin } from '@/lib/server/buyer-document-presign';
 
 /**
  * POST /api/buyer/documents/reuse-check
@@ -24,6 +25,25 @@ import { supabaseAdmin } from '@/lib/supabase';
  * branch as service_role always fails auth.uid() IS NULL inside the
  * function). So the phone branch is called through a request-scoped client
  * built from this request's own Supabase auth cookies.
+ *
+ * FIX (post-launch review of task 7, 2026-09): reuse-confirm now rejects all
+ * business-scope (GSTIN-keyed) reuse-copy requests (see reuse-confirm's
+ * file-level comment) because a GSTIN is not a verifiable identity in this
+ * system. The gstin branch here still performs the existence check itself —
+ * that is the accepted, bounded existence-oracle risk the original spec
+ * explicitly allows ("does a document exist for this GSTIN somewhere") — but
+ * the response now also carries `reuse_available: false` so callers know the
+ * copy step that would normally follow is not actionable yet. The
+ * phone/personal branch is unaffected and does not carry this field at all
+ * (kept for backward compatibility with any caller checking `found` alone;
+ * its absence should not be read as `false` — only the explicit gstin-path
+ * `reuse_available: false` is meaningful).
+ *
+ * Also fixes a normalization gap (Important #2): /confirm stores GSTINs via
+ * normalizeGstin (trim + uppercase) but this route's schema previously only
+ * trimmed, and the RPC does an exact string match — so a differently-cased
+ * GSTIN in the request could silently miss a real match. The gstin is now
+ * normalized the same way before the RPC call.
  */
 
 const BodySchema = z.object({
@@ -77,14 +97,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (gstin) {
       const { data, error } = await supabaseAdmin
         .schema('app')
-        .rpc('check_document_reuse_candidate', { p_gstin: gstin, p_phone: null });
+        .rpc('check_document_reuse_candidate', { p_gstin: normalizeGstin(gstin), p_phone: null });
 
       if (error) {
         console.error('[POST /api/buyer/documents/reuse-check] gstin lookup failed', error);
         return NextResponse.json({ error: 'Reuse lookup failed' }, { status: 500 });
       }
 
-      return NextResponse.json(data);
+      // Business-scope reuse-copy is disabled this round (see reuse-confirm) —
+      // report existence but tell the caller the copy step isn't actionable.
+      return NextResponse.json({ ...data, reuse_available: false });
     }
 
     const scoped = createRequestScopedClient(request);

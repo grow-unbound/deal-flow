@@ -256,7 +256,7 @@ describe('buyer document routes', () => {
   });
 
   describe('POST /api/buyer/documents/reuse-check', () => {
-    it('runs the gstin branch via service role without needing a session phone', async () => {
+    it('runs the gstin branch via service role without needing a session phone, but marks reuse unavailable', async () => {
       requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
       dbState.rpcResult = { found: true, tenant_name: 'Other Tenant', document_ids: ['doc-9'] };
       const { POST } = await import('../../app/api/buyer/documents/reuse-check/route');
@@ -269,6 +269,38 @@ describe('buyer document routes', () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.found).toBe(true);
+      // Business-scope reuse-copy is disabled this round — the existence
+      // check still runs (accepted bounded oracle risk) but the response
+      // must say the copy step isn't actionable.
+      expect(body.reuse_available).toBe(false);
+    });
+
+    it('normalizes GSTIN case before calling the RPC', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
+      dbState.rpcResult = { found: true, tenant_name: 'Other Tenant', document_ids: ['doc-9'] };
+      const rpcMock = vi.fn(async (...args: unknown[]) => {
+        const params = args[1] as { p_gstin: string; p_phone: string | null };
+        expect(params.p_gstin).toBe('29AAVIC9992H1Z0');
+        return { data: dbState.rpcResult, error: null };
+      });
+      const { supabaseAdmin } = await import('@/lib/supabase');
+      (supabaseAdmin!.schema as any).mockReturnValueOnce({
+        rpc: rpcMock,
+        from: vi.fn((table: string) => createAdminQueryBuilder(table)),
+      });
+
+      const { POST } = await import('../../app/api/buyer/documents/reuse-check/route');
+      const response = await POST(
+        new Request('http://localhost/api/buyer/documents/reuse-check', {
+          method: 'POST',
+          body: JSON.stringify({ gstin: '29aavic9992h1z0' }),
+        }) as any,
+      );
+      expect(response.status).toBe(200);
+      expect(rpcMock).toHaveBeenCalledWith(
+        'check_document_reuse_candidate',
+        expect.objectContaining({ p_gstin: '29AAVIC9992H1Z0' }),
+      );
     });
 
     it('returns not-found when there is no otp_verified_phone on the session', async () => {
@@ -329,6 +361,55 @@ describe('buyer document routes', () => {
       );
       expect(response.status).toBe(403);
       expect(copyObjectMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects the whole request when any requested document is business-scope, and never copies', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
+      dbState.buyerDocuments.push(
+        {
+          id: '00000000-0000-0000-0000-000000000004',
+          tenant_id: 'tenant-2',
+          buyer_id: 'other-buyer',
+          gstin: null,
+          doc_type: 'shop_image',
+          subject_scope: 'personal',
+          storage_key: 'buyers/other-buyer/personal/shop_image/uuid-personal',
+        },
+        {
+          id: '00000000-0000-0000-0000-000000000005',
+          tenant_id: 'tenant-2',
+          buyer_id: 'other-buyer',
+          gstin: '29AAVIC9992H1Z0',
+          doc_type: 'gst_certificate',
+          subject_scope: 'business',
+          storage_key: 'businesses/somehash/docs/gst_certificate/uuid-biz',
+        },
+      );
+      dbState.buyers.push({ id: 'other-buyer', phone: '9990000002' });
+      getUserByIdMock.mockResolvedValue({
+        data: { user: { user_metadata: { otp_verified_phone: '9990000002' } } },
+        error: null,
+      });
+
+      const { POST } = await import('../../app/api/buyer/documents/reuse-confirm/route');
+      const response = await POST(
+        new Request('http://localhost/api/buyer/documents/reuse-confirm', {
+          method: 'POST',
+          body: JSON.stringify({
+            // mixed request: one personal id (would otherwise succeed) + one business id
+            document_ids: [
+              '00000000-0000-0000-0000-000000000004',
+              '00000000-0000-0000-0000-000000000005',
+            ],
+            consent: true,
+          }),
+        }) as any,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(403);
+      expect(body.error).toBe('business_document_reuse_not_available');
+      expect(copyObjectMock).not.toHaveBeenCalled();
+      expect(dbState.buyerDocuments).toHaveLength(2); // no new row inserted
     });
 
     it('copies the object and inserts a new row pointing at the source when the phone matches', async () => {
