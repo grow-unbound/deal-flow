@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 
@@ -58,6 +58,22 @@ export async function getObjectSize(key: string): Promise<number | null> {
 
 export async function deleteObject(key: string): Promise<void> {
   const command = new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key });
+  await r2Client.send(command);
+}
+
+/**
+ * Server-side copy within the same bucket — no download/re-upload round trip.
+ * Used by cross-tenant document reuse (buyer-documents reuse-confirm route):
+ * each tenant's buyer_documents row must own an independent object per the
+ * "copy, not link" decision, so this mints a brand-new key rather than
+ * pointing two rows at one storage_key.
+ */
+export async function copyObject(sourceKey: string, destinationKey: string): Promise<void> {
+  const command = new CopyObjectCommand({
+    Bucket: R2_BUCKET,
+    CopySource: `${R2_BUCKET}/${sourceKey.split('/').map(encodeURIComponent).join('/')}`,
+    Key: destinationKey,
+  });
   await r2Client.send(command);
 }
 
