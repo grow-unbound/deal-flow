@@ -22,7 +22,8 @@ import { assertTemplatePayloadValid } from '@/lib/server/whatsapp-template-valid
  */
 
 export const ACCESS_REQUEST_RECEIVED_BUYER_TEMPLATE = 'access_request_received_buyer';
-export const ACCESS_REQUEST_RECEIVED_SELLER_TEMPLATE = 'access_request_received_seller';
+export const ACCESS_REQUEST_RECEIVED_SELLER_BUSINESS_TEMPLATE = 'access_request_received_seller_business';
+export const ACCESS_REQUEST_RECEIVED_SELLER_INDIVIDUAL_TEMPLATE = 'access_request_received_seller_individual';
 export const ACCESS_REQUEST_APPROVED_BUYER_TEMPLATE = 'access_request_approved_buyer';
 export const ACCESS_MORE_INFO_NEEDED_BUYER_TEMPLATE = 'access_more_info_needed_buyer';
 export const ACCESS_REQUEST_DECLINED_BUYER_TEMPLATE = 'access_request_declined_buyer';
@@ -49,20 +50,6 @@ export type ApprovalResolution = 'approved' | 'declined' | 'needs_more_info';
 interface QueueApprovalResolutionExtra {
   missingFields?: string[];
 }
-
-/**
- * Zero-width space (U+200B) — the placeholder for `access_request_received_seller`'s
- * `business_qualifier` variable on the non-business branch (spec §5.2 wants
- * "" there). `assertTemplatePayloadValid`'s blank check
- * (`if (!normalizeValue(param.text))`, where `normalizeValue` calls
- * `.trim()`) rejects both a true empty string AND an ordinary space (`' '.trim() === ''`),
- * and Meta rejects blank template variables outright. U+200B is not part of
- * JS's/Unicode's `White_Space` set, so `.trim()` leaves it intact — it passes
- * validation while rendering as an invisible character in the delivered
- * message, giving the "no qualifier" case the same visual result an empty
- * string would have had.
- */
-const BUSINESS_QUALIFIER_BLANK_PLACEHOLDER = '​';
 
 const MISSING_FIELD_LABELS: Record<string, string> = {
   gst_certificate: 'GST certificate',
@@ -231,17 +218,19 @@ export async function queueAccessRequestReceivedMessages(
 
   let sellerSent = false;
   if (sellerContext.sellerPhone && isValidIndianMobile(sellerContext.sellerPhone)) {
-    const businessQualifier = isBusinessBuyer(buyer)
-      ? ' as a registered business'
-      : BUSINESS_QUALIFIER_BLANK_PLACEHOLDER;
-
+    // Two distinct template names, not a blank-vs-populated variable — Meta rejects
+    // blank template variables, and a template body cannot conditionally include/omit
+    // a clause per-send. See Yukti_Public-Signup_Backend-Plan_v1.md §5.2's own fallback:
+    // "if [an empty-string variable] not [acceptable], split into two template names."
+    const isBusiness = isBusinessBuyer(buyer);
     sellerSent = await sendTemplateMessage({
-      metaTemplateName: ACCESS_REQUEST_RECEIVED_SELLER_TEMPLATE,
-      variables: [{ key: 'seller_name' }, { key: 'buyer_name' }, { key: 'business_qualifier' }],
+      metaTemplateName: isBusiness
+        ? ACCESS_REQUEST_RECEIVED_SELLER_BUSINESS_TEMPLATE
+        : ACCESS_REQUEST_RECEIVED_SELLER_INDIVIDUAL_TEMPLATE,
+      variables: [{ key: 'seller_name' }, { key: 'buyer_name' }],
       bodyValues: [
         { key: 'seller_name', text: sellerContext.sellerName },
         { key: 'buyer_name', text: resolveBuyerNameForSeller(buyer) },
-        { key: 'business_qualifier', text: businessQualifier },
       ],
       destinationPhone: sellerContext.sellerPhone,
       tenantId,

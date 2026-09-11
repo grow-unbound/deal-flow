@@ -120,10 +120,13 @@ const TRANSACTIONAL_TEMPLATE_VARIABLES: Record<string, string[]> = {
     'buyer_name',
     'seller_name',
   ],
-  access_request_received_seller: [
+  access_request_received_seller_business: [
     'seller_name',
     'buyer_name',
-    'business_qualifier',
+  ],
+  access_request_received_seller_individual: [
+    'seller_name',
+    'buyer_name',
   ],
   access_request_approved_buyer: [
     'buyer_name',

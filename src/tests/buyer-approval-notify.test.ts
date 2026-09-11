@@ -104,7 +104,7 @@ describe('buyer-approval-notify', () => {
     triggerWhatsAppDispatchMock.mockResolvedValue({ ok: true, dispatched: 1, failed: 0, skipped: 0 });
   });
 
-  it('sends access_request_received_buyer + access_request_received_seller for a business buyer, with the qualifier populated', async () => {
+  it('sends access_request_received_buyer + access_request_received_seller_business for a business buyer', async () => {
     const db = buildDb(businessBuyer, tenant);
     const result = await queueAccessRequestReceivedMessages(db, 'tenant-1', 'buyer-1');
 
@@ -119,50 +119,25 @@ describe('buyer-approval-notify', () => {
       buyerCall.sendPayload,
     )).not.toThrow();
 
-    expect(sellerCall.sendPayload.meta_template_name).toBe('access_request_received_seller');
-    const qualifierParam = sellerCall.sendPayload.body_params.find(
-      (p: { parameter_name?: string }) => p.parameter_name === 'business_qualifier',
-    );
-    expect(qualifierParam.text).toBe(' as a registered business');
+    expect(sellerCall.sendPayload.meta_template_name).toBe('access_request_received_seller_business');
     expect(() => assertTemplatePayloadValid(
-      { meta_template_name: 'access_request_received_seller', variables: [] },
+      { meta_template_name: 'access_request_received_seller_business', variables: [] },
       sellerCall.sendPayload,
     )).not.toThrow();
   });
 
-  it('sends access_request_received_seller with a non-blank placeholder qualifier for an individual buyer', async () => {
+  it('sends access_request_received_seller_individual for a non-business buyer', async () => {
     const db = buildDb(individualBuyer, tenant);
     const result = await queueAccessRequestReceivedMessages(db, 'tenant-1', 'buyer-2');
 
     expect(result).toEqual({ buyerSent: true, sellerSent: true });
     const sellerCall = enqueueWhatsAppMessageMock.mock.calls[1][0];
-    const qualifierParam = sellerCall.sendPayload.body_params.find(
-      (p: { parameter_name?: string }) => p.parameter_name === 'business_qualifier',
-    );
 
-    // Must be non-blank (assertTemplatePayloadValid rejects a value whose
-    // .trim() is empty) yet must not read as literal visible text either.
-    expect(qualifierParam.text.trim().length).toBeGreaterThan(0);
-    expect(qualifierParam.text).not.toContain('registered business');
+    expect(sellerCall.sendPayload.meta_template_name).toBe('access_request_received_seller_individual');
     expect(() => assertTemplatePayloadValid(
-      { meta_template_name: 'access_request_received_seller', variables: [] },
+      { meta_template_name: 'access_request_received_seller_individual', variables: [] },
       sellerCall.sendPayload,
     )).not.toThrow();
-  });
-
-  it('rejects a plain space as a blank-safe placeholder (sanity check on the validator itself)', () => {
-    expect(() => assertTemplatePayloadValid(
-      { meta_template_name: 'access_request_received_seller', variables: [] },
-      {
-        meta_template_name: 'access_request_received_seller',
-        locale: 'en',
-        body_params: [
-          { text: 'Seller', parameter_name: 'seller_name' },
-          { text: 'Buyer', parameter_name: 'buyer_name' },
-          { text: ' ', parameter_name: 'business_qualifier' },
-        ],
-      },
-    )).toThrow(/cannot be blank/);
   });
 
   it('sends access_request_approved_buyer with a validating payload', async () => {
