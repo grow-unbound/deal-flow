@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getVerifiedClaims } from '@/lib/auth';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
@@ -49,6 +50,25 @@ export async function POST(request: NextRequest) {
         { error: 'Session expired. Please log in again.' },
         { status: 400 },
       );
+    }
+
+    // SECURITY: a record with a stamped creator (created_by_user_id --
+    // written by /api/auth/switch-context, an authenticated-caller shortcut,
+    // as opposed to a real OTP hash check) may only ever be redeemed by that
+    // same caller's own session. Without this, an attacker's own
+    // switch-context call could hand back a ref_id whose `candidates` array
+    // includes OTHER people's login candidates (e.g. after poisoning their
+    // own app.buyers.phone to a victim's phone), and this route would mint
+    // a real session for whichever candidate was requested with no check
+    // that it belongs to the caller at all.
+    if (record.createdByUserId) {
+      const claims = await getVerifiedClaims(request);
+      if (!claims.sub || claims.sub !== record.createdByUserId) {
+        return NextResponse.json(
+          { error: 'Not authorized to redeem this context selection.' },
+          { status: 403 },
+        );
+      }
     }
 
     const candidate = record.candidates.find((ctx) =>
