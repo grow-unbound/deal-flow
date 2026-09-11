@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
@@ -71,7 +72,33 @@ interface BuyerMeResponse {
     seller_whatsapp_number: string | null;
     prefill_full_name: string | null;
     prefill_email: string | null;
+    /**
+     * Task 10: the buyer's actual onboarding_status column value, sourced
+     * from app.get_buyer_onboarding_status() (Task 6) rather than re-derived
+     * here — see that RPC for the authoritative shape. Null only if the RPC
+     * call itself failed (non-blocking; the rest of the pending payload is
+     * still returned) or before intake is submitted, when the row may not
+     * yet have progressed past the DB default.
+     */
+    onboarding_status: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null;
+    /** Populated only when onboarding_status === 'needs_more_info'. */
+    missing_fields: string[] | null;
+    declined_reason: string | null;
   };
+}
+
+function createRequestScopedClient(request: NextRequest) {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        // Read-only usage — no response to attach refreshed cookies to.
+        setAll: () => {},
+      },
+    },
+  );
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -291,6 +318,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         prefillEmail = row?.email?.trim() || null;
       }
 
+      // Task 10: surface the authoritative onboarding_status/missing_fields by
+      // calling Task 6's app.get_buyer_onboarding_status() RPC rather than
+      // re-deriving the same data from buyer.custom_fields a second way. The
+      // RPC is SECURITY DEFINER and reads app.jwt_buyer_id()/app.jwt_tenant_id()
+      // off the caller's own JWT claims (populated by custom_access_token_hook
+      // for a buyer_pending session) — it must be invoked via a request-scoped
+      // client carrying this request's own auth cookies, not supabaseAdmin
+      // (service-role calls carry no buyer_id/tenant_id claims), matching the
+      // pattern already used in app/api/buyer/onboarding/existing-profiles.
+      let onboardingStatus: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null = null;
+      let missingFields: string[] | null = null;
+      let declinedReason: string | null = null;
+      try {
+        const scoped = createRequestScopedClient(request);
+        const { data: statusData, error: statusError } = await scoped
+          .schema('app')
+          .rpc('get_buyer_onboarding_status');
+        if (statusError) {
+          console.error('[GET /api/buyer/me] get_buyer_onboarding_status rpc failed:', statusError);
+        } else {
+          const row = statusData as {
+            onboarding_status?: string | null;
+            missing_fields?: string[] | null;
+            declined_reason?: string | null;
+          } | null;
+          onboardingStatus = (row?.onboarding_status ?? null) as typeof onboardingStatus;
+          missingFields = row?.missing_fields ?? null;
+          declinedReason = row?.declined_reason ?? null;
+        }
+      } catch (rpcError) {
+        console.error('[GET /api/buyer/me] get_buyer_onboarding_status rpc threw:', rpcError);
+      }
+
       const payload: BuyerMeResponse = {
         mode: 'pending',
         buyer_id: buyer.id,
@@ -323,6 +383,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           seller_whatsapp_number: sellerWhatsappNumber,
           prefill_full_name: prefillFullName,
           prefill_email: prefillEmail,
+          onboarding_status: onboardingStatus,
+          missing_fields: onboardingStatus === 'needs_more_info' ? missingFields : null,
+          declined_reason: onboardingStatus === 'declined' ? declinedReason : null,
         },
       };
 

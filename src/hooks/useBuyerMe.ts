@@ -64,6 +64,9 @@ export interface BuyerMeData {
     seller_whatsapp_number: string | null;
     prefill_full_name: string | null;
     prefill_email: string | null;
+    onboarding_status: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null;
+    missing_fields: string[] | null;
+    declined_reason: string | null;
   };
 }
 

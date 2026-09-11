@@ -898,10 +898,16 @@ export async function acquireBuyerForStorefront(
 
 /**
  * Where to send a `buyer_pending` session next: /onboarding if this is a
- * fresh self-registration that hasn't submitted the intake form yet,
- * /pending for everything else still awaiting approval (intake already
- * submitted, or a known buyer a seller disabled outright).
- * Yukti_Inbox_Feature-Spec_v1.md §7.1.
+ * fresh self-registration that hasn't submitted the intake form yet;
+ * otherwise the storefront home (/), where the OnboardingStatusPill (Task 10)
+ * surfaces the buyer's onboarding_status and lets them tap into /pending
+ * (or the resubmission flow) — /pending is no longer a forced landing page
+ * for a session that has already completed intake and hasn't tried to reach
+ * a gated feature. A known buyer a seller disabled outright (never
+ * self-registered, never submitted intake) still lands on /pending, since
+ * there is no onboarding flow for them to complete or storefront browsing
+ * context to show a pill in.
+ * Yukti_Inbox_Feature-Spec_v1.md §7.1; Task 10 brief.
  */
 export async function resolvePendingBuyerRedirect(buyerId: string): Promise<string> {
   if (!supabaseAdmin) return '/pending';
@@ -917,7 +923,9 @@ export async function resolvePendingBuyerRedirect(buyerId: string): Promise<stri
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
 
-  return selfRegistered && !intakeSubmitted ? '/onboarding' : '/pending';
+  if (selfRegistered && !intakeSubmitted) return '/onboarding';
+  if (intakeSubmitted) return '/';
+  return '/pending';
 }
 
 export async function mintBuyerSession(

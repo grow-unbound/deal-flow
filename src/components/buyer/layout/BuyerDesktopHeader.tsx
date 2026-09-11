@@ -16,6 +16,7 @@ import { useBuyerSession } from '@/hooks/useBuyerSession';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
+import { OnboardingStatusPill } from '@/components/buyer/layout/OnboardingStatusPill';
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
@@ -107,7 +108,8 @@ export function BuyerDesktopHeader() {
   const { signOut } = useAuth();
   const { openLogin } = useStorefrontLogin();
   const buyerContextResolving = isBuyerLoading && !me;
-  const isGuest = !buyerContextResolving && me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const isPending = !buyerContextResolving && me?.mode === 'pending';
+  const isGuest = !buyerContextResolving && !isPending && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const [switchPending, setSwitchPending] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
@@ -238,7 +240,7 @@ export function BuyerDesktopHeader() {
 
             <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
 
-            {isGuest ? null : (
+            {isGuest || isPending ? null : (
               <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
             )}
           </div>
@@ -270,6 +272,8 @@ export function BuyerDesktopHeader() {
                 <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
                 <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
               </div>
+            ) : isPending ? (
+              <OnboardingStatusPill status={me?.pending?.onboarding_status} />
             ) : isGuest ? (
               <Button
                 type="button"

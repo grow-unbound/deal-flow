@@ -113,6 +113,20 @@ export default function CartPage() {
     router.replace('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
   }, [deliveryHydrated, router, selectedDelivery]);
 
+  // Task 10 gated-action rule: a buyer_pending session (self-registered,
+  // awaiting approval / needs_more_info / declined) reaching checkout — via a
+  // stale cart from before a seller disabled them, a direct URL, or any path
+  // not already covered by the openLogin() gate on add-to-cart — should be
+  // redirected to /pending rather than allowed to attempt order placement
+  // (which the backend would otherwise reject, or silently mishandle).
+  // Approved buyers and guests (whose carts stay empty by construction, per
+  // ProductCard/BuyerProductDetailClient's openLogin gate) are unaffected.
+  useEffect(() => {
+    if (meData?.mode === 'pending') {
+      router.replace('/pending');
+    }
+  }, [meData?.mode, router]);
+
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
       tenant_product_id: item.tenant_product_id,
