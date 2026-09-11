@@ -36,7 +36,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No other accounts linked to this number.' }, { status: 400 });
     }
 
-    const refId = await writeVerifiedCandidatesRecord(phone, candidates);
+    // otpVerified: false — this phone came from resolveCallerPhone (a mutable
+    // app.buyers.phone lookup), not a fresh OTP. select-context must not
+    // stamp otp_verified_phone off the back of this record.
+    const refId = await writeVerifiedCandidatesRecord(phone, candidates, false);
     if (!refId) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

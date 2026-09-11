@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
 
     await buyerOtpStore.delete(ref_id);
 
+    // Only a record written immediately after a real OTP hash check
+    // (phone-otp/verify route) may have its phone stamped as
+    // otp_verified_phone at mint time. A record written by the
+    // switch-context shortcut (record.otpVerified === false) derived its
+    // phone from a mutable app.buyers.phone lookup, not a fresh OTP — never
+    // let it forge/refresh that claim.
+    const otpVerifiedPhone = record.otpVerified ? record.phone : undefined;
+
     if (candidate.kind === 'seller') {
       const { session, user } = await mintSellerSession(
         candidate as LoginOtpCandidate & { kind: 'seller' },
@@ -78,7 +86,7 @@ export async function POST(request: NextRequest) {
     const buyerCandidate = toBuyerLoginCandidate(candidate);
 
     if (!buyerCandidate.buyer_app_enabled) {
-      const { session } = await mintBuyerSession(buyerCandidate);
+      const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
       const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
       return NextResponse.json({ success: true, redirect, session });
     }
@@ -103,7 +111,7 @@ export async function POST(request: NextRequest) {
     };
 
     if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
-      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
       const destinationHost = tenantStorefrontHostForRequest(
         request.headers.get('host') ?? '',
         buyerCandidate.tenant_slug,
@@ -118,7 +126,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, handoff_url: handoffUrl });
     }
 
-    const { session } = await mintBuyerSession(buyerCandidate);
+    const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
     recordSessionStart();
     // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
     // the consent checkbox before /buy/home. Phone-level now — a phone that

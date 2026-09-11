@@ -630,6 +630,15 @@ async function createBuyerSessionForUser(
   email: string,
   password: string,
   candidate: BuyerLoginCandidate,
+  // The phone a real WhatsApp OTP was just verified against (from the OTP
+  // store record — phone-otp/verify route ONLY). Omit/undefined for every
+  // other caller (switch-buyer, workspaces/enter, the switch-context picker
+  // path) so this call never derives or re-derives the claim from
+  // candidate.phone (sourced from the mutable app.buyers.phone column) —
+  // omitting the key entirely relies on the Admin API's confirmed
+  // user_metadata MERGE behavior (see 20260911013323 migration + fix report)
+  // to leave whatever otp_verified_phone the user already has untouched.
+  otpVerifiedPhone?: string,
 ) {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -646,6 +655,7 @@ async function createBuyerSessionForUser(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
@@ -693,6 +703,13 @@ async function createBuyerSessionForUser(
  */
 export async function mintBuyerHandoffLink(
   candidate: BuyerLoginCandidate,
+  // See createBuyerSessionForUser's otpVerifiedPhone doc — same contract.
+  // Pass ONLY the OTP store record's phone, and ONLY when this handoff link
+  // is being minted directly off a real OTP verification. Every other
+  // caller (workspaces/enter, the switch-context picker path) must omit
+  // this so the merge-preserving Admin API call below leaves any existing
+  // otp_verified_phone claim untouched.
+  otpVerifiedPhone?: string,
 ): Promise<{ hashedToken: string; buyerId: string | null }> {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -716,6 +733,7 @@ export async function mintBuyerHandoffLink(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
@@ -902,7 +920,15 @@ export async function resolvePendingBuyerRedirect(buyerId: string): Promise<stri
   return selfRegistered && !intakeSubmitted ? '/onboarding' : '/pending';
 }
 
-export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<{ session: Session; user: User }> {
+export async function mintBuyerSession(
+  candidate: BuyerLoginCandidate,
+  // See createBuyerSessionForUser's otpVerifiedPhone doc — same contract.
+  // Pass ONLY when this session is being minted directly off a real OTP
+  // verification (phone-otp/verify or select-context after a genuinely
+  // OTP-verified 'verified' record). switch-buyer and any other remint path
+  // must omit this.
+  otpVerifiedPhone?: string,
+): Promise<{ session: Session; user: User }> {
   const principal = candidate.principal_type === 'buyer'
     ? await ensureBuyerOwnerPrincipal(candidate)
     : await ensureBuyerDelegatePrincipal(candidate);
@@ -913,6 +939,7 @@ export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<
     principal.email,
     password,
     candidate,
+    otpVerifiedPhone,
   );
 
   if (supabaseAdmin && candidate.buyer_id) {

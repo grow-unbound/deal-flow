@@ -111,11 +111,15 @@ export async function POST(request: NextRequest) {
         const tenantScoped = filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo);
         if (tenantScoped.length > 0) {
           const candidate = pickPreferredBuyerCandidate(tenantScoped);
-          return buildMintedCandidateResponse(request, candidate, returnTo);
+          return buildMintedCandidateResponse(request, candidate, returnTo, record.phone);
         }
       }
 
-      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates);
+      // otpVerified: true — this record is written immediately after the
+      // OTP hash check above succeeded, for the literal phone the OTP was
+      // sent to. select-context uses this flag to allow the eventual
+      // session mint to stamp otp_verified_phone.
+      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates, true);
       if (!verifiedRefId) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
       }
@@ -123,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     const candidate = effectiveCandidates[0];
-    return buildMintedCandidateResponse(request, candidate, returnTo);
+    return buildMintedCandidateResponse(request, candidate, returnTo, record.phone);
   } catch (err) {
     console.error('[phone-otp/verify] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -134,8 +138,13 @@ async function buildMintedCandidateResponse(
   request: NextRequest,
   candidate: LoginOtpCandidate,
   returnTo: string | null,
+  // The OTP store record's phone — the literal number a real OTP was just
+  // verified against. Threaded through to the mint calls below so the
+  // otp_verified_phone claim can be stamped at the moment of genuine
+  // verification, never re-derived from any database column.
+  otpVerifiedPhone: string,
 ): Promise<NextResponse> {
-  const result = await mintCandidateSession(request, candidate, returnTo);
+  const result = await mintCandidateSession(request, candidate, returnTo, otpVerifiedPhone);
   if ('handoffUrl' in result) {
     if ('session' in result && result.session) {
       return NextResponse.json({
@@ -157,6 +166,9 @@ async function mintCandidateSession(
   request: NextRequest,
   candidate: LoginOtpCandidate,
   returnTo: string | null = null,
+  // The OTP store record's phone — pass-through only, never re-derived.
+  // See buildMintedCandidateResponse's doc.
+  otpVerifiedPhone?: string,
 ): Promise<MintResult> {
   if (candidate.kind === 'seller') {
     const { session, user } = await mintSellerSession(
@@ -178,7 +190,7 @@ async function mintCandidateSession(
   // re-OTPing, while every buyer_app_enabled-gated RLS policy still shuts them
   // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
   if (!buyerCandidate.buyer_app_enabled) {
-    const { session } = await mintBuyerSession(buyerCandidate);
+    const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
     const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
     return { pending: false, session, redirect };
   }
@@ -193,7 +205,7 @@ async function mintCandidateSession(
     );
 
     if (onCatalogHost) {
-      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
       const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
       const { supabaseAdmin } = await import('@/lib/supabase');
       if (supabaseAdmin && buyerCandidate.buyer_id) {
@@ -211,12 +223,12 @@ async function mintCandidateSession(
       return { pending: false, handoffUrl };
     }
 
-    const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+    const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
     const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
     return { pending: false, handoffUrl };
   }
 
-  const { session } = await mintBuyerSession(buyerCandidate);
+  const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
   const { supabaseAdmin } = await import('@/lib/supabase');
   if (supabaseAdmin && buyerCandidate.buyer_id) {
     void recordBuyerAppActivitySafe(supabaseAdmin as any, {
