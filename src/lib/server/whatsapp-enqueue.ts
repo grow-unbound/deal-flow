@@ -45,6 +45,8 @@ const TRANSACTIONAL_TRIGGER_SOURCES: ReadonlySet<WhatsAppTriggerSource> = new Se
   'invoice_update',
   'payment_reminder',
   'dispatch_notice',
+  'access_request_received',
+  'access_request_resolved',
 ]);
 
 const QUEUE_PRIORITY_TRANSACTIONAL = 1;

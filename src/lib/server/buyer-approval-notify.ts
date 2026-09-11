@@ -1,0 +1,347 @@
+import { firstNameFromValue, formatWhatsappDestination, isValidIndianMobile } from '@/lib/phone';
+import { resolveBuyerDisplayName } from '@/lib/server/buyer-app-enable-notify';
+import { buildSellerContextFromTenant } from '@/lib/server/whatsapp-seller-context';
+import {
+  enqueueWhatsAppMessage,
+  lookupApprovedTemplateMeta,
+  triggerWhatsAppDispatch,
+  type WhatsAppSendPayload,
+} from '@/lib/server/whatsapp-enqueue';
+import { assertTemplatePayloadValid } from '@/lib/server/whatsapp-template-validation';
+
+/**
+ * Buyer-approval-flow WhatsApp sends. Mirrors buyer-app-enable-notify.ts's
+ * shape (build payload -> validate -> enqueue -> dispatch) but for the
+ * public-signup approval flow: Yukti_Public-Signup_Backend-Plan_v1.md §5
+ * (as amended by §0b — header+multiline body structure, corrected 5.1/5.2/5.5
+ * copy). All five templates here are Utility category, calm/factual tone —
+ * distinct from the Marketing-category `buyer_app_enabled` template in
+ * buyer-app-enable-notify.ts, which fires on a different trigger (a seller
+ * manually flipping a known buyer's access) per §5.3's explicit note not to
+ * conflate the two.
+ */
+
+export const ACCESS_REQUEST_RECEIVED_BUYER_TEMPLATE = 'access_request_received_buyer';
+export const ACCESS_REQUEST_RECEIVED_SELLER_TEMPLATE = 'access_request_received_seller';
+export const ACCESS_REQUEST_APPROVED_BUYER_TEMPLATE = 'access_request_approved_buyer';
+export const ACCESS_MORE_INFO_NEEDED_BUYER_TEMPLATE = 'access_more_info_needed_buyer';
+export const ACCESS_REQUEST_DECLINED_BUYER_TEMPLATE = 'access_request_declined_buyer';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbClient = any;
+
+interface BuyerRow {
+  id: string;
+  business_name: string;
+  contact_name: string | null;
+  phone: string | null;
+  custom_fields: Record<string, unknown> | null;
+}
+
+interface TenantRow {
+  id: string;
+  business_name: string;
+  settings: Record<string, unknown> | null;
+}
+
+export type ApprovalResolution = 'approved' | 'declined' | 'needs_more_info';
+
+interface QueueApprovalResolutionExtra {
+  missingFields?: string[];
+}
+
+/**
+ * Zero-width space (U+200B) — the placeholder for `access_request_received_seller`'s
+ * `business_qualifier` variable on the non-business branch (spec §5.2 wants
+ * "" there). `assertTemplatePayloadValid`'s blank check
+ * (`if (!normalizeValue(param.text))`, where `normalizeValue` calls
+ * `.trim()`) rejects both a true empty string AND an ordinary space (`' '.trim() === ''`),
+ * and Meta rejects blank template variables outright. U+200B is not part of
+ * JS's/Unicode's `White_Space` set, so `.trim()` leaves it intact — it passes
+ * validation while rendering as an invisible character in the delivered
+ * message, giving the "no qualifier" case the same visual result an empty
+ * string would have had.
+ */
+const BUSINESS_QUALIFIER_BLANK_PLACEHOLDER = '​';
+
+const MISSING_FIELD_LABELS: Record<string, string> = {
+  gst_certificate: 'GST certificate',
+  address: 'address',
+  business_name: 'business name',
+  gstin: 'GSTIN',
+  shop_image: 'shop image',
+  contact_name: 'contact name',
+};
+
+function formatMissingFields(fields: string[] | undefined | null): string {
+  const labels = (fields ?? [])
+    .map((field) => MISSING_FIELD_LABELS[field] ?? field.replace(/_/g, ' ').trim())
+    .filter((label) => label.length > 0);
+  return labels.length > 0 ? labels.join(', ') : 'a few more details';
+}
+
+function isBusinessBuyer(buyer: Pick<BuyerRow, 'custom_fields'>): boolean {
+  return buyer.custom_fields?.is_business === true;
+}
+
+/** Buyer's own display name as it should appear to the seller (§5.2 {{2}}). */
+function resolveBuyerNameForSeller(buyer: BuyerRow): string {
+  if (isBusinessBuyer(buyer)) {
+    return buyer.business_name;
+  }
+  return buyer.contact_name?.trim() || buyer.business_name;
+}
+
+async function loadBuyer(db: DbClient, tenantId: string, buyerId: string): Promise<BuyerRow | null> {
+  const { data, error } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id, business_name, contact_name, phone, custom_fields')
+    .eq('id', buyerId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error('[buyer-approval-notify] buyer load failed', error);
+    return null;
+  }
+  return data as BuyerRow;
+}
+
+async function loadTenant(db: DbClient, tenantId: string): Promise<TenantRow | null> {
+  const { data, error } = await db
+    .schema('app')
+    .from('tenants')
+    .select('id, business_name, settings')
+    .eq('id', tenantId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error('[buyer-approval-notify] tenant load failed', error);
+    return null;
+  }
+  return data as TenantRow;
+}
+
+async function sendTemplateMessage(options: {
+  metaTemplateName: string;
+  variables: { key: string }[];
+  bodyValues: Array<{ key: string; text: string }>;
+  destinationPhone: string;
+  tenantId: string;
+  buyerId: string | null;
+  triggerSource: 'access_request_received' | 'access_request_resolved';
+}): Promise<boolean> {
+  const { metaTemplateName, bodyValues, destinationPhone, tenantId, buyerId, triggerSource } = options;
+
+  const templateMeta = await lookupApprovedTemplateMeta(metaTemplateName);
+  if (!templateMeta) {
+    console.error('[buyer-approval-notify] approved template not found', { metaTemplateName });
+    return false;
+  }
+
+  const destination = formatWhatsappDestination(destinationPhone);
+  if (!destination) return false;
+
+  const sendPayload: WhatsAppSendPayload = {
+    meta_template_name: metaTemplateName,
+    locale: templateMeta.locale,
+    body_params: bodyValues.map((value) => ({ text: value.text, parameter_name: value.key })),
+  };
+
+  try {
+    assertTemplatePayloadValid(
+      { meta_template_name: metaTemplateName, variables: options.variables },
+      sendPayload,
+    );
+  } catch (error) {
+    console.error('[buyer-approval-notify] payload validation failed', {
+      metaTemplateName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+
+  const result = await enqueueWhatsAppMessage({
+    tenantId,
+    buyerId,
+    recipientPhone: destination,
+    metaCategory: 'utility',
+    triggerSource,
+    sendPayload,
+  });
+
+  if (!result.enqueued || !result.messageId) {
+    if (result.skipped !== 'duplicate') {
+      console.error('[buyer-approval-notify] enqueue failed', { metaTemplateName, skipped: result.skipped });
+    }
+    return result.skipped === 'duplicate';
+  }
+
+  await triggerWhatsAppDispatch([result.messageId]);
+  return true;
+}
+
+/**
+ * Fired once, right after `app.submit_buyer_intake` succeeds: notifies the
+ * buyer their request was received (5.1) and the seller that a request is
+ * waiting on them (5.2). Fire-and-forget from the caller's point of view —
+ * every failure path here logs and returns `false` rather than throwing, so
+ * a WhatsApp outage never fails the intake submission itself.
+ */
+export async function queueAccessRequestReceivedMessages(
+  db: DbClient,
+  tenantId: string,
+  buyerId: string,
+): Promise<{ buyerSent: boolean; sellerSent: boolean }> {
+  const [buyer, tenant] = await Promise.all([
+    loadBuyer(db, tenantId, buyerId),
+    loadTenant(db, tenantId),
+  ]);
+
+  if (!buyer || !tenant) {
+    console.error('[buyer-approval-notify] queueAccessRequestReceivedMessages: buyer or tenant not found', {
+      tenantId,
+      buyerId,
+    });
+    return { buyerSent: false, sellerSent: false };
+  }
+
+  const sellerContext = buildSellerContextFromTenant(tenant);
+  const buyerDisplayName = resolveBuyerDisplayName(buyer);
+
+  let buyerSent = false;
+  if (buyer.phone && isValidIndianMobile(buyer.phone)) {
+    buyerSent = await sendTemplateMessage({
+      metaTemplateName: ACCESS_REQUEST_RECEIVED_BUYER_TEMPLATE,
+      variables: [{ key: 'buyer_name' }, { key: 'seller_name' }],
+      bodyValues: [
+        { key: 'buyer_name', text: firstNameFromValue(buyer.contact_name) ?? buyerDisplayName },
+        { key: 'seller_name', text: sellerContext.sellerName },
+      ],
+      destinationPhone: buyer.phone,
+      tenantId,
+      buyerId,
+      triggerSource: 'access_request_received',
+    });
+  } else {
+    console.error('[buyer-approval-notify] buyer has no valid phone, skipping buyer template', { tenantId, buyerId });
+  }
+
+  let sellerSent = false;
+  if (sellerContext.sellerPhone && isValidIndianMobile(sellerContext.sellerPhone)) {
+    const businessQualifier = isBusinessBuyer(buyer)
+      ? ' as a registered business'
+      : BUSINESS_QUALIFIER_BLANK_PLACEHOLDER;
+
+    sellerSent = await sendTemplateMessage({
+      metaTemplateName: ACCESS_REQUEST_RECEIVED_SELLER_TEMPLATE,
+      variables: [{ key: 'seller_name' }, { key: 'buyer_name' }, { key: 'business_qualifier' }],
+      bodyValues: [
+        { key: 'seller_name', text: sellerContext.sellerName },
+        { key: 'buyer_name', text: resolveBuyerNameForSeller(buyer) },
+        { key: 'business_qualifier', text: businessQualifier },
+      ],
+      destinationPhone: sellerContext.sellerPhone,
+      tenantId,
+      buyerId,
+      triggerSource: 'access_request_received',
+    });
+  } else {
+    console.error('[buyer-approval-notify] tenant has no valid WhatsApp number, skipping seller template', { tenantId });
+  }
+
+  return { buyerSent, sellerSent };
+}
+
+/**
+ * Fired after `app.apply_entry_action` resolves an `approve` / `decline` /
+ * `request_more_info` action on a `business_approval` or `new_user_login`
+ * entry: notifies the buyer of the outcome (5.3 / 5.4 / 5.5). Same
+ * fire-and-forget contract as queueAccessRequestReceivedMessages above.
+ */
+export async function queueApprovalResolutionMessage(
+  db: DbClient,
+  tenantId: string,
+  buyerId: string,
+  resolution: ApprovalResolution,
+  extra: QueueApprovalResolutionExtra = {},
+): Promise<boolean> {
+  const [buyer, tenant] = await Promise.all([
+    loadBuyer(db, tenantId, buyerId),
+    loadTenant(db, tenantId),
+  ]);
+
+  if (!buyer || !tenant) {
+    console.error('[buyer-approval-notify] queueApprovalResolutionMessage: buyer or tenant not found', {
+      tenantId,
+      buyerId,
+      resolution,
+    });
+    return false;
+  }
+
+  if (!buyer.phone || !isValidIndianMobile(buyer.phone)) {
+    console.error('[buyer-approval-notify] buyer has no valid phone, skipping resolution template', {
+      tenantId,
+      buyerId,
+      resolution,
+    });
+    return false;
+  }
+
+  const sellerContext = buildSellerContextFromTenant(tenant);
+  const buyerDisplayName = firstNameFromValue(buyer.contact_name) ?? resolveBuyerDisplayName(buyer);
+
+  if (resolution === 'approved') {
+    return sendTemplateMessage({
+      metaTemplateName: ACCESS_REQUEST_APPROVED_BUYER_TEMPLATE,
+      variables: [{ key: 'buyer_name' }, { key: 'seller_name' }],
+      bodyValues: [
+        { key: 'buyer_name', text: buyerDisplayName },
+        { key: 'seller_name', text: sellerContext.sellerName },
+      ],
+      destinationPhone: buyer.phone,
+      tenantId,
+      buyerId,
+      triggerSource: 'access_request_resolved',
+    });
+  }
+
+  if (resolution === 'needs_more_info') {
+    return sendTemplateMessage({
+      metaTemplateName: ACCESS_MORE_INFO_NEEDED_BUYER_TEMPLATE,
+      variables: [{ key: 'buyer_name' }, { key: 'seller_name' }, { key: 'missing_fields' }],
+      bodyValues: [
+        { key: 'buyer_name', text: buyerDisplayName },
+        { key: 'seller_name', text: sellerContext.sellerName },
+        { key: 'missing_fields', text: formatMissingFields(extra.missingFields) },
+      ],
+      destinationPhone: buyer.phone,
+      tenantId,
+      buyerId,
+      triggerSource: 'access_request_resolved',
+    });
+  }
+
+  // resolution === 'declined'
+  if (!sellerContext.sellerPhone || !isValidIndianMobile(sellerContext.sellerPhone)) {
+    console.error('[buyer-approval-notify] tenant has no valid WhatsApp number for decline template', { tenantId });
+    return false;
+  }
+
+  return sendTemplateMessage({
+    metaTemplateName: ACCESS_REQUEST_DECLINED_BUYER_TEMPLATE,
+    variables: [{ key: 'buyer_name' }, { key: 'seller_name' }, { key: 'seller_phone_number' }],
+    bodyValues: [
+      { key: 'buyer_name', text: buyerDisplayName },
+      { key: 'seller_name', text: sellerContext.sellerName },
+      { key: 'seller_phone_number', text: sellerContext.sellerPhone },
+    ],
+    destinationPhone: buyer.phone,
+    tenantId,
+    buyerId,
+    triggerSource: 'access_request_resolved',
+  });
+}

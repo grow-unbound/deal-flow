@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { queueAccessRequestReceivedMessages } from '@/lib/server/buyer-approval-notify';
 import { supabaseAdmin } from '@/lib/supabase';
 import { BuyerIntakeSchema } from '@/lib/zod';
 
@@ -73,6 +74,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) {
       console.error('[POST /api/buyer/onboarding/intake] rpc failed', error);
       return NextResponse.json({ error: 'Failed to submit your details. Please try again.' }, { status: 500 });
+    }
+
+    // Notify buyer + seller that the request was received. Non-critical:
+    // a WhatsApp outage must not fail an already-successful intake submission,
+    // so this is fire-and-forget with its own internal error handling.
+    try {
+      await queueAccessRequestReceivedMessages(supabaseAdmin, profile.context.tenant_id, profile.buyer.id);
+    } catch (notifyError) {
+      console.error('[POST /api/buyer/onboarding/intake] access-request-received notify failed', notifyError);
     }
 
     return NextResponse.json({ success: true });
