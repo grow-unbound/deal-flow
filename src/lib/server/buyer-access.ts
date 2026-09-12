@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 import type { Session, User } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
 import { getBuyerAppContext, type BuyerAppContext } from '@/lib/auth';
@@ -655,7 +656,15 @@ async function createBuyerSessionForUser(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
-      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone } : {}),
+      // Task 11 review, Important #1: otp_verified_phone alone proves a phone
+      // was verified at some point, not that it was verified RECENTLY. A
+      // stamped-alongside timestamp lets server-side routes (e.g. the
+      // document-resubmission intake gate) require the claim to be fresh
+      // (see requireFreshOtpVerification in buyer-access.ts) instead of
+      // trusting a claim that could be arbitrarily old. Stamped at exactly
+      // the same call, with exactly the same otpVerifiedPhone-only gating, as
+      // otp_verified_phone itself -- never set independently of it.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
@@ -733,7 +742,9 @@ export async function mintBuyerHandoffLink(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
-      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone } : {}),
+      // See createBuyerSessionForUser's matching comment -- same contract,
+      // same otpVerifiedPhone-only gating.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
@@ -980,6 +991,66 @@ export async function mintBuyerSession(
     session,
     user: principal.user,
   };
+}
+
+const RESUBMISSION_OTP_FRESHNESS_MS = 15 * 60 * 1000;
+
+/**
+ * Task 11 review, Important #1: the forced-re-OTP document-resubmission flow
+ * (/resubmit-documents) only gated the FORM RENDER on a fresh client-side OTP
+ * verify -- neither GET /api/buyer/onboarding/resubmission-profile nor the
+ * actual mutation endpoint (POST /api/buyer/onboarding/intake) required OTP
+ * freshness server-side, so a stolen/persisted session cookie could curl the
+ * intake route directly and resubmit identity documents without ever
+ * touching OTP. This defeats the forced-re-OTP design's actual security
+ * purpose (Yukti_Public-Signup_Frontend-Spec_v1.md §0b chose forced re-OTP
+ * over session-reuse specifically because document resubmission needs a
+ * stronger identity guarantee than a plain status check).
+ *
+ * Reads user_metadata.otp_verified_phone_at -- stamped alongside
+ * otp_verified_phone in createBuyerSessionForUser/mintBuyerHandoffLink above,
+ * ONLY at a genuine OTP-verify-driven session (re)mint, never on a plain
+ * session refresh/reuse -- off THIS request's own session via a
+ * request-scoped client built from its own auth cookies, matching the
+ * pattern already established in reuse-check/reuse-confirm/
+ * existing-profiles/resubmission-profile for reading a caller's own
+ * otp_verified_phone claim (never via supabaseAdmin, which has no request
+ * session to read).
+ *
+ * A caller with no OTP-verified session at all (a seller-added/ERP-synced
+ * buyer that never self-registered via phone-OTP) has no otp_verified_phone*
+ * claim and therefore always fails freshness here -- correct, since such a
+ * buyer has no OTP-based identity guarantee to be "fresh" about in the first
+ * place; the enforcement point (submit_buyer_intake caller in
+ * app/api/buyer/onboarding/intake/route.ts) only invokes this check when the
+ * buyer's onboarding_status is currently 'needs_more_info', a state a
+ * seller-added buyer would only reach via the storefront resubmission flow
+ * itself, which requires exactly this OTP verification to reach.
+ */
+export async function hasFreshOtpVerification(request: NextRequest): Promise<boolean> {
+  const scoped = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        // Read-only usage -- no response to attach refreshed cookies to.
+        setAll: () => {},
+      },
+    },
+  );
+
+  const { data, error } = await scoped.auth.getUser();
+  if (error || !data.user) return false;
+
+  const meta = data.user.user_metadata as Record<string, unknown> | null;
+  const stampedAt = typeof meta?.otp_verified_phone_at === 'string' ? meta.otp_verified_phone_at : null;
+  if (!stampedAt) return false;
+
+  const stampedMs = new Date(stampedAt).getTime();
+  if (Number.isNaN(stampedMs)) return false;
+
+  return Date.now() - stampedMs < RESUBMISSION_OTP_FRESHNESS_MS;
 }
 
 export async function requireBuyerAccessProfile(request: NextRequest): Promise<BuyerAccessProfile | null> {

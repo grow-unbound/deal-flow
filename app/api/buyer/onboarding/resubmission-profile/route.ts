@@ -90,9 +90,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const gstin = row.gstin ?? '';
 
     // Latest non-deleted document per doc_type this buyer previously
-    // uploaded -- personal-scope by buyer_id, business-scope by gstin (only
-    // meaningful once a GSTIN exists). Surfaced so DocumentUploadField can
-    // show "already uploaded" state for a flagged document field instead of
+    // uploaded -- scoped to THIS buyer's own row (buyer_id is NOT NULL on
+    // every app.buyer_documents row, business docs included -- see
+    // 20260910101737_create_app_buyer_documents_table.sql) for both
+    // doc types. Previously the gst_certificate lookup was keyed on gstin
+    // alone with no buyer_id/tenant_id filter -- a business buyer registered
+    // with multiple distributors under the same GSTIN would get back
+    // whichever OTHER tenant's document row happened to match, handing a
+    // cross-tenant document id back to this tenant's resubmission form.
+    // Task 11 review, Important #2. Surfaced so DocumentUploadField can show
+    // "already uploaded" state for a flagged document field instead of
     // forcing a re-upload of a document the seller didn't actually flag.
     const [shopImageRes, gstCertRes] = await Promise.all([
       supabaseAdmin
@@ -106,19 +113,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      gstin
-        ? supabaseAdmin
-          .schema('app')
-          .from('buyer_documents')
-          .select('id')
-          .eq('gstin', gstin)
-          .eq('doc_type', 'gst_certificate')
-          .eq('subject_scope', 'business')
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
+      supabaseAdmin
+        .schema('app')
+        .from('buyer_documents')
+        .select('id')
+        .eq('buyer_id', row.id ?? profile.buyer.id)
+        .eq('doc_type', 'gst_certificate')
+        .eq('subject_scope', 'business')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     return NextResponse.json({

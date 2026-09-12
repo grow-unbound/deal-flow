@@ -261,9 +261,14 @@ export default function ResubmitDocumentsPage() {
 
     setSubmitting(true);
     try {
-      const documentIds = [shopImageDocId, gstCertDocId].filter(
-        (id): id is string => Boolean(id),
-      );
+      // Only send a document id for a field the seller actually flagged --
+      // sending both unconditionally could carry an unrelated/stale document
+      // id (e.g. a personal shop_image id) into an intake payload that never
+      // asked for it. Task 11 review, Important #2.
+      const documentIds = [
+        isFlagged(missingFields, 'shop_image') ? shopImageDocId : null,
+        isFlagged(missingFields, 'gst_certificate') ? gstCertDocId : null,
+      ].filter((id): id is string => Boolean(id));
       const res = await apiFetch('/api/buyer/onboarding/intake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
