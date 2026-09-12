@@ -652,6 +652,52 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       if (phoneMatch) {
         return NextResponse.json({ error: 'A buyer with this phone number already exists.' }, { status: 409 });
       }
+
+      // Defense-in-depth (paired with the switch-buyer fix in
+      // app/api/auth/switch-buyer/route.ts): the check above only scans
+      // app.buyers, so it previously let an attacker rewrite their own
+      // app.buyers.phone to collide with an existing same-tenant delegate's
+      // app.buyer_users.phone — a collision switch-buyer's pre-fix
+      // resolveCallerPhone/findBuyerLoginCandidates chain trusted as proof of
+      // that delegate's identity. buyer_users has no tenant_id column, so the
+      // tenant scope is resolved via a second lookup against app.buyers
+      // rather than a single-query embed.
+      const { data: buyerUserPhoneRows, error: buyerUserPhoneError } = await db
+        .schema('app')
+        .from('buyer_users')
+        .select('buyer_id')
+        .eq('phone', updateData.phone)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .neq('buyer_id', buyerId);
+
+      if (buyerUserPhoneError) {
+        return NextResponse.json({ error: 'Failed to validate phone number' }, { status: 500 });
+      }
+
+      const otherBuyerIds = Array.from(
+        new Set((buyerUserPhoneRows ?? []).map((row: { buyer_id: string }) => row.buyer_id)),
+      ).filter(Boolean);
+
+      if (otherBuyerIds.length > 0) {
+        const { data: tenantBuyerUserMatch, error: tenantBuyerUserMatchError } = await db
+          .schema('app')
+          .from('buyers')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .in('id', otherBuyerIds)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+
+        if (tenantBuyerUserMatchError) {
+          return NextResponse.json({ error: 'Failed to validate phone number' }, { status: 500 });
+        }
+
+        if (tenantBuyerUserMatch) {
+          return NextResponse.json({ error: 'A buyer with this phone number already exists.' }, { status: 409 });
+        }
+      }
     }
 
     const { error: updateError } = await db
