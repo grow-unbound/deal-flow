@@ -7,7 +7,7 @@ import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { normalizeIndianPhone } from '@/lib/phone';
 import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
-import { getCachedGuestPricingContext, loadLivePublicCatalog, type CatalogPricingMode } from '@/lib/server/public-catalog';
+import { getCachedGuestPricingContext, type CatalogPricingMode } from '@/lib/server/public-catalog';
 import { resolvePendingSessionOnboardingStatus } from '@/lib/server/buyer-onboarding-status';
 
 interface BuyerMeResponse {
@@ -59,11 +59,6 @@ interface BuyerMeResponse {
   stock_visibility: {
     enabled: boolean;
     block_order_on_oos: boolean;
-  };
-  buyer_catalog?: {
-    id: string | null;
-    pricing_mode: CatalogPricingMode | null;
-    collect_target_unit_price_range: boolean;
   };
   // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
   // the explicit consent checkbox — the buyer-side client redirects to /consent
@@ -183,12 +178,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
 
     const rawSettings = (tsRow as { settings?: Record<string, unknown> } | null)?.settings ?? {};
-    const liveCatalog = await loadLivePublicCatalog(db, context.tenant_id!);
-    const buyerCatalog = {
-      id: liveCatalog?.id ?? null,
-      pricing_mode: liveCatalog?.pricingMode ?? null,
-      collect_target_unit_price_range: liveCatalog?.collectTargetUnitPriceRange ?? false,
-    };
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
     const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
     const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
@@ -247,7 +236,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
-        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
       };
 
@@ -286,7 +274,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
-        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
         guest_pricing_mode: guestPricing?.mode ?? null,
       };
@@ -396,7 +383,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
-        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
         pending: {
           intake_submitted: Boolean(customFields.intake_submitted_at),
@@ -554,7 +540,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       order_features: orderFeatures,
       business_policy: businessPolicy,
       stock_visibility: stockVisibility,
-      buyer_catalog: buyerCatalog,
       whatsapp_consent_required: !buyer.whatsapp_consent_at,
     };
 
