@@ -127,6 +127,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Defense-in-depth: requireBuyerAccessProfile deliberately lets a
+    // `buyer_pending` session read its own row (so /api/buyer/me and the
+    // intake screen work), but this route uses the service-role client for
+    // the actual order insert, which bypasses RLS entirely — so RLS's own
+    // app.is_buyer() gate (which excludes buyer_pending) is never consulted
+    // here. Must reject explicitly before any further processing, matching
+    // the pattern in app/api/buyer/me/route.ts and
+    // app/api/buyer/onboarding/intake/route.ts.
+    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const context = profile.context;
 
     let body: BuyerOrderPlaceRequest;
@@ -383,6 +398,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const profile = await requireBuyerAccessProfile(request);
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Defense-in-depth: see the matching comment in POST above — this GET
+    // also uses the service-role client (supabaseAdmin) for the actual
+    // orders read, bypassing RLS's app.is_buyer() gate entirely.
+    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
     }
 
     if (!supabaseAdmin) {

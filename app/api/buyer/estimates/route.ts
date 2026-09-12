@@ -82,6 +82,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Defense-in-depth: requireBuyerAccessProfile deliberately lets a
+    // `buyer_pending` session read its own row (so /api/buyer/me and the
+    // intake screen work), but this route uses the service-role client for
+    // the actual estimate insert, which bypasses RLS entirely. Matches the
+    // pattern in app/api/buyer/orders/route.ts and app/api/buyer/me/route.ts.
+    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const context = profile.context;
 
     let body: EstimateRequest;
@@ -417,6 +430,15 @@ export async function GET(request: NextRequest) {
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Defense-in-depth: see the matching comment in POST above.
+    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const context = profile.context;
 
     if (context.mode === 'preview' && !context.buyer_id) {

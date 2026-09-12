@@ -47,6 +47,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Defense-in-depth: see the matching comment in
+    // app/api/buyer/orders/route.ts — this route also uses the service-role
+    // client for the order-detail read, bypassing RLS entirely.
+    if (profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const { tenant_id } = profile.context;
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;

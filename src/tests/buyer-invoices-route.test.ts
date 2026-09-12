@@ -71,4 +71,19 @@ describe('buyer invoices route', () => {
     expect(body.invoices).toHaveLength(1);
     expect(body.invoices[0].outstanding_balance).toBe(2500);
   });
+
+  it('rejects a buyer_pending session with buyer_app_enabled=false', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: { tenant_id: 'tenant-1', mode: 'buyer', role: 'buyer_pending' },
+      buyer: { id: 'buyer-1', buyer_app_enabled: false },
+    });
+
+    const { GET } = await import('../../app/api/buyer/invoices/route');
+    const response = await GET({ nextUrl: new URL('http://localhost/api/buyer/invoices') } as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.invoices).toEqual([]);
+    expect(limitMock).not.toHaveBeenCalled();
+  });
 });

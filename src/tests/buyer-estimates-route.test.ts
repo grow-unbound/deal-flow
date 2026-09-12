@@ -234,6 +234,26 @@ describe('buyer estimates route (POST)', () => {
     expect(insertSingleMock).not.toHaveBeenCalled();
   });
 
+  it('rejects POST for a buyer_pending session with buyer_app_enabled=false', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      ...BUYER_PROFILE,
+      context: { ...BUYER_PROFILE.context, role: 'buyer_pending' },
+      buyer: { ...BUYER_PROFILE.buyer, buyer_app_enabled: false },
+    });
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({ items: VALID_ITEMS, location_id: 'loc-1' }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.success).toBe(false);
+    expect(estimateInsertPayloads.length).toBe(0);
+  });
+
   it('rejects an empty items array with 400', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
 
