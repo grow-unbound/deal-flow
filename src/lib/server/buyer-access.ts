@@ -855,6 +855,13 @@ export async function acquireBuyerForStorefront(
       credit_limit: 0,
       payment_terms_days: 0,
       buyer_app_enabled: false,
+      // The column defaults to 'approved' (Task 1's migration assumed
+      // seller-added/ERP-synced buyers, the common case) — a fresh
+      // storefront self-registration is the one path that must override it,
+      // or a genuinely pending buyer reads back as 'approved' and the
+      // OnboardingStatusPill (Task 10) has nothing to show. Task 10 review,
+      // Critical #1.
+      onboarding_status: 'pending_approval',
       is_active: true,
       custom_fields: {
         storefront_self_registered: true,
@@ -907,9 +914,16 @@ export async function acquireBuyerForStorefront(
  * self-registered, never submitted intake) still lands on /pending, since
  * there is no onboarding flow for them to complete or storefront browsing
  * context to show a pill in.
+ *
+ * `isTenantHost` mirrors the sibling `storefrontHome` computation at each
+ * call site (`request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home'`
+ * in phone-otp/verify/route.ts) — a bare '/' is only a valid storefront
+ * landing on a tenant's own subdomain; on the shared catalog host (reached
+ * via select-context) it must be '/buy/home' instead. Task 10 review,
+ * Important #1.
  * Yukti_Inbox_Feature-Spec_v1.md §7.1; Task 10 brief.
  */
-export async function resolvePendingBuyerRedirect(buyerId: string): Promise<string> {
+export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost: boolean): Promise<string> {
   if (!supabaseAdmin) return '/pending';
 
   const { data } = await supabaseAdmin
@@ -922,9 +936,10 @@ export async function resolvePendingBuyerRedirect(buyerId: string): Promise<stri
   const customFields = (data as { custom_fields?: Record<string, unknown> | null } | null)?.custom_fields;
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
+  const storefrontHome = isTenantHost ? '/' : '/buy/home';
 
   if (selfRegistered && !intakeSubmitted) return '/onboarding';
-  if (intakeSubmitted) return '/';
+  if (intakeSubmitted) return storefrontHome;
   return '/pending';
 }
 

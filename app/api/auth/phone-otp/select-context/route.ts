@@ -107,7 +107,14 @@ export async function POST(request: NextRequest) {
 
     if (!buyerCandidate.buyer_app_enabled) {
       const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
-      const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
+      // Mirrors verify/route.ts's storefrontHome computation (Task 10 review,
+      // Important #1) — select-context is reached from the shared catalog
+      // host as well as tenant subdomains, so '/' is only correct here too
+      // when this request actually carries a verified tenant host.
+      const redirect = await resolvePendingBuyerRedirect(
+        buyerCandidate.buyer_id,
+        Boolean(request.headers.get('x-verified-tenant-id')),
+      );
       return NextResponse.json({ success: true, redirect, session });
     }
 

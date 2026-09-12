@@ -665,6 +665,6 @@ describe('buyer phone otp routes', () => {
     expect(body.redirect).toBe('/onboarding');
     expect(body.session).toEqual({ access_token: 'access-token', refresh_token: 'refresh-token' });
     expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
-    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2');
+    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2', true);
   });
 });

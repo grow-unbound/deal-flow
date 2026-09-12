@@ -191,7 +191,10 @@ async function mintCandidateSession(
   // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
   if (!buyerCandidate.buyer_app_enabled) {
     const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
-    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
+    const redirect = await resolvePendingBuyerRedirect(
+      buyerCandidate.buyer_id,
+      Boolean(request.headers.get('x-verified-tenant-id')),
+    );
     return { pending: false, session, redirect };
   }
 
