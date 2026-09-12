@@ -26,13 +26,12 @@ const LABELS: Record<'pending_approval' | 'needs_more_info' | 'declined', string
  * renders nothing (and the normal Login button shows instead) once
  * onboarding_status is 'approved' or the session isn't pending at all.
  *
- * Tapping the pill always navigates to /pending — for pending_approval and
- * needs_more_info that's the existing gated-status screen (24h soft-SLA
- * copy + WhatsApp fallback); for declined, /pending renders the
- * DeclinedContactScreen variant instead (see app/pending/page.tsx). The
- * needs_more_info tap is a stub landing on /pending for now — Task 11 wires
- * the actual document-resubmission flow behind it, per the task-10 brief's
- * explicit "stub is fine" allowance.
+ * Tapping the pill navigates to /pending for pending_approval and declined
+ * (the existing gated-status screen / DeclinedContactScreen, see
+ * app/pending/page.tsx). Task 11: needs_more_info now navigates to
+ * /resubmit-documents instead — the forced-re-OTP document-resubmission
+ * flow (Yukti_Public-Signup_Frontend-Spec_v1.md §0b) — replacing the
+ * Task 10 stub that landed everything on /pending.
  */
 export function OnboardingStatusPill({ status, className }: OnboardingStatusPillProps): React.ReactNode {
   const router = useRouter();
@@ -46,10 +45,12 @@ export function OnboardingStatusPill({ status, className }: OnboardingStatusPill
     ? 'border-cream-300 bg-cream-100 text-cream-700 hover:bg-cream-200'
     : 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100';
 
+  const destination = status === 'needs_more_info' ? '/resubmit-documents' : '/pending';
+
   return (
     <button
       type="button"
-      onClick={() => router.push('/pending')}
+      onClick={() => router.push(destination)}
       aria-label={`${label}. Tap to view status.`}
       className={cn(
         'inline-flex h-9 max-w-[48vw] shrink-0 items-center gap-1.5 truncate rounded-full border px-3 text-xs font-semibold transition-colors duration-fast sm:max-w-[220px]',
