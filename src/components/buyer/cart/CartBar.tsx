@@ -21,7 +21,7 @@ const PRODUCT_STICKY_FOOTER_LIFT =
 export function CartBar() {
   const pathname = usePathname();
   const posthog = usePostHog();
-  const { itemCount, subtotal } = useCart();
+  const { itemCount, subtotal, items } = useCart();
   const { tabBarVisible } = useBuyerScrollChromeState();
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -46,6 +46,7 @@ export function CartBar() {
   if (!mounted || !isMobile || itemCount === 0) return null;
 
   const hasStickyFooter = pathname.startsWith('/buy/product/');
+  const hiddenPriceEnquiry = items.some((item) => item.cart_mode === 'hidden_price_enquiry');
 
   const bottomOffset = hasStickyFooter
     ? PRODUCT_STICKY_FOOTER_LIFT
@@ -81,11 +82,13 @@ export function CartBar() {
           >
             {itemCount}
           </span>
-          <span>View cart</span>
-          <span className="opacity-60">·</span>
+          <span>{hiddenPriceEnquiry ? 'View enquiry' : 'View cart'}</span>
+          {!hiddenPriceEnquiry ? <span className="opacity-60">·</span> : null}
+          {!hiddenPriceEnquiry ? (
           <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
             {formatNumberValue(subtotal, 'CURRENCY_EXACT')}
           </span>
+          ) : null}
           <ChevronRight className="h-4 w-4 opacity-85" aria-hidden />
         </Link>
       </Pressable>

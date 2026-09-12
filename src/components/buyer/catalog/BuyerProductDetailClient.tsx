@@ -14,7 +14,7 @@ import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasBuyerCampaignPrice, hasVisibleBuyerPrice } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasBuyerCampaignPrice, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 
@@ -43,6 +43,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const [categoryImgError, setCategoryImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
+  const [targetMin, setTargetMin] = React.useState('');
+  const [targetMax, setTargetMax] = React.useState('');
   const viewedKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -67,7 +69,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   function handleAddToCart(): void {
     if (!item) return;
-    if (isGuest || !hasVisibleBuyerPrice(item.price)) {
+    const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode);
+    if (isGuest || (!hiddenPriceEnquiry && !hasVisibleBuyerPrice(item.price))) {
       openLogin();
       return;
     }
@@ -77,13 +80,17 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
       image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
-      unit_price: item.price,
+      unit_price: hiddenPriceEnquiry ? null : (item.price ?? 0),
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
-      line_total: item.price,
+      line_total: hiddenPriceEnquiry ? 0 : (item.price ?? 0),
+      cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+      collect_target_unit_price_range: item.collect_target_unit_price_range === true,
+      buyer_target_unit_price_min: targetMin.trim() ? Number(targetMin) : null,
+      buyer_target_unit_price_max: targetMax.trim() ? Number(targetMax) : null,
       tenant_category_id: item.category_id ?? undefined,
     }, item.campaign_id ?? campaignId, {
       source_surface: 'product_detail',
@@ -132,6 +139,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   }
 
   const showCampaignPrice = item ? hasBuyerCampaignPrice(item) : false;
+  const hiddenPriceEnquiry = item ? isHiddenPriceEnquiryMode(item.catalog_pricing_mode) : false;
+  const collectTargetRange = hiddenPriceEnquiry && item?.collect_target_unit_price_range === true;
   const metaParts = item ? [item.internal_sku, item.category_name].filter(Boolean) : [];
   const stockLabel = item
     ? item.stock_status === 'out_of_stock'
@@ -228,7 +237,16 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 </p>
               ) : null}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-1">
-                {item.price == null ? (
+                {hiddenPriceEnquiry ? (
+                  <div className="space-y-1">
+                    <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                      Price on enquiry
+                    </p>
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
+                      Seller will respond after you send the enquiry.
+                    </p>
+                  </div>
+                ) : item.price == null ? (
                   priceReveal === 'login_cta' ? (
                     <button
                       type="button"
@@ -261,6 +279,48 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                     year: 'numeric',
                   })}
                 </p>
+              ) : null}
+
+              {collectTargetRange ? (
+                <div className="space-y-2 rounded-[10px] border border-[var(--border-1)] bg-[var(--bg-base)] p-3">
+                  <div>
+                    <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                      Target buying price per unit
+                    </p>
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
+                      Optional. This helps the seller prepare a suitable price.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1">
+                      <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Min target rate</span>
+                      <input
+                        value={targetMin}
+                        onChange={(event) => setTargetMin(event.target.value)}
+                        type="number"
+                        min="0"
+                        inputMode="decimal"
+                        className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]"
+                        placeholder="Min"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Max target rate</span>
+                      <input
+                        value={targetMax}
+                        onChange={(event) => setTargetMax(event.target.value)}
+                        type="number"
+                        min="0"
+                        inputMode="decimal"
+                        className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]"
+                        placeholder="Max"
+                      />
+                    </label>
+                  </div>
+                  {item.default_uom ? (
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>Per {item.default_uom}</p>
+                  ) : null}
+                </div>
               ) : null}
 
               {/* Desktop-only CTA — replaces the mobile sticky footer */}
@@ -301,7 +361,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                     style={{ background: 'var(--teal-500)', fontSize: 'var(--b-text-label)' }}
                   >
                     <Plus className="h-4 w-4" aria-hidden />
-                    Add to Cart
+                    {hiddenPriceEnquiry ? 'Add to Enquiry' : 'Add to Cart'}
                   </button>
                 )}
               </div>
@@ -399,7 +459,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : (
             <>
               <div className="flex flex-col items-end">
-                {item.price == null ? (
+                {hiddenPriceEnquiry ? (
+                  <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                    Price on enquiry
+                  </span>
+                ) : item.price == null ? (
                   priceReveal === 'login_cta' ? (
                     <button
                       type="button"
@@ -459,7 +523,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   style={{ background: 'var(--teal-500)' }}
                 >
                   <Plus className="h-4 w-4" aria-hidden />
-                  Add
+                  {hiddenPriceEnquiry ? 'Enquire' : 'Add'}
                 </button>
               )}
             </>

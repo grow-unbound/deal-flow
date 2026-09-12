@@ -230,3 +230,80 @@ git diff --check
 The Phase 0-2 commit intentionally excluded unrelated dirty/untracked work that was already present or developed outside this catalog-settings change. Later agents should not assume those files belong to the Phase 0-2 implementation.
 
 Examples of excluded work at the time of commit included buyer approval/status UI, customer price-list changes, and campaign auto price-list override migration files.
+
+## Phase 4: Done
+
+Implemented buyer-side hidden-price enquiry mode for catalogs using `pricing_mode = 'hide_price_collect_enquiry'`.
+
+Schema changes were kept narrow and reuse the existing estimates/enquiry model:
+
+- Added `app.estimates.estimate_type` with `with_price` / `without_price`.
+- Added `app.estimates.catalog_id` to preserve which live catalog produced the enquiry.
+- Added `app.estimates.price_visibility` for `show_price` / `hide_price` provenance.
+- Relaxed `app.estimate_items.unit_price` so hidden-price enquiry lines can carry `null` seller prices.
+- Added `app.estimate_items.buyer_target_unit_price_min`, `buyer_target_unit_price_max`, and `buyer_note`.
+- No new product-family, enquiry, or catalog-behavior tables were added.
+
+Buyer catalog/product APIs now load the live public catalog context and suppress all buyer-visible price fields in hidden-price mode. Campaign price attribution is also suppressed for those catalog responses so buyers do not see a discounted price leak through a secondary field.
+
+Buyer UI updates:
+
+- Product cards and product detail pages render enquiry-first copy instead of price/subtotal copy.
+- Add-to-cart creates hidden-price enquiry cart lines with `unit_price = null`.
+- Mobile cart and desktop cart drawer become enquiry review surfaces in hidden-price mode.
+- Cart totals, GST totals, delivery totals, order placement, campaign gap-fill widgets, and priced WhatsApp quote language are hidden/replaced for hidden-price enquiries.
+- Confirmation copy shows enquiry language and omits total display for zero-price enquiries.
+- Buyer enquiry/order detail surfaces show `Price pending` rather than `₹0` for hidden-price estimate lines.
+
+Buyer estimate submission now branches by live catalog mode:
+
+- Priced catalogs still resolve authoritative server-side prices through the existing pricing path.
+- Hidden-price catalogs submit `without_price` estimates with zero header totals and nullable line prices.
+- Hidden-price submissions skip immediate WhatsApp document sending because no priced document is ready.
+- Hidden-price submissions still validate delivery/location, buyer access, stock routing, and catalogue context.
+
+Seller estimate detail now surfaces buyer target-rate intent in a dedicated summary card when target ranges are present.
+
+## Phase 5: Done
+
+Implemented line-level target unit price range collection for hidden-price enquiries.
+
+Product decision captured in code: target range is collected per enquiry line, not as a single enquiry-level field. This matches SKU-level negotiation better and avoids adding a new header-level structure before there is seller evidence that whole-enquiry range capture is useful.
+
+Target-rate behavior:
+
+- Buyer product detail accepts min/max target unit price when the catalog has `collect_target_unit_price_range = true`.
+- Cart state preserves target bounds while quantities and product metadata are reconciled.
+- Mobile cart allows editing target bounds per line before sending the enquiry.
+- Desktop cart drawer preserves and submits target bounds captured before opening the drawer.
+- Server validation requires both bounds or neither, finite non-negative values, and `max >= min`.
+- Server validation rejects target bounds when the live hidden-price catalog does not enable target-rate collection.
+- Seller estimate detail displays target rates beside the relevant line items.
+
+## Phase 4-5 Verification
+
+Type check passed:
+
+```bash
+npx tsc --noEmit
+```
+
+Focused tests passed:
+
+```bash
+pnpm exec vitest run src/tests/buyer-estimates-route.test.ts src/tests/buyer-cart-submit.test.tsx src/tests/buyer-product-card.test.tsx src/tests/product-detail-route.test.ts src/tests/buyer-document-detail.test.ts src/tests/load-buyer-transaction-detail.test.ts src/tests/estimate-detail-page.test.ts src/tests/lib/app-catalogs-sql-contract.test.ts --sequence.concurrent false
+```
+
+Result: 8 test files, 36 tests passed.
+
+Whitespace check passed:
+
+```bash
+git diff --check
+```
+
+## Phase 4-5 Remaining Notes
+
+- Mobile cart and desktop cart drawer both expose inline target-rate editing for hidden-price enquiry lines when target-rate collection is enabled.
+- Hidden-price estimate PDF/document generation remains deferred; buyer and seller detail pages show pending prices in-app.
+- The broader workspace still contains unrelated dirty work from other active streams; these Phase 4-5 notes only describe the buyer hidden-price enquiry and target-rate implementation.

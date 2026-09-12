@@ -10,6 +10,7 @@ export interface EstimateSummary {
   estimate_number: string | null;
   status: string;
   total_amount: number;
+  estimate_type?: string | null;
   created_at: string;
   notes?: string | null;
 }
@@ -51,6 +52,7 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
 export function EnquiryCard({ estimate, href, highlighted, variant, selected }: EnquiryCardProps) {
   const badge = getBadge(estimate.status);
   const docNumber = estimate.estimate_number ?? `ENQ-${estimate.id.slice(0, 6).toUpperCase()}`;
+  const hiddenPrice = estimate.estimate_type === 'without_price';
 
   return (
     <div
@@ -69,7 +71,7 @@ export function EnquiryCard({ estimate, href, highlighted, variant, selected }: 
         statusTone={badge.tone}
         middleLeft={estimate.notes ?? '—'}
         middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
-        amount={<span className="tabular-inline">{formatNumberValue(estimate.total_amount, 'CURRENCY_EXACT')}</span>}
+        amount={<span className="tabular-inline">{hiddenPrice ? 'Price pending' : formatNumberValue(estimate.total_amount, 'CURRENCY_EXACT')}</span>}
       />
     </div>
   );

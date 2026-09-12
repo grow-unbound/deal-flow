@@ -78,6 +78,8 @@ export interface EstimateComposerLineInput {
   line_total: number;
   item_order?: number | null;
   scheme_tag: string | null;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 }
 
 export interface EstimateComposerDocument {

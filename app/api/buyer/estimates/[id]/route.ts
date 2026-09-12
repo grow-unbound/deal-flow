@@ -12,9 +12,11 @@ export interface BuyerEstimateItem {
   unit: string | null;
   image_url: string | null;
   qty: number;
-  unit_price: number;
+  unit_price: number | null;
   tax_rate: number | null;
-  line_total: number;
+  line_total: number | null;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 }
 
 export interface BuyerEstimateDetail {
@@ -22,6 +24,7 @@ export interface BuyerEstimateDetail {
   estimate_number: string | null;
   document_status_note: string | null;
   status: string;
+  estimate_type: string;
   notes: string | null;
   created_at: string;
   valid_until: string | null;
@@ -56,7 +59,7 @@ export async function GET(
     const { data: estimate, error } = await (db as any)
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, status, notes, created_at, valid_until, place_of_supply, total_amount, subtotal, tax_amount, estimate_url')
+      .select('id, estimate_number, status, estimate_type, notes, created_at, valid_until, place_of_supply, total_amount, subtotal, tax_amount, estimate_url')
       .eq('id', id)
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
@@ -68,7 +71,7 @@ export async function GET(
     }
 
     const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'estimates', id);
-    const subtotal = Number(estimate.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const subtotal = Number(estimate.subtotal ?? rawItems.reduce((sum, i) => sum + (i.line_total ?? 0), 0));
     const tax_total = Number(estimate.tax_amount ?? Math.max(0, Number(estimate.total_amount) - subtotal));
 
     const detail: BuyerEstimateDetail = {
@@ -76,6 +79,7 @@ export async function GET(
       estimate_number: estimate.estimate_number ?? null,
       document_status_note: estimate.estimate_number ? null : TRANSACTION_PENDING_NOTE,
       status: estimate.status,
+      estimate_type: estimate.estimate_type ?? 'with_price',
       notes: estimate.notes ?? null,
       created_at: estimate.created_at,
       valid_until: estimate.valid_until ?? null,

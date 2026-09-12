@@ -67,7 +67,12 @@ export async function GET(
     }
 
     const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'orders', id);
-    const subtotal = Number(order.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const items: BuyerOrderItem[] = rawItems.map((item) => ({
+      ...item,
+      unit_price: item.unit_price ?? 0,
+      line_total: item.line_total ?? 0,
+    }));
+    const subtotal = Number(order.subtotal ?? items.reduce((sum, i) => sum + i.line_total, 0));
     const tax_total = Number(order.tax_amount ?? Number(order.total_amount) - subtotal);
 
     const detail: BuyerOrderDetail = {
@@ -82,7 +87,7 @@ export async function GET(
       subtotal,
       tax_total: Math.max(0, tax_total),
       document_url: (order as { order_url?: string | null }).order_url ?? null,
-      items: rawItems,
+      items,
     };
 
     return NextResponse.json({ order: detail }, { headers: BUYER_CACHE_PERSONAL });

@@ -57,6 +57,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       limit,
       offset,
       guestPricing: context.guestPricing,
+      publicCatalog: context.publicCatalog,
     });
 
     if (offset === 0 && context.buyerId && response.selected_campaign_id) {

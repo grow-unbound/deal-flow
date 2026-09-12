@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const requireBuyerAccessProfileMock = vi.fn();
 const sendImmediateTransactionNotificationsMock = vi.fn();
 const estimateInsertPayloads: Array<Record<string, unknown>> = [];
+const estimateItemInsertPayloads: Array<unknown> = [];
+let catalogPricingMode = 'base_selling_rate';
+let catalogCollectTargetUnitPriceRange = false;
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
@@ -26,6 +29,7 @@ vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
 
 vi.mock('@/lib/server/buyer-location-selection', () => ({
   getSelectedBuyerDeliveryFromRequest: vi.fn().mockReturnValue(null),
+  resolveTenantScopedLocationId: vi.fn().mockResolvedValue('loc-1'),
 }));
 
 vi.mock('@/lib/server/buyer-product-data', () => ({
@@ -53,6 +57,18 @@ const insertSingleMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn(() => ({
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === 'resolve_prices_batch') {
+          return {
+            data: [
+              { tenant_product_id: 'prod-1', unit_price: 500 },
+              { tenant_product_id: 'prod-2', unit_price: 1000 },
+            ],
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      }),
       from: vi.fn((table: string) => {
         if (table === 'estimates') {
           return {
@@ -76,7 +92,10 @@ vi.mock('@/lib/supabase', () => ({
         }
         if (table === 'estimate_items') {
           return {
-            insert: vi.fn(async () => ({ error: null })),
+            insert: vi.fn(async (payload: unknown) => {
+              estimateItemInsertPayloads.push(payload);
+              return { error: null };
+            }),
           };
         }
         if (table === 'tenant_settings') {
@@ -86,6 +105,34 @@ vi.mock('@/lib/supabase', () => ({
                 maybeSingle: vi.fn(async () => ({
                   data: { settings: { business_policy: { gst_inclusive: false, gst_rate: 18 } } },
                   error: null,
+                })),
+              })),
+            })),
+          };
+        }
+        if (table === 'catalogs') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  is: vi.fn(() => ({
+                    not: vi.fn(() => ({
+                      maybeSingle: vi.fn(async () => ({
+                        data: {
+                          id: 'catalog-1',
+                          tenant_id: 'tenant-1',
+                          include_all: true,
+                          pricing_mode: catalogPricingMode,
+                          price_list_id: null,
+                          access_mode: 'public_link',
+                          collect_target_unit_price_range: catalogCollectTargetUnitPriceRange,
+                          product_display_mode: 'sku_list',
+                          live_at: '2026-09-11T00:00:00.000Z',
+                        },
+                        error: null,
+                      })),
+                    })),
+                  })),
                 })),
               })),
             })),
@@ -152,6 +199,9 @@ describe('buyer estimates route (POST)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     estimateInsertPayloads.length = 0;
+    estimateItemInsertPayloads.length = 0;
+    catalogPricingMode = 'base_selling_rate';
+    catalogCollectTargetUnitPriceRange = false;
     const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
     vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(false);
     insertSingleMock.mockResolvedValue({
@@ -277,5 +327,81 @@ describe('buyer estimates route (POST)', () => {
     expect(body.document_status_note).toBeNull();
     expect(body.whatsapp_sent).toBe(true);
     expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalled();
+  });
+
+  it('creates a hidden-price enquiry without unit prices and persists buyer target rates', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = true;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          {
+            tenant_product_id: 'prod-1',
+            qty: 2,
+            buyer_target_unit_price_min: 450,
+            buyer_target_unit_price_max: 500,
+          },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.whatsapp_sent).toBe(false);
+    expect(sendImmediateTransactionNotificationsMock).not.toHaveBeenCalled();
+    expect(estimateInsertPayloads[0]).toMatchObject({
+      estimate_type: 'without_price',
+      catalog_id: 'catalog-1',
+      price_visibility: 'hide_price',
+      subtotal: 0,
+      total_amount: 0,
+    });
+    expect(estimateItemInsertPayloads[0]).toEqual([
+      expect.objectContaining({
+        tenant_product_id: 'prod-1',
+        qty: 2,
+        unit_price: null,
+        tax_rate: null,
+        line_total: null,
+        buyer_target_unit_price_min: 450,
+        buyer_target_unit_price_max: 500,
+      }),
+    ]);
+  });
+
+  it('rejects buyer target rates when the hidden-price catalog does not collect them', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = false;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          {
+            tenant_product_id: 'prod-1',
+            qty: 2,
+            buyer_target_unit_price_min: 450,
+            buyer_target_unit_price_max: 500,
+          },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/target price range is not enabled/i);
+    expect(estimateInsertPayloads).toHaveLength(0);
+    expect(estimateItemInsertPayloads).toHaveLength(0);
   });
 });

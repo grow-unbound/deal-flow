@@ -13,6 +13,9 @@ export interface BuyerCatalogItem {
   mrp: number;
   /** Null when the public catalog hides prices until login. */
   price: number | null;
+  catalog_id?: string | null;
+  catalog_pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
+  collect_target_unit_price_range?: boolean;
   resolved_price?: number | null;
   campaign_price?: number | null;
   has_campaign_price?: boolean;
@@ -68,6 +71,9 @@ export interface BuyerCatalogResponse {
   items: BuyerCatalogItem[];
   total: number;
   has_more: boolean;
+  catalog_id?: string | null;
+  pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
+  collect_target_unit_price_range?: boolean;
   catalogs?: BuyerCatalogSummary[];
   selected_campaign_id?: string | null;
   selected_campaign_name?: string | null;

@@ -29,7 +29,7 @@ import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
-import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice } from '@/lib/buyer-ui';
+import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -38,9 +38,11 @@ import type { BuyerCatalogItem } from '@/types/buyer';
 type CartLineItem = {
   tenant_product_id: string;
   qty: number;
-  unit_price: number;
+  unit_price: number | null;
   gst_rate?: number | null;
   product_name?: string;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 };
 
 type OrderPlaceResponse = {
@@ -99,6 +101,8 @@ export default function CartPage() {
   const gstRate = meData?.business_policy.gst_rate ?? 18;
   const allowPlaceOrder = meData?.order_features.create_sales_orders ?? false;
   const allowRequestQuote = meData?.order_features.create_enquiries ?? false;
+  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(meData?.buyer_catalog?.pricing_mode);
+  const collectTargetRange = hiddenPriceEnquiry && meData?.buyer_catalog?.collect_target_unit_price_range === true;
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
@@ -137,11 +141,11 @@ export default function CartPage() {
   useEffect(() => {
     if (!reconcileQuery.data) return;
     const nextItems = reconcileQuery.data.items
-      .filter((product) => hasVisibleBuyerPrice(product.price))
+      .filter((product) => hiddenPriceEnquiry || hasVisibleBuyerPrice(product.price))
       .map((product) => {
       const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
       const quantity = existing?.quantity ?? 1;
-      const unitPrice = product.price as number;
+      const unitPrice = hiddenPriceEnquiry ? null : (product.price as number);
       return {
         tenant_product_id: product.tenant_product_id,
         name: product.display_name,
@@ -154,7 +158,11 @@ export default function CartPage() {
         gst_rate: product.gst_rate ?? gstRate,
         unit: product.default_uom ?? undefined,
         quantity,
-        line_total: unitPrice * quantity,
+        line_total: unitPrice == null ? 0 : unitPrice * quantity,
+        cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+        collect_target_unit_price_range: product.collect_target_unit_price_range === true,
+        buyer_target_unit_price_min: existing?.buyer_target_unit_price_min ?? null,
+        buyer_target_unit_price_max: existing?.buyer_target_unit_price_max ?? null,
         tenant_category_id: product.category_id ?? undefined,
         campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
         stock_status: product.stock_status,
@@ -167,7 +175,7 @@ export default function CartPage() {
     if (currentSignature !== nextSignature) {
       replaceItems(nextItems);
     }
-  }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
+  }, [gstRate, hiddenPriceEnquiry, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
 
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const blockOnOos = meData?.stock_visibility?.block_order_on_oos ?? false;
@@ -185,17 +193,17 @@ export default function CartPage() {
 
   const deliveryFee = 0;
   const totals = useMemo(
-    () => computeBuyerCartTotals(
+    () => hiddenPriceEnquiry ? { subtotal: 0, tax_amount: 0, total: 0 } : computeBuyerCartTotals(
       items.map((item) => ({
         quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_price: item.unit_price ?? 0,
         disc_pct: 0,
         gst_rate: item.gst_rate ?? gstRate,
       })),
       gstInclusive,
       gstRate,
     ),
-    [items, gstInclusive, gstRate],
+    [hiddenPriceEnquiry, items, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
   const ctaCount = (allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0);
@@ -237,6 +245,19 @@ export default function CartPage() {
       has_campaign_price: item.has_campaign_price === true,
       stock_status: item.stock_status ?? null,
     }));
+  }
+
+  function handleTargetRangeChange(
+    tenantProductId: string,
+    field: 'buyer_target_unit_price_min' | 'buyer_target_unit_price_max',
+    value: string,
+  ) {
+    const parsed = value.trim() === '' ? null : Number(value);
+    replaceItems(items.map((item) => (
+      item.tenant_product_id === tenantProductId
+        ? { ...item, [field]: Number.isFinite(parsed) ? parsed : null }
+        : item
+    )));
   }
 
   function captureCartSubmitIntent(documentType: 'order' | 'estimate'): void {
@@ -365,8 +386,13 @@ export default function CartPage() {
       const params = new URLSearchParams({
         estimate_id: res.estimate_id ?? '',
         estimate_number: res.estimate_number ?? '',
-        total: String(total),
       });
+      if (!hiddenPriceEnquiry) {
+        params.set('total', String(total));
+      }
+      if (hiddenPriceEnquiry) {
+        params.set('kind', 'enquiry');
+      }
       if (res.document_url) {
         params.set('document_url', res.document_url);
       }
@@ -432,7 +458,7 @@ export default function CartPage() {
       const inStockTotal = computeBuyerCartTotals(
         inStockItems.map((item) => ({
           quantity: item.quantity,
-          unit_price: item.unit_price,
+          unit_price: item.unit_price ?? 0,
           disc_pct: 0,
           gst_rate: item.gst_rate ?? gstRate,
         })),
@@ -570,7 +596,7 @@ export default function CartPage() {
           <ChevronLeft className="h-6 w-6" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
-          Cart
+          {hiddenPriceEnquiry ? 'Enquiry' : 'Cart'}
         </h1>
         <button
           onClick={() => clearCart()}
@@ -590,7 +616,7 @@ export default function CartPage() {
             {items.length} items · {itemCount} {itemCount === 1 ? 'unit' : 'units'}
           </p>
           <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
-            Review &amp; place
+            {hiddenPriceEnquiry ? 'Review enquiry' : 'Review & place'}
           </h2>
         </div>
 
@@ -608,6 +634,9 @@ export default function CartPage() {
               showDivider={idx > 0}
               stockBadgeVisible={stockVisible && item.stock_status !== 'available'}
               grayedOut={stockVisible && item.stock_status === 'out_of_stock'}
+              hiddenPriceEnquiry={hiddenPriceEnquiry}
+              collectTargetRange={collectTargetRange && item.collect_target_unit_price_range === true}
+              onTargetRangeChange={handleTargetRangeChange}
             />
           ))}
         </div>
@@ -617,7 +646,7 @@ export default function CartPage() {
             below don't jump once it resolves. Still collapses to nothing once we know
             for certain there's no bundle gap to show — that's a real content absence,
             not a loading state, so there's no space left to reserve for it. */}
-        {cartBundlesLoading ? (
+        {!hiddenPriceEnquiry && cartBundlesLoading ? (
           <div
             className="overflow-hidden rounded-[12px]"
             style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
@@ -648,7 +677,7 @@ export default function CartPage() {
               ))}
             </div>
           </div>
-        ) : cartBundlesData && tenantId ? (
+        ) : !hiddenPriceEnquiry && cartBundlesData && tenantId ? (
           <CartGapWidget
             bundles={cartBundlesData.bundles}
             items={items}
@@ -657,6 +686,7 @@ export default function CartPage() {
         ) : null}
 
         {/* Totals card */}
+        {!hiddenPriceEnquiry ? (
         <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
             <TotalsRow label="Subtotal" value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} />
@@ -672,6 +702,12 @@ export default function CartPage() {
             </span>
           </div>
         </div>
+        ) : (
+          <div className="rounded-[12px] px-4 py-3" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+            <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Seller will respond with prices.</p>
+            <p className="mt-1" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>No subtotal or total is calculated for enquiries.</p>
+          </div>
+        )}
 
         {/* Delivery row */}
         <button
@@ -767,7 +803,7 @@ export default function CartPage() {
             when only one of estimates/orders is enabled for this tenant, or on its
             own row above both when both are enabled. `ctaCount` reflects a tenant-level
             setting (order_features), so this layout doesn't change cart-to-cart. */}
-        {ctaCount === 2 && (
+        {!hiddenPriceEnquiry && ctaCount === 2 && (
           <div className="flex items-center justify-between pb-2">
             <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
               Total
@@ -781,7 +817,7 @@ export default function CartPage() {
           </div>
         )}
         <div className="flex items-center gap-2">
-          {ctaCount === 1 && (
+          {!hiddenPriceEnquiry && ctaCount === 1 && (
             <div className="flex shrink-0 flex-col">
               <span className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.1em', color: 'var(--fg-3, var(--cream-600))' }}>
                 Total
@@ -794,7 +830,7 @@ export default function CartPage() {
               </span>
             </div>
           )}
-          {allowRequestQuote && (
+          {(allowRequestQuote || hiddenPriceEnquiry) && (
             <button
               onClick={handleRequestQuote}
               disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
@@ -802,10 +838,10 @@ export default function CartPage() {
               style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
             >
               <WhatsAppIcon className="w-4 h-4 shrink-0" />
-              {requestingQuote ? 'Requesting...' : 'Get WhatsApp quote'}
+              {requestingQuote ? (hiddenPriceEnquiry ? 'Sending...' : 'Requesting...') : (hiddenPriceEnquiry ? 'Send enquiry' : 'Get WhatsApp quote')}
             </button>
           )}
-          {allowPlaceOrder && (
+          {allowPlaceOrder && !hiddenPriceEnquiry && (
             <button
               onClick={handlePlaceOrder}
               disabled={isBusy || items.length === 0 || ctaBlockedByLocation}
@@ -866,21 +902,32 @@ function CartPageItem({
   item,
   onQtyChange,
   onRemove,
+  onTargetRangeChange,
   showDivider,
   stockBadgeVisible = false,
   grayedOut = false,
+  hiddenPriceEnquiry = false,
+  collectTargetRange = false,
 }: {
   item: BuyerCartItem;
   onQtyChange: (tenant_product_id: string, qty: number) => void;
   onRemove: (tenant_product_id: string) => void;
+  onTargetRangeChange?: (
+    tenant_product_id: string,
+    field: 'buyer_target_unit_price_min' | 'buyer_target_unit_price_max',
+    value: string,
+  ) => void;
   showDivider: boolean;
   stockBadgeVisible?: boolean;
   grayedOut?: boolean;
+  hiddenPriceEnquiry?: boolean;
+  collectTargetRange?: boolean;
 }) {
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
   const showCampaignPrice = Boolean(
     item.has_campaign_price
     && item.resolved_price != null
+    && item.unit_price != null
     && Math.abs(item.resolved_price - item.unit_price) > 0.004,
   );
   const stockBadgeLabel = item.stock_status === 'out_of_stock' ? 'Out of stock' : 'Low stock';
@@ -920,10 +967,16 @@ function CartPageItem({
               </p>
             ) : null}
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
+              {hiddenPriceEnquiry ? (
+                <span className="font-medium" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-2)' }}>
+                  Price on enquiry
+                </span>
+              ) : (
               <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
+                {formatNumberValue(item.unit_price ?? 0, 'CURRENCY_EXACT')}
                 {item.unit ? ` / ${item.unit}` : ''}
               </span>
+              )}
               {showCampaignPrice ? (
                 <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
                   {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
@@ -934,6 +987,34 @@ function CartPageItem({
               <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
                 {stockBadgeLabel}
               </p>
+            ) : null}
+            {collectTargetRange ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Min target</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="decimal"
+                    value={item.buyer_target_unit_price_min ?? ''}
+                    onChange={(event) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_min', event.target.value)}
+                    className="h-9 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-2 text-sm outline-none focus:border-[var(--teal-500)]"
+                    placeholder="Min"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Max target</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="decimal"
+                    value={item.buyer_target_unit_price_max ?? ''}
+                    onChange={(event) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_max', event.target.value)}
+                    className="h-9 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-2 text-sm outline-none focus:border-[var(--teal-500)]"
+                    placeholder="Max"
+                  />
+                </label>
+              </div>
             ) : null}
           </div>
           <button
@@ -974,12 +1055,14 @@ function CartPageItem({
             </button>
           </div>
           {/* Item total */}
+          {!hiddenPriceEnquiry ? (
           <span
             className="tabular-nums font-semibold"
             style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
           >
             {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
           </span>
+          ) : null}
         </div>
       </div>
     </>

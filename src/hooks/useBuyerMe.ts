@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import type { CatalogPricingMode } from '@/lib/server/public-catalog';
 
 export interface BuyerMeData {
   mode: 'buyer' | 'preview' | 'guest' | 'pending';
@@ -54,9 +55,14 @@ export interface BuyerMeData {
     enabled: boolean;
     block_order_on_oos: boolean;
   };
+  buyer_catalog?: {
+    id: string | null;
+    pricing_mode: CatalogPricingMode | null;
+    collect_target_unit_price_range: boolean;
+  };
   whatsapp_consent_required: boolean;
   /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
-  guest_pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
+  guest_pricing_mode?: CatalogPricingMode | null;
   /** mode:'pending' only — self-registered, awaiting seller approval. */
   pending?: {
     intake_submitted: boolean;
