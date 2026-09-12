@@ -93,6 +93,35 @@ Seller catalog control center:
 - The `/catalog` page now hosts setup/review/publish controls using the shared setup API.
 - The control center exposes the same core persisted catalog behavior fields as onboarding, so sellers can return after onboarding and adjust the canonical Buyer Catalog setup.
 
+## Phase 3: Done
+
+Phase 3 hardened the `/catalog` control center into the seller admin revision surface described in the v2 spec. No new tables, columns, or migrations were added.
+
+Shared setup state now includes derived, read-only catalog operations data:
+
+- Catalog `updated_at` for the setup summary's "Last updated" line.
+- Product readiness counts:
+  - active products
+  - preview anomaly count
+  - products missing images
+- Customer Group brand restriction summary, derived from existing `app.cohorts.allowed_tenant_brand_ids`.
+
+Seller catalog control center updates:
+
+- Added a status card with live/not-live state, product count, Copy link, Open catalog, and Preview as buyer actions.
+- Added a compact setup summary for access, pricing, target-rate collection, product display, and last updated.
+- Moved individual settings behind inline edit controls, with the larger guided editor available through **Reconfigure catalog**.
+- Preserved the right-side buyer preview and kept it wired to draft access/pricing/display changes.
+- Added operational cards for:
+  - Products summary and import link.
+  - Photo readiness and upload-photo affordance.
+  - Customer Group brand restriction summary and Customer Groups link.
+
+Tests added/updated:
+
+- Added `src/tests/catalog-control-center.test.tsx` for summary rendering, inline edits, hidden-price target-rate preview wiring, and customer-group restriction display.
+- Extended `src/tests/catalog-setup-route.test.ts` for the expanded setup-state contract.
+
 ## Public Interfaces Landed
 
 `CatalogPricingMode` now includes:

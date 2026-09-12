@@ -31,6 +31,18 @@ import { CatalogSetupValidationError } from '@/lib/server/catalog-setup';
 
 const baseState = {
   productCount: 4,
+  catalogUpdatedAt: '2026-09-11T06:30:00.000Z',
+  productReadiness: {
+    activeProductCount: 4,
+    anomalyCount: 1,
+    missingProductImageCount: 2,
+  },
+  brandRestrictionSummary: {
+    totalCustomerGroups: 3,
+    restrictedCustomerGroups: 1,
+    restrictedBrandCount: 2,
+    sampleCustomerGroups: ['Retailers'],
+  },
   items: [],
   brands: [],
   categories: [],
@@ -70,6 +82,15 @@ describe('/api/tenant/catalog/setup', () => {
     await expect(res.json()).resolves.toMatchObject({
       slug: 'acme',
       storefrontHost: 'acme.useyukti.in',
+      productReadiness: {
+        activeProductCount: 4,
+        anomalyCount: 1,
+        missingProductImageCount: 2,
+      },
+      brandRestrictionSummary: {
+        restrictedCustomerGroups: 1,
+        restrictedBrandCount: 2,
+      },
     });
     expect(loadCatalogSetupStateMock).toHaveBeenCalledWith(expect.anything(), 'tenant-1', null, null);
   });

@@ -37,6 +37,14 @@ export type CatalogSetupPatch = z.infer<typeof CatalogSetupPatchSchema>;
 
 export interface CatalogSetupState extends OnboardingPreviewPayload {
   settings: TenantSettingsApiPayload;
+  brandRestrictionSummary: CatalogBrandRestrictionSummary;
+}
+
+export interface CatalogBrandRestrictionSummary {
+  totalCustomerGroups: number;
+  restrictedCustomerGroups: number;
+  restrictedBrandCount: number;
+  sampleCustomerGroups: string[];
 }
 
 type TenantBasicsRow = {
@@ -53,7 +61,12 @@ export async function loadCatalogSetupState(
   pricingMode?: CatalogPricingMode | null,
   priceListId?: string | null,
 ): Promise<CatalogSetupState> {
-  const [{ data: tenantRow, error: tenantError }, { data: settingsRow, error: settingsError }, preview] = await Promise.all([
+  const [
+    { data: tenantRow, error: tenantError },
+    { data: settingsRow, error: settingsError },
+    preview,
+    brandRestrictionSummary,
+  ] = await Promise.all([
     db
       .schema('app')
       .from('tenants')
@@ -67,6 +80,7 @@ export async function loadCatalogSetupState(
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     loadOnboardingPreview(db, tenantId, pricingMode ?? null, priceListId ?? null),
+    loadCatalogBrandRestrictionSummary(db, tenantId),
   ]);
 
   if (tenantError) throw new Error(tenantError.message);
@@ -82,7 +96,41 @@ export async function loadCatalogSetupState(
     plan: tenant?.plan ?? 'starter',
   });
 
-  return { ...preview, settings };
+  return { ...preview, settings, brandRestrictionSummary };
+}
+
+async function loadCatalogBrandRestrictionSummary(
+  db: SupabaseClient,
+  tenantId: string,
+): Promise<CatalogBrandRestrictionSummary> {
+  const { data, error } = await db
+    .schema('app')
+    .from('cohorts')
+    .select('name, allowed_tenant_brand_ids')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .limit(500);
+
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as Array<{
+    name: string | null;
+    allowed_tenant_brand_ids: string[] | null;
+  }>;
+  const restricted = rows.filter((row) => row.allowed_tenant_brand_ids !== null);
+  const brandIds = new Set<string>();
+  for (const row of restricted) {
+    for (const brandId of row.allowed_tenant_brand_ids ?? []) {
+      brandIds.add(brandId);
+    }
+  }
+
+  return {
+    totalCustomerGroups: rows.length,
+    restrictedCustomerGroups: restricted.length,
+    restrictedBrandCount: brandIds.size,
+    sampleCustomerGroups: restricted.slice(0, 3).map((row) => row.name || 'Unnamed group'),
+  };
 }
 
 export async function saveCatalogSetupState(
