@@ -13,7 +13,7 @@ export const SELLER_ROUTES = {
     categories: '/products/categories',
   },
   market: {
-    catalogs: '/catalog',
+    catalogs: '/catalogs',
     campaigns: '/campaigns',
     announcements: '/announcements',
     pricing: '/pricing',

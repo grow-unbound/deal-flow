@@ -1,6 +1,21 @@
-import { redirect } from 'next/navigation';
-import { SELLER_ROUTES } from '@/lib/seller-routes';
+import { SellerTopbar } from '@/components/layout/SellerTopbar';
+import { PageWrap } from '@/components/seller/layout';
+import { CatalogControlCenterClient } from '@/components/seller/catalog/CatalogControlCenterClient';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 
-export default function CatalogsRedirectPage() {
-  redirect(SELLER_ROUTES.market.catalogs);
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.catalogs);
+
+export default function CatalogPage() {
+  return (
+    <PageWrap>
+      <SellerTopbar
+        eyebrow="Market"
+        title="Catalog"
+        subtitle="Control what buyers see, whether prices are shown, and how enquiries are collected."
+      />
+      <div className="pt-6">
+        <CatalogControlCenterClient />
+      </div>
+    </PageWrap>
+  );
 }

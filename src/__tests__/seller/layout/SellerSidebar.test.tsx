@@ -138,7 +138,7 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/settings');
     expect(paths).not.toContain('/settings/modules');
     expect(paths).toContain('/business/branches');
-    expect(paths).toContain('/catalog');
+    expect(paths).toContain('/catalogs');
     expect(paths).toContain('/pricing');
     expect(paths).toContain('/recommendations');
   });
@@ -327,7 +327,7 @@ describe('collectPrefetchHrefs', () => {
       getFlag: () => true,
     });
     expect(hrefs).not.toContain('/brands');
-    expect(hrefs).not.toContain('/catalog');
+    expect(hrefs).not.toContain('/catalogs');
     expect(hrefs).not.toContain('/settings');
     expect(hrefs).not.toContain('/pricing');
   });

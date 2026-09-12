@@ -21,7 +21,7 @@ export function CatalogUnpublishedIntercept(): React.ReactNode {
           <p className="mt-1 text-body-sm text-cream-400">Get a shareable catalog link in a few minutes.</p>
         </div>
         <Button asChild variant="accent" className="shrink-0">
-          <Link href="/catalog">
+          <Link href="/catalogs">
             Set it up
             <ArrowRight className="h-4 w-4" />
           </Link>
