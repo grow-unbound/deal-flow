@@ -88,7 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     // intake screen work), but this route uses the service-role client for
     // the actual estimate insert, which bypasses RLS entirely. Matches the
     // pattern in app/api/buyer/orders/route.ts and app/api/buyer/me/route.ts.
-    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
       return NextResponse.json(
         { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
         { status: 403 },
@@ -432,7 +434,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Defense-in-depth: see the matching comment in POST above.
-    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
       return NextResponse.json(
         { error: 'Your account is pending approval. You cannot place or view orders yet.' },
         { status: 403 },

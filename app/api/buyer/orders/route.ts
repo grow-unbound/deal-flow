@@ -135,7 +135,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     // here. Must reject explicitly before any further processing, matching
     // the pattern in app/api/buyer/me/route.ts and
     // app/api/buyer/onboarding/intake/route.ts.
-    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
       return NextResponse.json(
         { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
         { status: 403 },
@@ -403,7 +405,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Defense-in-depth: see the matching comment in POST above — this GET
     // also uses the service-role client (supabaseAdmin) for the actual
     // orders read, bypassing RLS's app.is_buyer() gate entirely.
-    if (profile.buyer && profile.buyer.buyer_app_enabled === false) {
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
       return NextResponse.json(
         { error: 'Your account is pending approval. You cannot place or view orders yet.' },
         { status: 403 },

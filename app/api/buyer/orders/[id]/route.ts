@@ -50,7 +50,9 @@ export async function GET(
     // Defense-in-depth: see the matching comment in
     // app/api/buyer/orders/route.ts — this route also uses the service-role
     // client for the order-detail read, bypassing RLS entirely.
-    if (profile.buyer.buyer_app_enabled === false) {
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer.buyer_app_enabled === false) {
       return NextResponse.json(
         { error: 'Your account is pending approval. You cannot place or view orders yet.' },
         { status: 403 },
