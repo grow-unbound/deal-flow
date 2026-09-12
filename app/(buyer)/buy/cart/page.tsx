@@ -231,6 +231,8 @@ export default function CartPage() {
       unit_price: i.unit_price,
       gst_rate: i.gst_rate ?? gstRate,
       product_name: i.name,
+      buyer_target_unit_price_min: i.buyer_target_unit_price_min ?? null,
+      buyer_target_unit_price_max: i.buyer_target_unit_price_max ?? null,
     }));
   }
 

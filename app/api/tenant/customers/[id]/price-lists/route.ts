@@ -11,6 +11,8 @@ type PriceListAssignmentRow = {
   price_list_id: string;
   target_type: 'buyer' | 'cohort' | 'all_buyers';
   target_id: string | null;
+  valid_from: string | null;
+  deleted_at: string | null;
   created_at: string | null;
 };
 
@@ -35,12 +37,12 @@ type AssignedPriceListRow = {
   created_at: string | null;
 };
 
-function derivePriceListStatus(validFrom: string | null, validTo: string | null, isActive: boolean): 'active' | 'draft' | 'expired' {
+function deriveAssignmentStatus(validFrom: string | null, validTo: string | null, isPriceListActive: boolean): 'active' | 'draft' | 'expired' {
   const now = Date.now();
   const fromTs = validFrom ? new Date(validFrom).getTime() : Number.NEGATIVE_INFINITY;
   const toTs = validTo ? new Date(validTo).getTime() : Number.POSITIVE_INFINITY;
   if (toTs < now) return 'expired';
-  if (!isActive) return 'draft';
+  if (!isPriceListActive) return 'draft';
   if (fromTs > now) return 'draft';
   return 'active';
 }
@@ -103,13 +105,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? await db
           .schema('app')
           .from('price_list_assignments')
-          .select('price_list_id, target_type, target_id, created_at')
+          .select('price_list_id, target_type, target_id, valid_from, deleted_at, created_at')
           .or(`and(target_type.eq.buyer,target_id.eq.${buyerId}),and(target_type.eq.cohort,target_id.in.(${cohortIds.join(',')})),target_type.eq.all_buyers`)
           .is('deleted_at', null)
       : await db
           .schema('app')
           .from('price_list_assignments')
-          .select('price_list_id, target_type, target_id, created_at')
+          .select('price_list_id, target_type, target_id, valid_from, deleted_at, created_at')
           .or(`and(target_type.eq.buyer,target_id.eq.${buyerId}),target_type.eq.all_buyers`)
           .is('deleted_at', null);
 
@@ -156,11 +158,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         priority: priceList.priority == null ? null : Number(priceList.priority),
         target_type: targetType,
         target_label: targetLabel,
-        valid_from: priceList.valid_from ?? null,
-        valid_to: priceList.valid_to ?? null,
-        status: derivePriceListStatus(
-          priceList.valid_from ?? null,
-          priceList.valid_to ?? null,
+        valid_from: assignment.valid_from ?? assignment.created_at ?? null,
+        valid_to: assignment.deleted_at ?? null,
+        status: deriveAssignmentStatus(
+          assignment.valid_from ?? assignment.created_at ?? null,
+          assignment.deleted_at ?? null,
           Boolean(priceList.is_active),
         ),
         created_at: assignment.created_at as string | null,
