@@ -155,6 +155,7 @@ const nextConfig = {
       { source: '/category/:id([^/.]+)', internalSuffix: '/home/category/:id' },
       { source: '/brand/:id([^/.]+)', internalSuffix: '/home/brand/:id' },
       { source: '/list/:id([^/.]+)', internalSuffix: '/home/list/:id' },
+      { source: '/family/:id([^/.]+)', internalSuffix: '/family/:id' },
       { source: '/product/:id([^/.]+)', internalSuffix: '/product/:id' },
     ];
     const guestIsrIdRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.flatMap((suffix) =>

@@ -14,6 +14,7 @@ export const STOREFRONT = {
   estimatePlaced: '/estimate-placed',
   notLive: '/not-live',
   product: (id: string) => `/product/${id}`,
+  family: (id: string) => `/family/${id}`,
   category: (id: string) => `/category/${id}`,
   brand: (id: string) => `/brand/${id}`,
   list: (id: string) => `/list/${id}`,
@@ -23,6 +24,7 @@ export const STOREFRONT = {
 } as const;
 
 const PUBLIC_TO_INTERNAL: Array<[string, string]> = [
+  ['/family/', '/buy/family/'],
   ['/product/', '/buy/product/'],
   ['/category/', '/buy/home/category/'],
   ['/brand/', '/buy/home/brand/'],
@@ -88,6 +90,7 @@ export function toPublicStorefrontPath(pathname: string): string | null {
   if (pathname.startsWith('/buy/home/category/')) return `/category/${pathname.slice('/buy/home/category/'.length)}`;
   if (pathname.startsWith('/buy/home/brand/')) return `/brand/${pathname.slice('/buy/home/brand/'.length)}`;
   if (pathname.startsWith('/buy/home/list/')) return `/list/${pathname.slice('/buy/home/list/'.length)}`;
+  if (pathname.startsWith('/buy/family/')) return `/family/${pathname.slice('/buy/family/'.length)}`;
   if (pathname.startsWith('/buy/product/')) return `/product/${pathname.slice('/buy/product/'.length)}`;
   if (pathname.startsWith('/buy/orders/')) return `/orders/${pathname.slice('/buy/orders/'.length)}`;
   if (pathname.startsWith('/buy/invoices/')) return `/invoices/${pathname.slice('/buy/invoices/'.length)}`;
@@ -116,7 +119,7 @@ export function toPublicStorefrontPath(pathname: string): string | null {
 // never actually holds items for a guest), so a guest opening /cart just sees
 // the empty-cart "browse catalog" state, not a location/login wall.
 const GUEST_PUBLIC_EXACT = new Set(['/', '/search', '/login', '/not-live', '/location', '/cart']);
-const GUEST_PUBLIC_PREFIXES = ['/product/', '/category/', '/brand/', '/list/', '/buy/product/', '/buy/home/category/', '/buy/home/brand/', '/buy/home/list/', '/buy/search', '/buy/location'];
+const GUEST_PUBLIC_PREFIXES = ['/family/', '/product/', '/category/', '/brand/', '/list/', '/buy/family/', '/buy/product/', '/buy/home/category/', '/buy/home/brand/', '/buy/home/list/', '/buy/search', '/buy/location'];
 
 /** Browse pages a guest may hit. Cart/orders/profile stay auth-gated. */
 export function isGuestStorefrontPagePath(pathname: string): boolean {
@@ -131,7 +134,7 @@ export function isGuestStorefrontPagePath(pathname: string): boolean {
 // not designed yet), /cart and /location ('use client', nothing to
 // prerender), /login and /not-live (never rewritten to the buy tree).
 const GUEST_ISR_PUBLIC_EXACT = new Set(['/']);
-const GUEST_ISR_PUBLIC_PREFIXES = ['/product/', '/category/', '/brand/', '/list/'];
+const GUEST_ISR_PUBLIC_PREFIXES = ['/family/', '/product/', '/category/', '/brand/', '/list/'];
 
 export function isGuestIsrPagePath(pathname: string): boolean {
   if (GUEST_ISR_PUBLIC_EXACT.has(pathname)) return true;
@@ -160,6 +163,7 @@ export function isGuestCatalogApiPath(pathname: string): boolean {
   if (pathname === '/api/buyer/brands' || pathname === '/api/buyer/categories') return true;
   if (pathname === '/api/buyer/search' || pathname.startsWith('/api/buyer/search/')) return true;
   if (pathname.startsWith('/api/buyer/products/')) return true;
+  if (pathname.startsWith('/api/buyer/product-families/')) return true;
   if (pathname === '/api/buyer/home/reco') return true;
   if (pathname === '/api/buyer/recommendations') return true;
   if (pathname.startsWith('/api/buyer/reco/category/') || pathname.startsWith('/api/buyer/reco/brand/')) return true;

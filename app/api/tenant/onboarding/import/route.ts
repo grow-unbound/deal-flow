@@ -8,6 +8,7 @@ import { runOnboardingImportChunk } from '@/lib/server/onboarding-import';
 const RowSchema = z.object({
   internal_sku: z.string().min(1),
   name: z.string().min(1),
+  product_family_name: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
   mrp: z.number().optional(),
@@ -18,6 +19,7 @@ const RowSchema = z.object({
   default_uom: z.string().optional(),
   pack_size: z.number().optional(),
   description: z.string().optional(),
+  variant_attributes: z.record(z.string()).optional(),
 });
 
 const BodySchema = z.object({

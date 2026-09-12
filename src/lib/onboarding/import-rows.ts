@@ -1,5 +1,64 @@
-import type { ImportAnomaly, ImportAnomalyKind, OnboardingImportRow } from '@/lib/onboarding/types';
+import type { ColumnMappingEntry, ImportAnomaly, ImportAnomalyKind, OnboardingImportRow } from '@/lib/onboarding/types';
 import { onboardingSlugify } from '@/lib/onboarding/slugify';
+
+const VARIANT_HEADER_ALIASES = new Map<string, string>([
+  ['size', 'Size'],
+  ['colour', 'Color'],
+  ['color', 'Color'],
+  ['material', 'Material'],
+  ['finish', 'Finish'],
+  ['length', 'Length'],
+  ['height', 'Height'],
+  ['width', 'Width'],
+  ['diameter', 'Diameter'],
+  ['dia', 'Diameter'],
+  ['pressure', 'Pressure'],
+  ['gauge', 'Gauge'],
+  ['core', 'Core'],
+  ['cores', 'Core'],
+  ['capacity', 'Capacity'],
+  ['wattage', 'Wattage'],
+  ['watts', 'Wattage'],
+  ['voltage', 'Voltage'],
+  ['variant', 'Variant'],
+  ['option', 'Option'],
+  ['model', 'Model'],
+]);
+
+function normalizeVariantKey(header: string): string | null {
+  const stripped = header
+    .trim()
+    .replace(/^(attr|attribute|variant|option)[:_\-\s]+/i, '')
+    .trim();
+  if (!stripped) return null;
+  const normalized = stripped.toLowerCase().replace(/[_\-\s]+/g, ' ');
+  const compact = normalized.replace(/\s/g, '');
+  const known = VARIANT_HEADER_ALIASES.get(normalized) ?? VARIANT_HEADER_ALIASES.get(compact);
+  if (known) return known;
+  if (/^(attr|attribute|variant|option)[:_\-\s]+/i.test(header.trim())) {
+    return stripped.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+  return null;
+}
+
+export function extractVariantAttributes(
+  rawRow: Record<string, string>,
+  mappings: ColumnMappingEntry[],
+): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const mappedHeaders = new Set(
+    mappings
+      .filter((mapping) => mapping.yuktiField !== 'unmapped')
+      .map((mapping) => mapping.sourceHeader),
+  );
+  for (const mapping of mappings) {
+    if (mappedHeaders.has(mapping.sourceHeader)) continue;
+    const key = normalizeVariantKey(mapping.sourceHeader);
+    const value = rawRow[mapping.sourceHeader]?.trim();
+    if (key && value) attrs[key] = value;
+  }
+  return attrs;
+}
 
 export function mapRawRowToImport(row: Record<string, string>): OnboardingImportRow | null {
   const internal_sku = row.internal_sku?.trim();
@@ -15,6 +74,7 @@ export function mapRawRowToImport(row: Record<string, string>): OnboardingImport
   return {
     internal_sku,
     name,
+    product_family_name: row.product_family_name?.trim() || undefined,
     brand: row.brand?.trim() || undefined,
     category: row.category?.trim() || undefined,
     mrp: parseNum(row.mrp),
@@ -25,7 +85,21 @@ export function mapRawRowToImport(row: Record<string, string>): OnboardingImport
     default_uom: row.default_uom?.trim() || undefined,
     pack_size: parseNum(row.pack_size),
     description: row.description?.trim() || undefined,
+    variant_attributes: undefined,
   };
+}
+
+export function mapSpreadsheetRowToImport(
+  rawRow: Record<string, string>,
+  mappedRow: Record<string, string>,
+  mappings: ColumnMappingEntry[],
+): OnboardingImportRow | null {
+  const row = mapRawRowToImport(mappedRow);
+  if (!row) return null;
+  const variantAttributes = extractVariantAttributes(rawRow, mappings);
+  return Object.keys(variantAttributes).length > 0
+    ? { ...row, variant_attributes: variantAttributes }
+    : row;
 }
 
 export function detectRowAnomalies(row: OnboardingImportRow, duplicateInFile: boolean): ImportAnomaly[] {

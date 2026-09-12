@@ -1,5 +1,6 @@
 export const ONBOARDING_YUKTI_FIELDS = [
   'name',
+  'product_family_name',
   'internal_sku',
   'brand',
   'category',
@@ -45,6 +46,7 @@ export interface ImportAnomaly {
 export interface OnboardingImportRow {
   internal_sku: string;
   name: string;
+  product_family_name?: string;
   brand?: string;
   category?: string;
   mrp?: number;
@@ -55,6 +57,7 @@ export interface OnboardingImportRow {
   default_uom?: string;
   pack_size?: number;
   description?: string;
+  variant_attributes?: Record<string, string>;
 }
 
 export interface OnboardingImportChunkResult {

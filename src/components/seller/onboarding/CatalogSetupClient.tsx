@@ -45,7 +45,7 @@ import {
   reassignMappingField,
   yuktiFieldLabel,
 } from '@/lib/onboarding/column-mapping';
-import { mapRawRowToImport } from '@/lib/onboarding/import-rows';
+import { mapSpreadsheetRowToImport, extractVariantAttributes } from '@/lib/onboarding/import-rows';
 import {
   collectDataTransferFiles,
   extractPhotoFiles,
@@ -288,7 +288,10 @@ export function CatalogSetupClient(): React.ReactNode {
       toast.error('Each Yukti field can only be mapped once');
       return;
     }
-    const mapped = applyMappings(rawRows, mappings).map(mapRawRowToImport).filter((row): row is NonNullable<typeof row> => row != null);
+    const mappedRows = applyMappings(rawRows, mappings);
+    const mapped = rawRows
+      .map((rawRow, index) => mapSpreadsheetRowToImport(rawRow, mappedRows[index] ?? {}, mappings))
+      .filter((row): row is NonNullable<typeof row> => row != null);
     if (mapped.length === 0) {
       toast.error('Map at least SKU so we can import rows');
       return;
@@ -463,6 +466,38 @@ export function CatalogSetupClient(): React.ReactNode {
     () => (preview?.items ?? []).map((item) => item.internal_sku).filter(Boolean),
     [preview?.items],
   );
+  const familyGroupingPreview = useMemo(() => {
+    if (!showingMapping || rawRows.length === 0 || mappings.length === 0) return null;
+    const mappedRows = applyMappings(rawRows, mappings);
+    const familyBuckets = new Map<string, Set<string>>();
+    let variantColumnCount = 0;
+    for (const [index, rawRow] of rawRows.entries()) {
+      const mapped = mappedRows[index] ?? {};
+      const sku = mapped.internal_sku?.trim();
+      if (!sku) continue;
+      const variantAttributes = extractVariantAttributes(rawRow, mappings);
+      if (Object.keys(variantAttributes).length > 0) variantColumnCount = Math.max(variantColumnCount, Object.keys(variantAttributes).length);
+      const explicitFamily = mapped.product_family_name?.trim();
+      const fallbackName = mapped.name?.trim();
+      const brand = mapped.brand?.trim() || 'no-brand';
+      const category = mapped.category?.trim() || 'no-category';
+      const familyKey = explicitFamily
+        ? `explicit:${brand}:${category}:${explicitFamily.toLowerCase()}`
+        : Object.keys(variantAttributes).length > 0 && fallbackName
+          ? `inferred:${brand}:${category}:${fallbackName.toLowerCase().replace(/\b(?:small|medium|large|xl|xs|s|m|l|red|blue|green|black|white)\b/g, '').replace(/\s+/g, ' ').trim()}`
+          : `sku:${sku}`;
+      const bucket = familyBuckets.get(familyKey) ?? new Set<string>();
+      bucket.add(sku);
+      familyBuckets.set(familyKey, bucket);
+    }
+    const groupedFamilies = [...familyBuckets.values()].filter((skus) => skus.size > 1);
+    const groupedSkuCount = groupedFamilies.reduce((sum, skus) => sum + skus.size, 0);
+    return {
+      groupedSkuCount,
+      familyCount: groupedFamilies.length,
+      variantColumnCount,
+    };
+  }, [mappings, rawRows, showingMapping]);
   const folderUploadCopy = pendingFolderUpload
     ? folderUploadDialogCopy(pendingFolderUpload.fileCount, pendingFolderUpload.folderName)
     : null;
@@ -798,6 +833,21 @@ export function CatalogSetupClient(): React.ReactNode {
               {duplicateFields.length > 0 ? (
                 <div className="callout callout--warning mt-3 px-4 py-3 text-body-sm">
                   Each Yukti field can only map once: {duplicateFields.map(yuktiFieldLabel).join(', ')}.
+                </div>
+              ) : null}
+              {familyGroupingPreview && familyGroupingPreview.groupedSkuCount > 0 ? (
+                <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3">
+                  <p className="text-body font-semibold text-teal-900">
+                    {familyGroupingPreview.groupedSkuCount} SKUs can be grouped as variants of {familyGroupingPreview.familyCount} product {familyGroupingPreview.familyCount === 1 ? 'family' : 'families'}
+                  </p>
+                  <p className="mt-0.5 text-body-sm text-teal-800">
+                    Grouping will be created during import. The display mode switch below only controls whether buyers see family cards or direct SKU cards.
+                  </p>
+                </div>
+              ) : null}
+              {familyGroupingPreview && familyGroupingPreview.variantColumnCount > 0 && familyGroupingPreview.groupedSkuCount === 0 ? (
+                <div className="mt-3 rounded-xl border border-cream-300 bg-cream-50 px-4 py-3 text-body-sm text-cream-700">
+                  Variant columns were detected; each SKU will still receive its own family unless matching family names or shared groups are found.
                 </div>
               ) : null}
               <div className="mt-4 overflow-hidden rounded-lg border border-cream-200">

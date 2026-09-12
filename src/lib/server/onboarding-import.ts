@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ImportAnomaly, OnboardingImportRow } from '@/lib/onboarding/types';
 import { detectRowAnomalies, uniqueSlugForName } from '@/lib/onboarding/import-rows';
 import { onboardingSlugify } from '@/lib/onboarding/slugify';
+import { ensureTenantProductFamily } from '@/lib/server/tenant-product-families';
 
 const UNBRANDED_SLUG = 'unbranded';
 
@@ -283,9 +284,14 @@ export async function runOnboardingImportChunk(
         updated_by: actorId,
       };
 
+      const variantAttributes = row.variant_attributes ?? {};
+      if (Object.keys(variantAttributes).length > 0) {
+        payload.attributes_override = variantAttributes;
+      }
+
       if (!wasExisting) {
         payload.created_by = actorId;
-        payload.attributes_override = {};
+        payload.attributes_override = Object.keys(variantAttributes).length > 0 ? variantAttributes : {};
         payload.image_urls = [];
       }
 
@@ -311,6 +317,29 @@ export async function runOnboardingImportChunk(
       else {
         imported += 1;
         existingSkuSet.add(row.internal_sku);
+      }
+
+      const productId = upserted?.id as string | undefined;
+      if (productId) {
+        const familyId = await ensureTenantProductFamily(db, {
+          tenantId,
+          actorId,
+          tenantProductId: productId,
+          productName: row.name,
+          familyName: row.product_family_name ?? null,
+          tenantBrandId: tenant_brand_id,
+          tenantCategoryId: tenant_category_id,
+          description: row.description ?? null,
+          imageUrls: [],
+          variantAttributes,
+        });
+        const { error: familyLinkError } = await db
+          .schema('app')
+          .from('tenant_products')
+          .update({ product_family_id: familyId, updated_by: actorId })
+          .eq('id', productId)
+          .eq('tenant_id', tenantId);
+        if (familyLinkError) throw new Error(familyLinkError.message);
       }
 
       for (const anomaly of rowAnomalies) {

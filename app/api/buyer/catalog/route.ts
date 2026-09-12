@@ -8,6 +8,7 @@ import {
   fetchBuyerCatalogPage,
   resolveBuyerCatalogContext,
 } from '@/lib/server/buyer-product-data';
+import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
 import type { BuyerCatalogResponse } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
@@ -42,7 +43,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         },
       });
     }
-    const response = await fetchBuyerCatalogPage({
+    const useFamilyCatalog =
+      context.publicCatalog?.productDisplayMode === 'group_variants'
+      && !tenantProductId
+      && !requestedCampaignId;
+
+    const response = useFamilyCatalog ? await fetchBuyerFamilyCatalogPage({
+      db: supabaseAdmin as any,
+      tenantId: context.tenantId,
+      buyerId: context.buyerId,
+      allowedTenantBrandIds: context.allowedTenantBrandIds,
+      inventoryWarehouseId: context.inventoryWarehouseId,
+      search,
+      categoryId,
+      brandId,
+      limit,
+      offset,
+      guestPricing: context.guestPricing,
+      publicCatalog: context.publicCatalog,
+    }) : await fetchBuyerCatalogPage({
       db: supabaseAdmin as any,
       tenantId: context.tenantId,
       buyerId: context.buyerId,

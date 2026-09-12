@@ -307,3 +307,61 @@ git diff --check
 - Mobile cart and desktop cart drawer both expose inline target-rate editing for hidden-price enquiry lines when target-rate collection is enabled.
 - Hidden-price estimate PDF/document generation remains deferred; buyer and seller detail pages show pending prices in-app.
 - The broader workspace still contains unrelated dirty work from other active streams; these Phase 4-5 notes only describe the buyer hidden-price enquiry and target-rate implementation.
+
+## Phase 6: Done
+
+Implemented Product Families as the buyer-display layer while keeping transactional records SKU-level.
+
+Schema changes:
+
+- Added `app.tenant_product_families` as tenant-owned display metadata for product families, including brand/category, per-family `variant_axes`, legacy `image_urls`, and product-style R2 image keys.
+- Added `app.tenant_products.product_family_id` with indexes and an initial one-family-per-product backfill. The column remains nullable during Phase 6 compatibility because multiple product writers and sync paths now need family assignment awareness before a safe `NOT NULL` migration.
+- Did not add family fields to `estimate_items`, `order_items`, or `invoice_items`; transaction line tables stay SKU-level.
+
+Import and onboarding behavior:
+
+- Added `product_family_name` to onboarding/import mappings.
+- Added dynamic variant attribute extraction from unmapped columns such as `Size`, `Color`, `Diameter`, `attr: color`, and similar headers.
+- Import now creates or reuses product families regardless of `product_display_mode`.
+- Family grouping uses explicit family name first, then variant-aware grouping keys by brand/category/name. Single-SKU rows still receive one-child families.
+- The catalog setup import step now previews grouping potential before import, e.g. “X SKUs can be grouped as variants of Y product families,” and clarifies that display mode only controls buyer rendering.
+
+Buyer behavior:
+
+- `product_display_mode = 'sku_list'` continues to use the existing SKU catalog path.
+- `product_display_mode = 'group_variants'` uses a family-scoped catalog loader for normal browse/search/category/brand pages, preventing duplicate family cards and SKU-page pagination artifacts.
+- Family cards show family metadata/image and option count. They navigate to the family detail page instead of quick-adding an arbitrary child SKU.
+- Added family detail API and buyer routes at `/family/:id` / `/buy/family/:id`, including guest ISR routing.
+- Family detail returns family metadata, per-family axes, child SKU matrix, stock, and resolved prices. Invalid combinations are disabled; a selected valid combination resolves to a concrete `tenant_product_id`.
+- Add-to-cart/enquiry from family detail stores and submits only the resolved `tenant_product_id`; cart state, estimate submission, order submission, and seller review surfaces remain SKU-level.
+
+Deferrals and constraints:
+
+- Seller-side Product page family management/editor remains deferred.
+- Campaign/list pages remain SKU-scoped in this pass. Grouped campaign-family projection needs a separate campaign-membership design so campaign item inclusion does not accidentally imply whole-family inclusion.
+- `tenant_products.product_family_id` is intentionally nullable until all product creation/update/sync surfaces are family-aware and remote data confirms a safe non-null migration.
+- Existing unrelated dirty workspace files remain unrelated to Phase 6.
+
+## Phase 6 Verification
+
+Focused tests passed:
+
+```bash
+pnpm exec vitest run --pool=vmThreads src/tests/lib/onboarding-mapping.test.ts src/tests/lib/product-families-phase6-sql-contract.test.ts src/tests/lib/product-families-transaction-boundary.test.ts src/tests/lib/product-families-buyer-display-contract.test.ts
+```
+
+Result after the transaction-boundary correction: 4 test files, 26 tests passed.
+
+Whitespace check passed:
+
+```bash
+git diff --check
+```
+
+Type check passed:
+
+```bash
+npx tsc --noEmit
+```
+
+Focused Vitest initially hit worker-start timeouts under the default fork/thread pools during the earlier pass, then passed reliably with `--pool=vmThreads`.
