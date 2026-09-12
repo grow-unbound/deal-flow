@@ -1,4 +1,5 @@
 import { firstNameFromValue, formatWhatsappDestination, isValidIndianMobile } from '@/lib/phone';
+import { MISSING_FIELD_LABELS } from '@/lib/inbox/missing-field-labels';
 import { resolveBuyerDisplayName } from '@/lib/server/buyer-app-enable-notify';
 import { buildSellerContextFromTenant } from '@/lib/server/whatsapp-seller-context';
 import {
@@ -50,15 +51,6 @@ export type ApprovalResolution = 'approved' | 'declined' | 'needs_more_info';
 interface QueueApprovalResolutionExtra {
   missingFields?: string[];
 }
-
-const MISSING_FIELD_LABELS: Record<string, string> = {
-  gst_certificate: 'GST certificate',
-  address: 'address',
-  business_name: 'business name',
-  gstin: 'GSTIN',
-  shop_image: 'shop image',
-  contact_name: 'contact name',
-};
 
 function formatMissingFields(fields: string[] | undefined | null): string {
   const labels = (fields ?? [])

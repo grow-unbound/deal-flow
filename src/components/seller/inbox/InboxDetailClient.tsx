@@ -13,6 +13,8 @@ import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
 import { ENTRY_TYPE_LABEL, getInitials } from '@/lib/inbox/inbox-entry-copy';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxActionBar } from './InboxActionBar';
+import { InboxApprovalActionBar } from './InboxApprovalActionBar';
+import { InboxApprovalDocuments } from './InboxApprovalDocuments';
 import { InboxHistorySheet } from './InboxHistorySheet';
 import { InboxRecordSheet } from './InboxRecordSheet';
 
@@ -158,7 +160,14 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                   {ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}
                 </AccordionTrigger>
                 <AccordionContent>
-                  <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                  {entry.entry_type === 'business_approval' || entry.entry_type === 'new_user_login' ? (
+                    <>
+                      <InboxApprovalDocuments entryId={entry.id} />
+                      <InboxApprovalActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                    </>
+                  ) : (
+                    <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                  )}
                 </AccordionContent>
               </AccordionItem>
             ))}

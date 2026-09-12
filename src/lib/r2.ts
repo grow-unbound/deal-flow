@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 
@@ -22,6 +22,18 @@ export async function getPresignedUploadUrl(key: string, contentType: string): P
     CacheControl: R2_UPLOAD_CACHE_CONTROL,
   });
   return getSignedUrl(r2Client, command, { expiresIn: 3600 });
+}
+
+/**
+ * Short-lived presigned GET URL for reading a private object back out of R2 —
+ * the read-side counterpart to getPresignedUploadUrl. Used for seller-facing
+ * document preview/download (Task 12 of the buyer-approval signup flow):
+ * callers must re-request a fresh URL right before use rather than caching
+ * one, since it expires quickly (default 5 minutes).
+ */
+export async function getPresignedDownloadUrl(key: string, expiresInSeconds = 300): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key });
+  return getSignedUrl(r2Client, command, { expiresIn: expiresInSeconds });
 }
 
 export async function putObjectJson(key: string, value: unknown): Promise<void> {
