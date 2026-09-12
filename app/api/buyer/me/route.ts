@@ -352,11 +352,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         console.error('[GET /api/buyer/me] get_buyer_onboarding_status rpc threw:', rpcError);
       }
 
-      // Task 10 review, Minor #1: never let a mode:'pending' session present
-      // as if it's fully approved (empty pill, no header action). See
-      // resolvePendingSessionOnboardingStatus's doc for the failure modes
-      // this guards against.
-      onboardingStatus = resolvePendingSessionOnboardingStatus(onboardingStatus);
+      // Task 10 review, Minor #1 (scoped in the follow-up review fix): only a
+      // genuinely self-registered buyer awaiting approval should ever have
+      // their onboarding_status normalized to 'pending_approval' — a
+      // seller-created/CSV-imported buyer with buyer_app_enabled=false is
+      // legitimately 'approved' (or null) and must not be relabeled as still
+      // verifying. See resolvePendingSessionOnboardingStatus's doc.
+      const isSelfRegistered = customFields.storefront_self_registered === true;
+      onboardingStatus = resolvePendingSessionOnboardingStatus(onboardingStatus, isSelfRegistered);
 
       const payload: BuyerMeResponse = {
         mode: 'pending',
