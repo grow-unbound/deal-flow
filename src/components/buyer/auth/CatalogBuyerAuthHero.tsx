@@ -18,7 +18,7 @@ function TenantHeroSkeleton() {
   return (
     <div className="mb-6 rounded-xl border border-cream-200 bg-[var(--bg-surface)] px-5 py-5">
       <div className="flex items-center gap-4">
-        <div className="h-[72px] w-[72px] shrink-0 animate-pulse rounded-full bg-cream-100 border border-cream-200" />
+        <div className="h-[72px] w-[72px] shrink-0 animate-pulse rounded-xl bg-cream-100 border border-cream-200" />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="h-6 w-40 animate-pulse rounded bg-cream-100 border border-cream-200" />
           <div className="h-3 w-28 animate-pulse rounded bg-cream-100 border border-cream-200" />
@@ -36,6 +36,7 @@ function TenantBrandingCard({ tenant }: { tenant: CatalogTenantContext }) {
           name={tenant.businessName}
           logoUrl={tenant.logoUrl}
           size={TENANT_LOGO_SIZE}
+          shape="square"
           className="shrink-0"
         />
         <div className="min-w-0 text-left">

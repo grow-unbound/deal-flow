@@ -1,6 +1,6 @@
 'use client';
 
-import { CANONICAL_STOREFRONT_SUFFIX, LOCAL_STOREFRONT_SUFFIX } from '@/lib/storefront-host';
+import { catalogLoginUrlForCurrentBrowserHost } from '@/lib/storefront-host';
 
 /**
  * OTP now happens exclusively on catalog.useyukti.in (the central login /
@@ -21,11 +21,8 @@ import { CANONICAL_STOREFRONT_SUFFIX, LOCAL_STOREFRONT_SUFFIX } from '@/lib/stor
  * /auth/storefront-handoff link as that page's own `next`.
  */
 function catalogLoginUrl(returnTo: string): string {
-  const isLocal = typeof window !== 'undefined' && window.location.hostname.endsWith(`.${LOCAL_STOREFRONT_SUFFIX}`);
-  const host = isLocal ? `catalog.${LOCAL_STOREFRONT_SUFFIX}` : `catalog.${CANONICAL_STOREFRONT_SUFFIX}`;
-  const protocol = isLocal ? window.location.protocol : 'https:';
-  const port = isLocal && window.location.port ? `:${window.location.port}` : '';
-  return `${protocol}//${host}${port}/login?return_to=${encodeURIComponent(returnTo)}`;
+  if (typeof window === 'undefined') return `/login?return_to=${encodeURIComponent(returnTo)}`;
+  return `${catalogLoginUrlForCurrentBrowserHost(window.location.host, window.location.protocol)}?return_to=${encodeURIComponent(returnTo)}`;
 }
 
 export function StorefrontPhoneLogin({
@@ -42,7 +39,6 @@ export function StorefrontPhoneLogin({
 
   return (
     <div className={compact ? '' : 'rounded-xl border border-cream-300 bg-white p-8 shadow-md'}>
-      <h1 className="mb-1 font-display text-h2 text-cream-900">Log in to order</h1>
       <p className="mb-6 text-body-sm text-cream-600">
         Continue with your WhatsApp number to see pricing and place orders.
       </p>

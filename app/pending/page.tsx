@@ -6,6 +6,7 @@ import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { DeclinedContactScreen } from '@/components/buyer/onboarding/DeclinedContactScreen';
 
 /**
  * Blocked screen for a self-registered buyer awaiting seller approval
@@ -33,10 +34,21 @@ export default function BuyerPendingPage() {
 
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;
+  const isDeclined = me?.pending?.onboarding_status === 'declined';
 
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
     router.replace('/login');
+  }
+
+  if (isDeclined) {
+    return (
+      <DeclinedContactScreen
+        sellerName={sellerName}
+        sellerWhatsappNumber={sellerWhatsappNumber}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   return (

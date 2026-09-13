@@ -10,6 +10,7 @@ import type {
   BuyerCatalogResponse,
   BuyerCatalogSummary,
   BuyerCategory,
+  BuyerProductFamilyDetail,
   BuyerResolvedProductsResponse,
 } from '@/types/buyer';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
@@ -21,6 +22,7 @@ import {
 } from '@/lib/query-navigation';
 
 export type BuyerProductDetailApiResponse = { item: BuyerCatalogItem };
+export type BuyerProductFamilyDetailApiResponse = BuyerProductFamilyDetail;
 
 const EMPTY_RECOS: BuyerProductPageRecos = { co_order: [], co_buyer: [], same_category: [] };
 
@@ -32,8 +34,16 @@ export function buyerProductRecommendationsQueryKey(tenantProductId: string) {
   return ['buyer-product-recommendations', tenantProductId] as const;
 }
 
+export function buyerProductFamilyDetailQueryKey(productFamilyId: string, stockSignature: string) {
+  return ['buyer-product-family-detail', productFamilyId, stockSignature] as const;
+}
+
 export function buyerProductDetailUrl(tenantProductId: string): string {
   return `/api/buyer/products/${encodeURIComponent(tenantProductId)}`;
+}
+
+export function buyerProductFamilyDetailUrl(productFamilyId: string): string {
+  return `/api/buyer/product-families/${encodeURIComponent(productFamilyId)}`;
 }
 
 export function buyerProductRecommendationsUrl(tenantProductId: string): string {
@@ -291,6 +301,25 @@ export function useBuyerProductDetail(tenantProductId: string) {
     isLoading: productQuery.isLoading,
     isError: productQuery.isError || (!productQuery.isLoading && !item),
     isRecosLoading: recommendationsQuery.isLoading,
+  };
+}
+
+export function useBuyerProductFamilyDetail(productFamilyId: string) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
+  const familyQuery = useQuery<BuyerProductFamilyDetailApiResponse>({
+    queryKey: buyerProductFamilyDetailQueryKey(productFamilyId, stockSignature),
+    queryFn: async () =>
+      fetchJson<BuyerProductFamilyDetailApiResponse>(buyerProductFamilyDetailUrl(productFamilyId), { fresh: true }),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+
+  return {
+    detail: familyQuery.data ?? null,
+    family: familyQuery.data?.family ?? null,
+    isLoading: familyQuery.isLoading,
+    isError: familyQuery.isError || (!familyQuery.isLoading && !familyQuery.data),
   };
 }
 

@@ -17,10 +17,21 @@ vi.mock('@/lib/server/r2-presign-entity', () => ({
 }));
 
 const loadOnboardingCatalogSummaryMock = vi.fn();
+const loadOnboardingPreviewMock = vi.fn();
+const saveCatalogSetupStateMock = vi.fn();
 
 vi.mock('@/lib/server/onboarding-catalog-preview', () => ({
   loadOnboardingCatalogSummary: (...args: unknown[]) => loadOnboardingCatalogSummaryMock(...args),
-  loadOnboardingPreview: vi.fn(),
+  loadOnboardingPreview: (...args: unknown[]) => loadOnboardingPreviewMock(...args),
+}));
+
+vi.mock('@/lib/server/catalog-setup', () => ({
+  CatalogSetupValidationError: class CatalogSetupValidationError extends Error {
+    constructor(message: string, public status = 400) {
+      super(message);
+    }
+  },
+  saveCatalogSetupState: (...args: unknown[]) => saveCatalogSetupStateMock(...args),
 }));
 
 import { POST as batchPresign } from '../../../app/api/uploads/r2/batch/route';
@@ -99,6 +110,23 @@ describe('GET /api/tenant/onboarding/catalog', () => {
       slug: 'acme',
       businessName: 'Acme',
     });
+    loadOnboardingPreviewMock.mockResolvedValue({
+      productCount: 17,
+      items: [],
+      brands: [],
+      categories: [],
+      anomalies: [],
+      slug: 'acme',
+      businessName: 'Acme',
+      live: false,
+      pricingMode: null,
+      priceListId: null,
+      accessMode: 'public_link',
+      collectTargetUnitPriceRange: false,
+      productDisplayMode: 'sku_list',
+      priceLists: [],
+      photoTargets: [],
+    });
   });
 
   it('returns the metrics snapshot summary without loading preview rows', async () => {
@@ -113,11 +141,36 @@ describe('GET /api/tenant/onboarding/catalog', () => {
     });
     expect(loadOnboardingCatalogSummaryMock).toHaveBeenCalledTimes(1);
   });
+
+  it('returns a storefront host on the current review suffix', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      const res = await getOnboardingCatalog(
+        new NextRequest('https://app.yukti.so/api/tenant/onboarding/catalog', {
+          headers: { host: 'app.yukti.so' },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toMatchObject({
+        slug: 'acme',
+        storefrontHost: 'acme.yukti.so',
+      });
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
 });
 
 describe('PATCH /api/tenant/onboarding/catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    saveCatalogSetupStateMock.mockResolvedValue({ slug: 'acme' });
   });
 
   it('returns 403 for seller_assistant', async () => {
@@ -153,5 +206,39 @@ describe('PATCH /api/tenant/onboarding/catalog', () => {
       body: JSON.stringify({ slug: 'acme' }),
     }));
     expect(res.status).toBe(400);
+  });
+
+  it('publishes through the shared catalog setup contract', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    const res = await publishCatalog(new NextRequest('http://localhost/api/tenant/onboarding/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'acme',
+        pricing_mode: 'hide_price_collect_enquiry',
+        access_mode: 'public_link',
+        collect_target_unit_price_range: true,
+        product_display_mode: 'group_variants',
+      }),
+    }));
+    expect(res.status).toBe(200);
+    expect(saveCatalogSetupStateMock).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 'tenant-1',
+      actorId: 'user-1',
+      patch: expect.objectContaining({
+        slug: 'acme',
+        pricing_mode: 'hide_price_collect_enquiry',
+        access_mode: 'public_link',
+        collect_target_unit_price_range: true,
+        product_display_mode: 'group_variants',
+        publish: true,
+      }),
+    });
   });
 });

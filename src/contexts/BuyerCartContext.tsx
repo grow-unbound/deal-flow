@@ -17,13 +17,17 @@ export interface BuyerCartItem {
   brand?: string;
   internal_sku?: string;
   image_url?: string;
-  unit_price: number;
+  unit_price: number | null;
   resolved_price?: number | null;
   has_campaign_price?: boolean;
   gst_rate?: number | null;
   unit?: string;
   quantity: number;
   line_total: number;
+  cart_mode?: 'priced' | 'hidden_price_enquiry';
+  collect_target_unit_price_range?: boolean;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
   tenant_category_id?: string;
   campaign_id?: string | null;
   stock_status?: 'available' | 'limited' | 'out_of_stock';
@@ -89,7 +93,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
             ? {
                 ...i,
                 quantity: newQty,
-                line_total: newQty * i.unit_price,
+                line_total: i.unit_price == null ? 0 : newQty * i.unit_price,
                 campaign_id: action.item.campaign_id ?? i.campaign_id ?? state.campaignId,
               }
               : i
@@ -113,7 +117,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         ...state,
         items: state.items.map((i) =>
           i.tenant_product_id === action.tenant_product_id
-            ? { ...i, quantity: action.quantity, line_total: action.quantity * i.unit_price }
+            ? { ...i, quantity: action.quantity, line_total: i.unit_price == null ? 0 : action.quantity * i.unit_price }
             : i
         ),
       };
@@ -137,7 +141,7 @@ function getItemsAfterAdd(items: BuyerCartItem[], item: BuyerCartItem, campaignI
       ? {
           ...i,
           quantity: newQty,
-          line_total: newQty * i.unit_price,
+          line_total: i.unit_price == null ? 0 : newQty * i.unit_price,
           campaign_id: item.campaign_id ?? i.campaign_id ?? campaignId,
         }
       : i,
@@ -149,7 +153,7 @@ function getItemsAfterQtyUpdate(items: BuyerCartItem[], tenantProductId: string,
 
   return items.map((i) =>
     i.tenant_product_id === tenantProductId
-      ? { ...i, quantity, line_total: quantity * i.unit_price }
+      ? { ...i, quantity, line_total: i.unit_price == null ? 0 : quantity * i.unit_price }
       : i,
   );
 }

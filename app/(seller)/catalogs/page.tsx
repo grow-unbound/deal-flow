@@ -1,25 +1,20 @@
-import { BookOpen } from 'lucide-react';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
-import { EmptyState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
+import { CatalogControlCenterClient } from '@/components/seller/catalog/CatalogControlCenterClient';
 import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 
 export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.catalogs);
 
-export default function CatalogsPage() {
+export default function CatalogPage() {
   return (
     <PageWrap>
       <SellerTopbar
         eyebrow="Market"
-        title="Catalogs"
-        subtitle="Curate always-on buyer-facing catalogs for brands, collections, and assortments."
+        title="Catalog"
+        subtitle="Control what buyers see, whether prices are shown, and how enquiries are collected."
       />
       <div className="pt-6">
-        <EmptyState
-          icon={<BookOpen size={28} strokeWidth={1.5} />}
-          heading="Catalogs are WIP"
-          description="Always-on buyer-facing catalogs will be built here separately from time-bound campaigns."
-        />
+        <CatalogControlCenterClient />
       </div>
     </PageWrap>
   );

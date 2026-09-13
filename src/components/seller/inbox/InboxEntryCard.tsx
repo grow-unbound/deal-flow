@@ -2,9 +2,13 @@ import { ChevronDown } from 'lucide-react';
 import { StatusPill } from '@/components/ui/status-pill';
 import { cn } from '@/lib/utils';
 import { InboxActionBar } from './InboxActionBar';
+import { InboxApprovalActionBar } from './InboxApprovalActionBar';
+import { InboxApprovalDocuments } from './InboxApprovalDocuments';
 import { isPinnedEntry } from '@/lib/inbox/inbox-grouping';
 import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
+
+const APPROVAL_ENTRY_TYPES = new Set(['business_approval', 'new_user_login']);
 
 const AGING_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = {
   due_soon: 'neutral',
@@ -64,7 +68,14 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, applyLocal
               Last reminder sent {new Date(String(entry.metadata.last_reminder_at)).toLocaleDateString()}.
             </p>
           ) : null}
-          <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+          {APPROVAL_ENTRY_TYPES.has(entry.entry_type) ? (
+            <>
+              <InboxApprovalDocuments entryId={entry.id} />
+              <InboxApprovalActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+            </>
+          ) : (
+            <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+          )}
         </div>
       ) : null}
     </section>

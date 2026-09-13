@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 import type { Session, User } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
 import { getBuyerAppContext, type BuyerAppContext } from '@/lib/auth';
@@ -630,6 +631,15 @@ async function createBuyerSessionForUser(
   email: string,
   password: string,
   candidate: BuyerLoginCandidate,
+  // The phone a real WhatsApp OTP was just verified against (from the OTP
+  // store record — phone-otp/verify route ONLY). Omit/undefined for every
+  // other caller (switch-buyer, workspaces/enter, the switch-context picker
+  // path) so this call never derives or re-derives the claim from
+  // candidate.phone (sourced from the mutable app.buyers.phone column) —
+  // omitting the key entirely relies on the Admin API's confirmed
+  // user_metadata MERGE behavior (see 20260911013323 migration + fix report)
+  // to leave whatever otp_verified_phone the user already has untouched.
+  otpVerifiedPhone?: string,
 ) {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -650,6 +660,26 @@ async function createBuyerSessionForUser(
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
       current_buyer_id: candidate.buyer_id,
+      // SECURITY: otp_verified_phone/otp_verified_phone_at moved from
+      // user_metadata to app_metadata (see otp-verified-phone-app-metadata-
+      // migration-report.md). user_metadata is client-writable via the
+      // public supabase.auth.updateUser({data:...}) call -- any authenticated
+      // user could forge this claim for themselves with just the anon key.
+      // app_metadata is writable only via the Admin API (this call), so a
+      // regular authenticated user cannot self-modify it. Task 11 review,
+      // Important #1: otp_verified_phone alone proves a phone was verified at
+      // some point, not that it was verified RECENTLY. A stamped-alongside
+      // timestamp lets server-side routes (e.g. the document-resubmission
+      // intake gate) require the claim to be fresh (see
+      // hasFreshOtpVerification below) instead of trusting a claim that could
+      // be arbitrarily old. Stamped at exactly the same call, with exactly
+      // the same otpVerifiedPhone-only gating, as otp_verified_phone itself
+      // -- never set independently of it. Empirically confirmed
+      // updateUserById's app_metadata MERGES (does not replace wholesale),
+      // same as user_metadata, so omitting these keys when otpVerifiedPhone
+      // is undefined leaves any existing claim untouched, and setting them
+      // here does not clobber current_tenant_id/current_buyer_id above.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
   });
 
@@ -693,6 +723,13 @@ async function createBuyerSessionForUser(
  */
 export async function mintBuyerHandoffLink(
   candidate: BuyerLoginCandidate,
+  // See createBuyerSessionForUser's otpVerifiedPhone doc — same contract.
+  // Pass ONLY the OTP store record's phone, and ONLY when this handoff link
+  // is being minted directly off a real OTP verification. Every other
+  // caller (workspaces/enter, the switch-context picker path) must omit
+  // this so the merge-preserving Admin API call below leaves any existing
+  // otp_verified_phone claim untouched.
+  otpVerifiedPhone?: string,
 ): Promise<{ hashedToken: string; buyerId: string | null }> {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -720,6 +757,10 @@ export async function mintBuyerHandoffLink(
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
       current_buyer_id: candidate.buyer_id,
+      // SECURITY: see createBuyerSessionForUser's matching comment -- same
+      // user_metadata -> app_metadata contract, same otpVerifiedPhone-only
+      // gating, same confirmed merge (not replace) semantics.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
   });
   if (updateError) {
@@ -837,6 +878,13 @@ export async function acquireBuyerForStorefront(
       credit_limit: 0,
       payment_terms_days: 0,
       buyer_app_enabled: false,
+      // The column defaults to 'approved' (Task 1's migration assumed
+      // seller-added/ERP-synced buyers, the common case) — a fresh
+      // storefront self-registration is the one path that must override it,
+      // or a genuinely pending buyer reads back as 'approved' and the
+      // OnboardingStatusPill (Task 10) has nothing to show. Task 10 review,
+      // Critical #1.
+      onboarding_status: 'pending_approval',
       is_active: true,
       custom_fields: {
         storefront_self_registered: true,
@@ -880,12 +928,25 @@ export async function acquireBuyerForStorefront(
 
 /**
  * Where to send a `buyer_pending` session next: /onboarding if this is a
- * fresh self-registration that hasn't submitted the intake form yet,
- * /pending for everything else still awaiting approval (intake already
- * submitted, or a known buyer a seller disabled outright).
- * Yukti_Inbox_Feature-Spec_v1.md §7.1.
+ * fresh self-registration that hasn't submitted the intake form yet;
+ * otherwise the storefront home (/), where the OnboardingStatusPill (Task 10)
+ * surfaces the buyer's onboarding_status and lets them tap into /pending
+ * (or the resubmission flow) — /pending is no longer a forced landing page
+ * for a session that has already completed intake and hasn't tried to reach
+ * a gated feature. A known buyer a seller disabled outright (never
+ * self-registered, never submitted intake) still lands on /pending, since
+ * there is no onboarding flow for them to complete or storefront browsing
+ * context to show a pill in.
+ *
+ * `isTenantHost` mirrors the sibling `storefrontHome` computation at each
+ * call site (`request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home'`
+ * in phone-otp/verify/route.ts) — a bare '/' is only a valid storefront
+ * landing on a tenant's own subdomain; on the shared catalog host (reached
+ * via select-context) it must be '/buy/home' instead. Task 10 review,
+ * Important #1.
+ * Yukti_Inbox_Feature-Spec_v1.md §7.1; Task 10 brief.
  */
-export async function resolvePendingBuyerRedirect(buyerId: string): Promise<string> {
+export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost: boolean): Promise<string> {
   if (!supabaseAdmin) return '/pending';
 
   const { data } = await supabaseAdmin
@@ -898,11 +959,22 @@ export async function resolvePendingBuyerRedirect(buyerId: string): Promise<stri
   const customFields = (data as { custom_fields?: Record<string, unknown> | null } | null)?.custom_fields;
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
+  const storefrontHome = isTenantHost ? '/' : '/buy/home';
 
-  return selfRegistered && !intakeSubmitted ? '/onboarding' : '/pending';
+  if (selfRegistered && !intakeSubmitted) return '/onboarding';
+  if (intakeSubmitted) return storefrontHome;
+  return '/pending';
 }
 
-export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<{ session: Session; user: User }> {
+export async function mintBuyerSession(
+  candidate: BuyerLoginCandidate,
+  // See createBuyerSessionForUser's otpVerifiedPhone doc — same contract.
+  // Pass ONLY when this session is being minted directly off a real OTP
+  // verification (phone-otp/verify or select-context after a genuinely
+  // OTP-verified 'verified' record). switch-buyer and any other remint path
+  // must omit this.
+  otpVerifiedPhone?: string,
+): Promise<{ session: Session; user: User }> {
   const principal = candidate.principal_type === 'buyer'
     ? await ensureBuyerOwnerPrincipal(candidate)
     : await ensureBuyerDelegatePrincipal(candidate);
@@ -913,6 +985,7 @@ export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<
     principal.email,
     password,
     candidate,
+    otpVerifiedPhone,
   );
 
   if (supabaseAdmin && candidate.buyer_id) {
@@ -930,6 +1003,72 @@ export async function mintBuyerSession(candidate: BuyerLoginCandidate): Promise<
     session,
     user: principal.user,
   };
+}
+
+const RESUBMISSION_OTP_FRESHNESS_MS = 15 * 60 * 1000;
+
+/**
+ * Task 11 review, Important #1: the forced-re-OTP document-resubmission flow
+ * (/resubmit-documents) only gated the FORM RENDER on a fresh client-side OTP
+ * verify -- neither GET /api/buyer/onboarding/resubmission-profile nor the
+ * actual mutation endpoint (POST /api/buyer/onboarding/intake) required OTP
+ * freshness server-side, so a stolen/persisted session cookie could curl the
+ * intake route directly and resubmit identity documents without ever
+ * touching OTP. This defeats the forced-re-OTP design's actual security
+ * purpose (Yukti_Public-Signup_Frontend-Spec_v1.md §0b chose forced re-OTP
+ * over session-reuse specifically because document resubmission needs a
+ * stronger identity guarantee than a plain status check).
+ *
+ * Reads app_metadata.otp_verified_phone_at -- stamped alongside
+ * otp_verified_phone in createBuyerSessionForUser/mintBuyerHandoffLink above,
+ * ONLY at a genuine OTP-verify-driven session (re)mint, never on a plain
+ * session refresh/reuse -- off THIS request's own session via a
+ * request-scoped client built from its own auth cookies, matching the
+ * pattern already established in reuse-check/reuse-confirm/
+ * existing-profiles/resubmission-profile for reading a caller's own
+ * otp_verified_phone claim (never via supabaseAdmin, which has no request
+ * session to read). SECURITY: this must read app_metadata, not
+ * user_metadata -- user_metadata is client-writable via the public
+ * supabase.auth.updateUser({data:...}) call, so any authenticated user could
+ * otherwise forge this freshness claim for themselves. Empirically confirmed
+ * a request-scoped client's getUser() (own session, non-admin) DOES return
+ * the caller's own app_metadata (a user can always read, just not write,
+ * their own app_metadata).
+ *
+ * A caller with no OTP-verified session at all (a seller-added/ERP-synced
+ * buyer that never self-registered via phone-OTP) has no otp_verified_phone*
+ * claim and therefore always fails freshness here -- correct, since such a
+ * buyer has no OTP-based identity guarantee to be "fresh" about in the first
+ * place; the enforcement point (submit_buyer_intake caller in
+ * app/api/buyer/onboarding/intake/route.ts) only invokes this check when the
+ * buyer's onboarding_status is currently 'needs_more_info', a state a
+ * seller-added buyer would only reach via the storefront resubmission flow
+ * itself, which requires exactly this OTP verification to reach.
+ */
+export async function hasFreshOtpVerification(request: NextRequest): Promise<boolean> {
+  const scoped = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        // Read-only usage -- no response to attach refreshed cookies to.
+        setAll: () => {},
+      },
+    },
+  );
+
+  const { data, error } = await scoped.auth.getUser();
+  if (error || !data.user) return false;
+
+  const meta = data.user.app_metadata as Record<string, unknown> | null;
+  const stampedAt = typeof meta?.otp_verified_phone_at === 'string' ? meta.otp_verified_phone_at : null;
+  if (!stampedAt) return false;
+
+  const stampedMs = new Date(stampedAt).getTime();
+  if (Number.isNaN(stampedMs)) return false;
+
+  return Date.now() - stampedMs < RESUBMISSION_OTP_FRESHNESS_MS;
 }
 
 export async function requireBuyerAccessProfile(request: NextRequest): Promise<BuyerAccessProfile | null> {
@@ -1179,10 +1318,9 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
     findBuyerLoginCandidates(phone),
   ]);
 
-  // Map buyer candidates to the unified LoginOtpCandidate shape (filtering for eligible only).
-  // tenant_app_enabled retired as a login gate — per-buyer buyer_app_enabled is
-  // now the only access check (provenance-defaulted: true for known/synced
-  // buyers, false pending approval for fresh self-registrations).
+  // Map buyer candidates to the unified LoginOtpCandidate shape. The enabled
+  // flags must survive the OTP hop because the post-verify tenant picker uses
+  // them to decide between opening the app and requesting access.
   const eligibleBuyers: LoginOtpCandidate[] = buyers
     .filter((c) => c.buyer_app_enabled)
     .map((c) => ({
@@ -1201,6 +1339,8 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
       phone: c.phone,
       business_name: c.business_name,
       contact_name: c.contact_name,
+      buyer_app_enabled: c.buyer_app_enabled,
+      tenant_app_enabled: c.tenant_app_enabled,
     }));
 
   // Remove buyer entries where the same auth user already appears as a seller
@@ -1230,8 +1370,8 @@ export function toBuyerLoginCandidate(c: LoginOtpCandidate): BuyerLoginCandidate
     phone: c.phone,
     business_name: c.business_name,
     contact_name: c.contact_name,
-    buyer_app_enabled: true,
-    tenant_app_enabled: true,
+    buyer_app_enabled: c.buyer_app_enabled !== false,
+    tenant_app_enabled: c.tenant_app_enabled !== false,
   };
 }
 

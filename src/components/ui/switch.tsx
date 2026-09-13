@@ -10,7 +10,7 @@ interface SwitchProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 
 }
 
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
-  ({ className, checked, onCheckedChange, label, id, disabled, ...props }, ref) => {
+  ({ className, checked, onCheckedChange, label, id, disabled, 'aria-label': ariaLabel, ...props }, ref) => {
     const switchId = id ?? (label ? `switch-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
 
     return (
@@ -19,7 +19,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           type="button"
           role="switch"
           aria-checked={checked}
-          aria-label={label}
+          aria-label={label ?? ariaLabel}
           id={switchId}
           disabled={disabled}
           onClick={() => onCheckedChange?.(!checked)}
@@ -55,6 +55,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           disabled={disabled}
           className="sr-only"
           tabIndex={-1}
+          aria-label={ariaLabel}
           {...props}
         />
       </div>

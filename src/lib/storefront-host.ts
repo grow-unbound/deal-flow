@@ -209,6 +209,63 @@ export function catalogLoginUrlForRequest(hostHeader: string): string {
   return `${catalogOriginForRequest(hostHeader)}/login`;
 }
 
+/**
+ * Browser-side catalog login origin for the host the user is currently seeing.
+ * Unlike server canonicalization, this intentionally preserves the visible
+ * suffix so preview/local tenant pages redirect to matching catalog hosts.
+ */
+export function catalogHostForCurrentBrowserHost(hostHeader: string): string {
+  const hostKind = parseRequestHost(hostHeader);
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) {
+    const port = extractPort(hostHeader);
+    return `catalog.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
+  }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind) {
+    return `catalog.${hostKind.suffix}`;
+  }
+  return `catalog.${CANONICAL_STOREFRONT_SUFFIX}`;
+}
+
+export function sellerAppHostForCurrentBrowserHost(hostHeader: string): string {
+  const hostKind = parseRequestHost(hostHeader);
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) {
+    const port = extractPort(hostHeader);
+    return `app.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
+  }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind) {
+    return `app.${hostKind.suffix}`;
+  }
+  return `app.${CANONICAL_STOREFRONT_SUFFIX}`;
+}
+
+export function tenantStorefrontHostForCurrentBrowserHost(hostHeader: string, slug: string): string {
+  const hostKind = parseRequestHost(hostHeader);
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind && isLocalStorefrontSuffix(hostKind.suffix)) {
+    const port = extractPort(hostHeader);
+    return `${slug}.${LOCAL_STOREFRONT_SUFFIX}${port ? `:${port}` : ''}`;
+  }
+  if (hostKind.kind !== 'local' && 'suffix' in hostKind) {
+    return `${slug}.${hostKind.suffix}`;
+  }
+  return canonicalStorefrontHost(slug);
+}
+
+export function storefrontOriginForCurrentBrowserHost(hostHeader: string, slug: string, protocol = 'https:'): string {
+  const host = tenantStorefrontHostForCurrentBrowserHost(hostHeader, slug);
+  const scheme = host.includes('localhost') ? (protocol === 'https:' ? 'https:' : 'http:') : 'https:';
+  return `${scheme}//${host}`;
+}
+
+export function catalogOriginForCurrentBrowserHost(hostHeader: string, protocol = 'https:'): string {
+  const host = catalogHostForCurrentBrowserHost(hostHeader);
+  const scheme = host.includes('localhost') ? (protocol === 'https:' ? 'https:' : 'http:') : 'https:';
+  return `${scheme}//${host}`;
+}
+
+export function catalogLoginUrlForCurrentBrowserHost(hostHeader: string, protocol = 'https:'): string {
+  return `${catalogOriginForCurrentBrowserHost(hostHeader, protocol)}/login`;
+}
+
 export function buildStorefrontHandoffUrl(
   destinationHost: string,
   hashedToken: string,

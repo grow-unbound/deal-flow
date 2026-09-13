@@ -47,6 +47,7 @@ export async function GET(
       campaignValidUntil: null,
       priceOverrides: new Map(),
       guestPricing: context.guestPricing,
+      publicCatalog: context.publicCatalog,
     });
 
     const item = enriched.get(productId);

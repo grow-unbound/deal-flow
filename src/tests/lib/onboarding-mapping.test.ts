@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildColumnMappings, duplicateYuktiFields, isOverriddenMapping, missingEssentialFields, reassignMappingField, suggestYuktiField } from '@/lib/onboarding/column-mapping';
-import { mapRawRowToImport, detectRowAnomalies, uniqueSlugForName } from '@/lib/onboarding/import-rows';
+import { mapRawRowToImport, mapSpreadsheetRowToImport, detectRowAnomalies, uniqueSlugForName } from '@/lib/onboarding/import-rows';
+import type { ColumnMappingEntry } from '@/lib/onboarding/types';
 import { collectWebkitEntryFiles, extractPhotoFiles, filesToPhotoEntries, folderNameFromPhotoEntries, folderUploadDialogCopy, matchPhotosToCandidates, snapshotFileList, type WebkitFsDirectoryEntry, type WebkitFsFileEntry } from '@/lib/onboarding/photo-match';
 
 describe('onboarding column mapping', () => {
@@ -45,6 +46,42 @@ describe('onboarding import rows', () => {
     expect(row?.internal_sku).toBe('A1');
     const anomalies = detectRowAnomalies(row!, false);
     expect(anomalies.map((a) => a.kind)).toEqual(expect.arrayContaining(['missing_gst', 'zero_price']));
+  });
+
+  it('maps product family and dynamic variant attributes from unmapped columns', () => {
+    const mappings = [
+      { sourceHeader: 'Item Code', sampleValue: 'TS-RED-M', yuktiField: 'internal_sku', confidence: 100, suggestedField: 'internal_sku', suggestedConfidence: 100 },
+      { sourceHeader: 'Name', sampleValue: 'Tshirt Red Medium', yuktiField: 'name', confidence: 100, suggestedField: 'name', suggestedConfidence: 100 },
+      { sourceHeader: 'Product Family', sampleValue: 'Classic Tshirt', yuktiField: 'product_family_name', confidence: 100, suggestedField: 'product_family_name', suggestedConfidence: 100 },
+      { sourceHeader: 'Brand', sampleValue: 'Acme', yuktiField: 'brand', confidence: 100, suggestedField: 'brand', suggestedConfidence: 100 },
+      { sourceHeader: 'Category', sampleValue: 'Apparel', yuktiField: 'category', confidence: 100, suggestedField: 'category', suggestedConfidence: 100 },
+      { sourceHeader: 'Size', sampleValue: 'M', yuktiField: 'unmapped', confidence: 0, suggestedField: 'unmapped', suggestedConfidence: 0 },
+      { sourceHeader: 'attr: color', sampleValue: 'Red', yuktiField: 'unmapped', confidence: 0, suggestedField: 'unmapped', suggestedConfidence: 0 },
+      { sourceHeader: 'base_selling_price', sampleValue: '499', yuktiField: 'base_selling_price', confidence: 100, suggestedField: 'base_selling_price', suggestedConfidence: 100 },
+      { sourceHeader: 'gst_rate', sampleValue: '5', yuktiField: 'gst_rate', confidence: 100, suggestedField: 'gst_rate', suggestedConfidence: 100 },
+    ] satisfies ColumnMappingEntry[];
+    const mappedRow = {
+      internal_sku: 'TS-RED-M',
+      name: 'Tshirt Red Medium',
+      product_family_name: 'Classic Tshirt',
+      brand: 'Acme',
+      category: 'Apparel',
+      base_selling_price: '499',
+      gst_rate: '5',
+    };
+    const row = mapSpreadsheetRowToImport({
+      'Item Code': 'TS-RED-M',
+      Name: 'Tshirt Red Medium',
+      'Product Family': 'Classic Tshirt',
+      Brand: 'Acme',
+      Category: 'Apparel',
+      Size: 'M',
+      'attr: color': 'Red',
+      base_selling_price: '499',
+      gst_rate: '5',
+    }, mappedRow, mappings);
+    expect(row?.product_family_name).toBe('Classic Tshirt');
+    expect(row?.variant_attributes).toEqual({ Size: 'M', Color: 'Red' });
   });
 
   it('suffixes colliding slugs', () => {

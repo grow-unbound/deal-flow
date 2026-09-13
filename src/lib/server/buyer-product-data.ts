@@ -21,9 +21,11 @@ import type {
 import {
   getCachedGuestPricingContext,
   guestUnitPrice,
+  loadLivePublicCatalog,
   loadAssignedPriceListPrices,
   TENANT_PRODUCT_PUBLIC_SELECT,
   type GuestPricingContext,
+  type PublicCatalogRecord,
 } from '@/lib/server/public-catalog';
 
 export { TENANT_PRODUCT_PUBLIC_SELECT };
@@ -88,6 +90,8 @@ export type BuyerProductEnrichmentParams = {
   scopedRows?: ScopedProductSearchRow[] | null;
   /** Public-store guest pricing. When set, never call `resolve_prices_batch`. */
   guestPricing?: GuestPricingContext | null;
+  /** Tenant public catalog behavior. Hidden-price mode suppresses all buyer-visible prices. */
+  publicCatalog?: PublicCatalogRecord | null;
 };
 
 type CatalogPageParams = {
@@ -105,6 +109,7 @@ type CatalogPageParams = {
   limit: number;
   offset: number;
   guestPricing?: GuestPricingContext | null;
+  publicCatalog?: PublicCatalogRecord | null;
 };
 
 type CatalogScopeResult = {
@@ -383,7 +388,9 @@ export async function enrichBuyerProducts(
     priceStockByProductId = null,
     guestPricing = null,
     scopedRows = null,
+    publicCatalog = null,
   } = params;
+  const hiddenPriceEnquiry = publicCatalog?.pricingMode === 'hide_price_collect_enquiry';
 
   const orderedIds = tenantProductIds.filter(Boolean);
   if (orderedIds.length === 0) return new Map();
@@ -442,7 +449,7 @@ export async function enrichBuyerProducts(
   }
 
   const priceMap = new Map<string, number>();
-  if (guestPricing?.mode === 'hidden_until_login') {
+  if (hiddenPriceEnquiry || guestPricing?.mode === 'hidden_until_login') {
     // Guests never see a unit price in this mode — leave priceMap empty.
   } else if (guestPricing?.mode === 'assigned_price_list' && guestPricing.priceListId) {
     const assigned = await loadAssignedPriceListPrices(db, {
@@ -499,16 +506,18 @@ export async function enrichBuyerProducts(
     const row = rowById.get(productId);
     if (!row) continue;
 
-    const campaign = guestPricing ? null : (campaignByProductId.get(productId) ?? null);
+    const campaign = guestPricing || hiddenPriceEnquiry ? null : (campaignByProductId.get(productId) ?? null);
     const resolvedPrice = guestPricing
       ? guestUnitPrice({
           mode: guestPricing.mode,
           assignedPrice: priceMap.get(productId),
           baseSellingPrice: row.base_selling_price,
         })
-      : (priceMap.get(productId) ?? Number(row.base_selling_price ?? row.mrp ?? 0));
+      : hiddenPriceEnquiry
+        ? null
+        : (priceMap.get(productId) ?? Number(row.base_selling_price ?? row.mrp ?? 0));
     const campaignPrice = campaign?.campaign_price ?? null;
-    const unitPrice = guestPricing ? resolvedPrice : (campaignPrice ?? resolvedPrice);
+    const unitPrice = hiddenPriceEnquiry ? null : (guestPricing ? resolvedPrice : (campaignPrice ?? resolvedPrice));
     const onHand = Math.max(0, inventoryMap.get(productId) ?? 0);
     const fallbackImageUrl = row.image_urls?.length ? row.image_urls[0] : null;
     const smallVariantUrl = r2Url(row.r2_small_key) ?? r2Url(row.r2_medium_key) ?? r2Url(row.r2_large_key);
@@ -532,6 +541,9 @@ export async function enrichBuyerProducts(
       resolved_price: resolvedPrice,
       campaign_price: campaignPrice,
       has_campaign_price: campaignPrice != null,
+      catalog_id: publicCatalog?.id ?? null,
+      catalog_pricing_mode: publicCatalog?.pricingMode ?? guestPricing?.mode ?? null,
+      collect_target_unit_price_range: publicCatalog?.collectTargetUnitPriceRange ?? false,
       gst_rate: row.tax_pct,
       default_uom: row.default_uom,
       pack_size: row.pack_size,
@@ -725,6 +737,7 @@ export async function fetchBuyerCatalogPage(
     campaignByProductId: scope.campaignByProductId,
     scopedRows: Array.from(scope.textByProductId.values()),
     guestPricing: params.guestPricing ?? null,
+    publicCatalog: params.publicCatalog ?? null,
   });
 
   return {
@@ -733,6 +746,9 @@ export async function fetchBuyerCatalogPage(
       .filter((item): item is BuyerCatalogItem => Boolean(item)),
     total: scope.total,
     has_more: params.offset + params.limit < scope.total,
+    catalog_id: params.publicCatalog?.id ?? null,
+    pricing_mode: params.publicCatalog?.pricingMode ?? params.guestPricing?.mode ?? null,
+    collect_target_unit_price_range: params.publicCatalog?.collectTargetUnitPriceRange ?? false,
     selected_campaign_id: scope.selectedCampaign?.id ?? null,
     selected_campaign_name: scope.selectedCampaign?.name ?? null,
     selected_campaign_valid_until: scope.selectedCampaign?.valid_to ?? null,
@@ -903,6 +919,7 @@ export async function resolveBuyerCatalogContext(
   visibleCampaigns: BuyerVisibleCatalog[];
   catalogs: BuyerCatalogSummary[];
   guestPricing: GuestPricingContext | null;
+  publicCatalog: PublicCatalogRecord | null;
 }> {
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
@@ -923,6 +940,7 @@ export async function resolveBuyerCatalogContext(
     catalogs: catalogSummary.catalogs,
     // Already resolved inside resolveBuyerProductScopeContext — don't fetch twice.
     guestPricing: scopeContext.guestPricing,
+    publicCatalog: scopeContext.publicCatalog,
   };
 }
 
@@ -936,13 +954,15 @@ export async function resolveBuyerProductScopeContext(
   inventoryWarehouseId: string | null;
   allowedTenantBrandIds: string[] | null;
   guestPricing: GuestPricingContext | null;
+  publicCatalog: PublicCatalogRecord | null;
 }> {
   const tenantId = profile.context.tenant_id!;
   const buyerId = profile.buyer?.id ?? null;
   const isGuest = profile.context.mode === 'guest';
-  const [inventoryWarehouseId, allowedTenantBrandIds, guestPricing] = await Promise.all([
+  const [inventoryWarehouseId, allowedTenantBrandIds, publicCatalog, guestPricing] = await Promise.all([
     resolveBuyerInventoryWarehouseId(db, request, profile),
     buyerId ? resolveBuyerAllowedTenantBrandIds(db as any, tenantId, buyerId) : Promise.resolve(null),
+    loadLivePublicCatalog(db, tenantId),
     isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
   ]);
 
@@ -952,5 +972,6 @@ export async function resolveBuyerProductScopeContext(
     inventoryWarehouseId,
     allowedTenantBrandIds,
     guestPricing,
+    publicCatalog,
   };
 }

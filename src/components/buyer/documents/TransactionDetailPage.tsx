@@ -42,9 +42,11 @@ export interface TransactionLineItem {
   unit: string | null;
   image_url?: string | null;
   qty: number;
-  unit_price: number;
+  unit_price: number | null;
   tax_rate: number | null;
-  line_total: number;
+  line_total: number | null;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 }
 
 export interface TransactionDoc {
@@ -121,6 +123,8 @@ export function formatTransactionDocSubtitle(doc: TransactionDoc, docType: DocTy
 }
 
 function LineItemRow({ item }: { item: TransactionLineItem }) {
+  const pricePending = item.unit_price == null;
+  const hasTargetRange = item.buyer_target_unit_price_min != null && item.buyer_target_unit_price_max != null;
   return (
     <div className="flex items-start gap-3 py-3">
       <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100">
@@ -147,12 +151,21 @@ function LineItemRow({ item }: { item: TransactionLineItem }) {
           </p>
         )}
         <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-          {item.qty} {item.unit ?? 'unit'} × {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
+          {pricePending
+            ? `${item.qty} ${item.unit ?? 'unit'} · Price pending`
+            : `${item.qty} ${item.unit ?? 'unit'} × ${formatNumberValue(item.unit_price ?? 0, 'CURRENCY_EXACT')}`}
         </p>
+        {hasTargetRange ? (
+          <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-700)]">
+            Target rate: {formatNumberValue(item.buyer_target_unit_price_min ?? 0, 'CURRENCY_EXACT')} - {formatNumberValue(item.buyer_target_unit_price_max ?? 0, 'CURRENCY_EXACT')} / {item.unit ?? 'unit'}
+          </p>
+        ) : null}
       </div>
-      <p className="shrink-0 font-mono text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">
-        {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
-      </p>
+      {!pricePending ? (
+        <p className="shrink-0 font-mono text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">
+          {formatNumberValue(item.line_total ?? 0, 'CURRENCY_EXACT')}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -228,6 +241,7 @@ export function TransactionDetailDocumentBody({
   const badge = getStatusBadge(doc.status);
   const totalUnits = doc.items.reduce((sum, item) => sum + item.qty, 0);
   const deliveryPlace = doc.placeOfSupply?.trim() ?? '';
+  const pricePending = docType === 'estimate' && doc.items.some((item) => item.unit_price == null);
 
   return (
     <div className="flex flex-col space-y-3">
@@ -269,6 +283,12 @@ export function TransactionDetailDocumentBody({
         )}
       </div>
 
+      {pricePending ? (
+        <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
+          <p className="font-semibold text-[var(--cream-900)]">Seller will respond with prices.</p>
+          <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">No subtotal or total is calculated for this enquiry yet.</p>
+        </div>
+      ) : (
       <TotalsBlock
         subtotal={doc.subtotal}
         tax_total={doc.tax_total}
@@ -278,6 +298,7 @@ export function TransactionDetailDocumentBody({
         gstRate={gstRate}
         respectBusinessPolicyTotals={respectBusinessPolicyTotals}
       />
+      )}
 
       {deliveryPlace ? (
         <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
@@ -314,6 +335,7 @@ export function ReorderButton({
   const searchParams = useSearchParams();
   const { items: cartItems, clearCart, addItem } = useCart();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const hasPendingPrice = items.some((item) => item.unit_price == null);
 
   function fillCart() {
     clearCart();
@@ -327,7 +349,7 @@ export function ReorderButton({
         has_campaign_price: false,
         unit: item.unit ?? undefined,
         quantity: item.qty,
-        line_total: item.line_total,
+        line_total: item.line_total ?? 0,
         gst_rate: item.tax_rate ?? null,
       };
       addItem(cartItem, undefined, {
@@ -362,11 +384,12 @@ export function ReorderButton({
       <button
         type="button"
         onClick={handleReorder}
+        disabled={hasPendingPrice}
         className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80 ${className ?? ''}`}
-        style={{ background: 'var(--teal-500)' }}
+        style={{ background: 'var(--teal-500)', opacity: hasPendingPrice ? 0.55 : undefined }}
       >
         <ShoppingCart className="h-4 w-4" />
-        Reorder
+        {hasPendingPrice ? 'Price pending' : 'Reorder'}
       </button>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

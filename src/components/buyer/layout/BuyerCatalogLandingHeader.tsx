@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
+import { OnboardingStatusPill } from '@/components/buyer/layout/OnboardingStatusPill';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
@@ -33,7 +34,8 @@ export function BuyerCatalogLandingHeader({
   const { data: me, isLoading: meLoading } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
   const tenantLoading = meLoading && !me;
-  const isGuest = !tenantLoading && me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const isPending = !tenantLoading && me?.mode === 'pending';
+  const isGuest = !tenantLoading && !isPending && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
@@ -85,6 +87,8 @@ export function BuyerCatalogLandingHeader({
                   className="h-9 w-24 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
                   aria-label="Loading buyer account action"
                 />
+              ) : isPending ? (
+                <OnboardingStatusPill status={me?.pending?.onboarding_status} className="max-w-[42vw]" />
               ) : isGuest ? (
                 <button
                   type="button"

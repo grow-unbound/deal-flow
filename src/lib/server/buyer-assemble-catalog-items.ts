@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
 import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
-import type { GuestPricingContext } from '@/lib/server/public-catalog';
+import type { GuestPricingContext, PublicCatalogRecord } from '@/lib/server/public-catalog';
 
 type CampaignMapEntry = {
   campaign_id: string | null;
@@ -29,6 +29,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     priceOverrides: Map<string, number | null>;
     inventoryWarehouseId?: string | null;
     guestPricing?: GuestPricingContext | null;
+    publicCatalog?: PublicCatalogRecord | null;
   },
 ): Promise<Map<string, BuyerCatalogItem>> {
   const {
@@ -42,6 +43,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     priceOverrides,
     inventoryWarehouseId = null,
     guestPricing = null,
+    publicCatalog = null,
   } = params;
   if (productIds.length === 0) return new Map<string, BuyerCatalogItem>();
 
@@ -134,5 +136,6 @@ export async function assembleBuyerCatalogItemsForProductIds(
     inventoryWarehouseId,
     campaignByProductId: guestPricing ? new Map() : campaignByProductId,
     guestPricing,
+    publicCatalog,
   });
 }

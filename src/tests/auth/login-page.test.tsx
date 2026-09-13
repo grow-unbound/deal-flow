@@ -108,6 +108,26 @@ describe('LoginPage', () => {
     ).toHaveAttribute('href', '/signup');
   });
 
+  it('keeps the buyer login link on the current preview suffix', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...window.location,
+        protocol: 'https:',
+        hostname: 'app.yukti.so',
+        host: 'app.yukti.so',
+      },
+    });
+    const LoginPage = await import('../../../app/(auth)/login/page').then((mod) => mod.default);
+
+    render(<LoginPage />);
+
+    expect(screen.getByRole('link', { name: 'Buyer Login' })).toHaveAttribute(
+      'href',
+      'https://catalog.yukti.so/login',
+    );
+  });
+
   it('hides the welcome subtitle after this device has logged in once', async () => {
     window.localStorage.setItem(DEVICE_HAS_LOGGED_IN_KEY, '1');
     const LoginPage = await import('../../../app/(auth)/login/page').then((mod) => mod.default);

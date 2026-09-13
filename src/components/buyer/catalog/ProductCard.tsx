@@ -18,6 +18,7 @@ import {
   BUYER_TWO_LINE_TITLE_CLASS,
   getBuyerProductPrimaryImageUrl,
   hasBuyerCampaignPrice,
+  isHiddenPriceEnquiryMode,
 } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
@@ -100,15 +101,19 @@ export function ProductCard({
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
 
-  const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
+  const isFamilyCard = item.item_type === 'family';
+  const cartItem = isFamilyCard ? undefined : items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
-  const productHref = STOREFRONT.product(item.tenant_product_id);
+  const familyId = item.product_family_id ?? item.id;
+  const productHref = isFamilyCard ? STOREFRONT.family(familyId) : STOREFRONT.product(item.tenant_product_id);
   const unitPrice = item.price;
+  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode);
   const showCampaignPrice = !isGuest && unitPrice != null && hasBuyerCampaignPrice(item);
   const discountPct = showCampaignPrice && item.resolved_price
     ? Math.round((1 - unitPrice / item.resolved_price) * 100)
     : 0;
   const prefetchProduct = prefetchOnPress(productHref, () => {
+    if (isFamilyCard) return;
     prefetchBuyerProductDetail(queryClient, item.tenant_product_id, stockSignature);
   });
 
@@ -122,23 +127,26 @@ export function ProductCard({
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
-    if (isGuest || unitPrice == null) {
+    if (isGuest) {
       openLogin();
       return;
     }
+    if (!hiddenPriceEnquiry && unitPrice == null) return;
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
       image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
-      unit_price: unitPrice,
+      unit_price: hiddenPriceEnquiry ? null : (unitPrice ?? 0),
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
-      line_total: unitPrice,
+      line_total: hiddenPriceEnquiry ? 0 : (unitPrice ?? 0),
+      cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+      collect_target_unit_price_range: item.collect_target_unit_price_range === true,
       tenant_category_id: item.category_id ?? undefined,
       stock_status: item.stock_status,
       on_hand: item.on_hand,
@@ -312,6 +320,19 @@ export function ProductCard({
               </button>
             </Pressable>
           </div>
+        ) : isFamilyCard ? (
+          <span
+            className={cn(
+              BUYER_QUICK_ADD_IDLE_CLASS,
+              'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
+              isCompact
+                ? 'bottom-1.5 right-1.5 px-2 py-0.5'
+                : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
+            )}
+            style={{ fontSize: 'var(--b-text-eyebrow)' }}
+          >
+            OPTIONS
+          </span>
         ) : (
           <Pressable asChild haptic>
             <button
@@ -325,10 +346,10 @@ export function ProductCard({
                   : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
               )}
               style={{ fontSize: 'var(--b-text-eyebrow)' }}
-              aria-label="Add to cart"
+              aria-label={hiddenPriceEnquiry ? 'Add to enquiry' : 'Add to cart'}
             >
               <Plus className="h-3 w-3" />
-              ADD
+              {hiddenPriceEnquiry ? 'ENQUIRE' : 'ADD'}
             </button>
           </Pressable>
         )}
@@ -359,13 +380,24 @@ export function ProductCard({
             >
               {item.display_name}
             </p>
-            {!isCompact ? (
+            {!isCompact && !isFamilyCard ? (
               <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {item.internal_sku}
               </p>
+            ) : !isCompact && isFamilyCard && item.child_sku_count ? (
+              <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+                {item.child_sku_count} options
+              </p>
             ) : null}
             <div className={cn('self-start', isCompact ? 'mt-1' : 'mt-2')}>
-                {priceReveal === 'hidden_bar' || (!priceReveal && unitPrice == null) ? (
+                {hiddenPriceEnquiry ? (
+                  <span
+                    className="inline-flex min-h-[1.25rem] items-center rounded-md bg-cream-100 px-2 py-0.5 font-medium text-cream-700"
+                    style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                  >
+                    Enquire for price
+                  </span>
+                ) : priceReveal === 'hidden_bar' || (!priceReveal && unitPrice == null) ? (
                   <span
                     className={cn(
                       'inline-block rounded-md bg-cream-300',
@@ -413,7 +445,7 @@ export function ProductCard({
                       letterSpacing: '-0.01em',
                     }}
                   >
-                    {formatNumberValue(unitPrice, 'CURRENCY_EXACT')}
+                    {item.price_summary?.display === 'from' ? 'From ' : null}{formatNumberValue(unitPrice, 'CURRENCY_EXACT')}
                     {showCampaignPrice ? (
                       <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                         {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}

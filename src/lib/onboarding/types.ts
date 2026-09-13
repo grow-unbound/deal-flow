@@ -1,5 +1,6 @@
 export const ONBOARDING_YUKTI_FIELDS = [
   'name',
+  'product_family_name',
   'internal_sku',
   'brand',
   'category',
@@ -45,6 +46,7 @@ export interface ImportAnomaly {
 export interface OnboardingImportRow {
   internal_sku: string;
   name: string;
+  product_family_name?: string;
   brand?: string;
   category?: string;
   mrp?: number;
@@ -55,6 +57,7 @@ export interface OnboardingImportRow {
   default_uom?: string;
   pack_size?: number;
   description?: string;
+  variant_attributes?: Record<string, string>;
 }
 
 export interface OnboardingImportChunkResult {
@@ -64,7 +67,7 @@ export interface OnboardingImportChunkResult {
   anomalies: ImportAnomaly[];
 }
 
-export type CatalogPricingMode = 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list';
+export type CatalogPricingMode = 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list';
 
 export interface OnboardingCatalogState {
   productCount: number;

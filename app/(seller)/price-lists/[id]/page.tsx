@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PriceListProductsTab } from '@/components/seller/price-lists/detail/PriceListProductsTab';
+import { AssignmentsPanel } from '@/components/seller/price-lists/AssignmentsPanel';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
@@ -65,11 +66,13 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.stats?.products_covered ?? 0;
+    const assignmentsCount = priceList?.stats?.assignments_count ?? priceList?.assignments?.length ?? 0;
     return [
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
+      ...(isSellerAdmin ? [{ id: 'assignments', label: 'Assignments' as const, badge: assignmentsCount }] : []),
     ];
-  }, [isSellerAdmin, priceList?.stats?.products_covered, showPerformanceTab]);
+  }, [isSellerAdmin, priceList?.assignments?.length, priceList?.stats?.assignments_count, priceList?.stats?.products_covered, showPerformanceTab]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -184,9 +187,19 @@ export default function PriceListDetailPage() {
                 validFrom={priceList.valid_from}
                 validTo={priceList.valid_to}
                 priority={priceList.priority}
+                defaultPricelist={priceList.assignments.some((assignment) => assignment.target_type === 'all_buyers')}
               />
             ) : (
               <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
+            )
+          ) : null}
+          {tabActive === 'assignments' ? (
+            priceList ? (
+              <div className="mt-4">
+                <AssignmentsPanel priceListId={priceListId} />
+              </div>
+            ) : (
+              <Skeleton className="mt-4 h-[22rem] rounded-[14px]" />
             )
           ) : null}
 
@@ -224,7 +237,11 @@ export default function PriceListDetailPage() {
                   ? priceList.pricing_strategy
                   : 'edit_each',
                 strategy_value: priceList.strategy_value ?? null,
+                default_pricelist: priceList.assignments.some((assignment) => assignment.target_type === 'all_buyers'),
                 membership_mode: priceList.membership_mode ?? 'manual',
+                selected_product_ids: priceList.membership_mode === 'automatic'
+                  ? []
+                  : priceList.items.map((item) => item.tenant_product_id),
                 rules: priceList.membership_mode === 'automatic' ? (priceList.filters as unknown as ProductMembershipRules) : undefined,
               }}
             />

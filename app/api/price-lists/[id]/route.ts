@@ -6,6 +6,7 @@ import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListComposerPayloadSchema, PriceListFormPayloadSchema } from '@/lib/zod';
 import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
+import { syncDefaultPriceListAssignment } from '@/lib/server/price-list-default-assignment';
 
 type PriceListStatus = 'active' | 'draft' | 'expired';
 type PriceListStatusTone = 'success' | 'warning' | 'neutral';
@@ -495,6 +496,8 @@ export async function PATCH(
 
   const isSimpleForm = simpleParsed.success;
   const payload: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  const shouldSyncDefaultAssignment =
+    isSimpleForm && typeof body === 'object' && body !== null && Object.prototype.hasOwnProperty.call(body, 'default_pricelist');
   if (!isSimpleForm && payload.save_mode === 'publish' && payload.item_prices.length === 0) {
     return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
   }
@@ -696,6 +699,22 @@ export async function PATCH(
         if (applyError) {
           console.error('[PATCH /api/price-lists/[id]] apply pricing strategy error:', applyError.message);
         }
+      }
+    }
+
+    if (shouldSyncDefaultAssignment) {
+      try {
+        await syncDefaultPriceListAssignment(db, {
+          tenantId: claims.tenant_id,
+          priceListId: id,
+          userId: claims.sub,
+          enabled: payload.default_pricelist === true,
+        });
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : 'Price list updated but default assignment could not be saved' },
+          { status: 500 },
+        );
       }
     }
 

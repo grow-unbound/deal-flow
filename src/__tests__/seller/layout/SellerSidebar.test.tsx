@@ -191,7 +191,7 @@ describe('SellerSidebar', () => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     });
     expect(screen.queryByRole('link', { name: 'Brands' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Catalogs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
 

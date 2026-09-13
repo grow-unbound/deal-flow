@@ -504,6 +504,7 @@ export function useSaveSimplePriceList(priceListId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
       queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-assignments'] });
       if (priceListId) {
         queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
         queryClient.invalidateQueries({ queryKey: ['price-list-products-detail'] });

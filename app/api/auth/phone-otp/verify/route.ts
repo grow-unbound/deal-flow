@@ -8,9 +8,12 @@ import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
 import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import {
+  dedupeBuyerAccountCandidates,
   filterBuyerCandidatesForReturnTo,
   pickPreferredBuyerCandidate,
+  tenantSlugFromReturnTo,
 } from '@/lib/server/catalog-return-to';
+import { getTenantBrandingBySlug } from '@/lib/server/tenant-branding';
 
 const MAX_ATTEMPTS = 5;
 
@@ -105,17 +108,53 @@ export async function POST(request: NextRequest) {
     // at one tenant and a buyer at an unrelated tenant should both be offered.
     const effectiveCandidates = record.candidates;
 
-    if (effectiveCandidates.length > 1) {
-      const onCatalogHost = isCatalogRequest(request);
-      if (onCatalogHost && returnTo) {
-        const tenantScoped = filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo);
-        if (tenantScoped.length > 0) {
-          const candidate = pickPreferredBuyerCandidate(tenantScoped);
-          return buildMintedCandidateResponse(request, candidate, returnTo);
-        }
+    const onCatalogHost = isCatalogRequest(request);
+    if (onCatalogHost && returnTo) {
+      const tenantScoped = dedupeBuyerAccountCandidates(filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo));
+      if (tenantScoped.length === 1 && tenantScoped[0]?.buyer_app_enabled === true) {
+        return buildMintedCandidateResponse(request, tenantScoped[0], returnTo, record.phone);
       }
 
-      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates);
+      if (tenantScoped.length > 0) {
+        const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, tenantScoped, true);
+        if (!verifiedRefId) {
+          return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        }
+        return NextResponse.json({ success: true, contexts: tenantScoped, ref_id: verifiedRefId, return_to: returnTo });
+      }
+
+      const tenantSlug = tenantSlugFromReturnTo(returnTo);
+      const tenant = tenantSlug ? await getTenantBrandingBySlug(tenantSlug) : null;
+      if (tenant?.tenantId) {
+        const acquisitionCandidate: LoginOtpCandidate = {
+          kind: 'buyer',
+          tenant_id: tenant.tenantId,
+          tenant_name: tenant.businessName,
+          tenant_slug: tenant.slug,
+          tenant_whatsapp_number: tenant.whatsappNumber,
+          tenant_whatsapp_display_name: tenant.businessName,
+          tenant_logo_url: tenant.logoUrl,
+          role: 'buyer_admin',
+          buyer_id: null,
+          principal_type: 'buyer',
+          user_id: null,
+          buyer_user_id: null,
+          phone: record.phone,
+          business_name: '',
+          contact_name: null,
+          buyer_app_enabled: false,
+          tenant_app_enabled: true,
+        };
+        return buildMintedCandidateResponse(request, acquisitionCandidate, returnTo, record.phone);
+      }
+    }
+
+    if (effectiveCandidates.length > 1) {
+      // otpVerified: true — this record is written immediately after the
+      // OTP hash check above succeeded, for the literal phone the OTP was
+      // sent to. select-context uses this flag to allow the eventual
+      // session mint to stamp otp_verified_phone.
+      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates, true);
       if (!verifiedRefId) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
       }
@@ -123,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
 
     const candidate = effectiveCandidates[0];
-    return buildMintedCandidateResponse(request, candidate, returnTo);
+    return buildMintedCandidateResponse(request, candidate, returnTo, record.phone);
   } catch (err) {
     console.error('[phone-otp/verify] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -134,8 +173,13 @@ async function buildMintedCandidateResponse(
   request: NextRequest,
   candidate: LoginOtpCandidate,
   returnTo: string | null,
+  // The OTP store record's phone — the literal number a real OTP was just
+  // verified against. Threaded through to the mint calls below so the
+  // otp_verified_phone claim can be stamped at the moment of genuine
+  // verification, never re-derived from any database column.
+  otpVerifiedPhone: string,
 ): Promise<NextResponse> {
-  const result = await mintCandidateSession(request, candidate, returnTo);
+  const result = await mintCandidateSession(request, candidate, returnTo, otpVerifiedPhone);
   if ('handoffUrl' in result) {
     if ('session' in result && result.session) {
       return NextResponse.json({
@@ -157,6 +201,9 @@ async function mintCandidateSession(
   request: NextRequest,
   candidate: LoginOtpCandidate,
   returnTo: string | null = null,
+  // The OTP store record's phone — pass-through only, never re-derived.
+  // See buildMintedCandidateResponse's doc.
+  otpVerifiedPhone?: string,
 ): Promise<MintResult> {
   if (candidate.kind === 'seller') {
     const { session, user } = await mintSellerSession(
@@ -178,8 +225,11 @@ async function mintCandidateSession(
   // re-OTPing, while every buyer_app_enabled-gated RLS policy still shuts them
   // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
   if (!buyerCandidate.buyer_app_enabled) {
-    const { session } = await mintBuyerSession(buyerCandidate);
-    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
+    const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
+    const redirect = await resolvePendingBuyerRedirect(
+      buyerCandidate.buyer_id,
+      Boolean(request.headers.get('x-verified-tenant-id')),
+    );
     return { pending: false, session, redirect };
   }
 
@@ -193,7 +243,7 @@ async function mintCandidateSession(
     );
 
     if (onCatalogHost) {
-      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
       const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
       const { supabaseAdmin } = await import('@/lib/supabase');
       if (supabaseAdmin && buyerCandidate.buyer_id) {
@@ -211,12 +261,12 @@ async function mintCandidateSession(
       return { pending: false, handoffUrl };
     }
 
-    const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate);
+    const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
     const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
     return { pending: false, handoffUrl };
   }
 
-  const { session } = await mintBuyerSession(buyerCandidate);
+  const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
   const { supabaseAdmin } = await import('@/lib/supabase');
   if (supabaseAdmin && buyerCandidate.buyer_id) {
     void recordBuyerAppActivitySafe(supabaseAdmin as any, {

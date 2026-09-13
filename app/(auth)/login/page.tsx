@@ -17,7 +17,11 @@ import {
 import { StorefrontPhoneLogin } from '@/components/buyer/auth/StorefrontPhoneLogin';
 import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHero';
 import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
-import { catalogLoginUrlForRequest, parseRequestHost, sellerAppHostForRequest } from '@/lib/storefront-host';
+import {
+  catalogLoginUrlForCurrentBrowserHost,
+  parseRequestHost,
+  sellerAppHostForCurrentBrowserHost,
+} from '@/lib/storefront-host';
 
 type LoginView = 'otp' | 'email';
 type LoginResolution =
@@ -136,10 +140,10 @@ function LoginForm() {
   }, []);
 
   const sellerLoginUrl = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${sellerAppHostForRequest(window.location.host)}/login`
+    ? `${window.location.protocol}//${sellerAppHostForCurrentBrowserHost(window.location.host)}/login`
     : '/login';
   const buyerLoginUrl = typeof window !== 'undefined'
-    ? catalogLoginUrlForRequest(window.location.host)
+    ? catalogLoginUrlForCurrentBrowserHost(window.location.host, window.location.protocol)
     : '/login';
 
   useEffect(() => {

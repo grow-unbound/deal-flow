@@ -12,6 +12,7 @@ import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity
 import { getPostHogClient } from '@/lib/posthog-server';
 import { safeErrorMessage } from '@/lib/server/safe-error-message';
 import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
+import { syncDefaultPriceListAssignment } from '@/lib/server/price-list-default-assignment';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -384,6 +385,8 @@ export async function POST(request: NextRequest) {
 
   const isSimpleForm = simpleParsed.success;
   const data: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  const shouldSyncDefaultAssignment =
+    isSimpleForm && typeof body === 'object' && body !== null && Object.prototype.hasOwnProperty.call(body, 'default_pricelist');
   if (!isSimpleForm && data.save_mode === 'publish' && data.item_prices.length === 0) {
     return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
   }
@@ -520,6 +523,22 @@ export async function POST(request: NextRequest) {
       if (applyError) {
         console.error('[POST /api/price-lists] apply pricing strategy error:', applyError.message);
       }
+    }
+  }
+
+  if (shouldSyncDefaultAssignment) {
+    try {
+      await syncDefaultPriceListAssignment(db, {
+        tenantId: claims.tenant_id,
+        priceListId: priceList.id,
+        userId: claims.sub,
+        enabled: data.default_pricelist === true,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: safeErrorMessage(error, 'Price list was created but default assignment could not be saved') },
+        { status: 500 },
+      );
     }
   }
 

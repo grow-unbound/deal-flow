@@ -32,6 +32,11 @@ vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: { schema: vi.fn() },
 }));
 
+const getVerifiedClaimsMock = vi.fn();
+vi.mock('@/lib/auth', () => ({
+  getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
+}));
+
 const otpMemory = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
   let counter = 0;
@@ -56,8 +61,20 @@ const otpMemory = vi.hoisted(() => {
 
 vi.mock('@/lib/server/buyer-otp-store', () => ({
   buyerOtpStore: otpMemory.api,
-  writeVerifiedCandidatesRecord: async (phone: string, candidates: unknown[]) =>
-    otpMemory.insert({ kind: 'verified', phone, expiresAt: Date.now() + 60_000, candidates }),
+  writeVerifiedCandidatesRecord: async (
+    phone: string,
+    candidates: unknown[],
+    otpVerified?: boolean,
+    createdByUserId: string | null = null,
+  ) =>
+    otpMemory.insert({
+      kind: 'verified',
+      phone,
+      expiresAt: Date.now() + 60_000,
+      candidates,
+      otpVerified: otpVerified ?? false,
+      createdByUserId,
+    }),
 }));
 
 const buyerCandidate = {
@@ -76,6 +93,7 @@ const buyerCandidate = {
   business_name: 'Buyer One',
   contact_name: 'Rajan Mehta',
   buyer_app_enabled: true,
+  tenant_app_enabled: true,
 };
 
 describe('phone-otp select-context route', () => {
@@ -84,11 +102,13 @@ describe('phone-otp select-context route', () => {
     mintSellerSessionMock.mockReset();
     mintBuyerHandoffLinkMock.mockReset();
     recordBuyerAppActivitySafeMock.mockReset();
+    getVerifiedClaimsMock.mockReset();
+    getVerifiedClaimsMock.mockResolvedValue({ sub: null, tenant_id: null, role: null, buyer_id: null, location_ids: null });
   });
 
-  async function writeVerifiedRecord(candidates: unknown[]): Promise<string> {
+  async function writeVerifiedRecord(candidates: unknown[], createdByUserId: string | null = null): Promise<string> {
     const { writeVerifiedCandidatesRecord } = await import('@/lib/server/buyer-otp-store');
-    const refId = await writeVerifiedCandidatesRecord('9876543210', candidates as any);
+    const refId = await writeVerifiedCandidatesRecord('9876543210', candidates as any, false, createdByUserId);
     if (!refId) throw new Error('failed to seed verified record for test');
     return refId;
   }
@@ -156,6 +176,7 @@ describe('phone-otp select-context route', () => {
         tenant_id: 'tenant-1',
         buyer_id: 'buyer-1',
         role: 'buyer_admin',
+        return_to: 'https://tenant-one.useyukti.in/product/55',
       }),
     }), {
       nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
@@ -167,6 +188,7 @@ describe('phone-otp select-context route', () => {
     expect(body.success).toBe(true);
     expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=token-xyz');
     expect(body.handoff_url).toContain('tenant-one');
+    expect(body.handoff_url).toContain('next=%2Fproduct%2F55');
     expect(body.session).toBeUndefined();
     expect(body.redirect).toBeUndefined();
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
@@ -178,6 +200,62 @@ describe('phone-otp select-context route', () => {
         eventName: 'session_started',
       }),
     );
+  });
+
+  it('does not mint a pending session for a disabled buyer account selected from the picker', async () => {
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+      }),
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.access_disabled).toBe(true);
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('opens onboarding via handoff when request access is chosen for a disabled buyer account', async () => {
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'request-token', buyerId: 'buyer-1' });
+
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+        request_access: true,
+      }),
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=request-token');
+    expect(body.handoff_url).toContain('next=%2Fonboarding');
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
   });
 
   it('mints a seller session unaffected by the handoff branch (seller kind never handed off)', async () => {
@@ -222,5 +300,78 @@ describe('phone-otp select-context route', () => {
     expect(body.redirect).toBe('/dashboard');
     expect(body.session.access_token).toBe('seller-token');
     expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects redeeming a switch-context-created record when the caller session does not match its creator (account-takeover regression guard)', async () => {
+    // Simulates the exact exploit chain: an attacker's switch-context call
+    // wrote a record stamped with the ATTACKER's user id, but its
+    // `candidates` array (from a phone-derived lookup) contains a VICTIM
+    // candidate. A caller whose own session doesn't match the stamped
+    // creator (attacker-user-id) must never be able to redeem it — even if
+    // they otherwise supply a valid ref_id/kind/tenant_id/role/buyer_id.
+    const refId = await writeVerifiedRecord([buyerCandidate], 'attacker-user-id');
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'someone-else-or-no-session',
+      tenant_id: null,
+      role: null,
+      buyer_id: null,
+      location_ids: null,
+    });
+
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const response = await POST(new Request('http://localhost/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-verified-tenant-id': 'tenant-1' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+      }),
+    }) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.success).toBeUndefined();
+    expect(body.session).toBeUndefined();
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('allows redeeming a switch-context-created record when the caller session matches its stamped creator (legitimate switch-context flow)', async () => {
+    mintBuyerSessionMock.mockResolvedValue({
+      session: { access_token: 'access-token', refresh_token: 'refresh-token' },
+    });
+
+    const refId = await writeVerifiedRecord([buyerCandidate], 'legit-user-id');
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'legit-user-id',
+      tenant_id: null,
+      role: null,
+      buyer_id: null,
+      location_ids: null,
+    });
+
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('http://localhost/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-verified-tenant-id': 'tenant-1' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+      }),
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/select-context'),
+    });
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.session.access_token).toBe('access-token');
   });
 });

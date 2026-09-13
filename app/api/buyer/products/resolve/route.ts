@@ -50,6 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       inventoryWarehouseId: context.inventoryWarehouseId,
       campaignByProductId,
       qtyByProductId,
+      publicCatalog: context.publicCatalog,
     });
 
     const items = orderedIds

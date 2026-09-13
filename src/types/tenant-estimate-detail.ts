@@ -20,6 +20,8 @@ export interface EstimateDetailLineItem {
   unit_price: number;
   discount_pct: number;
   line_total: number;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 }
 
 export interface EstimateDetailActivity {

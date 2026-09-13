@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dedupeBuyerAccountCandidates,
   filterBuyerCandidatesForReturnTo,
   pickPreferredBuyerCandidate,
   tenantSlugFromReturnTo,
@@ -23,6 +24,8 @@ function candidate(overrides: Partial<LoginOtpCandidate>): LoginOtpCandidate {
     phone: '9876543210',
     business_name: 'Biz One',
     contact_name: null,
+    buyer_app_enabled: true,
+    tenant_app_enabled: true,
     ...overrides,
   };
 }
@@ -49,5 +52,17 @@ describe('catalog-return-to', () => {
     const admin = candidate({ role: 'buyer_admin', buyer_id: 'b1', business_name: 'Z' });
     const picked = pickPreferredBuyerCandidate([assistant, admin]);
     expect(picked.role).toBe('buyer_admin');
+  });
+
+  it('dedupes owner/delegate rows for the same buyer and prefers enabled admin candidates', () => {
+    const disabledOwner = candidate({ buyer_id: 'b1', role: 'buyer_admin', buyer_app_enabled: false });
+    const enabledDelegate = candidate({ buyer_id: 'b1', role: 'buyer_assistant', buyer_app_enabled: true });
+    const enabledAdmin = candidate({ buyer_id: 'b2', role: 'buyer_admin', buyer_app_enabled: true, business_name: 'A Store' });
+
+    const deduped = dedupeBuyerAccountCandidates([disabledOwner, enabledDelegate, enabledAdmin]);
+
+    expect(deduped).toHaveLength(2);
+    expect(deduped.map((c) => c.buyer_id)).toEqual(['b2', 'b1']);
+    expect(deduped.find((c) => c.buyer_id === 'b1')?.role).toBe('buyer_assistant');
   });
 });

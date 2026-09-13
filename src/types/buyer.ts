@@ -1,6 +1,11 @@
 export interface BuyerCatalogItem {
   id: string;
+  item_type?: 'sku' | 'family';
   tenant_product_id: string;
+  product_family_id?: string | null;
+  child_sku_count?: number;
+  variant_axes?: BuyerFamilyVariantAxis[];
+  price_summary?: BuyerFamilyPriceSummary | null;
   campaign_id: string | null;
   campaign_name: string | null;
   campaign_valid_until: string | null;
@@ -13,6 +18,9 @@ export interface BuyerCatalogItem {
   mrp: number;
   /** Null when the public catalog hides prices until login. */
   price: number | null;
+  catalog_id?: string | null;
+  catalog_pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
+  collect_target_unit_price_range?: boolean;
   resolved_price?: number | null;
   campaign_price?: number | null;
   has_campaign_price?: boolean;
@@ -32,6 +40,40 @@ export interface BuyerCatalogItem {
   on_hand: number;
   /** From campaign_items when product appears in a catalog. */
   is_featured?: boolean;
+}
+
+export interface BuyerFamilyVariantAxis {
+  key: string;
+  label: string;
+  values: string[];
+}
+
+export interface BuyerFamilyPriceSummary {
+  min_price: number | null;
+  max_price: number | null;
+  display: 'single' | 'from' | 'range' | 'hidden';
+}
+
+export interface BuyerFamilySkuOption {
+  tenant_product_id: string;
+  internal_sku: string;
+  display_name: string;
+  attributes: Record<string, string>;
+  price: number | null;
+  resolved_price?: number | null;
+  campaign_price?: number | null;
+  has_campaign_price?: boolean;
+  gst_rate?: number | null;
+  default_uom: string | null;
+  pack_size: number | null;
+  stock_status: 'available' | 'limited' | 'out_of_stock';
+  on_hand: number;
+}
+
+export interface BuyerProductFamilyDetail {
+  family: BuyerCatalogItem;
+  variant_axes: BuyerFamilyVariantAxis[];
+  skus: BuyerFamilySkuOption[];
 }
 
 export interface BuyerCatalogSummary {
@@ -68,6 +110,9 @@ export interface BuyerCatalogResponse {
   items: BuyerCatalogItem[];
   total: number;
   has_more: boolean;
+  catalog_id?: string | null;
+  pricing_mode?: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
+  collect_target_unit_price_range?: boolean;
   catalogs?: BuyerCatalogSummary[];
   selected_campaign_id?: string | null;
   selected_campaign_name?: string | null;

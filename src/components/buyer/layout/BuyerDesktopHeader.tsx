@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { ChevronDown, CircleHelp, LogOut, ReceiptText, Repeat, Search, ShoppingCart, User } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import Image from 'next/image';
 import { useIsFetching } from '@tanstack/react-query';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { TenantLogo } from '@/components/brand/TenantLogo';
 import { Popover, PopoverContent, PopoverTrigger, PopoverClose } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -16,6 +16,7 @@ import { useBuyerSession } from '@/hooks/useBuyerSession';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
+import { OnboardingStatusPill } from '@/components/buyer/layout/OnboardingStatusPill';
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
@@ -107,7 +108,8 @@ export function BuyerDesktopHeader() {
   const { signOut } = useAuth();
   const { openLogin } = useStorefrontLogin();
   const buyerContextResolving = isBuyerLoading && !me;
-  const isGuest = !buyerContextResolving && me?.mode !== 'buyer' && me?.mode !== 'preview';
+  const isPending = !buyerContextResolving && me?.mode === 'pending';
+  const isGuest = !buyerContextResolving && !isPending && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const [switchPending, setSwitchPending] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
@@ -217,18 +219,27 @@ export function BuyerDesktopHeader() {
     <>
       <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--bg-surface)] md:block">
         <div
-          className="mx-auto flex min-h-[64px] w-full items-center gap-4 px-5 py-2.5"
+          className="mx-auto flex min-h-[76px] w-full items-center gap-4 px-5 py-3"
           style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
         >
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {isBuyerLoading ? (
               <div
-                className="h-[3.25rem] w-16 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
+                className="h-14 w-14 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
                 aria-label="Loading tenant logo"
               />
             ) : tenantLogoUrl ? (
-              <Link href={STOREFRONT.home} className="flex h-[3.25rem] w-16 shrink-0 items-center justify-start">
-                <Image src={tenantLogoUrl} alt={tenantName} width={64} height={52} className="h-[3.25rem] w-auto max-w-16 object-contain object-left" unoptimized />
+              <Link
+                href={STOREFRONT.home}
+                className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-cream-200 bg-white p-1 shadow-sm"
+              >
+                <TenantLogo
+                  name={tenantName}
+                  logoUrl={tenantLogoUrl}
+                  size={48}
+                  shape="square"
+                  className="max-h-full max-w-full"
+                />
               </Link>
             ) : (
               <Link href={STOREFRONT.home} className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
@@ -238,7 +249,7 @@ export function BuyerDesktopHeader() {
 
             <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
 
-            {isGuest ? null : (
+            {isGuest || isPending ? null : (
               <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
             )}
           </div>
@@ -270,6 +281,8 @@ export function BuyerDesktopHeader() {
                 <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
                 <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
               </div>
+            ) : isPending ? (
+              <OnboardingStatusPill status={me?.pending?.onboarding_status} />
             ) : isGuest ? (
               <Button
                 type="button"

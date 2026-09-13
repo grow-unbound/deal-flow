@@ -5,7 +5,7 @@ export interface StorefrontTenantRecord {
   slug: string;
   catalogId: string | null;
   liveAt: string | null;
-  pricingMode: 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list' | null;
+  pricingMode: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
   priceListId: string | null;
 }
 

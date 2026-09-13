@@ -196,7 +196,7 @@ function defaultFromImpl(table: string) {
       })),
     };
   }
-  if (table === 'cohort_members') {
+  if (table === 'cohort_members' || table === 'cohort_members_active') {
     return {
       select: vi.fn(() => ({
         eq: vi.fn().mockResolvedValue({ data: [], error: null }),

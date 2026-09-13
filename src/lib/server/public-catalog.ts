@@ -4,7 +4,13 @@ import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { StorefrontTenantRecord } from '@/lib/server/resolve-storefront-tenant';
 
-export type CatalogPricingMode = 'hidden_until_login' | 'base_selling_rate' | 'assigned_price_list';
+export type CatalogPricingMode =
+  | 'hidden_until_login'
+  | 'hide_price_collect_enquiry'
+  | 'base_selling_rate'
+  | 'assigned_price_list';
+export type CatalogAccessMode = 'public_link' | 'approved_buyers_only';
+export type CatalogProductDisplayMode = 'sku_list' | 'group_variants';
 
 export interface PublicCatalogRecord {
   id: string;
@@ -12,6 +18,9 @@ export interface PublicCatalogRecord {
   includeAll: boolean;
   pricingMode: CatalogPricingMode | null;
   priceListId: string | null;
+  accessMode: CatalogAccessMode;
+  collectTargetUnitPriceRange: boolean;
+  productDisplayMode: CatalogProductDisplayMode;
   liveAt: string | null;
 }
 
@@ -38,7 +47,7 @@ export async function loadLivePublicCatalog(
   const { data, error } = await db
     .schema('app')
     .from('catalogs')
-    .select('id, tenant_id, include_all, pricing_mode, price_list_id, live_at')
+    .select('id, tenant_id, include_all, pricing_mode, price_list_id, access_mode, collect_target_unit_price_range, product_display_mode, live_at')
     .eq('tenant_id', tenantId)
     .eq('kind', 'public')
     .is('deleted_at', null)
@@ -54,6 +63,9 @@ export async function loadLivePublicCatalog(
     includeAll: data.include_all !== false,
     pricingMode: (data.pricing_mode as CatalogPricingMode | null) ?? null,
     priceListId: (data.price_list_id as string | null) ?? null,
+    accessMode: (data.access_mode as CatalogAccessMode | null) ?? 'public_link',
+    collectTargetUnitPriceRange: data.collect_target_unit_price_range === true,
+    productDisplayMode: (data.product_display_mode as CatalogProductDisplayMode | null) ?? 'sku_list',
     liveAt: data.live_at as string,
   };
 }
@@ -152,7 +164,7 @@ export function guestUnitPrice(params: {
   assignedPrice: number | null | undefined;
   baseSellingPrice: number | null | undefined;
 }): number | null {
-  if (params.mode === 'hidden_until_login') return null;
+  if (params.mode === 'hidden_until_login' || params.mode === 'hide_price_collect_enquiry') return null;
   if (params.mode === 'assigned_price_list') {
     return params.assignedPrice != null
       ? Number(params.assignedPrice)

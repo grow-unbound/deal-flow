@@ -2,14 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   authCookieDomain,
   buildStorefrontHandoffUrl,
+  catalogHostForCurrentBrowserHost,
   catalogHostForRequest,
+  catalogLoginUrlForCurrentBrowserHost,
   canonicalStorefrontHost,
   canonicalStorefrontUrl,
   isReservedStorefrontLabel,
   parseRequestHost,
   safeReturnToPath,
+  sellerAppHostForCurrentBrowserHost,
   sellerAppHostForRequest,
+  storefrontOriginForCurrentBrowserHost,
   storefrontOriginForRequest,
+  tenantStorefrontHostForCurrentBrowserHost,
   tenantStorefrontHostForRequest,
   toCanonicalHost,
   withAuthCookieDomain,
@@ -155,6 +160,28 @@ describe('storefront host', () => {
         process.env.VERCEL_ENV = original;
       }
     }
+  });
+
+  it('builds browser-visible catalog login URLs on the current suffix', () => {
+    expect(catalogHostForCurrentBrowserHost('wineyard.yukti.so')).toBe('catalog.yukti.so');
+    expect(catalogLoginUrlForCurrentBrowserHost('wineyard.yukti.so'))
+      .toBe('https://catalog.yukti.so/login');
+    expect(catalogLoginUrlForCurrentBrowserHost('wineyard.localhost:3000', 'http:'))
+      .toBe('http://catalog.localhost:3000/login');
+    expect(catalogLoginUrlForCurrentBrowserHost('wineyard.useyukti.in'))
+      .toBe('https://catalog.useyukti.in/login');
+  });
+
+  it('builds browser-visible app and tenant URLs on the current suffix', () => {
+    expect(sellerAppHostForCurrentBrowserHost('catalog.yukti.so')).toBe('app.yukti.so');
+    expect(sellerAppHostForCurrentBrowserHost('catalog.localhost:3000')).toBe('app.localhost:3000');
+    expect(tenantStorefrontHostForCurrentBrowserHost('app.yukti.so', 'wineyard')).toBe('wineyard.yukti.so');
+    expect(tenantStorefrontHostForCurrentBrowserHost('app.localhost:3000', 'wineyard'))
+      .toBe('wineyard.localhost:3000');
+    expect(storefrontOriginForCurrentBrowserHost('app.yukti.so', 'wineyard'))
+      .toBe('https://wineyard.yukti.so');
+    expect(storefrontOriginForCurrentBrowserHost('app.localhost:3000', 'wineyard', 'http:'))
+      .toBe('http://wineyard.localhost:3000');
   });
 
   it('computes the canonical storefront URL from slug', () => {

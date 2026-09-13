@@ -63,6 +63,7 @@ export interface PriceListProductsTabProps {
   validFrom: string | null;
   validTo: string | null;
   priority: number;
+  defaultPricelist?: boolean;
 }
 
 const MEMBER_OPTIONS = [
@@ -102,6 +103,7 @@ export function PriceListProductsTab({
   validFrom,
   validTo,
   priority,
+  defaultPricelist = false,
 }: PriceListProductsTabProps) {
   const [search, setSearch] = useState('');
   const [member, setMember] = useState('yes');
@@ -309,6 +311,7 @@ export function PriceListProductsTab({
                           priority,
                           pricing_strategy: savedPricingStrategy,
                           strategy_value: strategyValue,
+                          default_pricelist: defaultPricelist,
                           membership_mode: 'automatic',
                           selected_product_ids: [],
                           rules: draftRules,

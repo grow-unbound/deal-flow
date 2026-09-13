@@ -65,7 +65,12 @@ export async function GET(
     }
 
     const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'invoices', id);
-    const subtotal = Number(invoice.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const items: BuyerInvoiceItem[] = rawItems.map((item) => ({
+      ...item,
+      unit_price: item.unit_price ?? 0,
+      line_total: item.line_total ?? 0,
+    }));
+    const subtotal = Number(invoice.subtotal ?? items.reduce((sum, i) => sum + i.line_total, 0));
     const tax_total = Number(invoice.tax_amount ?? Math.max(0, Number(invoice.total_amount) - subtotal));
 
     const detail: BuyerInvoiceDetail = {
@@ -79,7 +84,7 @@ export async function GET(
       outstanding_balance: invoice.outstanding_balance != null ? Number(invoice.outstanding_balance) : null,
       subtotal,
       tax_total,
-      items: rawItems,
+      items,
     };
 
     return NextResponse.json({ invoice: detail }, { headers: BUYER_CACHE_PERSONAL });

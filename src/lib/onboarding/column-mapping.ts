@@ -4,6 +4,7 @@ import { ONBOARDING_YUKTI_FIELDS } from '@/lib/onboarding/types';
 
 const FIELD_LABELS: Record<OnboardingYuktiField, string> = {
   name: 'Name',
+  product_family_name: 'Product family',
   internal_sku: 'SKU',
   brand: 'Brand',
   category: 'Category',
@@ -30,6 +31,12 @@ const HEADER_ALIASES: Record<string, OnboardingYuktiField> = {
   productname: 'name',
   item: 'name',
   title: 'name',
+  family: 'product_family_name',
+  'product family': 'product_family_name',
+  productfamily: 'product_family_name',
+  'family name': 'product_family_name',
+  familyname: 'product_family_name',
+  style: 'product_family_name',
   brand: 'brand',
   'brand name': 'brand',
   brandname: 'brand',

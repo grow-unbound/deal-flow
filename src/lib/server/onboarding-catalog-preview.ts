@@ -1,5 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { TENANT_PRODUCT_PUBLIC_SELECT, guestUnitPrice, loadAssignedPriceListPrices, type CatalogPricingMode } from '@/lib/server/public-catalog';
+import {
+  TENANT_PRODUCT_PUBLIC_SELECT,
+  guestUnitPrice,
+  loadAssignedPriceListPrices,
+  type CatalogAccessMode,
+  type CatalogPricingMode,
+  type CatalogProductDisplayMode,
+} from '@/lib/server/public-catalog';
 import { r2Url } from '@/lib/r2-url';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import type { ImportAnomaly } from '@/lib/onboarding/types';
@@ -67,6 +74,12 @@ type ProductRow = {
 
 export interface OnboardingPreviewPayload {
   productCount: number;
+  catalogUpdatedAt: string | null;
+  productReadiness: {
+    activeProductCount: number;
+    anomalyCount: number;
+    missingProductImageCount: number;
+  };
   items: BuyerCatalogItem[];
   brands: BuyerBrand[];
   categories: BuyerCategory[];
@@ -76,6 +89,9 @@ export interface OnboardingPreviewPayload {
   live: boolean;
   pricingMode: CatalogPricingMode | null;
   priceListId: string | null;
+  accessMode: CatalogAccessMode;
+  collectTargetUnitPriceRange: boolean;
+  productDisplayMode: CatalogProductDisplayMode;
   priceLists: Array<{ id: string; name: string }>;
   photoTargets: Array<{
     key: string;
@@ -93,7 +109,7 @@ export async function loadOnboardingPreview(
 ): Promise<OnboardingPreviewPayload> {
   const [{ data: tenant }, { data: catalog }, { count }, { data: priceListRows }] = await Promise.all([
     db.schema('app').from('tenants').select('slug, business_name').eq('id', tenantId).maybeSingle(),
-    db.schema('app').from('catalogs').select('live_at, pricing_mode, price_list_id').eq('tenant_id', tenantId).eq('kind', 'public').is('deleted_at', null).maybeSingle(),
+    db.schema('app').from('catalogs').select('live_at, updated_at, pricing_mode, price_list_id, access_mode, collect_target_unit_price_range, product_display_mode').eq('tenant_id', tenantId).eq('kind', 'public').is('deleted_at', null).maybeSingle(),
     db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true).is('deleted_at', null),
     db.schema('app').from('price_lists').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null).limit(200),
   ]);
@@ -200,6 +216,15 @@ export async function loadOnboardingPreview(
     .is('deleted_at', null)
     .limit(500);
 
+  const { data: imageSource } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id, image_urls, r2_small_key, r2_medium_key, r2_large_key')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .limit(10_000);
+
   const anomalies: ImportAnomaly[] = [];
   for (const row of (anomalySource ?? []) as Array<{
     id: string;
@@ -220,6 +245,16 @@ export async function loadOnboardingPreview(
       anomalies.push({ sku: row.internal_sku ?? '', productName, kind: 'zero_price', message: 'Base selling rate missing', productId: row.id });
     }
   }
+
+  const missingProductImageCount = ((imageSource ?? []) as Array<{
+    image_urls: string[] | null;
+    r2_small_key: string | null;
+    r2_medium_key: string | null;
+    r2_large_key: string | null;
+  }>).filter((row) => {
+    const hasLegacyImage = Array.isArray(row.image_urls) && row.image_urls.some((url) => url.trim().length > 0);
+    return !hasLegacyImage && !row.r2_small_key && !row.r2_medium_key && !row.r2_large_key;
+  }).length;
 
   const brands: BuyerBrand[] = [...brandMap.entries()].map(([id, b]) => ({
     id,
@@ -257,6 +292,12 @@ export async function loadOnboardingPreview(
 
   return {
     productCount: count ?? rows.length,
+    catalogUpdatedAt: ((catalog as { updated_at?: string | null } | null)?.updated_at) ?? null,
+    productReadiness: {
+      activeProductCount: count ?? rows.length,
+      anomalyCount: anomalies.length,
+      missingProductImageCount,
+    },
     items,
     brands,
     categories,
@@ -266,6 +307,9 @@ export async function loadOnboardingPreview(
     live: Boolean((catalog as { live_at?: string | null } | null)?.live_at),
     pricingMode: ((catalog as { pricing_mode?: CatalogPricingMode | null } | null)?.pricing_mode) ?? null,
     priceListId: ((catalog as { price_list_id?: string | null } | null)?.price_list_id) ?? null,
+    accessMode: ((catalog as { access_mode?: CatalogAccessMode | null } | null)?.access_mode) ?? 'public_link',
+    collectTargetUnitPriceRange: ((catalog as { collect_target_unit_price_range?: boolean | null } | null)?.collect_target_unit_price_range) === true,
+    productDisplayMode: ((catalog as { product_display_mode?: CatalogProductDisplayMode | null } | null)?.product_display_mode) ?? 'sku_list',
     priceLists: ((priceListRows ?? []) as Array<{ id: string; name: string }>).map((pl) => ({ id: pl.id, name: pl.name })),
     photoTargets,
   };

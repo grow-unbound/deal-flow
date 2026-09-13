@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusPill } from '@/components/ui/status-pill';
 import { useTenant } from '@/contexts/TenantContext';
-import { CANONICAL_STOREFRONT_SUFFIX } from '@/lib/storefront-host';
+import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
 
 export function CatalogUnpublishedIntercept(): React.ReactNode {
   return (
@@ -21,7 +21,7 @@ export function CatalogUnpublishedIntercept(): React.ReactNode {
           <p className="mt-1 text-body-sm text-cream-400">Get a shareable catalog link in a few minutes.</p>
         </div>
         <Button asChild variant="accent" className="shrink-0">
-          <Link href="/setup/catalog">
+          <Link href="/catalogs">
             Set it up
             <ArrowRight className="h-4 w-4" />
           </Link>
@@ -34,8 +34,12 @@ export function CatalogUnpublishedIntercept(): React.ReactNode {
 export function CatalogLiveShareCard(): React.ReactNode {
   const { currentTenant } = useTenant();
   const slug = currentTenant?.slug ?? '';
-  const href = currentTenant?.storefront_url ?? (slug ? `https://${slug}.${CANONICAL_STOREFRONT_SUFFIX}` : '');
-  const host = slug ? `${slug}.${CANONICAL_STOREFRONT_SUFFIX}` : '';
+  const href = currentTenant?.storefront_url ?? (
+    slug && typeof window !== 'undefined'
+      ? storefrontOriginForCurrentBrowserHost(window.location.host, slug, window.location.protocol)
+      : ''
+  );
+  const host = href ? href.replace(/^https?:\/\//, '') : '';
 
   async function copyLink() {
     if (!href) return;

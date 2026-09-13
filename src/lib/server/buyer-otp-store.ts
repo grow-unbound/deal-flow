@@ -20,6 +20,8 @@ export interface LoginOtpContext {
   // Disambiguates accounts that share a phone number but belong to different
   // auth users (currently only populated for seller candidates).
   email?: string | null;
+  buyer_app_enabled?: boolean | null;
+  tenant_app_enabled?: boolean | null;
 }
 
 export interface LoginOtpCandidate extends LoginOtpContext {
@@ -56,6 +58,22 @@ type OtpVerifiedRecord = {
   phone: string;
   expiresAt: number;
   candidates: LoginOtpCandidate[];
+  // True only when this record was written immediately after a real OTP
+  // hash check succeeded (phone-otp/verify route, multi-candidate branch).
+  // False when written by the switch-context shortcut, which derives
+  // `phone` from a mutable app.buyers.phone lookup (resolveCallerPhone),
+  // not a fresh OTP. select-context reads this to decide whether the
+  // eventual session mint may stamp otp_verified_phone -- see the Task 6
+  // fix report / 20260911013323_fix_buyer_signup_rpcs_otp_anchor.sql.
+  otpVerified: boolean;
+  // auth.uid() of the authenticated caller that created this record via
+  // /api/auth/switch-context. NULL for records written by the
+  // unauthenticated phone-otp/verify flow. When non-null, select-context
+  // MUST require the redeeming caller's own session to match this id --
+  // otherwise a record built off a poisoned app.buyers.phone lookup can be
+  // redeemed to mint a session for an arbitrary candidate it lists. See
+  // 20260911021124_bind_switch_context_creator_identity.sql.
+  createdByUserId: string | null;
 };
 
 export type BuyerOtpRecord = OtpPendingRecord | OtpVerifiedRecord;
@@ -74,8 +92,19 @@ export const buyerOtpStore = {
 
       if (!data) return null;
 
+      if (data.kind === 'verified') {
+        return {
+          kind: 'verified',
+          phone: data.phone,
+          expiresAt: data.expires_at,
+          candidates: data.candidates,
+          otpVerified: Boolean(data.otp_verified),
+          createdByUserId: data.created_by_user_id ?? null,
+        };
+      }
+
       return {
-        kind: data.kind as 'pending' | 'verified',
+        kind: 'pending',
         otp: data.otp_hash ?? data.otp,
         phone: data.phone,
         expiresAt: data.expires_at,
@@ -105,6 +134,9 @@ export const buyerOtpStore = {
         // Only insert() (send route, brand-new record) hashes plaintext input.
         payload.otp_hash = record.otp;
         payload.attempts = record.attempts;
+      } else {
+        payload.otp_verified = record.otpVerified;
+        payload.created_by_user_id = record.createdByUserId;
       }
       await supabaseAdmin.schema('app')
         .from('otp_sessions')
@@ -168,6 +200,9 @@ export const buyerOtpStore = {
         // send route) — hash it before it touches the DB.
         payload.otp_hash = hashOtp(record.otp);
         payload.attempts = record.attempts;
+      } else {
+        payload.otp_verified = record.otpVerified;
+        payload.created_by_user_id = record.createdByUserId;
       }
       const { data } = await supabaseAdmin.schema('app')
         .from('otp_sessions')
@@ -189,15 +224,33 @@ const VERIFIED_RECORD_TTL_MS = 5 * 60 * 1000;
  * and returns its ref_id (or null on failure). Shared by the OTP verify route
  * (candidates.length > 1) and the authenticated switch-account route — both
  * hand the resulting ref_id to the same /login/select-context picker.
+ *
+ * `otpVerified` MUST be `true` only when this call is made immediately after
+ * a real OTP hash check succeeded for `phone` (phone-otp/verify route) — pass
+ * `false` for any other caller (e.g. switch-context, which derives `phone`
+ * from a mutable app.buyers.phone lookup, not a fresh OTP). select-context
+ * uses this flag to decide whether the resulting session mint may stamp
+ * otp_verified_phone.
+ *
+ * `createdByUserId` MUST be the authenticated caller's auth.uid() when this
+ * call is made by an already-logged-in user (switch-context) — pass `null`
+ * for the unauthenticated phone-otp/verify flow, where there is no caller
+ * identity yet (a real OTP hash check is the authorization there). When
+ * non-null, select-context requires the redeeming caller's own session to
+ * match it before it will mint a session for any candidate in this record.
  */
 export async function writeVerifiedCandidatesRecord(
   phone: string,
   candidates: LoginOtpCandidate[],
+  otpVerified: boolean,
+  createdByUserId: string | null = null,
 ): Promise<string | null> {
   return buyerOtpStore.insert({
     kind: 'verified',
     phone,
     expiresAt: Date.now() + VERIFIED_RECORD_TTL_MS,
     candidates,
+    otpVerified,
+    createdByUserId,
   });
 }

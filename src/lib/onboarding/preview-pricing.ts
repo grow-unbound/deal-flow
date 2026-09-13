@@ -25,7 +25,7 @@ export function applyOnboardingPreviewPrices(
   mode: CatalogPricingMode | '',
   assignedByProductId: AssignedPriceMap | null,
 ): BuyerCatalogItem[] {
-  if (!mode || mode === 'hidden_until_login') {
+  if (!mode || mode === 'hidden_until_login' || mode === 'hide_price_collect_enquiry') {
     return items;
   }
   if (mode === 'base_selling_rate') {

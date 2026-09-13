@@ -201,6 +201,60 @@ describe('buyer orders route', () => {
     });
   });
 
+  it('rejects POST for a buyer_pending session with buyer_app_enabled=false', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: {
+        sub: 'user-1',
+        tenant_id: 'tenant-1',
+        role: 'buyer_pending',
+        buyer_id: 'buyer-1',
+        mode: 'buyer',
+        share_token: null,
+        preview: null,
+      },
+      buyer: { id: 'buyer-1', phone: '9876543210', contact_name: 'Ravi', business_name: 'Ravi Wines', buyer_app_enabled: false },
+      tenant: { id: 'tenant-1', business_name: 'WineYard', slug: 'wineyard' },
+    });
+
+    const { POST } = await import('../../app/api/buyer/orders/route');
+    const response = await POST(withNextUrl(new Request('http://localhost/api/buyer/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [{ tenant_product_id: 'prod-1', qty: 2, unit_price: 500 }],
+        location_id: 'loc-1',
+        place_of_supply: 'Andheri East',
+      }),
+    })) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.success).toBe(false);
+    expect(orderInsertPayloads.length).toBe(0);
+  });
+
+  it('rejects GET for a buyer_pending session with buyer_app_enabled=false', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: {
+        sub: 'user-1',
+        tenant_id: 'tenant-1',
+        role: 'buyer_pending',
+        buyer_id: 'buyer-1',
+        mode: 'buyer',
+        share_token: null,
+        preview: null,
+      },
+      buyer: { id: 'buyer-1', phone: '9876543210', contact_name: 'Ravi', business_name: 'Ravi Wines', buyer_app_enabled: false },
+      tenant: { id: 'tenant-1', business_name: 'WineYard', slug: 'wineyard' },
+    });
+
+    const { GET } = await import('../../app/api/buyer/orders/route');
+    const response = await GET(withNextUrl(new Request('http://localhost/api/buyer/orders')) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBeDefined();
+  });
+
   it('defers whatsapp and returns the pending note when outbound integration owns numbering', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue({
       context: {

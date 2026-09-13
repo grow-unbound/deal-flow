@@ -21,15 +21,19 @@ import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } fr
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 import { syncEstimateEntrySafe } from '@/lib/server/inbox-entries';
+import { loadLivePublicCatalog } from '@/lib/server/public-catalog';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
   items: Array<{
     tenant_product_id: string;
     qty: number;
-    unit_price: number;
+    unit_price?: number | null;
     gst_rate?: number | null;
     product_name?: string;
+    buyer_target_unit_price_min?: number | null;
+    buyer_target_unit_price_max?: number | null;
+    buyer_note?: string | null;
   }>;
   notes?: string;
   campaign_id?: string | null;
@@ -52,6 +56,7 @@ interface EstimateRow {
   estimate_number: string | null;
   status: string;
   total_amount: number;
+  estimate_type: string | null;
   created_at: string;
   notes: string | null;
 }
@@ -77,6 +82,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Defense-in-depth: requireBuyerAccessProfile deliberately lets a
+    // `buyer_pending` session read its own row (so /api/buyer/me and the
+    // intake screen work), but this route uses the service-role client for
+    // the actual estimate insert, which bypasses RLS entirely. Matches the
+    // pattern in app/api/buyer/orders/route.ts and app/api/buyer/me/route.ts.
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const context = profile.context;
 
     let body: EstimateRequest;
@@ -96,15 +116,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Cart must have at least one item' }, { status: 400 });
     }
+    const db = supabaseAdmin ?? supabase;
+    const tenant_id = context.tenant_id;
+    const sub = context.sub;
+    if (!tenant_id || !sub) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     for (const item of items) {
       if (!item.tenant_product_id) {
         return NextResponse.json({ success: false, error: 'Each item must have a valid tenant_product_id' }, { status: 400 });
       }
       if (typeof item.qty !== 'number' || item.qty <= 0) {
         return NextResponse.json({ success: false, error: 'Each item must have qty > 0' }, { status: 400 });
-      }
-      if (typeof item.unit_price !== 'number' || item.unit_price <= 0) {
-        return NextResponse.json({ success: false, error: 'Each item must have unit_price > 0' }, { status: 400 });
       }
     }
 
@@ -117,6 +141,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         document_status_note: null,
         whatsapp_sent: false,
       });
+    }
+
+    const publicCatalog = await loadLivePublicCatalog(db as any, tenant_id);
+    const hiddenPriceEnquiry = publicCatalog?.pricingMode === 'hide_price_collect_enquiry';
+    const collectTargetRange = hiddenPriceEnquiry && publicCatalog.collectTargetUnitPriceRange === true;
+
+    for (const item of items) {
+      if (!hiddenPriceEnquiry && (typeof item.unit_price !== 'number' || item.unit_price <= 0)) {
+        return NextResponse.json({ success: false, error: 'Each item must have unit_price > 0' }, { status: 400 });
+      }
+      const minTarget = item.buyer_target_unit_price_min;
+      const maxTarget = item.buyer_target_unit_price_max;
+      const hasMin = minTarget != null;
+      const hasMax = maxTarget != null;
+      if ((hasMin || hasMax) && !collectTargetRange) {
+        return NextResponse.json({ success: false, error: 'Target price range is not enabled for this catalog' }, { status: 400 });
+      }
+      if (hasMin || hasMax) {
+        if (typeof minTarget !== 'number' || typeof maxTarget !== 'number') {
+          return NextResponse.json({ success: false, error: 'Enter both min and max target rates' }, { status: 400 });
+        }
+        if (!Number.isFinite(minTarget) || !Number.isFinite(maxTarget) || minTarget < 0 || maxTarget < minTarget) {
+          return NextResponse.json({ success: false, error: 'Target rate range is invalid' }, { status: 400 });
+        }
+      }
     }
 
     if (!profile.buyer?.id) {
@@ -133,14 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       );
     }
 
-    const tenant_id = context.tenant_id;
-    const sub = context.sub;
-    if (!tenant_id || !sub) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const buyer_id = profile.buyer.id;
-    const db = supabaseAdmin ?? supabase;
     const routedLocationId = await resolveTenantScopedLocationId(db, tenant_id, requestedLocationId);
     if (!routedLocationId) {
       return NextResponse.json(
@@ -152,7 +194,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const stockValidation = await validateBuyerCartStock(db as any, {
       tenantId: tenant_id,
       warehouseId: inventoryWarehouseId,
-      items,
+      items: items.map((item) => ({ ...item, unit_price: Number(item.unit_price ?? 0) })),
       enforceStock: false,
     });
     if (!stockValidation.ok) {
@@ -161,19 +203,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         { status: stockValidation.status },
       );
     }
-    const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
+    const resolvedCampaignId = hiddenPriceEnquiry ? null : await inferCampaignIdForBuyerCart(db, {
       tenantId: tenant_id,
       buyerId: buyer_id,
       clientCampaignId: campaign_id,
       tenantProductIds: stockValidation.items.map((item) => item.tenant_product_id),
     });
 
-    const priceResolution = await resolveAuthoritativePrices(db as any, {
-      tenantId: tenant_id,
-      buyerId: buyer_id,
-      items: stockValidation.items,
-      campaignId: resolvedCampaignId,
-    });
+    const priceResolution = hiddenPriceEnquiry
+      ? { ok: true as const, items: stockValidation.items }
+      : await resolveAuthoritativePrices(db as any, {
+          tenantId: tenant_id,
+          buyerId: buyer_id,
+          items: stockValidation.items,
+          campaignId: resolvedCampaignId,
+        });
     if (!priceResolution.ok) {
       return NextResponse.json(
         { success: false, error: priceResolution.error },
@@ -183,8 +227,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const acceptedItems = priceResolution.items;
 
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
-    const subtotal = acceptedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
-    const tax_amount = policy.gst_inclusive
+    const subtotal = hiddenPriceEnquiry ? 0 : acceptedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+    const tax_amount = hiddenPriceEnquiry || policy.gst_inclusive
       ? 0
       : acceptedItems.reduce((sum, item) => {
           const rate = Number(item.gst_rate ?? policy.gst_rate);
@@ -201,9 +245,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       || 'Unknown';
     const cart_hash = createHash('sha256')
       .update(JSON.stringify({
-          items: sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price })),
+          items: sortedItems.map((i) => ({
+            id: i.tenant_product_id,
+            qty: i.qty,
+            price: hiddenPriceEnquiry ? null : i.unit_price,
+            target_min: items.find((item) => item.tenant_product_id === i.tenant_product_id)?.buyer_target_unit_price_min ?? null,
+            target_max: items.find((item) => item.tenant_product_id === i.tenant_product_id)?.buyer_target_unit_price_max ?? null,
+          })),
         location_id: routedLocationId,
         place_of_supply: placeOfSupply,
+        estimate_type: hiddenPriceEnquiry ? 'without_price' : 'with_price',
       }))
       .digest('hex');
 
@@ -253,6 +304,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         status: 'draft',
         source: 'buyer_app',
         is_buyer_app_estimate: true,
+        estimate_type: hiddenPriceEnquiry ? 'without_price' : 'with_price',
+        catalog_id: publicCatalog?.id ?? null,
+        price_visibility: hiddenPriceEnquiry ? 'hide_price' : 'show_price',
         expires_at: expiresAt,
         subtotal,
         total_amount,
@@ -273,14 +327,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
     const typed = newEstimate as { id: string; estimate_number: string | null };
 
-    const estimateItemRows = acceptedItems.map((item) => ({
+    const targetByProductId = new Map(items.map((item) => [item.tenant_product_id, item]));
+    const estimateItemRows = acceptedItems.map((item) => {
+      const target = targetByProductId.get(item.tenant_product_id);
+      return ({
       estimate_id: typed.id,
       tenant_product_id: item.tenant_product_id,
       qty: item.qty,
-      unit_price: item.unit_price,
-      tax_rate: item.gst_rate ?? policy.gst_rate,
-      line_total: item.qty * item.unit_price,
-    }));
+      unit_price: hiddenPriceEnquiry ? null : item.unit_price,
+      tax_rate: hiddenPriceEnquiry ? null : (item.gst_rate ?? policy.gst_rate),
+      line_total: hiddenPriceEnquiry ? null : item.qty * item.unit_price,
+      buyer_target_unit_price_min: collectTargetRange ? target?.buyer_target_unit_price_min ?? null : null,
+      buyer_target_unit_price_max: collectTargetRange ? target?.buyer_target_unit_price_max ?? null : null,
+      buyer_note: typeof target?.buyer_note === 'string' ? target.buyer_note.trim() || null : null,
+    });
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: itemsError } = await (db as any).schema('app').from('estimate_items').insert(estimateItemRows);
@@ -308,6 +369,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
           item_count: acceptedItems.length,
           total_amount,
           source: 'buyer_app',
+          estimate_type: hiddenPriceEnquiry ? 'without_price' : 'with_price',
         },
       });
       void ph.flush().catch(() => {});
@@ -315,8 +377,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       // non-blocking
     }
 
-    const whatsappDispatched = !deferDocumentNumber && Boolean(typed.estimate_number);
-    if (!deferDocumentNumber && typed.estimate_number) {
+    const whatsappDispatched = !hiddenPriceEnquiry && !deferDocumentNumber && Boolean(typed.estimate_number);
+    if (!deferDocumentNumber && typed.estimate_number && !hiddenPriceEnquiry) {
       void sendImmediateTransactionNotifications({
         kind: 'estimate',
         tenantId: tenant_id,
@@ -370,6 +432,17 @@ export async function GET(request: NextRequest) {
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Defense-in-depth: see the matching comment in POST above.
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
+    }
+
     const context = profile.context;
 
     if (context.mode === 'preview' && !context.buyer_id) {
@@ -391,7 +464,7 @@ export async function GET(request: NextRequest) {
     let query = (db as any)
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, status, total_amount, created_at, notes')
+      .select('id, estimate_number, status, total_amount, estimate_type, created_at, notes')
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
       .is('deleted_at', null)
@@ -435,6 +508,7 @@ export async function GET(request: NextRequest) {
       estimate_number: e.estimate_number,
       status: e.status,
       total_amount: Number(e.total_amount ?? 0),
+      estimate_type: e.estimate_type ?? 'with_price',
       created_at: e.created_at,
       notes: e.notes ?? null,
     }));

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
@@ -6,7 +7,8 @@ import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { normalizeIndianPhone } from '@/lib/phone';
 import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
-import { getCachedGuestPricingContext, type CatalogPricingMode } from '@/lib/server/public-catalog';
+import { getCachedGuestPricingContext, loadLivePublicCatalog, type CatalogPricingMode } from '@/lib/server/public-catalog';
+import { resolvePendingSessionOnboardingStatus } from '@/lib/server/buyer-onboarding-status';
 
 interface BuyerMeResponse {
   mode: BuyerAppMode;
@@ -58,6 +60,11 @@ interface BuyerMeResponse {
     enabled: boolean;
     block_order_on_oos: boolean;
   };
+  buyer_catalog?: {
+    id: string | null;
+    pricing_mode: CatalogPricingMode | null;
+    collect_target_unit_price_range: boolean;
+  };
   // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
   // the explicit consent checkbox — the buyer-side client redirects to /consent
   // until this clears. Always false for seller preview (no real buyer row).
@@ -71,7 +78,33 @@ interface BuyerMeResponse {
     seller_whatsapp_number: string | null;
     prefill_full_name: string | null;
     prefill_email: string | null;
+    /**
+     * Task 10: the buyer's actual onboarding_status column value, sourced
+     * from app.get_buyer_onboarding_status() (Task 6) rather than re-derived
+     * here — see that RPC for the authoritative shape. Null only if the RPC
+     * call itself failed (non-blocking; the rest of the pending payload is
+     * still returned) or before intake is submitted, when the row may not
+     * yet have progressed past the DB default.
+     */
+    onboarding_status: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null;
+    /** Populated only when onboarding_status === 'needs_more_info'. */
+    missing_fields: string[] | null;
+    declined_reason: string | null;
   };
+}
+
+function createRequestScopedClient(request: NextRequest) {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        // Read-only usage — no response to attach refreshed cookies to.
+        setAll: () => {},
+      },
+    },
+  );
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -150,6 +183,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
 
     const rawSettings = (tsRow as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+    const liveCatalog = await loadLivePublicCatalog(db, context.tenant_id!);
+    const buyerCatalog = {
+      id: liveCatalog?.id ?? null,
+      pricing_mode: liveCatalog?.pricingMode ?? null,
+      collect_target_unit_price_range: liveCatalog?.collectTargetUnitPriceRange ?? false,
+    };
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
     const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
     const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
@@ -208,6 +247,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
+        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
       };
 
@@ -246,6 +286,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
+        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
         guest_pricing_mode: guestPricing?.mode ?? null,
       };
@@ -291,6 +332,48 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         prefillEmail = row?.email?.trim() || null;
       }
 
+      // Task 10: surface the authoritative onboarding_status/missing_fields by
+      // calling Task 6's app.get_buyer_onboarding_status() RPC rather than
+      // re-deriving the same data from buyer.custom_fields a second way. The
+      // RPC is SECURITY DEFINER and reads app.jwt_buyer_id()/app.jwt_tenant_id()
+      // off the caller's own JWT claims (populated by custom_access_token_hook
+      // for a buyer_pending session) — it must be invoked via a request-scoped
+      // client carrying this request's own auth cookies, not supabaseAdmin
+      // (service-role calls carry no buyer_id/tenant_id claims), matching the
+      // pattern already used in app/api/buyer/onboarding/existing-profiles.
+      let onboardingStatus: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null = null;
+      let missingFields: string[] | null = null;
+      let declinedReason: string | null = null;
+      try {
+        const scoped = createRequestScopedClient(request);
+        const { data: statusData, error: statusError } = await scoped
+          .schema('app')
+          .rpc('get_buyer_onboarding_status');
+        if (statusError) {
+          console.error('[GET /api/buyer/me] get_buyer_onboarding_status rpc failed:', statusError);
+        } else {
+          const row = statusData as {
+            onboarding_status?: string | null;
+            missing_fields?: string[] | null;
+            declined_reason?: string | null;
+          } | null;
+          onboardingStatus = (row?.onboarding_status ?? null) as typeof onboardingStatus;
+          missingFields = row?.missing_fields ?? null;
+          declinedReason = row?.declined_reason ?? null;
+        }
+      } catch (rpcError) {
+        console.error('[GET /api/buyer/me] get_buyer_onboarding_status rpc threw:', rpcError);
+      }
+
+      // Task 10 review, Minor #1 (scoped in the follow-up review fix): only a
+      // genuinely self-registered buyer awaiting approval should ever have
+      // their onboarding_status normalized to 'pending_approval' — a
+      // seller-created/CSV-imported buyer with buyer_app_enabled=false is
+      // legitimately 'approved' (or null) and must not be relabeled as still
+      // verifying. See resolvePendingSessionOnboardingStatus's doc.
+      const isSelfRegistered = customFields.storefront_self_registered === true;
+      onboardingStatus = resolvePendingSessionOnboardingStatus(onboardingStatus, isSelfRegistered);
+
       const payload: BuyerMeResponse = {
         mode: 'pending',
         buyer_id: buyer.id,
@@ -316,6 +399,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         order_features: orderFeatures,
         business_policy: businessPolicy,
         stock_visibility: stockVisibility,
+        buyer_catalog: buyerCatalog,
         whatsapp_consent_required: false,
         pending: {
           intake_submitted: Boolean(customFields.intake_submitted_at),
@@ -323,6 +407,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           seller_whatsapp_number: sellerWhatsappNumber,
           prefill_full_name: prefillFullName,
           prefill_email: prefillEmail,
+          onboarding_status: onboardingStatus,
+          missing_fields: onboardingStatus === 'needs_more_info' ? missingFields : null,
+          declined_reason: onboardingStatus === 'declined' ? declinedReason : null,
         },
       };
 
@@ -470,6 +557,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       order_features: orderFeatures,
       business_policy: businessPolicy,
       stock_visibility: stockVisibility,
+      buyer_catalog: buyerCatalog,
       whatsapp_consent_required: !buyer.whatsapp_consent_at,
     };
 
@@ -563,6 +651,52 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
       if (phoneMatch) {
         return NextResponse.json({ error: 'A buyer with this phone number already exists.' }, { status: 409 });
+      }
+
+      // Defense-in-depth (paired with the switch-buyer fix in
+      // app/api/auth/switch-buyer/route.ts): the check above only scans
+      // app.buyers, so it previously let an attacker rewrite their own
+      // app.buyers.phone to collide with an existing same-tenant delegate's
+      // app.buyer_users.phone — a collision switch-buyer's pre-fix
+      // resolveCallerPhone/findBuyerLoginCandidates chain trusted as proof of
+      // that delegate's identity. buyer_users has no tenant_id column, so the
+      // tenant scope is resolved via a second lookup against app.buyers
+      // rather than a single-query embed.
+      const { data: buyerUserPhoneRows, error: buyerUserPhoneError } = await db
+        .schema('app')
+        .from('buyer_users')
+        .select('buyer_id')
+        .eq('phone', updateData.phone)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .neq('buyer_id', buyerId);
+
+      if (buyerUserPhoneError) {
+        return NextResponse.json({ error: 'Failed to validate phone number' }, { status: 500 });
+      }
+
+      const otherBuyerIds = Array.from(
+        new Set((buyerUserPhoneRows ?? []).map((row: { buyer_id: string }) => row.buyer_id)),
+      ).filter(Boolean);
+
+      if (otherBuyerIds.length > 0) {
+        const { data: tenantBuyerUserMatch, error: tenantBuyerUserMatchError } = await db
+          .schema('app')
+          .from('buyers')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .in('id', otherBuyerIds)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+
+        if (tenantBuyerUserMatchError) {
+          return NextResponse.json({ error: 'Failed to validate phone number' }, { status: 500 });
+        }
+
+        if (tenantBuyerUserMatch) {
+          return NextResponse.json({ error: 'A buyer with this phone number already exists.' }, { status: 409 });
+        }
       }
     }
 
