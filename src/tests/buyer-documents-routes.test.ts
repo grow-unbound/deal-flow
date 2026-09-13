@@ -345,7 +345,7 @@ describe('buyer document routes', () => {
       });
       dbState.buyers.push({ id: 'other-buyer', phone: '9990000001' });
       getUserByIdMock.mockResolvedValue({
-        data: { user: { user_metadata: { otp_verified_phone: '9990000002' } } },
+        data: { user: { app_metadata: { otp_verified_phone: '9990000002' } } },
         error: null,
       });
 
@@ -387,7 +387,7 @@ describe('buyer document routes', () => {
       );
       dbState.buyers.push({ id: 'other-buyer', phone: '9990000002' });
       getUserByIdMock.mockResolvedValue({
-        data: { user: { user_metadata: { otp_verified_phone: '9990000002' } } },
+        data: { user: { app_metadata: { otp_verified_phone: '9990000002' } } },
         error: null,
       });
 
@@ -425,7 +425,7 @@ describe('buyer document routes', () => {
       });
       dbState.buyers.push({ id: 'other-buyer', phone: '9990000002' });
       getUserByIdMock.mockResolvedValue({
-        data: { user: { user_metadata: { otp_verified_phone: '9990000002' } } },
+        data: { user: { app_metadata: { otp_verified_phone: '9990000002' } } },
         error: null,
       });
 

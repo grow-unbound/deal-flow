@@ -64,7 +64,7 @@ describe('POST /api/buyer/onboarding/existing-profiles', () => {
   it('derives the phone from the session and excludes the current tenant, never trusting client input', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
     getUserMock.mockResolvedValue({
-      data: { user: { user_metadata: { otp_verified_phone: '9990000001' } } },
+      data: { user: { app_metadata: { otp_verified_phone: '9990000001' } } },
       error: null,
     });
     const rows = [
@@ -102,7 +102,7 @@ describe('POST /api/buyer/onboarding/existing-profiles', () => {
   it('returns 500 when the rpc errors', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
     getUserMock.mockResolvedValue({
-      data: { user: { user_metadata: { otp_verified_phone: '9990000001' } } },
+      data: { user: { app_metadata: { otp_verified_phone: '9990000001' } } },
       error: null,
     });
     rpcMock.mockResolvedValue({ data: null, error: { message: 'boom' } });

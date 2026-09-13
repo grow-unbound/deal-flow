@@ -20,7 +20,10 @@ import { normalizeGstin } from '@/lib/server/buyer-document-presign';
  * Phone-keyed (personal, no gstin in the body) lookups MUST derive the phone
  * from this session's own OTP-verified identity, never a client-supplied
  * value or a database column — the RPC itself enforces this by checking
- * auth.jwt() -> user_metadata.otp_verified_phone, which only resolves under
+ * auth.jwt() -> app_metadata.otp_verified_phone (moved out of user_metadata,
+ * which is client-writable via the public
+ * supabase.auth.updateUser({data:...}) call and was therefore self-forgeable;
+ * see 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql), which only resolves under
  * the caller's own session (service_role has no JWT, so calling the phone
  * branch as service_role always fails auth.uid() IS NULL inside the
  * function). So the phone branch is called through a request-scoped client
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const otpVerifiedPhone = (userData.user.user_metadata as Record<string, unknown> | null)?.otp_verified_phone;
+    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
     if (typeof otpVerifiedPhone !== 'string' || !otpVerifiedPhone.trim()) {
       // No OTP-verified phone on this session (e.g. a seller-created buyer that
       // never went through phone-OTP self-registration) — nothing to check.

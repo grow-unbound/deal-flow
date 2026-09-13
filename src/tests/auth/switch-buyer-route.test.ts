@@ -75,7 +75,7 @@ describe('POST /api/auth/switch-buyer', () => {
       location_ids: null,
     });
     getUserByIdMock.mockResolvedValue({
-      data: { user: { user_metadata: { phone: '9990009901' /* poisoned, no otp_verified_phone */ } } },
+      data: { user: { app_metadata: { phone: '9990009901' /* poisoned, no otp_verified_phone */ } } },
       error: null,
     });
 
@@ -102,7 +102,7 @@ describe('POST /api/auth/switch-buyer', () => {
       location_ids: null,
     });
     getUserByIdMock.mockResolvedValue({
-      data: { user: { user_metadata: { phone: '9990009901', otp_verified_phone: '9990009902' } } },
+      data: { user: { app_metadata: { phone: '9990009901', otp_verified_phone: '9990009902' } } },
       error: null,
     });
     // findBuyerLoginCandidates is called with the OTP-verified phone
@@ -129,7 +129,7 @@ describe('POST /api/auth/switch-buyer', () => {
       location_ids: null,
     });
     getUserByIdMock.mockResolvedValue({
-      data: { user: { user_metadata: { phone: '9990009902', otp_verified_phone: '9990009902' } } },
+      data: { user: { app_metadata: { phone: '9990009902', otp_verified_phone: '9990009902' } } },
       error: null,
     });
     // The attacker's OWN real, OTP-verified phone genuinely also links a

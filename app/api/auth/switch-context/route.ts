@@ -14,8 +14,11 @@ import { supabaseAdmin } from '@/lib/supabase';
  * picker (/login/select-context) without a fresh OTP.
  *
  * SECURITY: the phone driving the candidate lookup MUST be the caller's
- * OTP-verified phone (`user_metadata.otp_verified_phone`, stamped only by a
- * real OTP hash check — see 20260911013323_fix_buyer_signup_rpcs_otp_anchor.sql),
+ * OTP-verified phone (`app_metadata.otp_verified_phone`, stamped only by a
+ * real OTP hash check — see 20260911013323_fix_buyer_signup_rpcs_otp_anchor.sql
+ * and 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql — moved out of
+ * user_metadata, which is client-writable via the public
+ * supabase.auth.updateUser({data:...}) call and was therefore self-forgeable),
  * never `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone). Those
  * are ordinary mutable business columns with no OTP re-verification on write
  * (PATCH /api/buyer/me can rewrite them to an arbitrary phone, including a
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const otpVerifiedPhone = (userData.user.user_metadata as Record<string, unknown> | null)?.otp_verified_phone;
+    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
     const phone = typeof otpVerifiedPhone === 'string' && otpVerifiedPhone.trim() ? otpVerifiedPhone : null;
     if (!phone) {
       // Fail closed rather than fall back to a mutable business-column phone

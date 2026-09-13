@@ -23,9 +23,12 @@ export type { ExistingProfileRow };
  *    app.buyers.phone, or from app.buyer_users.phone (all mutable,
  *    non-authoritative). It is read via a request-scoped Supabase client
  *    (built from this request's own auth cookies) as
- *    user_metadata.otp_verified_phone off the session's own auth user. The
- *    RPC itself re-derives and re-checks this same claim server-side
- *    (auth.jwt() -> user_metadata.otp_verified_phone via SECURITY DEFINER),
+ *    app_metadata.otp_verified_phone off the session's own auth user —
+ *    moved out of user_metadata, which is client-writable via the public
+ *    supabase.auth.updateUser({data:...}) call and was therefore
+ *    self-forgeable (see 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql).
+ *    The RPC itself re-derives and re-checks this same claim server-side
+ *    (auth.jwt() -> app_metadata.otp_verified_phone via SECURITY DEFINER),
  *    so a caller cannot spoof another phone even if this route had a bug.
  *  - No request body is read at all — this endpoint takes no client input
  *    beyond the authenticated session.
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const otpVerifiedPhone = (userData.user.user_metadata as Record<string, unknown> | null)?.otp_verified_phone;
+    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
     if (typeof otpVerifiedPhone !== 'string' || !otpVerifiedPhone.trim()) {
       // No OTP-verified phone on this session — nothing to look up.
       return NextResponse.json({ profiles: [] });

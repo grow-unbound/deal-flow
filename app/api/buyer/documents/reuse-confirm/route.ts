@@ -21,8 +21,11 @@ import { normalizeIndianPhone } from '@/lib/phone';
  * returned to it:
  *  - personal-scope source rows are phone-keyed — reusing one requires the
  *    source buyer's phone to match THIS session's own OTP-verified phone
- *    (read from auth user_metadata, never a client-supplied value or a
- *    buyers.phone column), otherwise a buyer could copy a stranger's shop
+ *    (read from auth app_metadata — moved out of user_metadata, which is
+ *    client-writable via the public supabase.auth.updateUser({data:...})
+ *    call and was therefore self-forgeable; see
+ *    20260913023654_fix_otp_anchor_rpcs_app_metadata.sql — never a
+ *    client-supplied value or a buyers.phone column), otherwise a buyer could copy a stranger's shop
  *    image into their own account just by guessing/observing a document id.
  *
  * SECURITY FIX (post-launch review of task 7, 2026-09): business-scope
@@ -129,7 +132,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
-      const otpVerifiedPhone = (authUser.user.user_metadata as Record<string, unknown> | null)?.otp_verified_phone;
+      const otpVerifiedPhone = (authUser.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
       if (typeof otpVerifiedPhone !== 'string' || !otpVerifiedPhone.trim()) {
         return NextResponse.json(
           { error: 'No verified phone on this session for personal document reuse' },

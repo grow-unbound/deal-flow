@@ -656,19 +656,30 @@ async function createBuyerSessionForUser(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
-      // Task 11 review, Important #1: otp_verified_phone alone proves a phone
-      // was verified at some point, not that it was verified RECENTLY. A
-      // stamped-alongside timestamp lets server-side routes (e.g. the
-      // document-resubmission intake gate) require the claim to be fresh
-      // (see requireFreshOtpVerification in buyer-access.ts) instead of
-      // trusting a claim that could be arbitrarily old. Stamped at exactly
-      // the same call, with exactly the same otpVerifiedPhone-only gating, as
-      // otp_verified_phone itself -- never set independently of it.
-      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
       current_buyer_id: candidate.buyer_id,
+      // SECURITY: otp_verified_phone/otp_verified_phone_at moved from
+      // user_metadata to app_metadata (see otp-verified-phone-app-metadata-
+      // migration-report.md). user_metadata is client-writable via the
+      // public supabase.auth.updateUser({data:...}) call -- any authenticated
+      // user could forge this claim for themselves with just the anon key.
+      // app_metadata is writable only via the Admin API (this call), so a
+      // regular authenticated user cannot self-modify it. Task 11 review,
+      // Important #1: otp_verified_phone alone proves a phone was verified at
+      // some point, not that it was verified RECENTLY. A stamped-alongside
+      // timestamp lets server-side routes (e.g. the document-resubmission
+      // intake gate) require the claim to be fresh (see
+      // hasFreshOtpVerification below) instead of trusting a claim that could
+      // be arbitrarily old. Stamped at exactly the same call, with exactly
+      // the same otpVerifiedPhone-only gating, as otp_verified_phone itself
+      // -- never set independently of it. Empirically confirmed
+      // updateUserById's app_metadata MERGES (does not replace wholesale),
+      // same as user_metadata, so omitting these keys when otpVerifiedPhone
+      // is undefined leaves any existing claim untouched, and setting them
+      // here does not clobber current_tenant_id/current_buyer_id above.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
   });
 
@@ -742,13 +753,14 @@ export async function mintBuyerHandoffLink(
       phone: candidate.phone,
       buyer_id: candidate.buyer_id,
       tenant_id: candidate.tenant_id,
-      // See createBuyerSessionForUser's matching comment -- same contract,
-      // same otpVerifiedPhone-only gating.
-      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
     app_metadata: {
       current_tenant_id: candidate.tenant_id,
       current_buyer_id: candidate.buyer_id,
+      // SECURITY: see createBuyerSessionForUser's matching comment -- same
+      // user_metadata -> app_metadata contract, same otpVerifiedPhone-only
+      // gating, same confirmed merge (not replace) semantics.
+      ...(otpVerifiedPhone ? { otp_verified_phone: otpVerifiedPhone, otp_verified_phone_at: new Date().toISOString() } : {}),
     },
   });
   if (updateError) {
@@ -1007,7 +1019,7 @@ const RESUBMISSION_OTP_FRESHNESS_MS = 15 * 60 * 1000;
  * over session-reuse specifically because document resubmission needs a
  * stronger identity guarantee than a plain status check).
  *
- * Reads user_metadata.otp_verified_phone_at -- stamped alongside
+ * Reads app_metadata.otp_verified_phone_at -- stamped alongside
  * otp_verified_phone in createBuyerSessionForUser/mintBuyerHandoffLink above,
  * ONLY at a genuine OTP-verify-driven session (re)mint, never on a plain
  * session refresh/reuse -- off THIS request's own session via a
@@ -1015,7 +1027,13 @@ const RESUBMISSION_OTP_FRESHNESS_MS = 15 * 60 * 1000;
  * pattern already established in reuse-check/reuse-confirm/
  * existing-profiles/resubmission-profile for reading a caller's own
  * otp_verified_phone claim (never via supabaseAdmin, which has no request
- * session to read).
+ * session to read). SECURITY: this must read app_metadata, not
+ * user_metadata -- user_metadata is client-writable via the public
+ * supabase.auth.updateUser({data:...}) call, so any authenticated user could
+ * otherwise forge this freshness claim for themselves. Empirically confirmed
+ * a request-scoped client's getUser() (own session, non-admin) DOES return
+ * the caller's own app_metadata (a user can always read, just not write,
+ * their own app_metadata).
  *
  * A caller with no OTP-verified session at all (a seller-added/ERP-synced
  * buyer that never self-registered via phone-OTP) has no otp_verified_phone*
@@ -1043,7 +1061,7 @@ export async function hasFreshOtpVerification(request: NextRequest): Promise<boo
   const { data, error } = await scoped.auth.getUser();
   if (error || !data.user) return false;
 
-  const meta = data.user.user_metadata as Record<string, unknown> | null;
+  const meta = data.user.app_metadata as Record<string, unknown> | null;
   const stampedAt = typeof meta?.otp_verified_phone_at === 'string' ? meta.otp_verified_phone_at : null;
   if (!stampedAt) return false;
 

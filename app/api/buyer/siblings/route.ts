@@ -12,7 +12,11 @@ import type { BuyerSiblingRow } from '@/types/buyer';
  * Distinct buyer accounts in the current tenant for the logged-in phone (Buy As).
  *
  * SECURITY: the phone driving the candidate lookup MUST be the caller's
- * OTP-verified phone (`user_metadata.otp_verified_phone`), never
+ * OTP-verified phone (`app_metadata.otp_verified_phone` — moved out of
+ * user_metadata, which is client-writable via the public
+ * supabase.auth.updateUser({data:...}) call and was therefore
+ * self-forgeable; see 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql),
+ * never
  * `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone). Those are
  * ordinary mutable business columns with no OTP re-verification on write
  * (PATCH /api/buyer/me could rewrite them to collide with another same-tenant
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const otpVerifiedPhone = (userData.user.user_metadata as Record<string, unknown> | null)?.otp_verified_phone;
+    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
     const phone = typeof otpVerifiedPhone === 'string' && otpVerifiedPhone.trim() ? otpVerifiedPhone : null;
     if (!phone) {
       // Degrade gracefully rather than fail closed — the "Buy As" picker is a
