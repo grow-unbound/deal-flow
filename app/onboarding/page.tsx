@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,13 @@ import { ProfilePicker } from '@/components/buyer/onboarding/ProfilePicker';
 import type { ExistingProfileRow } from '@/types/buyer-onboarding';
 
 const GSTIN_REUSE_CHECK_DEBOUNCE_MS = 500;
+
+function isGeneratedCustomerName(value: string, phone: string | null | undefined): boolean {
+  const normalized = value.trim();
+  if (!normalized) return true;
+  if (phone && normalized === `Customer ${phone}`) return true;
+  return /^Customer [0-9+ -]+$/.test(normalized);
+}
 
 /**
  * Self-registration intake form (Yukti_Inbox_Feature-Spec_v1.md §7.1 #1/#2).
@@ -58,10 +66,21 @@ export default function BuyerOnboardingPage() {
 
   useEffect(() => {
     if (prefilled || !me?.pending) return;
-    if (me.pending.prefill_full_name) setFullName(me.pending.prefill_full_name);
+    const pendingFullName = me.pending.prefill_full_name?.trim() || me.contact_name?.trim() || '';
+    if (pendingFullName) setFullName(pendingFullName);
     if (me.pending.prefill_email) setEmail(me.pending.prefill_email);
+    const pendingBusinessName = me.business_name?.trim() || '';
+    const pendingGstin = me.gstin?.trim() || '';
+    if (pendingBusinessName && !isGeneratedCustomerName(pendingBusinessName, me.phone)) {
+      setBusinessName(pendingBusinessName);
+      setIsBusiness(true);
+    }
+    if (pendingGstin) {
+      setGstin(pendingGstin);
+      setIsBusiness(true);
+    }
     setPrefilled(true);
-  }, [me?.pending, prefilled]);
+  }, [me, prefilled]);
 
   useEffect(() => {
     if (!me?.pending || existingProfiles !== null) return;
@@ -83,8 +102,9 @@ export default function BuyerOnboardingPage() {
     };
   }, [me?.pending, existingProfiles]);
 
-  const showProfilePicker =
-    !profilePickerDismissed && Boolean(existingProfiles && existingProfiles.length > 0);
+  const hasExistingProfiles = Boolean(existingProfiles && existingProfiles.length > 0);
+  const profilesChecked = existingProfiles !== null;
+  const showIntakeForm = !hasExistingProfiles || profilePickerDismissed;
 
   function handleSelectProfile(profile: ExistingProfileRow) {
     setIsBusiness(profile.is_business);
@@ -212,202 +232,279 @@ export default function BuyerOnboardingPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white border border-cream-300 rounded-xl shadow-md p-8">
-        <div className="mb-7 flex justify-center">
-          <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
-        </div>
-
-        <h1 className="text-h3 font-display text-cream-900 mb-1">
-          {isReturning ? `You're new here at ${sellerName}` : "Looks like you're new on Yukti"}
-        </h1>
-        <p className="text-body-sm text-cream-600 mb-6">
-          {isReturning
-            ? `Share a few details so we can pass them on to ${sellerName}.`
-            : `We couldn't find your account — share your details so we can pass them on to ${sellerName}.`}
-        </p>
-
-        {showProfilePicker && existingProfiles && (
-          <ProfilePicker
-            profiles={existingProfiles}
-            onSelect={handleSelectProfile}
-            onStartFresh={handleStartFresh}
-            disabled={submitting}
-          />
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="full_name">Full name</Label>
-            <Input
-              id="full_name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              disabled={submitting}
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email (optional)</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={submitting}
-            />
-          </div>
-
-          <label className="flex items-center gap-2.5 rounded-md border border-cream-300 bg-cream-50 px-4 py-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isBusiness}
-              onChange={(e) => setIsBusiness(e.target.checked)}
-              disabled={submitting}
-              className="h-4 w-4 rounded border-cream-400 text-teal-600 focus:ring-teal-400/30"
-            />
-            <span className="text-body-sm text-cream-800">I want to buy as a registered business</span>
-          </label>
-
-          {isBusiness && (
-            <div className="space-y-4 rounded-md border border-cream-200 bg-cream-50/60 p-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="business_name">Business name</Label>
-                <Input
-                  id="business_name"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  disabled={submitting}
-                  required={isBusiness}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="gstin">GSTIN (optional)</Label>
-                <Input
-                  id="gstin"
-                  value={gstin}
-                  onChange={(e) => handleGstinChange(e.target.value.toUpperCase())}
-                  disabled={submitting}
-                />
-                {gstinReuseNote && (
-                  <p className="text-caption text-cream-600 bg-cream-100 px-3 py-2 rounded-md">
-                    {gstinReuseNote}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5 col-span-2">
-                  <Label htmlFor="address_line1">Address line 1</Label>
-                  <Input
-                    id="address_line1"
-                    value={addressLine1}
-                    onChange={(e) => setAddressLine1(e.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-                <div className="space-y-1.5 col-span-2">
-                  <Label htmlFor="address_line2">Address line 2 (optional)</Label>
-                  <Input
-                    id="address_line2"
-                    value={addressLine2}
-                    onChange={(e) => setAddressLine2(e.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitting} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="state">
-                    State{gstin.trim() ? ' (required)' : ''}
-                  </Label>
-                  <Input
-                    id="state"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    disabled={submitting}
-                    required={Boolean(gstin.trim())}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="pincode">
-                    Pincode{gstin.trim() ? ' (required)' : ''}
-                  </Label>
-                  <Input
-                    id="pincode"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                    disabled={submitting}
-                    required={Boolean(gstin.trim())}
-                  />
-                </div>
-              </div>
-
-              <DocumentUploadField
-                id="shop_image"
-                label="Shop image"
-                required
-                docType="shop_image"
-                scope="personal"
-                disabled={submitting}
-                documentId={shopImageDocId}
-                onChange={setShopImageDocId}
-              />
-
-              {gstin.trim() && (
-                <DocumentUploadField
-                  id="gst_certificate"
-                  label="GST certificate"
-                  required
-                  docType="gst_certificate"
-                  scope="business"
-                  gstin={gstin}
-                  disabled={submitting}
-                  documentId={gstCertDocId}
-                  onChange={setGstCertDocId}
-                />
-              )}
-            </div>
-          )}
-
-          <p className="text-caption text-cream-600">
-            Your request will be sent to {sellerName}. They typically approve within 24 hours
-            {sellerWhatsappNumber ? ' — you can also message them on WhatsApp in the meantime.' : '.'}
-          </p>
-
-          {error && (
-            <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{error}</p>
-          )}
-
-          <Button type="submit" className="w-full" disabled={submitting || isLoading} haptic>
-            {submitting ? 'Sending…' : 'Send request'}
-          </Button>
-
-          {sellerWhatsappNumber && (
-            <button
-              type="button"
-              onClick={() =>
-                window.open(
-                  buildWhatsAppChatUrl(
-                    sellerWhatsappNumber,
-                    `Hi ${sellerName}, I'd like to get access to your Yukti catalog.`,
-                  ),
-                  '_blank',
-                  'noopener,noreferrer',
-                )
-              }
-              className="w-full text-caption text-cream-600 hover:text-cream-800 transition-colors"
-            >
-              Message {sellerName} on WhatsApp instead
-            </button>
-          )}
-        </form>
+  const introContent = (
+    <>
+      <div className="mb-7 flex justify-center">
+        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
+
+      <h1 className="text-h3 font-display text-cream-900 mb-1">
+        {isReturning ? `You're new here at ${sellerName}` : "Looks like you're new on Yukti"}
+      </h1>
+      <p className="text-body-sm text-cream-600 mb-6">
+        {isReturning
+          ? `Share a few details so we can pass them on to ${sellerName}.`
+          : `We couldn't find your account — share your details so we can pass them on to ${sellerName}.`}
+      </p>
+    </>
+  );
+
+  const intakeForm = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="full_name">Full name</Label>
+        <Input
+          id="full_name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          disabled={submitting}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="email">Email (optional)</Label>
+        <Input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={submitting}
+        />
+      </div>
+
+      <label className="flex items-center gap-2.5 rounded-md border border-cream-300 bg-cream-50 px-4 py-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isBusiness}
+          onChange={(e) => setIsBusiness(e.target.checked)}
+          disabled={submitting}
+          className="h-4 w-4 rounded border-cream-400 text-teal-600 focus:ring-teal-400/30"
+        />
+        <span className="text-body-sm text-cream-800">I want to buy as a registered business</span>
+      </label>
+
+      {isBusiness && (
+        <div className="space-y-4 rounded-md border border-cream-200 bg-cream-50/60 p-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="business_name">Business name</Label>
+            <Input
+              id="business_name"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              disabled={submitting}
+              required={isBusiness}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="gstin">GSTIN (optional)</Label>
+            <Input
+              id="gstin"
+              value={gstin}
+              onChange={(e) => handleGstinChange(e.target.value.toUpperCase())}
+              disabled={submitting}
+            />
+            {gstinReuseNote && (
+              <p className="text-caption text-cream-600 bg-cream-100 px-3 py-2 rounded-md">
+                {gstinReuseNote}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5 col-span-2">
+              <Label htmlFor="address_line1">Address line 1</Label>
+              <Input
+                id="address_line1"
+                value={addressLine1}
+                onChange={(e) => setAddressLine1(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="space-y-1.5 col-span-2">
+              <Label htmlFor="address_line2">Address line 2 (optional)</Label>
+              <Input
+                id="address_line2"
+                value={addressLine2}
+                onChange={(e) => setAddressLine2(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="city">City</Label>
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitting} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="state">
+                State{gstin.trim() ? ' (required)' : ''}
+              </Label>
+              <Input
+                id="state"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                disabled={submitting}
+                required={Boolean(gstin.trim())}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pincode">
+                Pincode{gstin.trim() ? ' (required)' : ''}
+              </Label>
+              <Input
+                id="pincode"
+                value={pincode}
+                onChange={(e) => setPincode(e.target.value)}
+                disabled={submitting}
+                required={Boolean(gstin.trim())}
+              />
+            </div>
+          </div>
+
+          <DocumentUploadField
+            id="shop_image"
+            label="Shop image"
+            required
+            docType="shop_image"
+            scope="personal"
+            disabled={submitting}
+            documentId={shopImageDocId}
+            onChange={setShopImageDocId}
+          />
+
+          {gstin.trim() && (
+            <DocumentUploadField
+              id="gst_certificate"
+              label="GST certificate"
+              required
+              docType="gst_certificate"
+              scope="business"
+              gstin={gstin}
+              disabled={submitting}
+              documentId={gstCertDocId}
+              onChange={setGstCertDocId}
+            />
+          )}
+        </div>
+      )}
+
+      <p className="text-caption text-cream-600">
+        Your request will be sent to {sellerName}. They typically approve within 24 hours
+        {sellerWhatsappNumber ? ' — you can also message them on WhatsApp in the meantime.' : '.'}
+      </p>
+
+      {error && (
+        <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{error}</p>
+      )}
+
+      <Button type="submit" className="w-full" disabled={submitting || isLoading} haptic>
+        {submitting ? 'Sending…' : 'Send request'}
+      </Button>
+
+      {sellerWhatsappNumber && (
+        <button
+          type="button"
+          onClick={() =>
+            window.open(
+              buildWhatsAppChatUrl(
+                sellerWhatsappNumber,
+                `Hi ${sellerName}, I'd like to get access to your Yukti catalog.`,
+              ),
+              '_blank',
+              'noopener,noreferrer',
+            )
+          }
+          className="w-full text-caption text-cream-600 hover:text-cream-800 transition-colors"
+        >
+          Message {sellerName} on WhatsApp instead
+        </button>
+      )}
+    </form>
+  );
+
+  const backToProfilePickerButton = hasExistingProfiles ? (
+    <button
+      type="button"
+      onClick={() => setProfilePickerDismissed(false)}
+      className="mb-5 inline-flex items-center gap-2 rounded-full border border-cream-300 bg-white px-3 py-1.5 text-caption font-medium text-cream-700 transition-colors hover:border-cream-400 hover:bg-cream-50 hover:text-cream-950"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+      Back to account options
+    </button>
+  ) : null;
+
+  const requestAccessHeader = (
+    <div className="mb-5">
+      <h2 className="text-h3 font-display text-cream-900">Request access</h2>
+      <p className="mt-1 text-body-sm text-cream-600">
+        Fill this only if none of the listed accounts is the one you want to use.
+      </p>
+    </div>
+  );
+
+  const profilePickerCard = existingProfiles ? (
+    <div className="w-full max-w-lg bg-white border border-cream-300 rounded-xl shadow-md p-8">
+      {introContent}
+      <ProfilePicker
+        profiles={existingProfiles}
+        onSelect={handleSelectProfile}
+        onStartFresh={handleStartFresh}
+        disabled={submitting}
+      />
+    </div>
+  ) : null;
+
+  if (!profilesChecked) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-white border border-cream-300 rounded-xl shadow-md p-8">
+          {introContent}
+          <div className="rounded-lg border border-cream-200 bg-cream-50 px-4 py-3">
+            <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
+            <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded bg-cream-100" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasExistingProfiles) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-white border border-cream-300 rounded-xl shadow-md p-8">
+          {introContent}
+          {intakeForm}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-screen bg-cream-50 flex items-center justify-center p-4">
+      <div className={showIntakeForm ? 'hidden md:block md:opacity-45' : 'w-full'}>
+        <div className="mx-auto flex w-full justify-center">
+          {profilePickerCard}
+        </div>
+      </div>
+
+      {showIntakeForm && (
+        <>
+          <div className="w-full max-w-lg bg-white border border-cream-300 rounded-xl shadow-md p-8 md:hidden">
+            {backToProfilePickerButton}
+            {introContent}
+            {requestAccessHeader}
+            {intakeForm}
+          </div>
+
+          <div className="fixed inset-0 z-40 hidden items-center justify-center bg-cream-950/20 p-6 md:flex">
+            <div className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-xl border border-cream-300 bg-white p-8 shadow-xl">
+              {backToProfilePickerButton}
+              {requestAccessHeader}
+              {intakeForm}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

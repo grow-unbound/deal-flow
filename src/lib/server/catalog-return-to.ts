@@ -29,12 +29,42 @@ const BUYER_ROLE_PRIORITY: Record<string, number> = {
   buyer_assistant: 1,
 };
 
+function buyerRolePriority(candidate: LoginOtpCandidate): number {
+  return BUYER_ROLE_PRIORITY[candidate.role] ?? 99;
+}
+
+function compareBuyerCandidates(a: LoginOtpCandidate, b: LoginOtpCandidate): number {
+  const enabledA = a.buyer_app_enabled === true ? 0 : 1;
+  const enabledB = b.buyer_app_enabled === true ? 0 : 1;
+  if (enabledA !== enabledB) return enabledA - enabledB;
+
+  const roleA = buyerRolePriority(a);
+  const roleB = buyerRolePriority(b);
+  if (roleA !== roleB) return roleA - roleB;
+
+  return (a.business_name ?? '').localeCompare(b.business_name ?? '');
+}
+
+/**
+ * A phone can surface both an owner candidate and a delegate candidate for the
+ * same app.buyers row. The buyer account picker should list the business once,
+ * preferring enabled/admin candidates for the actual session mint.
+ */
+export function dedupeBuyerAccountCandidates(candidates: LoginOtpCandidate[]): LoginOtpCandidate[] {
+  const byBuyerId = new Map<string, LoginOtpCandidate>();
+
+  for (const candidate of candidates) {
+    if (candidate.kind !== 'buyer' || !candidate.buyer_id) continue;
+    const existing = byBuyerId.get(candidate.buyer_id);
+    if (!existing || compareBuyerCandidates(candidate, existing) < 0) {
+      byBuyerId.set(candidate.buyer_id, candidate);
+    }
+  }
+
+  return Array.from(byBuyerId.values()).sort(compareBuyerCandidates);
+}
+
 /** Prefer buyer_admin; stable tie-break on business name. */
 export function pickPreferredBuyerCandidate(candidates: LoginOtpCandidate[]): LoginOtpCandidate {
-  return [...candidates].sort((a, b) => {
-    const priorityA = BUYER_ROLE_PRIORITY[a.role] ?? 99;
-    const priorityB = BUYER_ROLE_PRIORITY[b.role] ?? 99;
-    if (priorityA !== priorityB) return priorityA - priorityB;
-    return (a.business_name ?? '').localeCompare(b.business_name ?? '');
-  })[0]!;
+  return dedupeBuyerAccountCandidates(candidates)[0]!;
 }

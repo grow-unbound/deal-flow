@@ -5,6 +5,7 @@ export interface WorkspaceAccount {
   business_name: string;
   contact_name: string | null;
   role: string;
+  buyer_app_enabled?: boolean | null;
 }
 
 export interface WorkspaceTenantGroup {
@@ -36,6 +37,7 @@ export function groupBuyerCandidatesByTenant(candidates: BuyerLoginCandidate[]):
       business_name: candidate.business_name,
       contact_name: candidate.contact_name,
       role: candidate.role,
+      buyer_app_enabled: candidate.buyer_app_enabled,
     };
 
     if (existing) {

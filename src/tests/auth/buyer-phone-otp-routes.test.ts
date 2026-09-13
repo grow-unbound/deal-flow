@@ -13,6 +13,12 @@ const recordBuyerAppActivitySafeMock = vi.fn();
 const acquireBuyerForStorefrontMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
 const resolvePendingBuyerRedirectMock = vi.fn();
+const getTenantBrandingBySlugMock = vi.fn();
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
 
 vi.mock('@/lib/server/buyer-access', () => ({
   findAllLoginCandidates: (...args: unknown[]) => findAllLoginCandidatesMock(...args),
@@ -47,6 +53,10 @@ vi.mock('@/lib/server/phone-consent', () => ({
   requirePhoneConsentRedirect: async () => null,
   hasPhoneConsented: async () => true,
   stampPhoneConsent: async () => {},
+}));
+
+vi.mock('@/lib/server/tenant-branding', () => ({
+  getTenantBrandingBySlug: (...args: unknown[]) => getTenantBrandingBySlugMock(...args),
 }));
 
 const otpMemory = vi.hoisted(() => {
@@ -152,6 +162,16 @@ describe('buyer phone otp routes', () => {
     mintBuyerHandoffLinkMock.mockReset();
     resolvePendingBuyerRedirectMock.mockReset();
     resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
+    getTenantBrandingBySlugMock.mockReset();
+    getTenantBrandingBySlugMock.mockResolvedValue({
+      tenantId: 'tenant-1',
+      slug: 'tenant-one',
+      businessName: 'Tenant One',
+      tagline: null,
+      logoUrl: null,
+      whatsappNumber: '9876500000',
+      isLive: true,
+    });
     otpMemory.store.clear();
   });
 
@@ -314,6 +334,35 @@ describe('buyer phone otp routes', () => {
     expect(findAllLoginCandidatesMock).not.toHaveBeenCalled();
     expect((stored?.candidates as unknown[])).toHaveLength(1);
     expect((stored?.candidates as Array<{ kind: string }>)[0].kind).toBe('buyer');
+  });
+
+  it('keeps disabled buyer accounts in catalog OTP candidates so tenant login can offer request access', async () => {
+    findBuyerLoginCandidatesMock.mockResolvedValue([
+      {
+        ...eligibleBuyerCandidate,
+        buyer_id: 'buyer-disabled',
+        buyer_app_enabled: false,
+        tenant_app_enabled: true,
+      },
+    ]);
+
+    const { POST } = await import('../../../app/api/auth/phone-otp/send/route');
+    const response = await POST(new Request('https://catalog.useyukti.in/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        host: 'catalog.useyukti.in',
+      },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const body = await response.json();
+    const stored = await otpMemory.api.get(body.ref_id);
+
+    expect(response.status).toBe(200);
+    expect(body.outcome).toBe('otp_sent');
+    expect((stored?.candidates as Array<{ buyer_id: string; buyer_app_enabled: boolean }>)).toEqual([
+      expect.objectContaining({ buyer_id: 'buyer-disabled', buyer_app_enabled: false }),
+    ]);
   });
 
   it('returns seller disabled metadata when tenant disabled buyer app', async () => {
@@ -583,6 +632,55 @@ describe('buyer phone otp routes', () => {
     expect(body.contexts).toBeUndefined();
     expect(body.ref_id).toBeUndefined();
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('shows tenant account picker when return_to tenant has multiple accounts, including disabled ones', async () => {
+    const disabledSameTenant = {
+      ...eligibleBuyerCandidate,
+      buyer_id: 'buyer-disabled',
+      business_name: 'Disabled Buyer',
+      buyer_app_enabled: false,
+    };
+    const otherTenant = {
+      ...eligibleBuyerCandidate,
+      tenant_id: 'tenant-2',
+      tenant_slug: 'tenant-two',
+      tenant_name: 'Tenant Two',
+      buyer_id: 'buyer-2',
+    };
+    findBuyerLoginCandidatesMock.mockResolvedValue([eligibleBuyerCandidate, disabledSameTenant, otherTenant]);
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: 'https://tenant-one.useyukti.in/',
+      }),
+    }), {
+      nextUrl: new URL('http://catalog.useyukti.in/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.contexts).toHaveLength(2);
+    expect(body.contexts.map((ctx: { buyer_id: string }) => ctx.buyer_id)).toEqual(['buyer-1', 'buyer-disabled']);
+    expect(body.return_to).toBe('https://tenant-one.useyukti.in/');
+    expect(body.handoff_url).toBeUndefined();
+    expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
   });
 
   it('drops a return_to that does not resolve to the destination tenant host', async () => {

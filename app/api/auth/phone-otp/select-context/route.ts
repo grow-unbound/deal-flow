@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
@@ -21,12 +21,16 @@ export async function POST(request: NextRequest) {
       tenant_id?: string;
       buyer_id?: string | null;
       role?: string;
+      return_to?: string;
+      request_access?: boolean;
     };
     const ref_id: string = (body?.ref_id ?? '').trim();
     const kind: string = (body?.kind ?? '').trim();
     const tenant_id: string = (body?.tenant_id ?? '').trim();
     const buyer_id: string | null = body?.buyer_id ?? null;
     const role: string = (body?.role ?? '').trim();
+    const returnTo: string | null = body?.return_to?.trim() || null;
+    const requestAccess = body?.request_access === true;
 
     if (!ref_id || !kind || !tenant_id || !role) {
       return NextResponse.json(
@@ -105,19 +109,6 @@ export async function POST(request: NextRequest) {
 
     const buyerCandidate = toBuyerLoginCandidate(candidate);
 
-    if (!buyerCandidate.buyer_app_enabled) {
-      const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
-      // Mirrors verify/route.ts's storefrontHome computation (Task 10 review,
-      // Important #1) — select-context is reached from the shared catalog
-      // host as well as tenant subdomains, so '/' is only correct here too
-      // when this request actually carries a verified tenant host.
-      const redirect = await resolvePendingBuyerRedirect(
-        buyerCandidate.buyer_id,
-        Boolean(request.headers.get('x-verified-tenant-id')),
-      );
-      return NextResponse.json({ success: true, redirect, session });
-    }
-
     const currentTenantId = request.headers.get('x-verified-tenant-id');
     const onCatalogHost = isCatalogRequest(request);
     const { supabaseAdmin } = await import('@/lib/supabase');
@@ -137,13 +128,42 @@ export async function POST(request: NextRequest) {
       }
     };
 
+    if (!buyerCandidate.buyer_app_enabled) {
+      if (!requestAccess) {
+        return NextResponse.json(
+          { error: 'Buyer app access is not enabled for this account.', access_disabled: true },
+          { status: 403 },
+        );
+      }
+
+      const onboardingPath = '/onboarding';
+      if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
+        const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+        const destinationHost = tenantStorefrontHostForRequest(
+          request.headers.get('host') ?? '',
+          buyerCandidate.tenant_slug,
+        );
+        const protocol = destinationHost.includes('localhost') ? 'http' : 'https';
+        const onboardingUrl = `${protocol}://${destinationHost}${onboardingPath}`;
+        recordSessionStart();
+        return NextResponse.json({
+          success: true,
+          handoff_url: buildStorefrontHandoffUrl(destinationHost, hashedToken, onboardingUrl),
+        });
+      }
+
+      const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
+      recordSessionStart();
+      return NextResponse.json({ success: true, redirect: onboardingPath, session });
+    }
+
     if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
       const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
       const destinationHost = tenantStorefrontHostForRequest(
         request.headers.get('host') ?? '',
         buyerCandidate.tenant_slug,
       );
-      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken);
+      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
 
       if (onCatalogHost) {
         recordSessionStart();

@@ -93,6 +93,7 @@ const buyerCandidate = {
   business_name: 'Buyer One',
   contact_name: 'Rajan Mehta',
   buyer_app_enabled: true,
+  tenant_app_enabled: true,
 };
 
 describe('phone-otp select-context route', () => {
@@ -175,6 +176,7 @@ describe('phone-otp select-context route', () => {
         tenant_id: 'tenant-1',
         buyer_id: 'buyer-1',
         role: 'buyer_admin',
+        return_to: 'https://tenant-one.useyukti.in/product/55',
       }),
     }), {
       nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
@@ -186,6 +188,7 @@ describe('phone-otp select-context route', () => {
     expect(body.success).toBe(true);
     expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=token-xyz');
     expect(body.handoff_url).toContain('tenant-one');
+    expect(body.handoff_url).toContain('next=%2Fproduct%2F55');
     expect(body.session).toBeUndefined();
     expect(body.redirect).toBeUndefined();
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
@@ -197,6 +200,62 @@ describe('phone-otp select-context route', () => {
         eventName: 'session_started',
       }),
     );
+  });
+
+  it('does not mint a pending session for a disabled buyer account selected from the picker', async () => {
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+      }),
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.access_disabled).toBe(true);
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('opens onboarding via handoff when request access is chosen for a disabled buyer account', async () => {
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'request-token', buyerId: 'buyer-1' });
+
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+        request_access: true,
+      }),
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=request-token');
+    expect(body.handoff_url).toContain('next=%2Fonboarding');
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
   });
 
   it('mints a seller session unaffected by the handoff branch (seller kind never handed off)', async () => {

@@ -52,7 +52,8 @@ function toLoginOtpBuyerCandidate(candidate: BuyerLoginCandidate) {
  * Body: { phoneNumber: string }
  *
  * Looks up the phone across both app.tenant_users (sellers) and app.buyers/buyer_users (buyers).
- * Sellers are always eligible if active. Buyers require buyer_app_enabled + tenant flag.
+ * Sellers are always eligible if active. Buyer OTP send requires the tenant
+ * storefront to be live; per-account buyer_app_enabled is enforced after OTP.
  * Seller takes priority when the same auth user appears in both tables.
  */
 export async function POST(request: NextRequest) {
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         const buyerCandidates = await findBuyerLoginCandidates(phone);
         buyerCandidatesForMessages = buyerCandidates;
         return buyerCandidates
-          .filter((candidate) => candidate.buyer_app_enabled)
+          .filter((candidate) => candidate.tenant_app_enabled)
           .map(toLoginOtpBuyerCandidate);
       }
 
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
         const buyerCandidates = await findBuyerLoginCandidates(phone);
         buyerCandidatesForMessages = buyerCandidates;
         return buyerCandidates
-          .filter((candidate) => candidate.tenant_id === hostTenantId && candidate.buyer_app_enabled)
+          .filter((candidate) => candidate.tenant_id === hostTenantId && candidate.tenant_app_enabled)
           .map(toLoginOtpBuyerCandidate);
       }
 

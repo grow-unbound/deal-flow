@@ -8,9 +8,12 @@ import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
 import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import {
+  dedupeBuyerAccountCandidates,
   filterBuyerCandidatesForReturnTo,
   pickPreferredBuyerCandidate,
+  tenantSlugFromReturnTo,
 } from '@/lib/server/catalog-return-to';
+import { getTenantBrandingBySlug } from '@/lib/server/tenant-branding';
 
 const MAX_ATTEMPTS = 5;
 
@@ -105,16 +108,48 @@ export async function POST(request: NextRequest) {
     // at one tenant and a buyer at an unrelated tenant should both be offered.
     const effectiveCandidates = record.candidates;
 
-    if (effectiveCandidates.length > 1) {
-      const onCatalogHost = isCatalogRequest(request);
-      if (onCatalogHost && returnTo) {
-        const tenantScoped = filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo);
-        if (tenantScoped.length > 0) {
-          const candidate = pickPreferredBuyerCandidate(tenantScoped);
-          return buildMintedCandidateResponse(request, candidate, returnTo, record.phone);
-        }
+    const onCatalogHost = isCatalogRequest(request);
+    if (onCatalogHost && returnTo) {
+      const tenantScoped = dedupeBuyerAccountCandidates(filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo));
+      if (tenantScoped.length === 1 && tenantScoped[0]?.buyer_app_enabled === true) {
+        return buildMintedCandidateResponse(request, tenantScoped[0], returnTo, record.phone);
       }
 
+      if (tenantScoped.length > 0) {
+        const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, tenantScoped, true);
+        if (!verifiedRefId) {
+          return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        }
+        return NextResponse.json({ success: true, contexts: tenantScoped, ref_id: verifiedRefId, return_to: returnTo });
+      }
+
+      const tenantSlug = tenantSlugFromReturnTo(returnTo);
+      const tenant = tenantSlug ? await getTenantBrandingBySlug(tenantSlug) : null;
+      if (tenant?.tenantId) {
+        const acquisitionCandidate: LoginOtpCandidate = {
+          kind: 'buyer',
+          tenant_id: tenant.tenantId,
+          tenant_name: tenant.businessName,
+          tenant_slug: tenant.slug,
+          tenant_whatsapp_number: tenant.whatsappNumber,
+          tenant_whatsapp_display_name: tenant.businessName,
+          tenant_logo_url: tenant.logoUrl,
+          role: 'buyer_admin',
+          buyer_id: null,
+          principal_type: 'buyer',
+          user_id: null,
+          buyer_user_id: null,
+          phone: record.phone,
+          business_name: '',
+          contact_name: null,
+          buyer_app_enabled: false,
+          tenant_app_enabled: true,
+        };
+        return buildMintedCandidateResponse(request, acquisitionCandidate, returnTo, record.phone);
+      }
+    }
+
+    if (effectiveCandidates.length > 1) {
       // otpVerified: true — this record is written immediately after the
       // OTP hash check above succeeded, for the literal phone the OTP was
       // sent to. select-context uses this flag to allow the eventual

@@ -59,6 +59,27 @@ describe('/onboarding page', () => {
     expect(screen.queryByText("I'm ordering for a business")).not.toBeInTheDocument();
   });
 
+  it('prefills the request form from the pending buyer account details', async () => {
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        ...basePendingMe,
+        business_name: 'Catalog Customer',
+        contact_name: 'Rajan Mehta',
+        phone: '9876543210',
+        gstin: '29AAVIC9992H1Z0',
+      },
+      isLoading: false,
+    });
+
+    const { default: BuyerOnboardingPage } = await import('../../../app/onboarding/page');
+    render(<BuyerOnboardingPage />);
+
+    expect(await screen.findByLabelText('Full name')).toHaveValue('Rajan Mehta');
+    expect(screen.getByLabelText('I want to buy as a registered business')).toBeChecked();
+    expect(screen.getByLabelText('Business name')).toHaveValue('Catalog Customer');
+    expect(screen.getByLabelText('GSTIN (optional)')).toHaveValue('29AAVIC9992H1Z0');
+  });
+
   it('renders the ProfilePicker when existing-profiles returns rows, and autofills on selection', async () => {
     apiFetchMock.mockImplementation((url: string) => {
       if (url === '/api/buyer/onboarding/existing-profiles') {
@@ -69,6 +90,7 @@ describe('/onboarding page', () => {
                 buyer_id: 'b2',
                 tenant_id: 't2',
                 tenant_name: 'Other Tenant',
+                tenant_logo_url: null,
                 business_name: 'Acme Traders',
                 contact_name: 'Alice',
                 phone: '9990000001',
@@ -86,19 +108,18 @@ describe('/onboarding page', () => {
     render(<BuyerOnboardingPage />);
 
     expect(await screen.findByText(/We found 1 business profile/)).toBeInTheDocument();
-    expect(screen.getByText('Acme Traders')).toBeInTheDocument();
+    expect(screen.getByText('Other Tenant')).toBeInTheDocument();
+    expect(screen.getByText('Acme Traders · 29AAVIC9992H1Z0')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Acme Traders'));
+    fireEvent.click(screen.getByRole('button', { name: /Other Tenant.*Acme Traders/s }));
 
-    // Picker should be dismissed and business toggle turned on with autofilled fields.
-    await waitFor(() => {
-      expect(screen.queryByText(/We found 1 business profile/)).not.toBeInTheDocument();
-    });
+    // Form opens and business toggle turns on with autofilled fields.
+    await screen.findByLabelText('Business name');
     expect(screen.getByLabelText('Business name')).toHaveValue('Acme Traders');
     expect(screen.getByLabelText('GSTIN (optional)')).toHaveValue('29AAVIC9992H1Z0');
   });
 
-  it('"None of these, start fresh" dismisses the picker and leaves the form blank', async () => {
+  it('"Fill a new request form" opens the form and leaves it blank', async () => {
     apiFetchMock.mockImplementation((url: string) => {
       if (url === '/api/buyer/onboarding/existing-profiles') {
         return Promise.resolve(
@@ -108,6 +129,7 @@ describe('/onboarding page', () => {
                 buyer_id: 'b2',
                 tenant_id: 't2',
                 tenant_name: 'Other Tenant',
+                tenant_logo_url: null,
                 business_name: null,
                 contact_name: 'Bob',
                 phone: '9990000001',
@@ -125,11 +147,9 @@ describe('/onboarding page', () => {
     render(<BuyerOnboardingPage />);
 
     expect(await screen.findByText(/We found 1 profile/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('None of these, start fresh'));
+    fireEvent.click(screen.getByRole('button', { name: /Fill a new request form/ }));
 
-    await waitFor(() => {
-      expect(screen.queryByText(/We found 1 profile/)).not.toBeInTheDocument();
-    });
+    await screen.findByLabelText('Full name');
     expect((screen.getByLabelText('Full name') as HTMLInputElement).value).toBe('');
   });
 
@@ -171,7 +191,16 @@ describe('/onboarding page', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
-    expect(putMock).toHaveBeenCalledWith('https://r2.example/put', expect.objectContaining({ method: 'PUT' }));
+    expect(putMock).toHaveBeenCalledWith(
+      'https://r2.example/put',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=300, must-revalidate',
+        }),
+      }),
+    );
     await waitFor(() => {
       expect(screen.getByText('shop.png')).toBeInTheDocument();
     });

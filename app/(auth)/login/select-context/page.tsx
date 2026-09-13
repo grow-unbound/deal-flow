@@ -94,6 +94,7 @@ function toWorkspaceGroups(groups: ReturnType<typeof groupByTenant>): WorkspaceT
       business_name: accountDisplayName(ctx),
       contact_name: accountSecondaryLine(ctx),
       role: ctx.role,
+      buyer_app_enabled: ctx.buyer_app_enabled,
     })),
   }));
 }
@@ -121,6 +122,7 @@ function SelectContextForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const ref_id = searchParams.get('ref_id') ?? '';
+  const returnTo = searchParams.get('return_to') ?? '';
   const viewMode = useViewMode();
 
   const [contexts, setContexts] = useState<LoginOtpCandidate[] | null>(null);
@@ -188,6 +190,11 @@ function SelectContextForm() {
   }, [ref_id, router]);
 
   async function handleSelect(ctx: LoginOtpCandidate) {
+    if (ctx.kind === 'buyer' && ctx.buyer_app_enabled === false) {
+      void handleRequestAccess(ctx);
+      return;
+    }
+
     const selectionKey = viewMode === 'catalog'
       ? workspaceAccountKey(ctx.tenant_id, {
           buyer_id: ctx.buyer_id ?? ctx.user_id ?? '',
@@ -210,6 +217,7 @@ function SelectContextForm() {
           tenant_id: ctx.tenant_id,
           buyer_id: ctx.buyer_id,
           role: ctx.role,
+          return_to: returnTo || undefined,
         }),
       });
 
@@ -263,6 +271,73 @@ function SelectContextForm() {
       // racing immediately after replace() doesn't reliably bust it. A full page load
       // guarantees a clean slate, same as signOut()'s window.location.replace(...).
       window.location.assign(data.redirect ?? '/login');
+    } catch {
+      setError('Network error. Please check your connection and try again.');
+      setSelected(null);
+      setLoading(false);
+    }
+  }
+
+  async function handleRequestAccess(ctx: LoginOtpCandidate) {
+    if (ctx.kind !== 'buyer') return;
+
+    const selectionKey = viewMode === 'catalog'
+      ? workspaceAccountKey(ctx.tenant_id, {
+          buyer_id: ctx.buyer_id ?? ctx.user_id ?? '',
+          business_name: accountDisplayName(ctx),
+          contact_name: accountSecondaryLine(ctx),
+          role: ctx.role,
+        })
+      : contextKey(ctx);
+    setSelected(selectionKey);
+    setError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/phone-otp/select-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ref_id,
+          kind: ctx.kind,
+          tenant_id: ctx.tenant_id,
+          buyer_id: ctx.buyer_id,
+          role: ctx.role,
+          return_to: returnTo || undefined,
+          request_access: true,
+        }),
+      });
+
+      const data: {
+        success?: boolean;
+        redirect?: string;
+        handoff_url?: string;
+        session?: SessionPayload;
+        error?: string;
+      } = await res.json();
+
+      if (!res.ok || !data.success) {
+        setError(data.error ?? 'Could not open the request form. Please try again.');
+        setSelected(null);
+        setLoading(false);
+        return;
+      }
+
+      if (data.handoff_url) {
+        try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
+        window.location.assign(data.handoff_url);
+        return;
+      }
+
+      if (data.session?.access_token && data.session?.refresh_token) {
+        await supabaseBrowser.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+
+      try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
+      window.location.assign(data.redirect ?? '/onboarding');
     } catch {
       setError('Network error. Please check your connection and try again.');
       setSelected(null);
@@ -334,10 +409,15 @@ function SelectContextForm() {
 
           <WorkspaceLookbook
             tenants={workspaceGroups}
+            pendingAccountKey={loading ? selected : null}
             selectedAccountKey={selected}
             onSelectAccount={(tenant, account) => {
               const ctx = candidateByAccountKey.get(workspaceAccountKey(tenant.tenant_id, account));
               if (ctx) void handleSelect(ctx);
+            }}
+            onRequestAccess={(tenant, account) => {
+              const ctx = candidateByAccountKey.get(workspaceAccountKey(tenant.tenant_id, account));
+              if (ctx) void handleRequestAccess(ctx);
             }}
           />
 
@@ -364,7 +444,7 @@ function SelectContextForm() {
         {groups.map((group) => (
           <div key={group.tenantId}>
             <div className="mb-2 flex items-center gap-2">
-              <TenantLogo name={group.tenantName} logoUrl={group.logoUrl} size={20} />
+              <TenantLogo name={group.tenantName} logoUrl={group.logoUrl} size={22} shape="square" />
               <p className="text-caption font-semibold uppercase tracking-wide text-cream-500 truncate">
                 {group.tenantName}
               </p>
@@ -375,6 +455,7 @@ function SelectContextForm() {
                 const isSelected = selected === key;
                 const isDisabled = loading;
                 const Icon = ctx.kind === 'seller' ? Store : ShoppingBag;
+                const isBuyerDisabled = ctx.kind === 'buyer' && ctx.buyer_app_enabled === false;
 
                 return (
                   <button
@@ -406,7 +487,7 @@ function SelectContextForm() {
                         </div>
                       </div>
                       <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
-                        {roleBadge(ctx.role)}
+                        {isBuyerDisabled ? 'Request access' : roleBadge(ctx.role)}
                       </span>
                     </div>
                     {isSelected && loading && (

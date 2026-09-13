@@ -72,6 +72,7 @@ describe('POST /api/buyer/onboarding/existing-profiles', () => {
         buyer_id: 'buyer-2',
         tenant_id: 'tenant-2',
         tenant_name: 'Other Tenant',
+        tenant_logo_url: null,
         business_name: 'Acme Traders',
         contact_name: 'Alice',
         phone: '9990000001',

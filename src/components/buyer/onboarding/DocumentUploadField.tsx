@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Loader2, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Loader2, CheckCircle2, RotateCcw, Upload } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api-fetch';
+import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 
 /**
  * Single onboarding-document upload control (shop image / GST certificate)
@@ -71,7 +72,7 @@ export function DocumentUploadField({
       const putRes = await fetch(presignData.upload_url, {
         method: 'PUT',
         body: file,
-        headers: { 'Content-Type': file.type },
+        headers: { 'Content-Type': file.type, 'Cache-Control': R2_UPLOAD_CACHE_CONTROL },
       });
       if (!putRes.ok) {
         setError('Upload failed. Please try again.');
@@ -147,9 +148,18 @@ export function DocumentUploadField({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={disabled}
-          className="w-full text-left px-3 py-2.5 rounded-md border border-dashed border-cream-400 bg-cream-50 text-body-sm text-cream-600 hover:border-cream-500 hover:bg-cream-100 transition-colors"
+          className="w-full rounded-xl border border-dashed border-cream-300 bg-cream-50 px-4 py-4 text-left transition-colors hover:bg-cream-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Tap to upload {label.toLowerCase()}
+          <span className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-cream-500 shadow-sm">
+              <Upload size={16} aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-cream-900">Upload {label.toLowerCase()}</span>
+              <span className="mt-1 block text-sm text-cream-700">Drop a file here or browse from your computer</span>
+              <span className="mt-1 block text-xs text-cream-500">JPG, PNG, WebP, PDF</span>
+            </span>
+          </span>
         </button>
       )}
 

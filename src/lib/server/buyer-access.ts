@@ -1318,10 +1318,9 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
     findBuyerLoginCandidates(phone),
   ]);
 
-  // Map buyer candidates to the unified LoginOtpCandidate shape (filtering for eligible only).
-  // tenant_app_enabled retired as a login gate — per-buyer buyer_app_enabled is
-  // now the only access check (provenance-defaulted: true for known/synced
-  // buyers, false pending approval for fresh self-registrations).
+  // Map buyer candidates to the unified LoginOtpCandidate shape. The enabled
+  // flags must survive the OTP hop because the post-verify tenant picker uses
+  // them to decide between opening the app and requesting access.
   const eligibleBuyers: LoginOtpCandidate[] = buyers
     .filter((c) => c.buyer_app_enabled)
     .map((c) => ({
@@ -1340,6 +1339,8 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
       phone: c.phone,
       business_name: c.business_name,
       contact_name: c.contact_name,
+      buyer_app_enabled: c.buyer_app_enabled,
+      tenant_app_enabled: c.tenant_app_enabled,
     }));
 
   // Remove buyer entries where the same auth user already appears as a seller
@@ -1369,8 +1370,8 @@ export function toBuyerLoginCandidate(c: LoginOtpCandidate): BuyerLoginCandidate
     phone: c.phone,
     business_name: c.business_name,
     contact_name: c.contact_name,
-    buyer_app_enabled: true,
-    tenant_app_enabled: true,
+    buyer_app_enabled: c.buyer_app_enabled !== false,
+    tenant_app_enabled: c.tenant_app_enabled !== false,
   };
 }
 

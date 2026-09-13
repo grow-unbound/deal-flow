@@ -9,6 +9,7 @@ export interface ExistingProfileRow {
   buyer_id: string;
   tenant_id: string;
   tenant_name: string;
+  tenant_logo_url: string | null;
   business_name: string | null;
   contact_name: string | null;
   phone: string | null;

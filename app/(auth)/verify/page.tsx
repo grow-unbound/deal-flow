@@ -69,6 +69,7 @@ function VerifyOtpForm() {
         contexts?: LoginOtpContext[];
         ref_id?: string;
         session?: SessionPayload;
+        return_to?: string;
         error?: string;
       } = await res.json();
 
@@ -102,7 +103,9 @@ function VerifyOtpForm() {
           // sessionStorage may be unavailable in some environments
         }
         shouldResetLoading = false;
-        router.push(`/login/select-context?ref_id=${encodeURIComponent(data.ref_id)}`);
+        const params = new URLSearchParams({ ref_id: data.ref_id });
+        if (data.return_to || returnTo) params.set('return_to', data.return_to ?? returnTo);
+        router.push(`/login/select-context?${params.toString()}`);
         return;
       }
 

@@ -20,6 +20,8 @@ export interface LoginOtpContext {
   // Disambiguates accounts that share a phone number but belong to different
   // auth users (currently only populated for seller candidates).
   email?: string | null;
+  buyer_app_enabled?: boolean | null;
+  tenant_app_enabled?: boolean | null;
 }
 
 export interface LoginOtpCandidate extends LoginOtpContext {

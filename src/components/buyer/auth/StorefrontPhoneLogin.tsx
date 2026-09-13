@@ -39,7 +39,6 @@ export function StorefrontPhoneLogin({
 
   return (
     <div className={compact ? '' : 'rounded-xl border border-cream-300 bg-white p-8 shadow-md'}>
-      <h1 className="mb-1 font-display text-h2 text-cream-900">Log in to order</h1>
       <p className="mb-6 text-body-sm text-cream-600">
         Continue with your WhatsApp number to see pricing and place orders.
       </p>
