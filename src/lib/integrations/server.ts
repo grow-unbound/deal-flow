@@ -50,6 +50,7 @@ const TYPE_TO_FAMILY_FLAG: Record<IntegrationTypeId, keyof typeof FLAGS> = {
   zoho_inventory: 'ZOHO_INTEGRATION',
   tally_prime: 'TALLY_INTEGRATION',
   busy: 'BUSY_INTEGRATION',
+  whatsapp_business: 'WHATSAPP_INTEGRATION',
 };
 
 const TYPE_TO_ENTITIES: Record<IntegrationTypeId, IntegrationEntityType[]> = {
@@ -57,6 +58,7 @@ const TYPE_TO_ENTITIES: Record<IntegrationTypeId, IntegrationEntityType[]> = {
   zoho_inventory: ['locations', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'],
   tally_prime: ['products', 'customers', 'orders'],
   busy: ['products', 'customers', 'orders'],
+  whatsapp_business: [],
 };
 
 const ENTITY_ENDPOINTS: Partial<Record<IntegrationEntityType, string>> = {
@@ -1129,7 +1131,7 @@ export async function runIntegrationSyncJob(jobId: string, tenantId: string, act
   if (!secret) throw new Error('Integration secret not found');
 
   const typeId = integration.integration_type_id as IntegrationTypeId;
-  if (typeId === 'tally_prime' || typeId === 'busy') {
+  if (typeId === 'tally_prime' || typeId === 'busy' || typeId === 'whatsapp_business') {
     await updateJob(db, jobId, {
       status: 'failed',
       completed_at: new Date().toISOString(),

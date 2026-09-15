@@ -7,6 +7,7 @@ import {
   type CatalogPricingMode,
   type CatalogProductDisplayMode,
 } from '@/lib/server/public-catalog';
+import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
 import { r2Url } from '@/lib/r2-url';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import type { ImportAnomaly } from '@/lib/onboarding/types';
@@ -96,7 +97,7 @@ export interface OnboardingPreviewPayload {
   photoTargets: Array<{
     key: string;
     entityId: string;
-    entityType: 'tenant_product' | 'tenant_brand' | 'tenant_category';
+    entityType: 'tenant_product' | 'tenant_product_family' | 'tenant_brand' | 'tenant_category';
     label: string;
   }>;
 }
@@ -106,6 +107,7 @@ export async function loadOnboardingPreview(
   tenantId: string,
   pricingMode: CatalogPricingMode | null,
   priceListId: string | null,
+  productDisplayModeOverride?: CatalogProductDisplayMode | null,
 ): Promise<OnboardingPreviewPayload> {
   const [{ data: tenant }, { data: catalog }, { count }, { data: priceListRows }] = await Promise.all([
     db.schema('app').from('tenants').select('slug, business_name').eq('id', tenantId).maybeSingle(),
@@ -113,6 +115,19 @@ export async function loadOnboardingPreview(
     db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true).is('deleted_at', null),
     db.schema('app').from('price_lists').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null).limit(200),
   ]);
+
+  const catalogRecord = catalog as {
+    live_at?: string | null;
+    updated_at?: string | null;
+    pricing_mode?: CatalogPricingMode | null;
+    price_list_id?: string | null;
+    access_mode?: CatalogAccessMode | null;
+    collect_target_unit_price_range?: boolean | null;
+    product_display_mode?: CatalogProductDisplayMode | null;
+  } | null;
+  const effectiveDisplayMode = productDisplayModeOverride
+    ?? catalogRecord?.product_display_mode
+    ?? 'sku_list';
 
   const { data: products, error: productError } = await db
     .schema('app')
@@ -166,7 +181,7 @@ export async function loadOnboardingPreview(
     });
   }
 
-  const items: BuyerCatalogItem[] = rows.map((row) => {
+  const skuItems: BuyerCatalogItem[] = rows.map((row) => {
     const brand = row.tenant_brand_id ? brandMap.get(row.tenant_brand_id) : undefined;
     const category = row.tenant_category_id ? categoryMap.get(row.tenant_category_id) : undefined;
     const baseSelling = row.base_selling_price != null ? Number(row.base_selling_price) : null;
@@ -207,6 +222,34 @@ export async function loadOnboardingPreview(
     };
   });
 
+  let items = skuItems;
+  if (effectiveDisplayMode === 'group_variants') {
+    const familyPage = await fetchBuyerFamilyCatalogPage({
+      db,
+      tenantId,
+      buyerId: null,
+      limit: PREVIEW_LIMIT,
+      offset: 0,
+      guestPricing: effectiveMode ? {
+        mode: effectiveMode,
+        priceListId: effectiveMode === 'assigned_price_list' ? priceListId : null,
+        excludedProductIds: [],
+      } : null,
+      publicCatalog: {
+        id: '',
+        tenantId,
+        includeAll: true,
+        pricingMode: effectiveMode,
+        priceListId,
+        accessMode: catalogRecord?.access_mode ?? 'public_link',
+        collectTargetUnitPriceRange: catalogRecord?.collect_target_unit_price_range === true,
+        productDisplayMode: effectiveDisplayMode,
+        liveAt: catalogRecord?.live_at ?? null,
+      },
+    });
+    items = familyPage.items;
+  }
+
   const { data: anomalySource } = await db
     .schema('app')
     .from('tenant_products')
@@ -224,6 +267,39 @@ export async function loadOnboardingPreview(
     .eq('is_active', true)
     .is('deleted_at', null)
     .limit(10_000);
+
+  const [{ data: photoProductRows }, { data: photoFamilyRows }, { data: photoBrandRows }, { data: photoCategoryRows }] = await Promise.all([
+    db
+      .schema('app')
+      .from('tenant_products')
+      .select('id, internal_sku, name_override')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .limit(10_000),
+    db
+      .schema('app')
+      .from('tenant_product_families')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .limit(10_000),
+    db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override, slug')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .limit(2_000),
+    db
+      .schema('app')
+      .from('tenant_categories')
+      .select('id, name, slug')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .limit(2_000),
+  ]);
 
   const anomalies: ImportAnomaly[] = [];
   for (const row of (anomalySource ?? []) as Array<{
@@ -270,19 +346,29 @@ export async function loadOnboardingPreview(
   }));
 
   const photoTargets: OnboardingPreviewPayload['photoTargets'] = [
-    ...rows.map((r) => ({
+    ...((photoProductRows ?? []) as Array<{ id: string; internal_sku: string | null; name_override: string | null }>)
+      .filter((r) => Boolean(r.internal_sku?.trim()))
+      .map((r) => ({
       key: r.internal_sku ?? r.id,
       entityId: r.id,
       entityType: 'tenant_product' as const,
       label: r.name_override || r.internal_sku || r.id,
     })),
-    ...((brandRows ?? []) as Array<{ id: string; display_name_override: string | null; slug: string | null }>).map((b) => ({
+    ...((photoFamilyRows ?? []) as Array<{ id: string; name: string | null }>)
+      .filter((f) => Boolean(f.name?.trim()))
+      .map((f) => ({
+      key: f.name ?? f.id,
+      entityId: f.id,
+      entityType: 'tenant_product_family' as const,
+      label: f.name || f.id,
+    })),
+    ...((photoBrandRows ?? []) as Array<{ id: string; display_name_override: string | null; slug: string | null }>).map((b) => ({
       key: b.display_name_override || b.slug || b.id,
       entityId: b.id,
       entityType: 'tenant_brand' as const,
       label: b.display_name_override || b.slug || b.id,
     })),
-    ...((categoryRows ?? []) as Array<{ id: string; name: string; slug: string }>).map((c) => ({
+    ...((photoCategoryRows ?? []) as Array<{ id: string; name: string; slug: string }>).map((c) => ({
       key: c.name || c.slug,
       entityId: c.id,
       entityType: 'tenant_category' as const,
@@ -292,7 +378,7 @@ export async function loadOnboardingPreview(
 
   return {
     productCount: count ?? rows.length,
-    catalogUpdatedAt: ((catalog as { updated_at?: string | null } | null)?.updated_at) ?? null,
+    catalogUpdatedAt: catalogRecord?.updated_at ?? null,
     productReadiness: {
       activeProductCount: count ?? rows.length,
       anomalyCount: anomalies.length,
@@ -304,12 +390,12 @@ export async function loadOnboardingPreview(
     anomalies,
     slug: (tenant?.slug as string | undefined) ?? '',
     businessName: (tenant?.business_name as string | undefined) ?? '',
-    live: Boolean((catalog as { live_at?: string | null } | null)?.live_at),
-    pricingMode: ((catalog as { pricing_mode?: CatalogPricingMode | null } | null)?.pricing_mode) ?? null,
-    priceListId: ((catalog as { price_list_id?: string | null } | null)?.price_list_id) ?? null,
-    accessMode: ((catalog as { access_mode?: CatalogAccessMode | null } | null)?.access_mode) ?? 'public_link',
-    collectTargetUnitPriceRange: ((catalog as { collect_target_unit_price_range?: boolean | null } | null)?.collect_target_unit_price_range) === true,
-    productDisplayMode: ((catalog as { product_display_mode?: CatalogProductDisplayMode | null } | null)?.product_display_mode) ?? 'sku_list',
+    live: Boolean(catalogRecord?.live_at),
+    pricingMode: catalogRecord?.pricing_mode ?? null,
+    priceListId: catalogRecord?.price_list_id ?? null,
+    accessMode: catalogRecord?.access_mode ?? 'public_link',
+    collectTargetUnitPriceRange: catalogRecord?.collect_target_unit_price_range === true,
+    productDisplayMode: effectiveDisplayMode,
     priceLists: ((priceListRows ?? []) as Array<{ id: string; name: string }>).map((pl) => ({ id: pl.id, name: pl.name })),
     photoTargets,
   };

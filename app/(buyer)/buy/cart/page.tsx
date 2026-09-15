@@ -24,7 +24,8 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
-import { markBuyerNavigationForward, navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
+import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
+import { BuyerLocationDialog } from '@/components/buyer/layout/BuyerLocationDialog';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
@@ -106,6 +107,7 @@ export default function CartPage() {
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
+  const [outletDialogOpen, setOutletDialogOpen] = useState(false);
 
   useEffect(() => {
     router.prefetch('/buy/order-placed');
@@ -114,8 +116,8 @@ export default function CartPage() {
 
   useEffect(() => {
     if (!deliveryHydrated || selectedDelivery) return;
-    router.replace('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
-  }, [deliveryHydrated, router, selectedDelivery]);
+    setOutletDialogOpen(true);
+  }, [deliveryHydrated, selectedDelivery]);
 
   // Task 10 gated-action rule: a buyer_pending session (self-registered,
   // awaiting approval / needs_more_info / declined) reaching checkout — via a
@@ -220,8 +222,7 @@ export default function CartPage() {
       : null;
 
   function openOutletSelector(): void {
-    markBuyerNavigationForward();
-    router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'));
+    setOutletDialogOpen(true);
   }
 
   function buildLineItems(sourceItems: BuyerCartItem[] = items): CartLineItem[] {
@@ -787,6 +788,8 @@ export default function CartPage() {
           <span className="font-semibold" style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-600)' }}>Yukti</span>
         </div>
       </div>
+
+      <BuyerLocationDialog open={outletDialogOpen} onOpenChange={setOutletDialogOpen} returnTo="/buy/cart" />
 
       {/* Sticky footer */}
       <BuyerFixedFooter

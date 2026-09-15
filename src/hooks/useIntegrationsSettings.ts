@@ -19,7 +19,7 @@ import type {
 
 export type { IntegrationEntityError } from '@/types/integrations';
 
-export type IntegrationFamilyFlag = 'ZOHO_INTEGRATION' | 'TALLY_INTEGRATION' | 'BUSY_INTEGRATION';
+export type IntegrationFamilyFlag = 'ZOHO_INTEGRATION' | 'TALLY_INTEGRATION' | 'BUSY_INTEGRATION' | 'WHATSAPP_INTEGRATION';
 export type IntegrationConnectivityMode = 'cloud' | 'local';
 export type TenantIntegrationStatus = 'pending_setup' | 'connected' | 'syncing' | 'sync_failed' | 'disconnected';
 export type IntegrationHealthStatus = 'ok' | 'expired' | 'invalid' | null;
@@ -346,6 +346,7 @@ function normalizeSummary(value: unknown): IntegrationJobSummary | null {
 function inferFamilyFlag(id: string): IntegrationFamilyFlag {
   if (id.startsWith('zoho_')) return 'ZOHO_INTEGRATION';
   if (id === 'tally_prime') return 'TALLY_INTEGRATION';
+  if (id === 'whatsapp_business') return 'WHATSAPP_INTEGRATION';
   return 'BUSY_INTEGRATION';
 }
 

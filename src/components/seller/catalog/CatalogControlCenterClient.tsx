@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Copy, Edit3, ExternalLink, Eye, Image, Package, Save, Settings2, Users } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Copy, Edit3, Eye, Image, Package, Save, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { StatusPill } from '@/components/ui/status-pill';
 import { OnboardingPreviewFrame } from '@/components/seller/onboarding/OnboardingPreviewFrame';
 import { useTenant } from '@/contexts/TenantContext';
@@ -158,7 +159,16 @@ export function CatalogControlCenterClient(): ReactNode {
   }
 
   if (!state) {
-    return <div className="h-96 animate-pulse rounded-[8px] border border-cream-200 bg-cream-100" />;
+    return (
+      <div className="space-y-6">
+        <SellerTopbar
+          eyebrow="Market"
+          title="Catalog"
+          subtitle="Control what buyers see, whether prices are shown, and how enquiries are collected."
+        />
+        <div className="h-96 animate-pulse rounded-[8px] border border-cream-200 bg-cream-100" />
+      </div>
+    );
   }
 
   const pricingLabel = pricingSummaryLabel(pricingMode, state.priceLists, priceListId);
@@ -166,197 +176,188 @@ export function CatalogControlCenterClient(): ReactNode {
   const hasOperationalIssues = state.productReadiness.anomalyCount > 0 || state.productReadiness.missingProductImageCount > 0;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,38rem)_minmax(0,1fr)]">
-      <div className="space-y-5">
-        <section className="rounded-[8px] border border-cream-200 bg-white p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusPill label={state.live ? 'Live' : 'Not live'} tone={state.live ? 'success' : 'warning'} />
-                <span className="text-body-sm text-cream-600">{state.productReadiness.activeProductCount} products</span>
-              </div>
-              <p className="mt-3 text-h4 font-semibold text-cream-950">
-                {state.live ? 'Your catalog is live' : 'Complete setup to share this catalog'}
-              </p>
-              <p className="mt-1 text-body-sm text-cream-600">
-                {accessMode === 'public_link' ? 'Anyone with the link can browse.' : 'Approved buyers must log in before browsing.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" onClick={() => void copyLink()}>
-                <Copy className="h-4 w-4" />
-                Copy link
-              </Button>
-              <Button type="button" variant="secondary" asChild>
-                <a href={href || '#'} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Open catalog
-                </a>
-              </Button>
-              <Button type="button" variant="secondary" asChild>
-                <a href={href || '#'} target="_blank" rel="noreferrer">
-                  <Eye className="h-4 w-4" />
-                  Preview as buyer
-                </a>
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[8px] border border-cream-200 bg-white p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-h4 font-semibold text-cream-950">Setup summary</h2>
-              <p className="mt-1 text-body-sm text-cream-600">Last updated {lastUpdated}</p>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowReconfigure((open) => !open);
-                setEditing(null);
-              }}
-            >
-              <Settings2 className="h-4 w-4" />
-              Reconfigure catalog
+    <div className="space-y-6">
+      <SellerTopbar
+        eyebrow="Market"
+        title="Catalog"
+        subtitle="Control what buyers see, whether prices are shown, and how enquiries are collected."
+        action={(
+          <>
+            <Button type="button" variant="secondary" disabled={!canSave || saving} onClick={() => void save(false)}>
+              <Save className="h-4 w-4" />
+              Save settings
             </Button>
+            <Button type="button" disabled={!canSave || saving} onClick={() => void save(true)}>
+              <Eye className="h-4 w-4" />
+              {state.live ? 'Update live catalog' : 'Publish catalog'}
+            </Button>
+          </>
+        )}
+      />
+
+      {hasOperationalIssues ? (
+        <p className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 p-3 text-body-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          Fixing product data and photos improves buyer trust, but it does not block saving catalog settings.
+        </p>
+      ) : null}
+
+      <section className="rounded-[8px] border border-teal-200 bg-teal-500 p-4 text-[var(--fg-inverse)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill label={state.live ? 'Live' : 'Not live'} tone={state.live ? 'success' : 'warning'} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-[8px] text-[var(--fg-inverse)] hover:bg-white/10 hover:text-[var(--fg-inverse)]"
+                aria-label="Copy catalog link"
+                title="Copy catalog link"
+                onClick={() => void copyLink()}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="mt-3 text-h4 font-semibold text-[var(--fg-inverse)]">
+              {state.live ? 'Your catalog is live' : 'Complete setup to share this catalog'}
+            </p>
+            <p className="mt-1 text-body-sm text-[var(--fg-inverse)]/80">
+              {accessMode === 'public_link' ? 'Anyone with the link can browse.' : 'Approved buyers must log in before browsing.'}
+            </p>
           </div>
-
-          <div className="mt-4 divide-y divide-cream-200 rounded-[8px] border border-cream-200">
-            <SummaryRow label="Access" value={accessMode === 'public_link' ? 'Public link' : 'Approved buyers only'} onEdit={() => setEditing('access')} />
-            <SummaryRow label="Pricing" value={pricingLabel} onEdit={() => setEditing('pricing')} />
-            <SummaryRow label="Target rate" value={pricingMode === 'hide_price_collect_enquiry' && collectTarget ? 'On' : 'Off'} onEdit={() => setEditing('pricing')} />
-            <SummaryRow label="Product display" value={productDisplayMode === 'group_variants' ? 'Grouped variants' : 'SKU list'} onEdit={() => setEditing('display')} />
+          <div className="grid shrink-0 grid-cols-2 gap-3 sm:min-w-[18rem]">
+            <BannerMetricCard
+              icon={<Package className="h-4 w-4" />}
+              title="Products"
+              value={`${state.productReadiness.activeProductCount}`}
+              description={state.productReadiness.anomalyCount > 0 ? `${state.productReadiness.anomalyCount} rows need review` : 'Data ready'}
+              href="/products/import"
+              action="Import"
+              tone={state.productReadiness.anomalyCount > 0 ? 'warning' : 'success'}
+            />
+            <BannerMetricCard
+              icon={<Image className="h-4 w-4" />}
+              title="Photos"
+              value={`${state.productReadiness.missingProductImageCount}`}
+              description={state.productReadiness.missingProductImageCount > 0 ? 'Missing images' : 'Images ready'}
+              href="/setup/catalog"
+              action="Upload"
+              tone={state.productReadiness.missingProductImageCount > 0 ? 'warning' : 'success'}
+            />
           </div>
-        </section>
+        </div>
+      </section>
 
-        {editing === 'access' ? (
-          <EditableSection title="Who can browse your catalog?" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-            {renderAccessEditor(accessMode, setAccessMode)}
-          </EditableSection>
-        ) : null}
-
-        {editing === 'pricing' ? (
-          <EditableSection title="How buyers buy" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-            {renderPricingEditor({
-              pricingMode,
-              priceListId,
-              state,
-              assignedByList,
-              collectTarget,
-              setPricingMode,
-              setPriceListId,
-              setCollectTarget,
-              load,
-            })}
-          </EditableSection>
-        ) : null}
-
-        {editing === 'display' ? (
-          <EditableSection title="How products appear" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-            {renderDisplayEditor(productDisplayMode, setProductDisplayMode)}
-          </EditableSection>
-        ) : null}
-
-        {showReconfigure ? (
-          <section className="rounded-[8px] border border-teal-200 bg-white p-5 shadow-sm">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,38rem)_minmax(0,1fr)]">
+        <div className="space-y-5">
+          <section className="rounded-[8px] border border-cream-200 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-h4 font-semibold text-cream-950">Reconfigure catalog</h2>
-                <p className="mt-1 text-body-sm text-cream-600">Adjust the live buyer-facing behavior and preview the impact beside it.</p>
+                <h2 className="text-h4 font-semibold text-cream-950">Setup summary</h2>
+                <p className="mt-1 text-body-sm text-cream-600">Last updated {lastUpdated}</p>
               </div>
-              <Button type="button" variant="ghost" onClick={() => setShowReconfigure(false)}>Close</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowReconfigure((open) => !open);
+                  setEditing(null);
+                }}
+              >
+                <Settings2 className="h-4 w-4" />
+                Reconfigure catalog
+              </Button>
             </div>
-            <div className="mt-5 space-y-5">
-              <div>
-                <h3 className="text-body font-semibold text-cream-950">Access</h3>
-                <div className="mt-3">{renderAccessEditor(accessMode, setAccessMode)}</div>
-              </div>
-              <div>
-                <h3 className="text-body font-semibold text-cream-950">Buying mode</h3>
-                <div className="mt-3">
-                  {renderPricingEditor({
-                    pricingMode,
-                    priceListId,
-                    state,
-                    assignedByList,
-                    collectTarget,
-                    setPricingMode,
-                    setPriceListId,
-                    setCollectTarget,
-                    load,
-                  })}
-                </div>
-              </div>
-              <div>
-                <h3 className="text-body font-semibold text-cream-950">Product display</h3>
-                <div className="mt-3">{renderDisplayEditor(productDisplayMode, setProductDisplayMode)}</div>
-              </div>
+
+            <div className="mt-4 divide-y divide-cream-200 rounded-[8px] border border-cream-200">
+              <SummaryRow label="Access" value={accessMode === 'public_link' ? 'Public link' : 'Approved buyers only'} onEdit={() => setEditing('access')} />
+              <SummaryRow label="Pricing" value={pricingLabel} onEdit={() => setEditing('pricing')} />
+              <SummaryRow label="Target rate" value={pricingMode === 'hide_price_collect_enquiry' && collectTarget ? 'On' : 'Off'} onEdit={() => setEditing('pricing')} />
+              <SummaryRow label="Product display" value={productDisplayMode === 'group_variants' ? 'Grouped variants' : 'SKU list'} onEdit={() => setEditing('display')} />
             </div>
           </section>
-        ) : null}
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <OperationalCard
-            icon={<Package className="h-4 w-4" />}
-            title="Products"
-            value={`${state.productReadiness.activeProductCount}`}
-            description={state.productReadiness.anomalyCount > 0 ? `${state.productReadiness.anomalyCount} rows need review` : 'Catalog product data looks ready'}
-            href="/products/import"
-            action="Import products"
-            tone={state.productReadiness.anomalyCount > 0 ? 'warning' : 'success'}
-          />
-          <OperationalCard
-            icon={<Image className="h-4 w-4" />}
-            title="Photos"
-            value={`${state.productReadiness.missingProductImageCount}`}
-            description={state.productReadiness.missingProductImageCount > 0 ? 'products are missing images' : 'Product images look ready'}
-            href="/setup/catalog"
-            action="Upload photos"
-            tone={state.productReadiness.missingProductImageCount > 0 ? 'warning' : 'success'}
-          />
-          <OperationalCard
-            icon={<Users className="h-4 w-4" />}
-            title="Customer groups"
-            value={`${state.brandRestrictionSummary.restrictedCustomerGroups}/${state.brandRestrictionSummary.totalCustomerGroups}`}
-            description={brandRestrictionDescription(state.brandRestrictionSummary)}
-            href="/customer-groups"
-            action="Review groups"
-            tone={state.brandRestrictionSummary.restrictedCustomerGroups > 0 ? 'info' : 'success'}
-          />
+          {editing === 'access' ? (
+            <EditableSection title="Who can browse your catalog?" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
+              {renderAccessEditor(accessMode, setAccessMode)}
+            </EditableSection>
+          ) : null}
+
+          {editing === 'pricing' ? (
+            <EditableSection title="How buyers buy" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
+              {renderPricingEditor({
+                pricingMode,
+                priceListId,
+                state,
+                assignedByList,
+                collectTarget,
+                setPricingMode,
+                setPriceListId,
+                setCollectTarget,
+                load,
+              })}
+            </EditableSection>
+          ) : null}
+
+          {editing === 'display' ? (
+            <EditableSection title="How products appear" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
+              {renderDisplayEditor(productDisplayMode, setProductDisplayMode)}
+            </EditableSection>
+          ) : null}
+
+          {showReconfigure ? (
+            <section className="rounded-[8px] border border-teal-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-h4 font-semibold text-cream-950">Reconfigure catalog</h2>
+                  <p className="mt-1 text-body-sm text-cream-600">Adjust the live buyer-facing behavior and preview the impact beside it.</p>
+                </div>
+                <Button type="button" variant="ghost" onClick={() => setShowReconfigure(false)}>Close</Button>
+              </div>
+              <div className="mt-5 space-y-5">
+                <div>
+                  <h3 className="text-body font-semibold text-cream-950">Access</h3>
+                  <div className="mt-3">{renderAccessEditor(accessMode, setAccessMode)}</div>
+                </div>
+                <div>
+                  <h3 className="text-body font-semibold text-cream-950">Buying mode</h3>
+                  <div className="mt-3">
+                    {renderPricingEditor({
+                      pricingMode,
+                      priceListId,
+                      state,
+                      assignedByList,
+                      collectTarget,
+                      setPricingMode,
+                      setPriceListId,
+                      setCollectTarget,
+                      load,
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-body font-semibold text-cream-950">Product display</h3>
+                  <div className="mt-3">{renderDisplayEditor(productDisplayMode, setProductDisplayMode)}</div>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" disabled={!canSave || saving} onClick={() => void save(false)}>
-            <Save className="h-4 w-4" />
-            Save settings
-          </Button>
-          <Button type="button" disabled={!canSave || saving} onClick={() => void save(true)}>
-            <Eye className="h-4 w-4" />
-            {state.live ? 'Update live catalog' : 'Publish catalog'}
-          </Button>
+        <div className="min-h-[680px]">
+          <OnboardingPreviewFrame
+            slug={state.slug}
+            businessName={state.businessName}
+            items={previewItems}
+            brands={state.brands}
+            categories={state.categories}
+            pricingMode={pricingMode}
+            storefrontHost={state.storefrontHost}
+            collectTargetUnitPriceRange={collectTarget}
+            productDisplayMode={productDisplayMode}
+          />
         </div>
-
-        {hasOperationalIssues ? (
-          <p className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 p-3 text-body-sm text-amber-900">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            Fixing product data and photos improves buyer trust, but it does not block saving catalog settings.
-          </p>
-        ) : null}
-      </div>
-
-      <div className="min-h-[680px]">
-        <OnboardingPreviewFrame
-          slug={state.slug}
-          businessName={state.businessName}
-          items={previewItems}
-          brands={state.brands}
-          categories={state.categories}
-          pricingMode={pricingMode}
-          storefrontHost={state.storefrontHost}
-          collectTargetUnitPriceRange={collectTarget}
-          productDisplayMode={productDisplayMode}
-        />
       </div>
     </div>
   );
@@ -538,7 +539,7 @@ function CatalogOption({
   );
 }
 
-function OperationalCard({
+function BannerMetricCard({
   icon,
   title,
   value,
@@ -553,20 +554,20 @@ function OperationalCard({
   description: string;
   href: string;
   action: string;
-  tone: 'success' | 'warning' | 'info';
+  tone: 'success' | 'warning';
 }) {
   return (
-    <section className="rounded-[8px] border border-cream-200 bg-white p-4">
+    <section className="rounded-[8px] border border-white/20 bg-white/10 p-3 text-[var(--fg-inverse)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-body-sm font-semibold text-cream-700">
+        <div className="flex items-center gap-2 text-body-sm font-semibold text-[var(--fg-inverse)]/80">
           {icon}
           {title}
         </div>
-        {tone === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}
+        {tone === 'success' ? <CheckCircle2 className="h-4 w-4 text-[var(--fg-inverse)]" /> : null}
       </div>
-      <p className="mt-3 text-h3 font-semibold text-cream-950">{value}</p>
-      <p className="mt-1 min-h-[2.5rem] text-body-sm text-cream-600">{description}</p>
-      <Button type="button" variant="ghost" size="sm" className="mt-3 px-0" asChild>
+      <p className="mt-2 text-h3 font-semibold text-[var(--fg-inverse)]">{value}</p>
+      <p className="mt-1 min-h-[2rem] text-body-sm text-[var(--fg-inverse)]/75">{description}</p>
+      <Button type="button" variant="ghost" size="sm" className="mt-2 h-auto px-0 text-[var(--fg-inverse)] hover:bg-transparent hover:text-[var(--fg-inverse)] hover:underline" asChild>
         <Link href={href}>{action}</Link>
       </Button>
     </section>
@@ -595,11 +596,4 @@ function formatCatalogDate(value: string | null): string {
     month: 'short',
     year: 'numeric',
   }).format(new Date(value));
-}
-
-function brandRestrictionDescription(summary: CatalogSetupState['brandRestrictionSummary']): string {
-  if (summary.totalCustomerGroups === 0) return 'No customer groups yet';
-  if (summary.restrictedCustomerGroups === 0) return 'All groups can browse all brands after login';
-  const samples = summary.sampleCustomerGroups.join(', ');
-  return `${summary.restrictedCustomerGroups} group${summary.restrictedCustomerGroups === 1 ? '' : 's'} restrict ${summary.restrictedBrandCount} brand${summary.restrictedBrandCount === 1 ? '' : 's'}${samples ? `: ${samples}` : ''}`;
 }

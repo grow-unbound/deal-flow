@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
+import { buildBuyerLocationHref, shouldShowBuyerDesktopBreadcrumbs } from '@/lib/buyer-routes';
 
 describe('shouldShowBuyerDesktopBreadcrumbs', () => {
   it('hides breadcrumbs only on the Home landing page', () => {
@@ -16,5 +16,13 @@ describe('shouldShowBuyerDesktopBreadcrumbs', () => {
     expect(shouldShowBuyerDesktopBreadcrumbs('/buy/home/category/abc')).toBe(true);
     expect(shouldShowBuyerDesktopBreadcrumbs('/buy/search')).toBe(true);
     expect(shouldShowBuyerDesktopBreadcrumbs('/buy/orders/123')).toBe(true);
+  });
+});
+
+describe('buildBuyerLocationHref', () => {
+  it('uses public storefront return paths for internal buyer home routes', () => {
+    expect(buildBuyerLocationHref('/buy/home')).toBe('/location?returnTo=%2F');
+    expect(buildBuyerLocationHref('/buy/home?share_token=tok')).toBe('/location?returnTo=%2F%3Fshare_token%3Dtok');
+    expect(buildBuyerLocationHref('/buy/home/list/list-1')).toBe('/location?returnTo=%2Flist%2Flist-1');
   });
 });

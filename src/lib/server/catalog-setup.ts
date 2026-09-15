@@ -21,6 +21,18 @@ export const CatalogSetupPricingModeSchema = z.enum([
 ]);
 export const CatalogSetupAccessModeSchema = z.enum(['public_link', 'approved_buyers_only']);
 export const CatalogSetupProductDisplayModeSchema = z.enum(['sku_list', 'group_variants']);
+export const CatalogSetupPlaceSchema = z.object({
+  label: z.string().max(500).optional(),
+  lat: z.number().nullable().optional(),
+  lng: z.number().nullable().optional(),
+  address: z.object({
+    line1: z.string().max(500).default(''),
+    line2: z.string().max(500).default('').optional(),
+    city: z.string().max(200).default(''),
+    state: z.string().max(2).default(''),
+    pincode: z.string().max(10).default(''),
+  }),
+});
 
 export const CatalogSetupPatchSchema = z.object({
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/).optional(),
@@ -30,6 +42,7 @@ export const CatalogSetupPatchSchema = z.object({
   collect_target_unit_price_range: z.boolean().optional(),
   product_display_mode: CatalogSetupProductDisplayModeSchema.optional(),
   settings: TenantSettingsPatchSchema.optional(),
+  setup_place: CatalogSetupPlaceSchema.optional(),
   publish: z.boolean().optional(),
 });
 
@@ -54,6 +67,9 @@ type TenantBasicsRow = {
   primary_state: string | null;
   plan: string | null;
 };
+
+const ONBOARDING_DEFAULT_LOCATION_REF = 'yukti:onboarding:default-location';
+const ONBOARDING_DEFAULT_WAREHOUSE_REF = 'yukti:onboarding:default-warehouse';
 
 export async function loadCatalogSetupState(
   db: SupabaseClient,
@@ -239,6 +255,7 @@ export async function saveCatalogSetupState(
     if (business && Object.keys(business).length > 0) {
       const tenantUpdates: Record<string, string | null> = {};
       if (business.company_name !== undefined) tenantUpdates.business_name = business.company_name;
+      if (business.tagline !== undefined) tenantUpdates.tagline = business.tagline.trim() === '' ? null : business.tagline.trim();
       if (business.gstin !== undefined) tenantUpdates.gstin = business.gstin.trim() === '' ? null : business.gstin.trim();
       if (business.address?.state !== undefined) {
         tenantUpdates.primary_state = business.address.state.trim() === '' ? null : business.address.state.trim();
@@ -255,7 +272,155 @@ export async function saveCatalogSetupState(
     }
   }
 
+  if (patch.setup_place) {
+    await ensureOnboardingDefaultLocationAndWarehouse(db, {
+      tenantId,
+      actorId,
+      businessName: extractBusinessName(patch.settings?.business?.company_name),
+      businessPhone: extractBusinessPhone(patch.settings?.business?.phone),
+      place: patch.setup_place,
+    });
+  }
+
   return { slug };
+}
+
+function extractBusinessName(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function extractBusinessPhone(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const phone = value.replace(/\D/g, '').slice(0, 10);
+  return phone.length === 10 ? phone : null;
+}
+
+async function ensureOnboardingDefaultLocationAndWarehouse(
+  db: SupabaseClient,
+  params: {
+    tenantId: string;
+    actorId: string;
+    businessName: string | null;
+    businessPhone: string | null;
+    place: z.infer<typeof CatalogSetupPlaceSchema>;
+  },
+) {
+  const now = new Date().toISOString();
+  const address = {
+    line1: params.place.address.line1.trim(),
+    line2: (params.place.address.line2 ?? '').trim(),
+    city: params.place.address.city.trim(),
+    state: params.place.address.state.trim().toUpperCase().slice(0, 2),
+    pincode: params.place.address.pincode.trim(),
+  };
+  const lat = params.place.lat ?? null;
+  const lng = params.place.lng ?? null;
+  const locationName = params.businessName ? `${params.businessName} Office` : 'Main Office';
+  const warehouseName = params.businessName ? `${params.businessName} Warehouse` : 'Main Warehouse';
+
+  await db
+    .schema('app')
+    .from('locations')
+    .update({ is_default: false, updated_at: now, updated_by: params.actorId })
+    .eq('tenant_id', params.tenantId)
+    .eq('is_default', true)
+    .is('deleted_at', null);
+
+  const { data: existingLocation, error: existingLocationError } = await db
+    .schema('app')
+    .from('locations')
+    .select('id')
+    .eq('tenant_id', params.tenantId)
+    .eq('external_ref', ONBOARDING_DEFAULT_LOCATION_REF)
+    .maybeSingle();
+  if (existingLocationError) throw new Error(existingLocationError.message);
+
+  let locationId = (existingLocation as { id?: string } | null)?.id ?? null;
+  const locationPayload = {
+    tenant_id: params.tenantId,
+    name: locationName,
+    address,
+    is_default: true,
+    external_ref: ONBOARDING_DEFAULT_LOCATION_REF,
+    phone_number: params.businessPhone,
+    status: 'active',
+    associated_users: [],
+    lat,
+    lng,
+    deleted_at: null,
+    updated_at: now,
+    updated_by: params.actorId,
+  };
+
+  if (locationId) {
+    const { error: updateLocationError } = await db
+      .schema('app')
+      .from('locations')
+      .update(locationPayload)
+      .eq('id', locationId);
+    if (updateLocationError) throw new Error(updateLocationError.message);
+  } else {
+    const { data: insertedLocation, error: insertLocationError } = await db
+      .schema('app')
+      .from('locations')
+      .insert({
+        ...locationPayload,
+        created_by: params.actorId,
+      })
+      .select('id')
+      .single();
+    if (insertLocationError) throw new Error(insertLocationError.message);
+    locationId = (insertedLocation as { id?: string } | null)?.id ?? null;
+  }
+
+  if (!locationId) {
+    throw new Error('Failed to create default location');
+  }
+
+  const { data: existingWarehouse, error: existingWarehouseError } = await db
+    .schema('app')
+    .from('warehouses')
+    .select('id')
+    .eq('tenant_id', params.tenantId)
+    .eq('external_ref', ONBOARDING_DEFAULT_WAREHOUSE_REF)
+    .maybeSingle();
+  if (existingWarehouseError) throw new Error(existingWarehouseError.message);
+
+  const warehouseId = (existingWarehouse as { id?: string } | null)?.id ?? null;
+  const warehousePayload = {
+    tenant_id: params.tenantId,
+    location_id: locationId,
+    name: warehouseName,
+    address,
+    phone_number: params.businessPhone,
+    status: 'active',
+    is_default: true,
+    external_ref: ONBOARDING_DEFAULT_WAREHOUSE_REF,
+    associated_users: [],
+    lat,
+    lng,
+    deleted_at: null,
+    updated_at: now,
+    updated_by: params.actorId,
+  };
+
+  if (warehouseId) {
+    const { error: updateWarehouseError } = await db
+      .schema('app')
+      .from('warehouses')
+      .update(warehousePayload)
+      .eq('id', warehouseId);
+    if (updateWarehouseError) throw new Error(updateWarehouseError.message);
+  } else {
+    const { error: insertWarehouseError } = await db
+      .schema('app')
+      .from('warehouses')
+      .insert({
+        ...warehousePayload,
+        created_by: params.actorId,
+      });
+    if (insertWarehouseError) throw new Error(insertWarehouseError.message);
+  }
 }
 
 export class CatalogSetupValidationError extends Error {

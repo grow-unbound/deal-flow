@@ -92,20 +92,27 @@ describe('CatalogControlCenterClient', () => {
     apiPatchMock.mockResolvedValue(jsonResponse({ ok: true, state: baseState }));
   });
 
-  it('renders compact summary, readiness, and brand restriction cards', async () => {
+  it('renders the catalog banner, top actions, and compact readiness cards', async () => {
     render(<CatalogControlCenterClient />);
 
     await screen.findByText('Setup summary');
 
     expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.getByText('Your catalog is live')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy catalog link' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save settings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Update live catalog/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Open catalog/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Preview as buyer/i })).not.toBeInTheDocument();
     expect(screen.getByText('Hide prices and collect enquiries')).toBeInTheDocument();
     expect(screen.getByText('Target rate')).toBeInTheDocument();
     expect(screen.getByText('On')).toBeInTheDocument();
     expect(screen.getByText(/Last updated/i)).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText('2 rows need review')).toBeInTheDocument();
-    expect(screen.getByText('products are missing images')).toBeInTheDocument();
-    expect(screen.getByText(/2 groups restrict 3 brands: Retailers, Dealers/)).toBeInTheDocument();
+    expect(screen.getByText('Missing images')).toBeInTheDocument();
+    expect(screen.queryByText('Customer groups')).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 groups restrict 3 brands: Retailers, Dealers/)).not.toBeInTheDocument();
   });
 
   it('opens inline access editing and saves through the shared setup API', async () => {

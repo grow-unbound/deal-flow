@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Box, Copy } from 'lucide-react';
+import { ArrowRight, Box, Copy, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,12 +17,14 @@ export function CatalogUnpublishedIntercept(): React.ReactNode {
           <Box className="h-6 w-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-h4 font-semibold text-cream-50">Your storefront isn't live yet</p>
-          <p className="mt-1 text-body-sm text-cream-400">Get a shareable catalog link in a few minutes.</p>
+          <p className="text-h4 font-semibold text-cream-50">Set up your buyer catalog</p>
+          <p className="mt-1 text-body-sm text-cream-400">
+            Confirm business details, import products, choose pricing, and publish your buyer link.
+          </p>
         </div>
         <Button asChild variant="accent" className="shrink-0">
-          <Link href="/catalogs">
-            Set it up
+          <Link href="/setup/catalog">
+            Start setup
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
@@ -60,10 +62,18 @@ export function CatalogLiveShareCard(): React.ReactNode {
             <p className="truncate font-mono text-body-sm text-cream-800">{host}</p>
           </div>
         </div>
-        <Button type="button" variant="accent" onClick={() => void copyLink()}>
-          <Copy className="h-4 w-4" />
-          Share your link
-        </Button>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <Button asChild variant="secondary">
+            <Link href="/setup/catalog?step=business">
+              <Settings2 className="h-4 w-4" />
+              Edit setup
+            </Link>
+          </Button>
+          <Button type="button" variant="accent" onClick={() => void copyLink()}>
+            <Copy className="h-4 w-4" />
+            Share your link
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

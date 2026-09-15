@@ -7,11 +7,12 @@ import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { DeclinedContactScreen } from '@/components/buyer/onboarding/DeclinedContactScreen';
+import { STOREFRONT } from '@/lib/storefront-paths';
 
 /**
  * Blocked screen for a self-registered buyer awaiting seller approval
  * (Yukti_Inbox_Feature-Spec_v1.md §7.1). Shown until buyer_app_enabled
- * flips true — the buyer simply lands on /buy/home instead, next time
+ * flips true — the buyer simply lands on the storefront home instead, next time
  * /api/buyer/me reports mode:'buyer'. No polling, matching the rest of
  * this app's approval-gate pattern (see /consent).
  */
@@ -23,7 +24,7 @@ export default function BuyerPendingPage() {
   const needsIntake = !isLoading && me?.mode === 'pending' && !me.pending?.intake_submitted;
   useEffect(() => {
     if (notPending) {
-      router.replace(me ? '/buy/home' : '/login');
+      router.replace(me ? STOREFRONT.home : '/login');
       return;
     }
     if (needsIntake) {

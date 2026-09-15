@@ -277,7 +277,9 @@ async function handleAppHost(
     return redirectPreservingPath(request, hostHeader, '/today', 307);
   }
 
-  return finalizeAuthenticated(request, requestHeaders, auth, pathname);
+  return finalizeAuthenticated(request, requestHeaders, auth, pathname, {
+    rewritePath: pathname === '/catalog' ? '/catalog-control' : undefined,
+  });
 }
 
 async function handleCatalogHost(
@@ -645,7 +647,10 @@ async function authenticateSellerOrLogin(
   }
   const auth = await readSession(request);
   if (!auth.claims) return redirectToLogin(request, pathname);
-  return finalizeAuthenticated(request, requestHeaders, auth, pathname);
+  const role = sessionRole(auth.claims);
+  return finalizeAuthenticated(request, requestHeaders, auth, pathname, {
+    rewritePath: role?.startsWith('seller_') && pathname === '/catalog' ? '/catalog-control' : undefined,
+  });
 }
 
 async function finalizeAuthenticated(

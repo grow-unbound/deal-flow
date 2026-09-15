@@ -103,6 +103,37 @@ describe('photo match two-pass', () => {
     expect(results[0]?.candidate?.entityId).toBe('p1');
   });
 
+  it('does not fuzzy-match product SKUs that differ by a small suffix', () => {
+    const photos = extractPhotoFiles([
+      new File(['x'], 'WM-GI-4FT-30M-10G.jpg', { type: 'image/jpeg' }),
+    ]);
+    const results = matchPhotosToCandidates(photos, [
+      { key: 'WM-GI-4FT-30M-10GA', entityId: 'p1', entityType: 'tenant_product', label: 'Weld Mesh 10GA' },
+      { key: 'WM-GI-4FT-30M-12GA', entityId: 'p2', entityType: 'tenant_product', label: 'Weld Mesh 12GA' },
+    ]);
+    expect(results[0]?.matchKind).toBe('none');
+    expect(results[0]?.candidate).toBeNull();
+  });
+
+  it('fuzzy-matches family, brand, and category names', () => {
+    const photos = extractPhotoFiles([
+      new File(['x'], 'Weld Meshh.jpg', { type: 'image/jpeg' }),
+      new File(['x'], 'Tata Steell.jpg', { type: 'image/jpeg' }),
+      new File(['x'], 'Reinforcemnt Steel.jpg', { type: 'image/jpeg' }),
+    ]);
+    const results = matchPhotosToCandidates(photos, [
+      { key: 'Weld Mesh', entityId: 'f1', entityType: 'tenant_product_family', label: 'Weld Mesh' },
+      { key: 'Tata Steel', entityId: 'b1', entityType: 'tenant_brand', label: 'Tata Steel' },
+      { key: 'Reinforcement Steel', entityId: 'c1', entityType: 'tenant_category', label: 'Reinforcement Steel' },
+    ]);
+    expect(results.map((result) => result.matchKind)).toEqual(['fuzzy', 'fuzzy', 'fuzzy']);
+    expect(results.map((result) => result.candidate?.entityType)).toEqual([
+      'tenant_product_family',
+      'tenant_brand',
+      'tenant_category',
+    ]);
+  });
+
   it('skips resized and dotfiles', () => {
     const skipped = extractPhotoFiles([
       new File(['x'], '.DS_Store', { type: 'text/plain' }),

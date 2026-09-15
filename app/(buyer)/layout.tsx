@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { Metadata } from 'next';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { BuyerShell } from '@/components/layout/BuyerShell';
@@ -35,13 +35,15 @@ export async function generateViewport(): Promise<Viewport> {
 
 export default async function BuyerLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
+  const headerStore = await headers();
+  const tenantSlug = headerStore.get('x-verified-tenant-slug') ?? undefined;
   const initialDeliveryCookie = cookieStore.get(DELIVERY_COOKIE_NAME)?.value ?? null;
 
   return (
     <ThemeProvider surface="buyer">
       <BuyerServiceWorkerRegistration />
       <BuyerCartProvider>
-        <BuyerDeliveryProvider initialPayload={initialDeliveryCookie}>
+        <BuyerDeliveryProvider initialPayload={initialDeliveryCookie} tenantSlug={tenantSlug}>
           <StorefrontLoginProvider>
             <BuyerShell>{children}</BuyerShell>
           </StorefrontLoginProvider>

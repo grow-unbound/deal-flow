@@ -6,9 +6,10 @@ import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { loadOnboardingCatalogSummary, loadOnboardingPreview } from '@/lib/server/onboarding-catalog-preview';
 import { storefrontOriginForRequest } from '@/lib/storefront-host';
 import type { CatalogPricingMode } from '@/lib/server/public-catalog';
-import { CatalogSetupValidationError, saveCatalogSetupState } from '@/lib/server/catalog-setup';
+import { CatalogSetupPlaceSchema, CatalogSetupValidationError, saveCatalogSetupState } from '@/lib/server/catalog-setup';
 
 const PreviewQuerySchema = z.enum(['hidden_until_login', 'hide_price_collect_enquiry', 'base_selling_rate', 'assigned_price_list']).optional();
+const ProductDisplayModeQuerySchema = z.enum(['sku_list', 'group_variants']).optional();
 
 export async function GET(req: NextRequest) {
   try {
@@ -30,12 +31,16 @@ export async function GET(req: NextRequest) {
     const modeParsed = PreviewQuerySchema.safeParse(modeRaw || undefined);
     const pricingMode = (modeParsed.success ? modeParsed.data : undefined) ?? null;
     const priceListId = url.searchParams.get('price_list_id');
+    const displayModeRaw = url.searchParams.get('product_display_mode');
+    const displayModeParsed = ProductDisplayModeQuerySchema.safeParse(displayModeRaw || undefined);
+    const productDisplayMode = displayModeParsed.success ? displayModeParsed.data : undefined;
 
     const preview = await loadOnboardingPreview(
       supabaseAdmin,
       claims.tenant_id,
       pricingMode,
       priceListId,
+      productDisplayMode,
     );
 
     return NextResponse.json({
@@ -56,6 +61,7 @@ const PublishSchema = z.object({
   collect_target_unit_price_range: z.boolean().optional(),
   product_display_mode: z.enum(['sku_list', 'group_variants']).optional(),
   settings: z.record(z.unknown()).optional(),
+  setup_place: CatalogSetupPlaceSchema.optional(),
 });
 
 export async function PATCH(req: NextRequest) {

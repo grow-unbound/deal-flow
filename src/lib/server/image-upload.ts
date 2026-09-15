@@ -24,6 +24,7 @@ export type UploadEntityType =
   | 'catalog_brand'
   | 'catalog_category'
   | 'tenant_product'
+  | 'tenant_product_family'
   | 'tenant_brand'
   | 'tenant_category'
   | 'catalog_hero'

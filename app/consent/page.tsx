@@ -7,6 +7,7 @@ import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
 import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
 import { apiFetch } from '@/lib/api-fetch';
+import { STOREFRONT } from '@/lib/storefront-paths';
 
 /**
  * WhatsApp Broadcast Phase C — buyer explicit-consent gate (spec §4.8, §9).
@@ -28,7 +29,7 @@ export default function WhatsappConsentPage() {
   // Already consented (or nothing to gate, e.g. seller preview) — skip straight through.
   const shouldSkip = !isLoading && !!me && !me.whatsapp_consent_required;
   useEffect(() => {
-    if (shouldSkip) router.replace('/buy/home');
+    if (shouldSkip) router.replace(STOREFRONT.home);
   }, [shouldSkip, router]);
   if (shouldSkip) return null;
 
@@ -60,7 +61,7 @@ export default function WhatsappConsentPage() {
         const latestMe = await meRes.json() as BuyerMeData;
         queryClient.setQueryData<BuyerMeData>(['buyer-me'], latestMe);
       }
-      router.replace('/buy/home');
+      router.replace(STOREFRONT.home);
     } catch {
       setError('Network error. Please check your connection and try again.');
       setSubmitting(false);

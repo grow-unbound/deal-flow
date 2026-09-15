@@ -40,10 +40,12 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
   const [imgError, setImgError] = React.useState(false);
   const [targetMin, setTargetMin] = React.useState('');
   const [targetMax, setTargetMax] = React.useState('');
+  const [desiredQuantity, setDesiredQuantity] = React.useState(1);
 
   const axes = detail?.variant_axes ?? [];
   const skus = detail?.skus ?? [];
-  const selectedSku = React.useMemo(() => resolveSelectedSku(skus, axes.map((axis) => axis.key), selection), [skus, axes, selection]);
+  const axisKeys = React.useMemo(() => axes.map((axis) => axis.key), [axes]);
+  const selectedSku = React.useMemo(() => resolveSelectedSku(skus, axisKeys, selection), [skus, axisKeys, selection]);
   const cartLine = selectedSku ? cartItems.find((item) => item.tenant_product_id === selectedSku.tenant_product_id) : undefined;
   const hiddenPriceEnquiry = family ? isHiddenPriceEnquiryMode(family.catalog_pricing_mode) : false;
   const collectTargetRange = hiddenPriceEnquiry && family?.collect_target_unit_price_range === true;
@@ -64,19 +66,38 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
     });
   }, [analyticsIds, family, posthog, skus.length]);
 
+  React.useEffect(() => {
+    if (axes.length === 0 || Object.keys(selection).length > 0) return;
+    const singleValueSelection = axes.reduce<Selection>((next, axis) => {
+      if (axis.values.length === 1) next[axis.key] = axis.values[0]!;
+      return next;
+    }, {});
+    if (Object.keys(singleValueSelection).length > 0) setSelection(singleValueSelection);
+  }, [axes, selection]);
+
+  React.useEffect(() => {
+    setDesiredQuantity(cartLine?.quantity ?? 1);
+  }, [cartLine?.quantity, selectedSku?.tenant_product_id]);
+
   function handleBack(): void {
     navigateBuyerBack(router);
   }
 
   function optionPossible(axisKey: string, value: string): boolean {
-    const candidate = { ...selection, [axisKey]: value };
-    return skus.some((sku) => Object.entries(candidate).every(([key, selectedValue]) => !selectedValue || sku.attributes[key] === selectedValue));
+    const axisIndex = axisKeys.indexOf(axisKey);
+    return skus.some((sku) => axisKeys.every((key, index) => {
+      if (key === axisKey) return sku.attributes[key] === value;
+      if (index >= axisIndex) return true;
+      const selectedValue = selection[key];
+      return !selectedValue || sku.attributes[key] === selectedValue;
+    }));
   }
 
   function handleSelect(axisKey: string, value: string): void {
     setSelection((current) => {
       const next = { ...current, [axisKey]: current[axisKey] === value ? '' : value };
-      for (const key of Object.keys(next)) {
+      for (const key of axisKeys) {
+        if (key === axisKey) continue;
         if (!next[key]) continue;
         const candidate = { ...next };
         if (!skus.some((sku) => Object.entries(candidate).every(([candidateKey, selectedValue]) => !selectedValue || sku.attributes[candidateKey] === selectedValue))) {
@@ -93,7 +114,7 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
       openLogin();
       return;
     }
-    const quantity = 1;
+    const quantity = Math.max(1, desiredQuantity);
     addItem({
       tenant_product_id: selectedSku.tenant_product_id,
       name: family.display_name,
@@ -125,13 +146,21 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
   }
 
   function handleDecrement(): void {
-    if (!selectedSku || !cartLine) return;
-    updateQty(selectedSku.tenant_product_id, cartLine.quantity - 1);
+    if (!selectedSku) return;
+    if (cartLine) {
+      updateQty(selectedSku.tenant_product_id, cartLine.quantity - 1);
+      return;
+    }
+    setDesiredQuantity((qty) => Math.max(1, qty - 1));
   }
 
   function handleIncrement(): void {
-    if (!selectedSku || !cartLine) return;
-    updateQty(selectedSku.tenant_product_id, cartLine.quantity + 1);
+    if (!selectedSku) return;
+    if (cartLine) {
+      updateQty(selectedSku.tenant_product_id, cartLine.quantity + 1);
+      return;
+    }
+    setDesiredQuantity((qty) => qty + 1);
   }
 
   if (isError && !isLoading) {
@@ -195,7 +224,8 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
                       summaryDisplay={family.price_summary?.display}
                       openLogin={openLogin}
                     />
-                    <div className="space-y-3">
+                    <div className="space-y-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--bg-base)] p-3">
+                      <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Choose variant</p>
                       {axes.map((axis) => (
                         <div key={axis.key} className="space-y-2">
                           <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>{axis.label}</p>
@@ -239,6 +269,7 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
                     <div className="hidden pt-1 md:block">
                       <FamilyActionButton
                         cartLineQty={cartLine?.quantity}
+                        desiredQuantity={desiredQuantity}
                         hiddenPriceEnquiry={hiddenPriceEnquiry}
                         disabled={!canClickResolvedSku}
                         onAdd={handleAdd}
@@ -265,24 +296,47 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
           borderTop: '1px solid var(--border-1)',
         }}
       >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-col">
-            {hiddenPriceEnquiry ? (
-              <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Price on enquiry</span>
-            ) : displayedPrice == null ? (
-              <span className="inline-block h-5 w-20 rounded-md bg-cream-300" aria-label="Price hidden" />
-            ) : (
-              <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>{formatNumberValue(displayedPrice, 'CURRENCY_EXACT')}</span>
-            )}
+        <div className="space-y-3">
+          {axes.length > 0 ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                  {selectedSku ? selectedSku.internal_sku : 'Select options'}
+                </p>
+                <p className="mt-0.5 line-clamp-2" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
+                  {selectedSku
+                    ? selectedVariantSummary(selectedSku, axisKeys)
+                    : missingVariantSummary(axes, selection)}
+                </p>
+              </div>
+              <MiniQuantityStepper
+                quantity={cartLine?.quantity ?? desiredQuantity}
+                disabled={!selectedSku}
+                onDecrement={handleDecrement}
+                onIncrement={handleIncrement}
+              />
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col">
+              {hiddenPriceEnquiry ? (
+                <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Price on enquiry</span>
+              ) : displayedPrice == null ? (
+                <span className="inline-block h-5 w-20 rounded-md bg-cream-300" aria-label="Price hidden" />
+              ) : (
+                <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>{formatNumberValue(displayedPrice, 'CURRENCY_EXACT')}</span>
+              )}
+            </div>
+            <FamilyActionButton
+              cartLineQty={cartLine?.quantity}
+              desiredQuantity={desiredQuantity}
+              hiddenPriceEnquiry={hiddenPriceEnquiry}
+              disabled={!canClickResolvedSku}
+              onAdd={handleAdd}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
+            />
           </div>
-          <FamilyActionButton
-            cartLineQty={cartLine?.quantity}
-            hiddenPriceEnquiry={hiddenPriceEnquiry}
-            disabled={!canClickResolvedSku}
-            onAdd={handleAdd}
-            onIncrement={handleIncrement}
-            onDecrement={handleDecrement}
-          />
         </div>
       </BuyerFixedFooter>
     </div>
@@ -299,6 +353,16 @@ function stockLabel(sku: BuyerFamilySkuOption): string {
   if (sku.stock_status === 'out_of_stock') return '0 units';
   if (sku.on_hand > 0) return `${sku.on_hand} units`;
   return sku.stock_status === 'limited' ? 'Limited stock' : 'Available';
+}
+
+function selectedVariantSummary(sku: BuyerFamilySkuOption, axisKeys: string[]): string {
+  const values = axisKeys.map((key) => sku.attributes[key]).filter(Boolean);
+  return values.length > 0 ? values.join(' · ') : sku.display_name;
+}
+
+function missingVariantSummary(axes: Array<{ key: string; label: string }>, selection: Selection): string {
+  const missing = axes.filter((axis) => !selection[axis.key]).map((axis) => axis.label);
+  return missing.length > 0 ? `Choose ${missing.join(', ')}` : 'Combination unavailable';
 }
 
 function FamilyPrice({ hiddenPriceEnquiry, priceReveal, price, summaryDisplay, openLogin }: { hiddenPriceEnquiry: boolean; priceReveal: string; price: number | null; summaryDisplay?: string; openLogin: () => void }) {
@@ -335,7 +399,24 @@ function TargetRangeInputs({ targetMin, targetMax, setTargetMin, setTargetMax, u
   );
 }
 
-function FamilyActionButton({ cartLineQty, hiddenPriceEnquiry, disabled, onAdd, onIncrement, onDecrement }: { cartLineQty?: number; hiddenPriceEnquiry: boolean; disabled: boolean; onAdd: () => void; onIncrement: () => void; onDecrement: () => void }) {
+function MiniQuantityStepper({ quantity, disabled, onIncrement, onDecrement }: { quantity: number; disabled: boolean; onIncrement: () => void; onDecrement: () => void }) {
+  return (
+    <div
+      className={cn('flex h-9 shrink-0 items-center overflow-hidden rounded-[10px] border', disabled && 'opacity-45')}
+      style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface)' }}
+    >
+      <button type="button" className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed" aria-label="Decrease quantity" disabled={disabled || quantity <= 1} onClick={onDecrement}>
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <span className="min-w-[1.75rem] text-center text-sm font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>{quantity}</span>
+      <button type="button" className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed" aria-label="Increase quantity" disabled={disabled} onClick={onIncrement}>
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function FamilyActionButton({ cartLineQty, desiredQuantity, hiddenPriceEnquiry, disabled, onAdd, onIncrement, onDecrement }: { cartLineQty?: number; desiredQuantity: number; hiddenPriceEnquiry: boolean; disabled: boolean; onAdd: () => void; onIncrement: () => void; onDecrement: () => void }) {
   if (cartLineQty != null) {
     return (
       <div className="flex min-h-11 items-center overflow-hidden rounded-xl" style={{ background: 'var(--teal-500)' }}>
@@ -348,7 +429,7 @@ function FamilyActionButton({ cartLineQty, hiddenPriceEnquiry, disabled, onAdd, 
   return (
     <button type="button" disabled={disabled} onClick={onAdd} className="flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'var(--teal-500)' }}>
       <Plus className="h-4 w-4" aria-hidden />
-      {hiddenPriceEnquiry ? 'Enquire' : 'Add'}
+      {hiddenPriceEnquiry ? `Enquire ${desiredQuantity}` : `Add ${desiredQuantity}`}
     </button>
   );
 }

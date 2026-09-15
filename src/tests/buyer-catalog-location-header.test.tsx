@@ -99,7 +99,7 @@ describe('buyer catalog landing header', () => {
     );
 
     const locationLink = screen.getByRole('link', { name: /selected location/i });
-    expect(locationLink).toHaveAttribute('href', '/location?returnTo=%2Fbuy%2Fhome');
+    expect(locationLink).toHaveAttribute('href', '/location?returnTo=%2F');
     expect(screen.getByText('Andheri West')).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: /search catalog/i })).toBeInTheDocument();
   });

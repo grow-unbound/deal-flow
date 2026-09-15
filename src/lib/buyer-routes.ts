@@ -4,7 +4,7 @@
  * internal `/buy/…` tree that middleware rewrites to.
  */
 
-import { STOREFRONT, toInternalBuyPath } from '@/lib/storefront-paths';
+import { STOREFRONT, toInternalBuyPath, toPublicStorefrontPath } from '@/lib/storefront-paths';
 
 export function normalizeBuyerPathname(pathname: string): string {
   return toInternalBuyPath(pathname) ?? pathname;
@@ -101,8 +101,13 @@ export interface BuyerSearchHrefParams {
   campaign_id?: string;
 }
 
+function toPublicLocationReturnTo(returnTo: string): string {
+  const [pathname, suffix = ''] = returnTo.split(/(?=[?#])/, 2);
+  return `${toPublicStorefrontPath(pathname) ?? pathname}${suffix}`;
+}
+
 export function buildBuyerLocationHref(returnTo: string): string {
-  return `${STOREFRONT.location}?returnTo=${encodeURIComponent(returnTo)}`;
+  return `${STOREFRONT.location}?returnTo=${encodeURIComponent(toPublicLocationReturnTo(returnTo))}`;
 }
 
 /** Build storefront `/search` URL with query params for overlay search. */

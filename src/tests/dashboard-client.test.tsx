@@ -208,7 +208,7 @@ describe('SellerDashboardClient', () => {
     expect(await screen.findByText('Zeta')).toBeInTheDocument();
 
     expect(screen.getByTestId('catalog-onboarding-intercept')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /set it up/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /start setup/i })).toHaveAttribute('href', '/setup/catalog');
     expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: 'Brand' })).toBeInTheDocument();
@@ -264,6 +264,7 @@ describe('SellerDashboardClient', () => {
     expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
     expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
     expect(screen.getByText('wineyard.useyukti.in')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /edit setup/i })).toHaveAttribute('href', '/setup/catalog?step=business');
   });
 
   it('shows the live share card on the preview suffix supplied by tenant hydration', () => {

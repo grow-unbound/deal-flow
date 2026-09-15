@@ -415,6 +415,26 @@ INSERT INTO catalog.integration_types (
     ),
     'cloud',
     false
+  ),
+  (
+    'whatsapp_business',
+    'WhatsApp Business',
+    'Connect your own WhatsApp Business Account to send notifications, alerts, and marketing messages to buyers from your own registered number.',
+    NULL,
+    jsonb_build_object(
+      'oauth', true,
+      'authorize_url', 'https://www.facebook.com/v21.0/dialog/oauth',
+      'token_url', 'https://graph.facebook.com/v21.0/oauth/access_token',
+      'fields', jsonb_build_array()
+    ),
+    jsonb_build_object(
+      'inbound_reference', jsonb_build_array(),
+      'inbound_transactional', jsonb_build_array(),
+      'outbound_transactional', jsonb_build_array(),
+      'webhooks', false
+    ),
+    'cloud',
+    true
   );
 
 -- ──────────────────────────────────────────────────────────────
