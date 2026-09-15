@@ -212,7 +212,7 @@ describe('middleware auth redirects', () => {
   it('lets a guest reach the delivery-location picker without being bounced to /login (BuyerSelectionGate sends every visitor there, guests included, before rendering home)', async () => {
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/location?returnTo=%2Fbuy%2Fhome'));
+    const response = await middleware(tenantRequest('/location?returnTo=%2F'));
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
 

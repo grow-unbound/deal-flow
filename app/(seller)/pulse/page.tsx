@@ -1,29 +1,16 @@
 import { Suspense } from 'react';
 import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
-import { DashboardOnboardingBanner } from '@/components/seller/dashboard/DashboardOnboardingBanner';
 import { SellerDashboardClient } from '@/components/seller/dashboard/SellerDashboardClient';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
-import { getSellerServerClaims, requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
-import { getTenantOnboardingBannerState } from '@/lib/server/tenant-creator';
+import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { BuyerAppLandingMetricsV4 } from '@/hooks/useBuyerApp';
 import type { SellerDashboardMetricsV4, SellerDashboardResponse } from '@/types/seller-dashboard';
 
 export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.dashboard);
-
-async function PulseBanner({ tenantId, userId }: { tenantId: string; userId: string | null | undefined }) {
-  const bannerState = await getTenantOnboardingBannerState(tenantId, userId);
-  return (
-    <DashboardOnboardingBanner
-      tenantId={tenantId}
-      isTenantCreator={bannerState.isTenantCreator}
-      dismissedAt={bannerState.onboardingBannerDismissedAt}
-    />
-  );
-}
 
 async function PulseBody({ period }: { period: SellerLandingPeriod }) {
   const [{ data: initialData, status }, { data: initialMetrics }, { data: initialBuyerAppMetrics }] = await Promise.all([
@@ -39,15 +26,11 @@ async function PulseBody({ period }: { period: SellerLandingPeriod }) {
 }
 
 export default async function PulsePage() {
-  const tenantId = await requireSellerServerTenantId();
-  const { sub: userId } = await getSellerServerClaims();
+  await requireSellerServerTenantId();
   const period = DEFAULT_SELLER_LANDING_PERIOD;
 
   return (
     <>
-      <Suspense fallback={null}>
-        <PulseBanner tenantId={tenantId} userId={userId} />
-      </Suspense>
       <Suspense fallback={<DashboardSkeleton />}>
         <PulseBody period={period} />
       </Suspense>

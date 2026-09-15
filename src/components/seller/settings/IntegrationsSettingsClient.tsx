@@ -37,6 +37,7 @@ import {
 } from '@/hooks/useIntegrationsSettings';
 import { useRole } from '@/hooks/useRole';
 import { classifyIntegrationMappingMode, getIntegrationTopologyDefinition } from '@/lib/integrations/definitions';
+import { getMetaAppIdPublic, getWhatsAppEmbeddedSignupConfigIdPublic } from '@/lib/integrations/whatsapp-oauth';
 import { cn } from '@/lib/utils';
 import type { IntegrationSettingsPayload } from '@/types/integrations';
 
@@ -44,6 +45,8 @@ import { ConnectedIntegrationCard } from './ConnectedIntegrationCard';
 import { IntegrationPickerDialog } from './IntegrationPickerDialog';
 import type { SyncConfirmOptions } from './SyncWindowDialog';
 import { IntegrationsSettingsContentSkeleton } from './IntegrationsSettingsSkeleton';
+import { WhatsAppConnectedCard } from './WhatsAppConnectedCard';
+import { WhatsAppEmbeddedSignupDialog } from './WhatsAppEmbeddedSignupDialog';
 
 type WizardState = {
   open: boolean;
@@ -168,12 +171,16 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
   const busyEnabled = useFlagState('BUSY_INTEGRATION');
+  const whatsappEnabled = useFlagState('WHATSAPP_INTEGRATION');
 
   const familyAvailability: Record<IntegrationFamilyFlag, boolean> = {
     ZOHO_INTEGRATION: zohoEnabled !== false,
     TALLY_INTEGRATION: tallyEnabled !== false,
     BUSY_INTEGRATION: busyEnabled !== false,
+    WHATSAPP_INTEGRATION: whatsappEnabled !== false,
   };
+
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
 
   const integrations = data?.integrations ?? [];
   const [wizard, setWizard] = useState<WizardState>(buildWizardState(null));
@@ -608,7 +615,15 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           />
         ) : connectedIntegrations.length > 0 ? (
           <div className="space-y-6">
-            {connectedIntegrations.map((integration) => (
+            {connectedIntegrations.map((integration) =>
+              integration.id === 'whatsapp_business' ? (
+                <WhatsAppConnectedCard
+                  key={integration.id}
+                  integration={integration}
+                  isSellerAdmin={isSellerAdmin}
+                  onDisconnect={() => void runDisconnectIntegration(integration)}
+                />
+              ) : (
               <ConnectedIntegrationCard
                 key={integration.id}
                 integration={integration}
@@ -633,7 +648,8 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 }
                 isRunningAnalysis={isRunningAnalysis && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'analysis'}
               />
-            ))}
+              ),
+            )}
           </div>
         ) : (
           <EmptyState
@@ -663,8 +679,20 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
         integrations={unconnectedAvailable}
         onSelect={(integration) => {
           setPickerOpen(false);
+          if (integration.id === 'whatsapp_business') {
+            setWhatsappDialogOpen(true);
+            return;
+          }
           openWizard(integration);
         }}
+      />
+
+      <WhatsAppEmbeddedSignupDialog
+        open={whatsappDialogOpen}
+        onOpenChange={setWhatsappDialogOpen}
+        metaAppId={getMetaAppIdPublic()}
+        configId={getWhatsAppEmbeddedSignupConfigIdPublic()}
+        onConnected={() => void refetch()}
       />
 
       <Dialog

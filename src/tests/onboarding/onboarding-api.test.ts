@@ -25,14 +25,18 @@ vi.mock('@/lib/server/onboarding-catalog-preview', () => ({
   loadOnboardingPreview: (...args: unknown[]) => loadOnboardingPreviewMock(...args),
 }));
 
-vi.mock('@/lib/server/catalog-setup', () => ({
-  CatalogSetupValidationError: class CatalogSetupValidationError extends Error {
-    constructor(message: string, public status = 400) {
-      super(message);
-    }
-  },
-  saveCatalogSetupState: (...args: unknown[]) => saveCatalogSetupStateMock(...args),
-}));
+vi.mock('@/lib/server/catalog-setup', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server/catalog-setup')>();
+  return {
+    ...actual,
+    CatalogSetupValidationError: class CatalogSetupValidationError extends Error {
+      constructor(message: string, public status = 400) {
+        super(message);
+      }
+    },
+    saveCatalogSetupState: (...args: unknown[]) => saveCatalogSetupStateMock(...args),
+  };
+});
 
 import { POST as batchPresign } from '../../../app/api/uploads/r2/batch/route';
 import { GET as getOnboardingCatalog, PATCH as publishCatalog } from '../../../app/api/tenant/onboarding/catalog/route';
@@ -74,6 +78,26 @@ describe('POST /api/uploads/r2/batch', () => {
   it('returns 400 for an empty items array', async () => {
     const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', { items: [] }));
     expect(res.status).toBe(400);
+  });
+
+  it('accepts tenant product family image batches', async () => {
+    signEntityVariantUploadsMock.mockResolvedValueOnce([
+      { name: 'original', key: 'tenants/tenant-1/product-families/111/original.jpg', upload_url: 'https://upload.example/original' },
+      { name: 'medium', key: 'tenants/tenant-1/product-families/111/medium.webp', upload_url: 'https://upload.example/medium' },
+    ]);
+    const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', {
+      items: [{
+        entity_type: 'tenant_product_family',
+        entity_id: '11111111-1111-4111-8111-111111111111',
+        original_content_type: 'image/jpeg',
+      }],
+    }));
+    expect(res.status).toBe(200);
+    expect(signEntityVariantUploadsMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: 'tenant_product_family',
+      entityId: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-1',
+    }));
   });
 
   it('returns 403 for a buyer role', async () => {
@@ -225,6 +249,21 @@ describe('PATCH /api/tenant/onboarding/catalog', () => {
         access_mode: 'public_link',
         collect_target_unit_price_range: true,
         product_display_mode: 'group_variants',
+        settings: {
+          business: { tagline: 'Wholesale CCTV catalog' },
+        },
+        setup_place: {
+          label: 'WineYard, Hyderabad',
+          lat: 17.385044,
+          lng: 78.486671,
+          address: {
+            line1: 'Road 1',
+            line2: '',
+            city: 'Hyderabad',
+            state: 'TG',
+            pincode: '500001',
+          },
+        },
       }),
     }));
     expect(res.status).toBe(200);
@@ -237,6 +276,17 @@ describe('PATCH /api/tenant/onboarding/catalog', () => {
         access_mode: 'public_link',
         collect_target_unit_price_range: true,
         product_display_mode: 'group_variants',
+        settings: {
+          business: { tagline: 'Wholesale CCTV catalog' },
+        },
+        setup_place: expect.objectContaining({
+          lat: 17.385044,
+          lng: 78.486671,
+          address: expect.objectContaining({
+            city: 'Hyderabad',
+            state: 'TG',
+          }),
+        }),
         publish: true,
       }),
     });

@@ -4,7 +4,7 @@ import { normalizeLookup } from '@/lib/onboarding/normalize-lookup';
 export interface PhotoMatchCandidate {
   key: string;
   entityId: string;
-  entityType: 'tenant_product' | 'tenant_brand' | 'tenant_category';
+  entityType: 'tenant_product' | 'tenant_product_family' | 'tenant_brand' | 'tenant_category';
   label: string;
 }
 
@@ -167,17 +167,22 @@ export function matchPhotosToCandidates(
   candidates: PhotoMatchCandidate[],
   fuzzyThreshold = 85,
 ): PhotoMatchResult[] {
-  const candidateByNorm = new Map<string, PhotoMatchCandidate>();
+  const candidatesByNorm = new Map<string, PhotoMatchCandidate[]>();
   for (const c of candidates) {
-    candidateByNorm.set(normalizeLookup(c.key), c);
+    const normalized = normalizeLookup(c.key);
+    const bucket = candidatesByNorm.get(normalized) ?? [];
+    bucket.push(c);
+    candidatesByNorm.set(normalized, bucket);
   }
 
   const results: PhotoMatchResult[] = [];
   const unmatchedPhotos: PhotoFileEntry[] = [];
   const unmatchedCandidates = [...candidates];
+  const candidateKey = (candidate: PhotoMatchCandidate) => `${candidate.entityType}:${candidate.entityId}`;
 
   for (const photo of photos) {
-    const exact = candidateByNorm.get(photo.normalizedStem);
+    const exactCandidates = candidatesByNorm.get(photo.normalizedStem) ?? [];
+    const exact = exactCandidates.find((candidate) => candidate.entityType === 'tenant_product') ?? exactCandidates[0] ?? null;
     if (exact) {
       results.push({
         file: photo.file,
@@ -186,7 +191,7 @@ export function matchPhotosToCandidates(
         confidence: 100,
         matchKind: 'exact',
       });
-      const idx = unmatchedCandidates.findIndex((c) => c.entityId === exact.entityId);
+      const idx = unmatchedCandidates.findIndex((c) => candidateKey(c) === candidateKey(exact));
       if (idx >= 0) unmatchedCandidates.splice(idx, 1);
       continue;
     }
@@ -197,7 +202,7 @@ export function matchPhotosToCandidates(
     let best: PhotoMatchCandidate | null = null;
     let bestScore = 0;
 
-    for (const candidate of unmatchedCandidates) {
+    for (const candidate of unmatchedCandidates.filter((c) => c.entityType !== 'tenant_product')) {
       const score = token_set_ratio(photo.normalizedStem, normalizeLookup(candidate.key));
       if (score > bestScore) {
         bestScore = score;
@@ -213,7 +218,7 @@ export function matchPhotosToCandidates(
         confidence: bestScore,
         matchKind: 'fuzzy',
       });
-      const idx = unmatchedCandidates.findIndex((c) => c.entityId === best!.entityId);
+      const idx = unmatchedCandidates.findIndex((c) => candidateKey(c) === candidateKey(best!));
       if (idx >= 0) unmatchedCandidates.splice(idx, 1);
     } else {
       results.push({

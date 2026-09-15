@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, PartyPopper, Store, Upload } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, ArrowLeft, ArrowRight, PartyPopper, Store, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import {
@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { MapsAddressSearch, type PlaceDetails } from '@/components/seller/settings/MapsAddressSearch';
 import { CatalogSetupChrome, CatalogSetupNav } from '@/components/seller/onboarding/CatalogSetupChrome';
 import { OnboardingPreviewFrame } from '@/components/seller/onboarding/OnboardingPreviewFrame';
 import { OnboardingReviewPanel } from '@/components/seller/onboarding/OnboardingReviewPanel';
@@ -62,6 +63,7 @@ import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
 import { cn } from '@/lib/utils';
 import type { CatalogPricingMode } from '@/lib/server/public-catalog';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
+import type { TenantSettingsApiPayload } from '@/types/tenant-settings';
 import {
   applyOnboardingPreviewPrices,
   assignedPricesFromPreviewItems,
@@ -71,6 +73,13 @@ import {
 
 const ONBOARDING_TITLE_CLASS = 'font-display text-h2 font-medium text-cream-900';
 const CHUNK = 120;
+
+function buildPlaceLabel(details: { line1?: string; city?: string; formatted_address?: string }): string | null {
+  const line = details.line1?.trim() || details.formatted_address?.split(',')[0]?.trim() || '';
+  const city = details.city?.trim() || '';
+  const label = [line, city].filter(Boolean).join(', ');
+  return label || details.formatted_address?.trim() || null;
+}
 
 type WizardStep = 0 | 1 | 2 | 'done';
 
@@ -93,17 +102,26 @@ interface PreviewState {
   photoTargets: Array<{
     key: string;
     entityId: string;
-    entityType: 'tenant_product' | 'tenant_brand' | 'tenant_category';
+    entityType: 'tenant_product' | 'tenant_product_family' | 'tenant_brand' | 'tenant_category';
     label: string;
   }>;
 }
 
+interface CatalogSetupDraftState extends PreviewState {
+  settings?: TenantSettingsApiPayload;
+}
+
 export function CatalogSetupClient(): React.ReactNode {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentTenant } = useTenant();
+  const requestedStep = searchParams.get('step');
+  const isCatalogLive = currentTenant?.public_catalog_live === true;
+  const editingBusinessSetup = isCatalogLive && requestedStep === 'business';
   const [step, setStep] = useState<WizardStep>(0);
   const [businessName, setBusinessName] = useState('');
   const [businessPhone, setBusinessPhone] = useState('');
+  const [catalogTagline, setCatalogTagline] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [whatsappDisplayName, setWhatsappDisplayName] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
@@ -111,6 +129,9 @@ export function CatalogSetupClient(): React.ReactNode {
   const [addressCity, setAddressCity] = useState('');
   const [addressState, setAddressState] = useState('');
   const [addressPincode, setAddressPincode] = useState('');
+  const [businessLat, setBusinessLat] = useState<number | null>(null);
+  const [businessLng, setBusinessLng] = useState<number | null>(null);
+  const [mapsLabel, setMapsLabel] = useState<string | null>(null);
   const [demandMode, setDemandMode] = useState<'enquiries' | 'orders' | 'both'>('both');
   const [documentMode, setDocumentMode] = useState<'yukti' | 'external'>('yukti');
   const [fileName, setFileName] = useState<string | null>(null);
@@ -136,6 +157,7 @@ export function CatalogSetupClient(): React.ReactNode {
     entries: Array<{ file: File; relativePath: string }>;
   } | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [savingSetup, setSavingSetup] = useState(false);
   const [liveUrl, setLiveUrl] = useState('');
   const [fileStashed, setFileStashed] = useState(false);
   const [mobilePane, setMobilePane] = useState<'settings' | 'preview' | 'review'>('settings');
@@ -153,15 +175,18 @@ export function CatalogSetupClient(): React.ReactNode {
   }, []);
 
   useEffect(() => {
-    if (currentTenant?.public_catalog_live) {
-      router.replace('/dashboard');
+    if (requestedStep === 'business') {
+      setStep(0);
+    } else if (isCatalogLive) {
+      setStep(2);
     }
-  }, [currentTenant?.public_catalog_live, router]);
+  }, [isCatalogLive, requestedStep]);
 
   useEffect(() => {
     const settings = currentTenant?.settings as {
       business?: {
         company_name?: string;
+        tagline?: string;
         phone?: string;
         address?: { line1?: string; line2?: string; city?: string; state?: string; pincode?: string };
       };
@@ -172,6 +197,7 @@ export function CatalogSetupClient(): React.ReactNode {
     const buyerApp = settings?.buyer_app;
     const features = settings?.orders?.features;
     setBusinessName((prev) => prev || business?.company_name || currentTenant?.business_name || '');
+    setCatalogTagline((prev) => prev || business?.tagline || '');
     setBusinessPhone((prev) => prev || business?.phone || '');
     setWhatsappNumber((prev) => prev || buyerApp?.whatsapp_number || business?.phone || '');
     setWhatsappDisplayName((prev) => prev || buyerApp?.whatsapp_display_name || business?.company_name || currentTenant?.business_name || '');
@@ -180,17 +206,59 @@ export function CatalogSetupClient(): React.ReactNode {
     setAddressCity((prev) => prev || business?.address?.city || '');
     setAddressState((prev) => prev || business?.address?.state || currentTenant?.primary_state || '');
     setAddressPincode((prev) => prev || business?.address?.pincode || '');
+    setMapsLabel((prev) => prev || buildPlaceLabel({
+      line1: business?.address?.line1 || '',
+      city: business?.address?.city || '',
+      formatted_address: '',
+    }));
     if (features?.enquiries === true && features.sales_orders !== true) setDemandMode('enquiries');
     if (features?.sales_orders === true && features.enquiries !== true) setDemandMode('orders');
     if (features?.enquiries === true && features.sales_orders === true) setDemandMode('both');
     if (features?.create_enquiries === false || features?.create_sales_orders === false) setDocumentMode('external');
   }, [currentTenant]);
 
-  const loadPreview = useCallback(async (assignedListId?: string) => {
+  const hydrateSetupState = useCallback((data: CatalogSetupDraftState) => {
+    const unified = data.settings?.unified;
+    const business = unified?.business;
+    const buyerApp = unified?.buyer_app;
+    const orderFeatures = unified?.orders?.features;
+
+    setBusinessName(business?.company_name || data.businessName || currentTenant?.business_name || '');
+    setCatalogTagline(business?.tagline ?? '');
+    setBusinessPhone(business?.phone ?? '');
+    setWhatsappNumber(buyerApp?.whatsapp_number || business?.phone || '');
+    setWhatsappDisplayName(buyerApp?.whatsapp_display_name || business?.company_name || data.businessName || currentTenant?.business_name || '');
+    setAddressLine1(business?.address?.line1 ?? '');
+    setAddressLine2(business?.address?.line2 ?? '');
+    setAddressCity(business?.address?.city ?? '');
+    setAddressState(business?.address?.state || currentTenant?.primary_state || '');
+    setAddressPincode(business?.address?.pincode ?? '');
+    setMapsLabel(buildPlaceLabel({
+      line1: business?.address?.line1 ?? '',
+      city: business?.address?.city ?? '',
+      formatted_address: '',
+    }));
+    if (orderFeatures?.enquiries === true && orderFeatures.sales_orders !== true) setDemandMode('enquiries');
+    else if (orderFeatures?.sales_orders === true && orderFeatures.enquiries !== true) setDemandMode('orders');
+    else if (orderFeatures?.enquiries === true && orderFeatures.sales_orders === true) setDemandMode('both');
+    if (orderFeatures?.create_enquiries === false || orderFeatures?.create_sales_orders === false) {
+      setDocumentMode('external');
+    } else if (orderFeatures?.create_enquiries === true || orderFeatures?.create_sales_orders === true) {
+      setDocumentMode('yukti');
+    }
+  }, [currentTenant?.business_name, currentTenant?.primary_state]);
+
+  const loadPreview = useCallback(async (
+    assignedListId?: string,
+    displayModeOverride?: 'sku_list' | 'group_variants',
+  ) => {
     const params = new URLSearchParams();
     if (assignedListId) {
       params.set('pricing_mode', 'assigned_price_list');
       params.set('price_list_id', assignedListId);
+    }
+    if (displayModeOverride) {
+      params.set('product_display_mode', displayModeOverride);
     }
     const res = await apiFetch(`/api/tenant/onboarding/catalog?${params.toString()}`, { fresh: true });
     if (!res.ok) throw new Error('Failed to load preview');
@@ -220,9 +288,25 @@ export function CatalogSetupClient(): React.ReactNode {
     setSlug((prev) => prev || data.slug);
   }, []);
 
+  const loadSetupDraft = useCallback(async () => {
+    const res = await apiFetch('/api/tenant/catalog/setup', { fresh: true });
+    if (!res.ok) throw new Error('Failed to load setup state');
+    const data = (await res.json()) as CatalogSetupDraftState;
+    hydrateSetupState(data);
+    setCatalogCount(data.productCount);
+    setSlug((prev) => prev || data.slug);
+    setPricingMode((prev) => prev || data.pricingMode || '');
+    setPriceListId((prev) => prev || data.priceListId || '');
+    setAccessMode(data.accessMode ?? 'public_link');
+    setCollectTarget(data.collectTargetUnitPriceRange === true);
+    setProductDisplayMode(data.productDisplayMode ?? 'sku_list');
+  }, [hydrateSetupState]);
+
   useEffect(() => {
-    void loadSummary().catch(() => setCatalogCount(0));
-  }, [loadSummary]);
+    void loadSetupDraft().catch(() => {
+      void loadSummary().catch(() => setCatalogCount(0));
+    });
+  }, [loadSetupDraft, loadSummary]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -296,36 +380,43 @@ export function CatalogSetupClient(): React.ReactNode {
       toast.error('Map at least SKU so we can import rows');
       return;
     }
-    const hash = await hashHeaderRow(mappings.map((m) => m.sourceHeader));
-    await apiFetch('/api/tenant/onboarding/column-map', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ header_hash: hash, mapping: mappingsToRecord(mappings) }),
-    });
+    setImportProgress(`Preparing import 0 / ${mapped.length}`);
+    try {
+      const hash = await hashHeaderRow(mappings.map((m) => m.sourceHeader));
+      await apiFetch('/api/tenant/onboarding/column-map', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ header_hash: hash, mapping: mappingsToRecord(mappings) }),
+      });
 
-    let imported = 0;
-    let updated = 0;
-    let failed = 0;
-    for (let i = 0; i < mapped.length; i += CHUNK) {
-      const chunk = mapped.slice(i, i + CHUNK);
-      setImportProgress(`Imported ${Math.min(i, mapped.length)} / ${mapped.length}`);
-      const res = await apiPost('/api/tenant/onboarding/import', { products: chunk });
-      if (!res.ok) {
-        toast.error('Import chunk failed — continuing with remaining rows');
-        failed += chunk.length;
-        continue;
+      let imported = 0;
+      let updated = 0;
+      let failed = 0;
+      for (let i = 0; i < mapped.length; i += CHUNK) {
+        const chunk = mapped.slice(i, i + CHUNK);
+        setImportProgress(`Importing ${Math.min(i, mapped.length)} / ${mapped.length}`);
+        const res = await apiPost('/api/tenant/onboarding/import', { products: chunk });
+        if (!res.ok) {
+          toast.error('Import chunk failed — continuing with remaining rows');
+          failed += chunk.length;
+          continue;
+        }
+        const json = (await res.json()) as { imported: number; updated: number; failed: number };
+        imported += json.imported;
+        updated += json.updated;
+        failed += json.failed;
+        setImportProgress(`Imported ${Math.min(i + chunk.length, mapped.length)} / ${mapped.length} · ${failed} failed`);
       }
-      const json = (await res.json()) as { imported: number; updated: number; failed: number };
-      imported += json.imported;
-      updated += json.updated;
-      failed += json.failed;
-      setImportProgress(`Imported ${Math.min(i + chunk.length, mapped.length)} / ${mapped.length} · ${failed} failed`);
+      setImportProgress('Finalizing import…');
+      toast.success(`Imported ${imported}, updated ${updated}`);
+      setAssignedByList({});
+      await loadPreview();
+      setStep(2);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Import failed');
+    } finally {
+      setImportProgress(null);
     }
-    setImportProgress(null);
-    toast.success(`Imported ${imported}, updated ${updated}`);
-    setAssignedByList({});
-    await loadPreview();
-    setStep(2);
   }
 
   async function queuePhotoUpload(entries: Array<{ file: File; relativePath: string }>) {
@@ -378,6 +469,7 @@ export function CatalogSetupClient(): React.ReactNode {
     return {
       business: {
         company_name: businessName.trim(),
+        tagline: catalogTagline.trim(),
         phone: businessPhone.trim(),
         address: {
           line1: addressLine1.trim(),
@@ -387,9 +479,24 @@ export function CatalogSetupClient(): React.ReactNode {
           pincode: addressPincode.trim(),
         },
       },
+      notifications: {
+        whatsapp: {
+          enquiry_received: true,
+          order_placed: true,
+          order_confirmed_to_buyer: true,
+          dispatch_to_buyer: true,
+          catalog_shared_to_buyer: true,
+        },
+      },
       buyer_app: {
+        enabled: true,
         whatsapp_number: whatsappNumber.trim(),
         whatsapp_display_name: whatsappDisplayName.trim() || businessName.trim(),
+      },
+      catalog: {
+        price_lists_enabled: true,
+        cohort_pricing_enabled: true,
+        catalog_publishing_enabled: true,
       },
       orders: {
         features: {
@@ -400,6 +507,59 @@ export function CatalogSetupClient(): React.ReactNode {
         },
       },
     };
+  }
+
+  function buildOnboardingSetupPlace() {
+    return {
+      label: mapsLabel ?? undefined,
+      lat: businessLat,
+      lng: businessLng,
+      address: {
+        line1: addressLine1.trim(),
+        line2: addressLine2.trim(),
+        city: addressCity.trim(),
+        state: addressState.trim().toUpperCase(),
+        pincode: addressPincode.trim(),
+      },
+    };
+  }
+
+  function handleMapsSelect(details: PlaceDetails) {
+    setAddressLine1(details.line1);
+    setAddressCity(details.city);
+    setAddressState(details.state.slice(0, 2).toUpperCase());
+    setAddressPincode(details.pincode);
+    setBusinessLat(details.lat);
+    setBusinessLng(details.lng);
+    setMapsLabel(buildPlaceLabel(details));
+  }
+
+  async function saveBusinessSetupAndContinue() {
+    if (!businessName.trim()) return;
+    setSavingSetup(true);
+    try {
+      const res = await apiPatch('/api/tenant/catalog/setup', {
+        settings: buildOnboardingSettingsPatch(),
+        setup_place: buildOnboardingSetupPlace(),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; state?: CatalogSetupDraftState };
+      if (!res.ok) {
+        toast.error(json.error ?? 'Could not save setup details');
+        return;
+      }
+      if (json.state) {
+        hydrateSetupState(json.state);
+        setCatalogCount(json.state.productCount);
+      }
+      if (editingBusinessSetup) {
+        toast.success('Business setup updated');
+        router.push('/pulse');
+        return;
+      }
+      setStep(1);
+    } finally {
+      setSavingSetup(false);
+    }
   }
 
   async function publish() {
@@ -417,6 +577,7 @@ export function CatalogSetupClient(): React.ReactNode {
         collect_target_unit_price_range: pricingMode === 'hide_price_collect_enquiry' ? collectTarget : false,
         product_display_mode: productDisplayMode,
         settings: buildOnboardingSettingsPatch(),
+        setup_place: buildOnboardingSetupPlace(),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string; storefront_url?: string };
       if (!res.ok) {
@@ -445,15 +606,16 @@ export function CatalogSetupClient(): React.ReactNode {
   const duplicateFields = showingMapping ? duplicateYuktiFields(mappings) : [];
   const hasPriceLists = (preview?.priceLists.length ?? 0) > 0;
   const previewItems = useMemo(
-    () =>
-      applyOnboardingPreviewPrices(
-        preview?.items ?? [],
-        pricingMode,
-        pricingMode === 'assigned_price_list' && priceListId
-          ? assignedByList[priceListId] ?? null
-          : null,
-      ),
-    [preview?.items, pricingMode, priceListId, assignedByList],
+    () => productDisplayMode === 'group_variants'
+      ? (preview?.items ?? [])
+      : applyOnboardingPreviewPrices(
+          preview?.items ?? [],
+          pricingMode,
+          pricingMode === 'assigned_price_list' && priceListId
+            ? assignedByList[priceListId] ?? null
+            : null,
+        ),
+    [preview?.items, pricingMode, priceListId, assignedByList, productDisplayMode],
   );
   const reviewAnomalies = useMemo(
     () =>
@@ -512,14 +674,15 @@ export function CatalogSetupClient(): React.ReactNode {
       .filter((m) => m.yuktiField !== 'unmapped')
       .map((m) => [m.yuktiField, m.sourceHeader] as const),
   );
-  const progress = step === 0 ? 24 : step === 1 ? 56 : step === 2 ? 84 : 100;
+  const progress = editingBusinessSetup ? 100 : step === 0 ? 24 : step === 1 ? 56 : step === 2 ? 84 : 100;
   const stepLabel = step === 0
-    ? 'Step 0 of 2 · Business setup'
+    ? editingBusinessSetup ? 'Business setup' : 'Step 0 of 2 · Business setup'
     : step === 1
       ? 'Step 1 of 2 · Bring products in'
-      : step === 2
-        ? 'Step 2 of 2 · Review, configure & publish'
+    : step === 2
+        ? isCatalogLive ? 'Live catalog · Review & update' : 'Step 2 of 2 · Review, configure & publish'
         : 'Done · Your catalog is live';
+  const importInProgress = Boolean(importProgress);
 
   if (step === 'done') {
     return (
@@ -554,15 +717,30 @@ export function CatalogSetupClient(): React.ReactNode {
           {step === 0 ? (
             <CatalogSetupNav
               onBack={() => router.push('/pulse')}
-              primaryLabel="Continue"
-              primaryDisabled={businessName.trim().length === 0}
-              onPrimary={() => setStep(1)}
+              backDisabled={savingSetup}
+              primaryLabel={savingSetup ? 'Saving…' : editingBusinessSetup ? 'Save setup' : 'Continue'}
+              primaryDisabled={businessName.trim().length === 0 || savingSetup}
+              onPrimary={() => void saveBusinessSetupAndContinue()}
             />
+          ) : step === 1 && importInProgress ? (
+            <>
+              <Button type="button" variant="secondary" disabled>
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <p className="mx-3 min-w-0 flex-1 text-center text-xs font-medium text-cream-700 sm:text-body-sm">
+                Do not close the dialog or refresh the page until the import is complete.
+              </p>
+              <Button type="button" disabled>
+                <Spinner className="h-4 w-4" />
+                {importProgress}
+              </Button>
+            </>
           ) : step === 1 ? (
             <CatalogSetupNav
               onBack={() => router.push('/pulse')}
               primaryLabel={showingMapping ? 'Mapping correct, import now' : 'Continue'}
-              primaryDisabled={Boolean(importProgress) || countLoading || (showingMapping ? !skuMapped || duplicateFields.length > 0 : existingCount < 1)}
+              primaryDisabled={countLoading || (showingMapping ? !skuMapped || duplicateFields.length > 0 : existingCount < 1)}
               onPrimary={() => {
                 if (showingMapping) void runImport();
                 else if (existingCount >= 1) setStep(2);
@@ -578,7 +756,7 @@ export function CatalogSetupClient(): React.ReactNode {
                 setReviewOpen(false);
                 setStep(1);
               }}
-              primaryLabel={publishing ? 'Publishing…' : 'Publish catalog'}
+              primaryLabel={publishing ? (isCatalogLive ? 'Updating…' : 'Publishing…') : isCatalogLive ? 'Update live catalog' : 'Publish catalog'}
               primaryDisabled={!pricingMode || publishing}
               onPrimary={() => void publish()}
             />
@@ -588,9 +766,13 @@ export function CatalogSetupClient(): React.ReactNode {
     >
       {step === 0 ? (
         <div className="mx-auto max-w-3xl">
-          <h1 className={ONBOARDING_TITLE_CLASS}>Confirm your business setup</h1>
+          <h1 className={ONBOARDING_TITLE_CLASS}>
+            {editingBusinessSetup ? 'Edit your business setup' : 'Confirm your business setup'}
+          </h1>
           <p className="mt-2 text-body text-cream-600">
-            These details appear in your catalog and help Yukti set up your workflow. You can edit them later in Settings.
+            {editingBusinessSetup
+              ? 'These details appear in your live catalog, buyer messages, and documents.'
+              : 'These details appear in your catalog and help Yukti set up your workflow. You can edit them later from the dashboard.'}
           </p>
 
           <div className="mt-6 space-y-5">
@@ -610,6 +792,14 @@ export function CatalogSetupClient(): React.ReactNode {
 
             <section className="rounded-xl border border-cream-200 bg-white p-5">
               <h2 className="text-h4 font-semibold text-cream-950">Which address should appear on documents?</h2>
+              <div className="mt-4">
+                <MapsAddressSearch selectedLabel={mapsLabel} onSelect={handleMapsSelect} />
+                {businessLat !== null && businessLng !== null ? (
+                  <p className="mt-2 text-body-sm text-cream-600">
+                    Coordinates captured: {businessLat.toFixed(6)}, {businessLng.toFixed(6)}
+                  </p>
+                ) : null}
+              </div>
               <div className="mt-4 grid gap-4">
                 <div>
                   <Label htmlFor="address-line-1">Address line 1</Label>
@@ -688,7 +878,10 @@ export function CatalogSetupClient(): React.ReactNode {
           </div>
         </div>
       ) : step === 1 ? (
-        <div className="mx-auto max-w-3xl">
+        <div
+          className={cn('mx-auto max-w-3xl transition-opacity', importInProgress && 'pointer-events-none opacity-45')}
+          aria-busy={importInProgress}
+        >
           <h1 className={ONBOARDING_TITLE_CLASS}>Bring your products in</h1>
           <p className="mt-2 text-body text-cream-600">Upload the price list you already use. Excel or CSV, any layout.</p>
           {!showingMapping && countLoading ? (
@@ -773,12 +966,6 @@ export function CatalogSetupClient(): React.ReactNode {
                 </button>
               </div>
             </>
-          ) : null}
-          {importProgress ? (
-            <p className="mt-4 flex items-center gap-2 text-body-sm text-cream-700">
-              <Spinner className="h-4 w-4" />
-              {importProgress}
-            </p>
           ) : null}
           {showingMapping ? (
             <div className="mt-6">
@@ -1002,6 +1189,17 @@ export function CatalogSetupClient(): React.ReactNode {
                 <p className="mt-1 text-body-sm text-cream-600">Updates the preview address bar live.</p>
               </div>
               <div className="mt-6">
+                <Label htmlFor="catalog-tagline">Catalog tagline</Label>
+                <Input
+                  id="catalog-tagline"
+                  value={catalogTagline}
+                  onChange={(e) => setCatalogTagline(e.target.value.slice(0, 120))}
+                  maxLength={120}
+                  placeholder="Your catalog headline"
+                />
+                <p className="mt-1 text-body-sm text-cream-600">Shown in the catalog title and buyer app home.</p>
+              </div>
+              <div className="mt-6">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">Who can browse your catalog?</p>
                 <RadioGroup
                   className="mt-3 space-y-2"
@@ -1132,7 +1330,7 @@ export function CatalogSetupClient(): React.ReactNode {
                           onValueChange={(id) => {
                             setPriceListId(id);
                             if (needsAssignedPriceFetch('assigned_price_list', id, assignedByList)) {
-                              void loadPreview(id);
+                              void loadPreview(id, productDisplayMode);
                             }
                           }}
                         >
@@ -1155,7 +1353,13 @@ export function CatalogSetupClient(): React.ReactNode {
                 <RadioGroup
                   className="mt-3 space-y-2"
                   value={productDisplayMode}
-                  onValueChange={(value) => setProductDisplayMode(value as typeof productDisplayMode)}
+                  onValueChange={(value) => {
+                    const next = value as typeof productDisplayMode;
+                    setProductDisplayMode(next);
+                    void loadPreview(pricingMode === 'assigned_price_list' ? priceListId : undefined, next).catch(() => {
+                      toast.error('Could not refresh product preview');
+                    });
+                  }}
                 >
                   <label
                     className={cn(

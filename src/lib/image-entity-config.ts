@@ -39,6 +39,12 @@ export const ENTITY_VARIANT_CONFIG: Record<string, EntityVariantConfig> = {
     requiresTenantId: true,
     buildBaseKey: (entityId, tenantId) => `tenants/${tenantId}/products/${entityId}`,
   },
+  tenant_product_family: {
+    variants: ['thumb', 'small', 'medium', 'large'],
+    flattenOnWhite: true,
+    requiresTenantId: true,
+    buildBaseKey: (entityId, tenantId) => `tenants/${tenantId}/product-families/${entityId}`,
+  },
   tenant_brand: {
     variants: ['thumb', 'medium'],
     flattenOnWhite: false,

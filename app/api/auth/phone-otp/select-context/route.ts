@@ -7,6 +7,7 @@ import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consen
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
 import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
+import { STOREFRONT } from '@/lib/storefront-paths';
 
 /**
  * POST /api/auth/phone-otp/select-context
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
     // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
     // the consent checkbox before /buy/home. Phone-level now — a phone that
     // already consented on any other tenant relationship isn't asked again.
-    const redirect = await requirePhoneConsentRedirect(candidate.phone) ?? '/buy/home';
+    const redirect = await requirePhoneConsentRedirect(candidate.phone) ?? STOREFRONT.home;
     return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);

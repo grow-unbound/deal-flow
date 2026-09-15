@@ -67,12 +67,13 @@ export async function generateViewport({ params }: LayoutProps): Promise<Viewpor
  * this layout is the first place in the app that statically/ISR-renders
  * anything wrapping it.
  */
-export default async function BuyerGuestLayout({ children }: LayoutProps) {
+export default async function BuyerGuestLayout({ children, params }: LayoutProps) {
+  const { tenantSlug } = await params;
   return (
     <ThemeProvider surface="buyer">
       <BuyerServiceWorkerRegistration />
       <BuyerCartProvider>
-        <BuyerDeliveryProvider initialPayload={null}>
+        <BuyerDeliveryProvider initialPayload={null} tenantSlug={tenantSlug}>
           <StorefrontLoginProvider>
             <Suspense fallback={null}>
               <BuyerShell>{children}</BuyerShell>

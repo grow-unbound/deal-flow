@@ -30,7 +30,7 @@ export function CatalogSetupChrome({
       <header className="flex shrink-0 items-start gap-4 border-b border-cream-200 bg-white px-4 py-3 md:px-6">
         <img src="/brand/favicon.svg" alt="" className="mt-0.5 h-8 w-8 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-body font-semibold text-cream-900">Setup your first Catalog</p>
+          <p className="text-body font-semibold text-cream-900">Catalog setup</p>
           <div className="mt-1 flex items-center gap-3">
             <p className="shrink-0 text-body-sm text-cream-600">{stepLabel}</p>
             <div className="h-1.5 min-w-[5rem] max-w-[14rem] flex-1 overflow-hidden rounded-full bg-cream-200">

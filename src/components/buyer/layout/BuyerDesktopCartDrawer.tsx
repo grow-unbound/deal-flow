@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { Check, ChevronLeft, ChevronRight, MapPin, Minus, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { BuyerLocationDialog } from '@/components/buyer/layout/BuyerLocationDialog';
 import { usePostHog } from 'posthog-js/react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
@@ -23,7 +24,6 @@ import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
-import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { BuyAsPicker } from '@/components/buyer/cart/BuyAsPicker';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
@@ -292,6 +292,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<BuyerTransactionConfirmationData | null>(null);
+  const [outletDialogOpen, setOutletDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!open) setConfirmation(null);
@@ -306,8 +307,8 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
 
   useEffect(() => {
     if (isGuest || !open || !deliveryHydrated || selectedDelivery) return;
-    router.replace(`/buy/location?returnTo=${encodeURIComponent(returnToOpenHref)}`);
-  }, [isGuest, deliveryHydrated, open, returnToOpenHref, router, selectedDelivery]);
+    setOutletDialogOpen(true);
+  }, [isGuest, deliveryHydrated, open, selectedDelivery]);
 
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
@@ -400,8 +401,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }
 
   function openOutletSelector() {
-    markBuyerNavigationForward();
-    router.push(`/buy/location?returnTo=${encodeURIComponent(returnToOpenHref)}`);
+    setOutletDialogOpen(true);
   }
 
   function buildLineItems(sourceItems: BuyerCartItem[] = items): CartLineItem[] {
@@ -717,6 +717,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-app="buyer"
@@ -1070,5 +1071,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         </AlertDialog>
       </SheetContent>
     </Sheet>
+    <BuyerLocationDialog open={outletDialogOpen} onOpenChange={setOutletDialogOpen} returnTo={returnToOpenHref} />
+    </>
   );
 }

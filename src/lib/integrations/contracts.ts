@@ -3,6 +3,7 @@ export const INTEGRATION_TYPE_IDS = [
   'zoho_inventory',
   'tally_prime',
   'busy',
+  'whatsapp_business',
 ] as const;
 
 export type IntegrationTypeId = (typeof INTEGRATION_TYPE_IDS)[number];

@@ -12,6 +12,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { DocumentUploadField } from '@/components/buyer/onboarding/DocumentUploadField';
 import { ProfilePicker } from '@/components/buyer/onboarding/ProfilePicker';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import type { ExistingProfileRow } from '@/types/buyer-onboarding';
 
 const GSTIN_REUSE_CHECK_DEBOUNCE_MS = 500;
@@ -163,7 +164,7 @@ export default function BuyerOnboardingPage() {
   useEffect(() => {
     if (!shouldSkip) return;
     if (!me || me.mode !== 'pending') {
-      router.replace('/buy/home');
+      router.replace(STOREFRONT.home);
       return;
     }
     router.replace('/pending');

@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api-fetch';
 
 const FINALIZE: Record<string, string> = {
   tenant_product: '/api/upload/tenant-product',
+  tenant_product_family: '/api/upload/tenant-product-family',
   tenant_brand: '/api/upload/tenant-brand',
   tenant_category: '/api/upload/tenant-category',
 };

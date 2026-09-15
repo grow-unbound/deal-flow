@@ -155,7 +155,7 @@ describe('phone-otp select-context route', () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.redirect).toBe('/buy/home');
+    expect(body.redirect).toBe('/');
     expect(body.session.access_token).toBe('access-token');
     expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
   });
