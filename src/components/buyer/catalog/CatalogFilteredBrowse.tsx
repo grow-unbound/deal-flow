@@ -26,7 +26,12 @@ import {
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
-import { BUYER_INFINITE_SCROLL_RATIO, guestPriceReveal } from '@/lib/buyer-ui';
+import {
+  BUYER_DETAIL_RAIL_ITEM_CLASS,
+  BUYER_DETAIL_RAIL_THUMB_CLASS,
+  BUYER_INFINITE_SCROLL_RATIO,
+  guestPriceReveal,
+} from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
@@ -401,9 +406,9 @@ function DesktopRailSkeleton(): React.ReactNode {
       {Array.from({ length: 8 }).map((_, index) => (
         <div
           key={index}
-          className="flex min-h-[88px] flex-col items-center justify-center gap-2 border-b border-cream-200 px-1 py-3 last:border-b-0 sm:min-h-[96px] sm:px-2 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1"
+          className={cn(BUYER_DETAIL_RAIL_ITEM_CLASS, 'border-b border-cream-200 last:border-b-0')}
         >
-          <div className="h-12 w-12 shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
+          <div className={cn(BUYER_DETAIL_RAIL_THUMB_CLASS, 'shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] lg:rounded-[12px]')}>
             <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
           </div>
           <div className="min-w-0 flex-1">

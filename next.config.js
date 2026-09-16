@@ -76,11 +76,11 @@ const nextConfig = {
   async headers() {
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com https://challenges.cloudflare.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com https://challenges.cloudflare.com https://connect.facebook.net",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://assets.yukti.so https://maps.gstatic.com https://maps.googleapis.com",
+      "img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://assets.yukti.so https://maps.gstatic.com https://maps.googleapis.com https://www.facebook.com",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://maps.googleapis.com https://places.googleapis.com https://*.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://challenges.cloudflare.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://maps.googleapis.com https://places.googleapis.com https://*.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://challenges.cloudflare.com https://graph.facebook.com https://www.facebook.com https://connect.facebook.net",
       "frame-src 'self' https://www.google.com https://challenges.cloudflare.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",

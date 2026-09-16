@@ -55,8 +55,9 @@ import {
   snapshotFileList,
   folderUploadDialogCopy,
   matchPhotosToCandidates,
+  type PhotoMatchResult,
 } from '@/lib/onboarding/photo-match';
-import { uploadMatchedPhotos } from '@/lib/onboarding/upload-matched-photos';
+import { uploadMatchedPhotos, type MatchedPhotoUploadFailure } from '@/lib/onboarding/upload-matched-photos';
 import { filterReviewAnomalies, reviewCountLabel, reviewRowKey } from '@/lib/onboarding/review-anomalies';
 import { ONBOARDING_YUKTI_FIELDS, type ColumnMappingEntry, type ImportAnomaly, type OnboardingYuktiFieldOption } from '@/lib/onboarding/types';
 import { storefrontOriginForCurrentBrowserHost } from '@/lib/storefront-host';
@@ -73,6 +74,43 @@ import {
 
 const ONBOARDING_TITLE_CLASS = 'font-display text-h2 font-medium text-cream-900';
 const CHUNK = 120;
+type PhotoMatchSummary = {
+  tenant_product: number;
+  tenant_product_family: number;
+  tenant_brand: number;
+  tenant_category: number;
+  unmatched: number;
+  ignored: number;
+};
+
+const EMPTY_PHOTO_MATCH_SUMMARY: PhotoMatchSummary = {
+  tenant_product: 0,
+  tenant_product_family: 0,
+  tenant_brand: 0,
+  tenant_category: 0,
+  unmatched: 0,
+  ignored: 0,
+};
+
+function summarizePhotoMatches(results: PhotoMatchResult[], ignored: number): PhotoMatchSummary {
+  const summary = { ...EMPTY_PHOTO_MATCH_SUMMARY, ignored };
+  for (const result of results) {
+    if (!result.candidate) {
+      summary.unmatched += 1;
+      continue;
+    }
+    summary[result.candidate.entityType] += 1;
+  }
+  return summary;
+}
+
+function uploadTargetLabel(type: string): string {
+  if (type === 'tenant_product') return 'SKU';
+  if (type === 'tenant_product_family') return 'family';
+  if (type === 'tenant_brand') return 'brand';
+  if (type === 'tenant_category') return 'category';
+  return 'target';
+}
 
 function buildPlaceLabel(details: { line1?: string; city?: string; formatted_address?: string }): string | null {
   const line = details.line1?.trim() || details.formatted_address?.split(',')[0]?.trim() || '';
@@ -151,6 +189,9 @@ export function CatalogSetupClient(): React.ReactNode {
   const [photoStatus, setPhotoStatus] = useState<string | null>(null);
   const [unmatchedPhotos, setUnmatchedPhotos] = useState(0);
   const [matchedPhotos, setMatchedPhotos] = useState(0);
+  const [ignoredPhotos, setIgnoredPhotos] = useState(0);
+  const [photoMatchSummary, setPhotoMatchSummary] = useState<PhotoMatchSummary>(EMPTY_PHOTO_MATCH_SUMMARY);
+  const [photoUploadFailures, setPhotoUploadFailures] = useState<MatchedPhotoUploadFailure[]>([]);
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
     folderName: string;
     fileCount: number;
@@ -442,11 +483,16 @@ export function CatalogSetupClient(): React.ReactNode {
 
   async function handlePhotos(fileList: FileList | Array<{ file: File; relativePath: string }> | null) {
     if (!fileList || !preview || !currentTenant?.id) return;
+    const selectedCount = Array.from(fileList as ArrayLike<unknown>).length;
     const photos = extractPhotoFiles(fileList);
     const results = matchPhotosToCandidates(photos, preview.photoTargets);
     const matched = results.filter((r) => r.candidate);
+    const ignored = Math.max(0, selectedCount - photos.length);
+    setPhotoMatchSummary(summarizePhotoMatches(results, ignored));
     setMatchedPhotos(matched.length);
     setUnmatchedPhotos(results.length - matched.length);
+    setIgnoredPhotos(ignored);
+    setPhotoUploadFailures([]);
     if (matched.length === 0) {
       toast.message('No filename matches yet — review unmatched files');
       return;
@@ -457,6 +503,7 @@ export function CatalogSetupClient(): React.ReactNode {
       tenantId: currentTenant.id,
       onProgress: (done, total) => setPhotoStatus(`Uploading ${done} / ${total}`),
     });
+    setPhotoUploadFailures(outcome.failures);
     setPhotoStatus(`Uploaded ${outcome.uploaded} · ${outcome.failed} failed`);
     await loadPreview();
   }
@@ -598,6 +645,13 @@ export function CatalogSetupClient(): React.ReactNode {
     }
   }
 
+  function openLiveCatalogAndGoToPulse() {
+    if (liveUrl) {
+      window.open(liveUrl, '_blank', 'noopener,noreferrer');
+    }
+    router.push('/pulse');
+  }
+
   const skuMapped = mappings.some((m) => m.yuktiField === 'internal_sku');
   const showingMapping = Boolean(fileName) && mappings.length > 0 && !fileStashed;
   const countLoading = catalogCount === null;
@@ -691,7 +745,7 @@ export function CatalogSetupClient(): React.ReactNode {
         progress={progress}
         footer={(
           <div className="flex w-full justify-end">
-            <Button type="button" onClick={() => router.push('/pulse')}>
+            <Button type="button" onClick={openLiveCatalogAndGoToPulse}>
               See it in action
             </Button>
           </div>
@@ -1397,9 +1451,9 @@ export function CatalogSetupClient(): React.ReactNode {
                   void handleDroppedPhotos(event.dataTransfer);
                 }}
               >
-                <p className="font-medium text-cream-900">Drop your product photo folder</p>
+                <p className="font-medium text-cream-900">Drop your catalog image folder</p>
                 <p className="mt-1 text-body-sm text-cream-600">
-                  Filenames are matched to SKUs — you review matches before anything changes.
+                  Filenames are matched to product SKUs, product families, brands, and categories before anything changes.
                 </p>
                 <div className="mt-3">
                   <Button type="button" variant="secondary" onClick={() => void pickPhotoFolder()}>Choose folder</Button>
@@ -1415,14 +1469,32 @@ export function CatalogSetupClient(): React.ReactNode {
                     void queuePhotoUpload(filesToPhotoEntries(files));
                   }}
                 />
-                {matchedPhotos || unmatchedPhotos ? (
-                  <p className="mt-3 text-body-sm text-cream-700">
+                {matchedPhotos || unmatchedPhotos || ignoredPhotos ? (
+                  <div className="mt-3 flex flex-wrap gap-2 text-body-sm text-cream-700">
                     <span className="rounded-full bg-success-50 px-2 py-0.5 text-success-700">{matchedPhotos} matched</span>
-                    {' '}
-                    <span className="callout callout--warning ml-2 px-2 py-0.5">{unmatchedPhotos} unmatched</span>
-                  </p>
+                    <span className="rounded-full bg-cream-100 px-2 py-0.5 text-cream-700">{photoMatchSummary.tenant_product} SKUs</span>
+                    <span className="rounded-full bg-cream-100 px-2 py-0.5 text-cream-700">{photoMatchSummary.tenant_product_family} families</span>
+                    <span className="rounded-full bg-cream-100 px-2 py-0.5 text-cream-700">{photoMatchSummary.tenant_brand} brands</span>
+                    <span className="rounded-full bg-cream-100 px-2 py-0.5 text-cream-700">{photoMatchSummary.tenant_category} categories</span>
+                    <span className="callout callout--warning px-2 py-0.5">{unmatchedPhotos} unmatched</span>
+                    {ignoredPhotos > 0 ? (
+                      <span className="callout callout--warning px-2 py-0.5">{ignoredPhotos} ignored</span>
+                    ) : null}
+                  </div>
                 ) : null}
                 {photoStatus ? <p className="mt-2 text-body-sm text-cream-700">{photoStatus}</p> : null}
+                {photoUploadFailures.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-body-sm text-danger-700">
+                    {photoUploadFailures.slice(0, 3).map((failure) => (
+                      <li key={`${failure.fileName}:${failure.targetLabel}`}>
+                        {failure.fileName} to {failure.targetLabel} ({uploadTargetLabel(failure.targetType)}): {failure.reason}
+                      </li>
+                    ))}
+                    {photoUploadFailures.length > 3 ? (
+                      <li>{photoUploadFailures.length - 3} more failed.</li>
+                    ) : null}
+                  </ul>
+                ) : null}
               </div>
           </div>
           <div

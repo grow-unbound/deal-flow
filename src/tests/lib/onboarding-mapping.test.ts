@@ -134,6 +134,17 @@ describe('photo match two-pass', () => {
     ]);
   });
 
+  it('uses a forgiving default fuzzy threshold for product-family names', () => {
+    const photos = extractPhotoFiles([
+      new File(['x'], 'Expanded Mesh.jpg', { type: 'image/jpeg' }),
+    ]);
+    const results = matchPhotosToCandidates(photos, [
+      { key: 'Expanded Metal Mesh', entityId: 'f1', entityType: 'tenant_product_family', label: 'Expanded Metal Mesh' },
+    ]);
+    expect(results[0]?.matchKind).toBe('fuzzy');
+    expect(results[0]?.candidate?.entityId).toBe('f1');
+  });
+
   it('skips resized and dotfiles', () => {
     const skipped = extractPhotoFiles([
       new File(['x'], '.DS_Store', { type: 'text/plain' }),

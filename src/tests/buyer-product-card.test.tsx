@@ -198,6 +198,48 @@ describe('buyer product card', () => {
     expect(screen.getByText('Special Price')).toBeInTheDocument();
   });
 
+  it('hides direct SKU prices as enquiry copy when catalog pricing is hidden', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    renderWithQueryClient(
+      <ProductCard
+        priceReveal="hidden_bar"
+        item={{
+          id: 'hidden-direct-sku',
+          tenant_product_id: 'tp-hidden-direct-sku',
+          campaign_id: null,
+          campaign_name: null,
+          campaign_valid_until: null,
+          internal_sku: 'SKU-HIDDEN-001',
+          display_name: 'Direct SKU without family',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          category_id: null,
+          category_name: null,
+          mrp: 10000,
+          price: null,
+          catalog_pricing_mode: null,
+          has_campaign_price: false,
+          resolved_price: null,
+          default_uom: 'box',
+          pack_size: null,
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 10,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Enquire for price')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to enquiry/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Price hidden')).not.toBeInTheDocument();
+  });
+
   it('can suppress the promotion badge on campaign detail views', () => {
     useCartMock.mockReset();
     useCartMock.mockReturnValue({

@@ -9,6 +9,7 @@ import { normalizeIndianPhone } from '@/lib/phone';
 import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
 import { getCachedGuestPricingContext, loadLivePublicCatalog, type CatalogPricingMode } from '@/lib/server/public-catalog';
 import { resolvePendingSessionOnboardingStatus } from '@/lib/server/buyer-onboarding-status';
+import { hasPhoneConsented } from '@/lib/server/phone-consent';
 
 interface BuyerMeResponse {
   mode: BuyerAppMode;
@@ -482,6 +483,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const buyer = profile.buyer;
     const tenant = profile.tenant;
+    const phoneHasConsented = buyer.phone ? await hasPhoneConsented(buyer.phone) : true;
     const openOrders = ordersRes.data ?? [];
     const openOrdersCount = openOrders.length;
     const buyerUserIdentity = (buyerUserIdentityRes.data as {
@@ -558,7 +560,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       business_policy: businessPolicy,
       stock_visibility: stockVisibility,
       buyer_catalog: buyerCatalog,
-      whatsapp_consent_required: !buyer.whatsapp_consent_at,
+      whatsapp_consent_required: !phoneHasConsented,
     };
 
     return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });

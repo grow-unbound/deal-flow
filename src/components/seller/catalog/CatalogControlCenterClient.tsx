@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Copy, Edit3, Eye, Image, Package, Save, Settings2 } from 'lucide-react';
+import { AlertCircle, Copy, Edit3, Eye, Image, Package, Save, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -202,16 +202,19 @@ export function CatalogControlCenterClient(): ReactNode {
         </p>
       ) : null}
 
-      <section className="rounded-[8px] border border-teal-200 bg-teal-500 p-4 text-[var(--fg-inverse)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
+      <section className="rounded-[8px] border border-cream-200 bg-white p-5 shadow-sm" data-testid="catalog-live-banner">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill label={state.live ? 'Live' : 'Not live'} tone={state.live ? 'success' : 'warning'} />
+              <p className="truncate font-mono text-body-sm text-cream-800">
+                {href ? href.replace(/^https?:\/\//, '') : state.storefrontHost}
+              </p>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-[8px] text-[var(--fg-inverse)] hover:bg-white/10 hover:text-[var(--fg-inverse)]"
+                className="h-8 w-8 rounded-[8px] text-cream-600 hover:bg-cream-100 hover:text-cream-950"
                 aria-label="Copy catalog link"
                 title="Copy catalog link"
                 onClick={() => void copyLink()}
@@ -219,31 +222,29 @@ export function CatalogControlCenterClient(): ReactNode {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-            <p className="mt-3 text-h4 font-semibold text-[var(--fg-inverse)]">
+            <p className="mt-2 text-body font-semibold text-cream-950">
               {state.live ? 'Your catalog is live' : 'Complete setup to share this catalog'}
             </p>
-            <p className="mt-1 text-body-sm text-[var(--fg-inverse)]/80">
+            <p className="mt-0.5 text-body-sm text-cream-600">
               {accessMode === 'public_link' ? 'Anyone with the link can browse.' : 'Approved buyers must log in before browsing.'}
             </p>
           </div>
-          <div className="grid shrink-0 grid-cols-2 gap-3 sm:min-w-[18rem]">
-            <BannerMetricCard
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+            <BannerMetric
               icon={<Package className="h-4 w-4" />}
               title="Products"
               value={`${state.productReadiness.activeProductCount}`}
               description={state.productReadiness.anomalyCount > 0 ? `${state.productReadiness.anomalyCount} rows need review` : 'Data ready'}
               href="/products/import"
               action="Import"
-              tone={state.productReadiness.anomalyCount > 0 ? 'warning' : 'success'}
             />
-            <BannerMetricCard
+            <BannerMetric
               icon={<Image className="h-4 w-4" />}
               title="Photos"
               value={`${state.productReadiness.missingProductImageCount}`}
               description={state.productReadiness.missingProductImageCount > 0 ? 'Missing images' : 'Images ready'}
               href="/setup/catalog"
               action="Upload"
-              tone={state.productReadiness.missingProductImageCount > 0 ? 'warning' : 'success'}
             />
           </div>
         </div>
@@ -539,14 +540,13 @@ function CatalogOption({
   );
 }
 
-function BannerMetricCard({
+function BannerMetric({
   icon,
   title,
   value,
   description,
   href,
   action,
-  tone,
 }: {
   icon: ReactNode;
   title: string;
@@ -554,20 +554,18 @@ function BannerMetricCard({
   description: string;
   href: string;
   action: string;
-  tone: 'success' | 'warning';
 }) {
   return (
-    <section className="rounded-[8px] border border-white/20 bg-white/10 p-3 text-[var(--fg-inverse)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-body-sm font-semibold text-[var(--fg-inverse)]/80">
+    <section className="flex min-w-[15rem] items-center justify-between gap-4 rounded-[8px] border border-cream-200 bg-cream-50 px-4 py-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-body-sm font-semibold text-cream-700">
           {icon}
           {title}
         </div>
-        {tone === 'success' ? <CheckCircle2 className="h-4 w-4 text-[var(--fg-inverse)]" /> : null}
+        <p className="mt-1 text-body-sm text-cream-600">{description}</p>
       </div>
-      <p className="mt-2 text-h3 font-semibold text-[var(--fg-inverse)]">{value}</p>
-      <p className="mt-1 min-h-[2rem] text-body-sm text-[var(--fg-inverse)]/75">{description}</p>
-      <Button type="button" variant="ghost" size="sm" className="mt-2 h-auto px-0 text-[var(--fg-inverse)] hover:bg-transparent hover:text-[var(--fg-inverse)] hover:underline" asChild>
+      <p className="shrink-0 text-h3 font-semibold text-cream-950">{value}</p>
+      <Button type="button" variant="secondary" size="sm" className="shrink-0" asChild>
         <Link href={href}>{action}</Link>
       </Button>
     </section>

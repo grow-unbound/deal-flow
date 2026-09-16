@@ -8,6 +8,17 @@ import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
 import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import { STOREFRONT } from '@/lib/storefront-paths';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+
+async function getCurrentRequestUserId(request: NextRequest): Promise<string | null> {
+  const claims = await getVerifiedClaims(request);
+  if (claims.sub) return claims.sub;
+
+  const supabase = await getRequestSupabaseClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user.id;
+}
 
 /**
  * POST /api/auth/phone-otp/select-context
@@ -67,8 +78,8 @@ export async function POST(request: NextRequest) {
     // a real session for whichever candidate was requested with no check
     // that it belongs to the caller at all.
     if (record.createdByUserId) {
-      const claims = await getVerifiedClaims(request);
-      if (!claims.sub || claims.sub !== record.createdByUserId) {
+      const currentUserId = await getCurrentRequestUserId(request);
+      if (!currentUserId || currentUserId !== record.createdByUserId) {
         return NextResponse.json(
           { error: 'Not authorized to redeem this context selection.' },
           { status: 403 },

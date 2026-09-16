@@ -12,7 +12,7 @@ export default function CatalogLoading() {
         </div>
       </div>
       <div className="h-12 animate-pulse rounded-[8px] bg-cream-100 border border-cream-200" />
-      <div className="h-36 animate-pulse rounded-[8px] bg-cream-100 border border-cream-200" />
+      <div className="h-24 animate-pulse rounded-[8px] bg-cream-100 border border-cream-200" />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,38rem)_minmax(0,1fr)]">
         <div className="space-y-5">
           <div className="h-44 animate-pulse rounded-[8px] bg-cream-100 border border-cream-200" />

@@ -107,7 +107,7 @@ export function ProductCard({
   const familyId = item.product_family_id ?? item.id;
   const productHref = isFamilyCard ? STOREFRONT.family(familyId) : STOREFRONT.product(item.tenant_product_id);
   const unitPrice = item.price;
-  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode);
+  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode) || priceReveal === 'hidden_bar';
   const showCampaignPrice = !isGuest && unitPrice != null && hasBuyerCampaignPrice(item);
   const discountPct = showCampaignPrice && item.resolved_price
     ? Math.round((1 - unitPrice / item.resolved_price) * 100)
@@ -397,12 +397,9 @@ export function ProductCard({
                   >
                     Enquire for price
                   </span>
-                ) : priceReveal === 'hidden_bar' || (!priceReveal && unitPrice == null) ? (
+                ) : !priceReveal && unitPrice == null ? (
                   <span
-                    className={cn(
-                      'inline-block rounded-md bg-cream-300',
-                      priceReveal === 'hidden_bar' ? 'h-5 w-[6.25rem]' : 'min-h-[1em] min-w-[4.5rem]',
-                    )}
+                    className="inline-block min-h-[1em] min-w-[4.5rem] rounded-md bg-cream-300"
                     aria-label="Price hidden"
                   />
                 ) : priceReveal === 'login_cta' ? (

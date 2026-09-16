@@ -179,7 +179,7 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
   }
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex min-h-[50dvh] flex-col pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] md:pb-10" style={{ background: 'var(--bg-base)' }}>
       <BuyerDetailShell title="Product" hideDesktopHeader>
         <div className="px-3 pb-4 md:px-6 md:pb-6 md:pt-6">
           <div className="grid gap-5 md:grid-cols-[minmax(340px,0.95fr)_minmax(0,1.05fr)] md:items-start">
@@ -298,7 +298,7 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
       >
         <div className="space-y-3">
           {axes.length > 0 ? (
-            <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <div className="min-w-0">
                 <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
                   {selectedSku ? selectedSku.internal_sku : 'Select options'}
@@ -309,12 +309,6 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
                     : missingVariantSummary(axes, selection)}
                 </p>
               </div>
-              <MiniQuantityStepper
-                quantity={cartLine?.quantity ?? desiredQuantity}
-                disabled={!selectedSku}
-                onDecrement={handleDecrement}
-                onIncrement={handleIncrement}
-              />
             </div>
           ) : null}
           <div className="flex items-center justify-between gap-4">
@@ -395,23 +389,6 @@ function TargetRangeInputs({ targetMin, targetMax, setTargetMin, setTargetMax, u
         <input value={targetMax} onChange={(event) => setTargetMax(event.target.value)} type="number" min="0" inputMode="decimal" className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]" placeholder="Max" />
       </div>
       {unit ? <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>Per {unit}</p> : null}
-    </div>
-  );
-}
-
-function MiniQuantityStepper({ quantity, disabled, onIncrement, onDecrement }: { quantity: number; disabled: boolean; onIncrement: () => void; onDecrement: () => void }) {
-  return (
-    <div
-      className={cn('flex h-9 shrink-0 items-center overflow-hidden rounded-[10px] border', disabled && 'opacity-45')}
-      style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface)' }}
-    >
-      <button type="button" className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed" aria-label="Decrease quantity" disabled={disabled || quantity <= 1} onClick={onDecrement}>
-        <Minus className="h-3.5 w-3.5" />
-      </button>
-      <span className="min-w-[1.75rem] text-center text-sm font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>{quantity}</span>
-      <button type="button" className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed" aria-label="Increase quantity" disabled={disabled} onClick={onIncrement}>
-        <Plus className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }

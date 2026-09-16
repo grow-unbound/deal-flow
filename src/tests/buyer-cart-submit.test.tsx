@@ -101,7 +101,14 @@ const selectedDelivery = {
   nearest_warehouse_fallback: false,
 };
 
-function setupCartMocks(orderFeatures = { create_sales_orders: true, create_enquiries: true }) {
+function setupCartMocks(
+  orderFeatures = { create_sales_orders: true, create_enquiries: true },
+  cartOverrides: Partial<{
+    item: Record<string, unknown>;
+    updateQty: ReturnType<typeof vi.fn>;
+  }> = {},
+) {
+  const updateQty = cartOverrides.updateQty ?? vi.fn();
   useRouterMock.mockReturnValue({
     back: vi.fn(),
     push: pushMock,
@@ -117,10 +124,11 @@ function setupCartMocks(orderFeatures = { create_sales_orders: true, create_enqu
         line_total: 5000,
         unit_price: 5000,
         stock_status: 'available',
+        ...cartOverrides.item,
       },
     ],
     removeItem: vi.fn(),
-    updateQty: vi.fn(),
+    updateQty,
     clearCart: vi.fn(),
     replaceItems: vi.fn(),
     resolvedCampaignId: null,
@@ -191,6 +199,34 @@ describe('buyer cart submission', () => {
       );
     });
     expect(placeButton).toBeDisabled();
+  });
+
+  it('keeps long cart item names readable and accepts typed quantities', async () => {
+    const updateQty = vi.fn();
+    setupCartMocks(
+      { create_sales_orders: true, create_enquiries: true },
+      {
+        updateQty,
+        item: {
+          name: 'Very Long CCTV Product Name With Model Number And Full SKU Description',
+          internal_sku: 'CP-UNC-TC21ZL6C-VMDS-LONG-SKU',
+        },
+      },
+    );
+
+    const { default: CartPage } = await import('../../app/(buyer)/buy/cart/page');
+    renderWithQueryClient(<CartPage />);
+
+    expect(screen.getAllByText('Very Long CCTV Product Name With Model Number And Full SKU Description')[0]).not.toHaveClass('truncate');
+    expect(screen.getAllByText('CP-UNC-TC21ZL6C-VMDS-LONG-SKU')[0]).not.toHaveClass('truncate');
+
+    const quantityInput = screen.getByRole('spinbutton', {
+      name: /quantity for very long cctv product name/i,
+    });
+    fireEvent.change(quantityInput, { target: { value: '12' } });
+    fireEvent.blur(quantityInput);
+
+    expect(updateQty).toHaveBeenCalledWith('tp-1', 12);
   });
 
   it('returns to idle and shows error when place-order fails', async () => {

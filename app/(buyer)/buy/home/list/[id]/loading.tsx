@@ -1,4 +1,10 @@
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
+import {
+  BUYER_DETAIL_RAIL_GRID_CLASS,
+  BUYER_DETAIL_RAIL_ITEM_CLASS,
+  BUYER_DETAIL_RAIL_THUMB_CLASS,
+} from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 
 function BrowseDetailHeaderSkeleton() {
   return (
@@ -17,15 +23,15 @@ function BrowseDetailHeaderSkeleton() {
 
 export default function Loading() {
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-[var(--tab-bar)]" role="status" aria-label="Loading">
+    <div className="flex min-h-[50dvh] flex-col" role="status" aria-label="Loading">
       <BrowseDetailHeaderSkeleton />
-      <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-2 pb-4 pt-3 sm:grid-cols-[108px_minmax(0,1fr)] sm:gap-4 sm:px-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-4 lg:pb-6">
-        <aside className="min-w-0 border-r border-cream-200 pr-2 sm:pr-3 lg:pt-6 lg:pr-4">
+      <div className={cn(BUYER_DETAIL_RAIL_GRID_CLASS, 'pt-3 pb-0 lg:pb-0')}>
+        <aside className="min-w-0 border-r border-cream-200 pr-1.5 sm:pr-3 lg:pt-6 lg:pr-4">
           <div className="sticky top-3 lg:top-[10.5rem]">
             <div className="flex flex-col" aria-label="Loading desktop filters">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="flex min-h-[88px] flex-col items-center justify-center gap-2 border-b border-cream-200 px-1 py-3 last:border-b-0 sm:min-h-[96px] sm:px-2 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1">
-                  <div className="h-12 w-12 shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
+                <div key={i} className={cn(BUYER_DETAIL_RAIL_ITEM_CLASS, 'border-b border-cream-200 last:border-b-0')}>
+                  <div className={cn(BUYER_DETAIL_RAIL_THUMB_CLASS, 'shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] lg:rounded-[12px]')}>
                     <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
                   </div>
                   <div className="min-w-0 flex-1">

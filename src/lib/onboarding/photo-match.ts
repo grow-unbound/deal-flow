@@ -24,6 +24,7 @@ export interface PhotoMatchResult {
 }
 
 const VALID_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const DEFAULT_FUZZY_THRESHOLD = 80;
 
 export function isValidImageFileName(name: string): boolean {
   const lower = name.toLowerCase();
@@ -165,7 +166,7 @@ export function extractPhotoFiles(fileList: PhotoListInput): PhotoFileEntry[] {
 export function matchPhotosToCandidates(
   photos: PhotoFileEntry[],
   candidates: PhotoMatchCandidate[],
-  fuzzyThreshold = 85,
+  fuzzyThreshold = DEFAULT_FUZZY_THRESHOLD,
 ): PhotoMatchResult[] {
   const candidatesByNorm = new Map<string, PhotoMatchCandidate[]>();
   for (const c of candidates) {

@@ -3,13 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getVerifiedClaimsMock = vi.fn();
 const signEntityVariantUploadsMock = vi.fn();
+const putObjectBlobMock = vi.fn();
+const supabaseSchemaMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
-  supabaseAdmin: { schema: vi.fn() },
+  supabaseAdmin: { schema: (...args: unknown[]) => supabaseSchemaMock(...args) },
+}));
+
+vi.mock('@/lib/r2', () => ({
+  putObjectBlob: (...args: unknown[]) => putObjectBlobMock(...args),
 }));
 
 vi.mock('@/lib/server/r2-presign-entity', () => ({
@@ -39,6 +45,7 @@ vi.mock('@/lib/server/catalog-setup', async (importOriginal) => {
 });
 
 import { POST as batchPresign } from '../../../app/api/uploads/r2/batch/route';
+import { POST as entityVariantUpload } from '../../../app/api/uploads/r2/entity-variant/route';
 import { GET as getOnboardingCatalog, PATCH as publishCatalog } from '../../../app/api/tenant/onboarding/catalog/route';
 
 function jsonRequest(url: string, body: unknown): NextRequest {
@@ -47,6 +54,23 @@ function jsonRequest(url: string, body: unknown): NextRequest {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function formRequest(form: FormData): NextRequest {
+  return {
+    formData: async () => form,
+  } as NextRequest;
+}
+
+function tenantRowQuery(data: unknown = { id: '11111111-1111-4111-8111-111111111111', tenant_id: 'tenant-1' }) {
+  const builder = {
+    from: vi.fn(() => builder),
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    is: vi.fn(() => builder),
+    maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
+  };
+  return builder;
 }
 
 describe('POST /api/uploads/r2/batch', () => {
@@ -116,6 +140,55 @@ describe('POST /api/uploads/r2/batch', () => {
       }],
     }));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/uploads/r2/entity-variant', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    supabaseSchemaMock.mockReturnValue(tenantRowQuery());
+    putObjectBlobMock.mockResolvedValue(undefined);
+  });
+
+  it('uploads a tenant product family variant through the server', async () => {
+    const form = new FormData();
+    form.set('entity_type', 'tenant_product_family');
+    form.set('entity_id', '11111111-1111-4111-8111-111111111111');
+    form.set('variant_name', 'medium');
+    form.set('content_type', 'image/webp');
+    form.set('file', new Blob(['image-bytes'], { type: 'image/webp' }), 'medium.webp');
+
+    const res = await entityVariantUpload(formRequest(form));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { key: string };
+    expect(body.key).toBe('tenants/tenant-1/product-families/11111111-1111-4111-8111-111111111111/medium.webp');
+    expect(putObjectBlobMock).toHaveBeenCalledWith(
+      body.key,
+      expect.any(Uint8Array),
+      'image/webp',
+    );
+  });
+
+  it('rejects unsupported entity types before writing to R2', async () => {
+    const form = new FormData();
+    form.set('entity_type', 'catalog_product');
+    form.set('entity_id', '11111111-1111-4111-8111-111111111111');
+    form.set('variant_name', 'medium');
+    form.set('content_type', 'image/webp');
+    form.set('file', new Blob(['image-bytes'], { type: 'image/webp' }), 'medium.webp');
+
+    const res = await entityVariantUpload(formRequest(form));
+
+    expect(res.status).toBe(400);
+    expect(putObjectBlobMock).not.toHaveBeenCalled();
   });
 });
 
