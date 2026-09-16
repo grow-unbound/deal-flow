@@ -25,6 +25,9 @@ Sentry.init({
     'ResizeObserver loop limit exceeded',
     'Non-Error promise rejection captured',
     'AbortError',
+    // Next.js App Router control-flow signals (redirect()/notFound()), not errors.
+    /^NEXT_REDIRECT/,
+    /^NEXT_NOT_FOUND/,
   ],
   denyUrls: [/extensions\//i, /^chrome-extension:\/\//i, /^moz-extension:\/\//i],
   beforeSend(event) {
