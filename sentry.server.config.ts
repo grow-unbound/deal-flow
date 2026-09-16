@@ -9,7 +9,11 @@ Sentry.init({
   // captureException/onRequestError still work fully without it.
   skipOpenTelemetrySetup: true,
   tracesSampleRate: 0,
-  ignoreErrors: ['AbortError'],
+  // NEXT_REDIRECT/NEXT_NOT_FOUND are Next.js App Router control-flow signals
+  // (redirect()/notFound() thrown to be caught by the framework), not errors.
+  // instrumentation.ts filters these by digest for onRequestError already;
+  // this catches any other path (e.g. middleware) that reports them.
+  ignoreErrors: ['AbortError', /^NEXT_REDIRECT/, /^NEXT_NOT_FOUND/],
   beforeSend(event) {
     if (event.request?.headers) {
       delete event.request.headers['authorization'];
