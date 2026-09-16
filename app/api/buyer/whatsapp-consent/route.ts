@@ -41,6 +41,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Phone-level, one-time gate — never overwrite. Idempotent success.
     if (!profile.buyer.phone || await hasPhoneConsented(profile.buyer.phone)) {
+      if (profile.buyer.phone) {
+        await stampPhoneConsent(profile.buyer.phone, 'explicit_checkbox_first_login', profile.buyer.id);
+      }
       return NextResponse.json({ success: true, already_consented: true });
     }
 

@@ -150,6 +150,58 @@ describe('POST /api/auth/switch-buyer', () => {
     expect(mintBuyerSessionMock).toHaveBeenCalledWith(ownSecondAccount);
   });
 
+  it('allows a legacy authenticated session to switch between buyer accounts already linked to the same auth user', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'attacker-user-id',
+      tenant_id: TENANT_ID,
+      role: 'buyer_admin',
+      buyer_id: ATTACKER_BUYER_ID,
+      location_ids: null,
+    });
+    getUserByIdMock.mockResolvedValue({
+      data: { user: { user_metadata: { phone: '+91 99900 09902' }, app_metadata: {} } },
+      error: null,
+    });
+    const ownSecondAccount = { ...attackerCandidate, buyer_id: ATTACKER_SECOND_BUYER_ID, role: 'buyer_assistant' as const };
+    findBuyerLoginCandidatesMock.mockResolvedValue([attackerCandidate, ownSecondAccount]);
+    mintBuyerSessionMock.mockResolvedValue({
+      session: { access_token: 'legacy-access-token', refresh_token: 'legacy-refresh-token' },
+    });
+
+    const { POST } = await import('../../../app/api/auth/switch-buyer/route');
+    const response = await POST(buildRequest({ buyer_id: ATTACKER_SECOND_BUYER_ID }));
+    const body = await response.json();
+
+    expect(findBuyerLoginCandidatesMock).toHaveBeenCalledWith('9990009902');
+    expect(response.status).toBe(200);
+    expect(body.session.access_token).toBe('legacy-access-token');
+    expect(mintBuyerSessionMock).toHaveBeenCalledWith(ownSecondAccount);
+  });
+
+  it('does not let the legacy authenticated-phone fallback switch to an unlinked buyer candidate', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'attacker-user-id',
+      tenant_id: TENANT_ID,
+      role: 'buyer_admin',
+      buyer_id: ATTACKER_BUYER_ID,
+      location_ids: null,
+    });
+    getUserByIdMock.mockResolvedValue({
+      data: { user: { user_metadata: { phone: '9990009902' }, app_metadata: {} } },
+      error: null,
+    });
+    const victimCandidate = { ...attackerCandidate, buyer_id: VICTIM_BUYER_ID, user_id: 'victim-user-id' };
+    findBuyerLoginCandidatesMock.mockResolvedValue([attackerCandidate, victimCandidate]);
+
+    const { POST } = await import('../../../app/api/auth/switch-buyer/route');
+    const response = await POST(buildRequest({ buyer_id: VICTIM_BUYER_ID }));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.session).toBeUndefined();
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a non-buyer session', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       sub: 'seller-user-id',

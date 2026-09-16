@@ -168,7 +168,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     : 'More in this category';
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex min-h-[50dvh] flex-col pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] md:pb-10" style={{ background: 'var(--bg-base)' }}>
       <BuyerDetailShell title="Product" hideDesktopHeader>
         {/* Hero — square, card-like padding, aligned to header px-3 */}
         <div className="px-3 pb-4 md:px-6 md:pb-6 md:pt-6">

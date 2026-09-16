@@ -612,7 +612,7 @@ export default function CartPage() {
       </header>
 
       {/* Scrollable content */}
-      <div className="px-4 pt-4 space-y-3" style={{ paddingBottom: '7rem' }}>
+      <div className="px-4 pt-4 space-y-3" style={{ paddingBottom: 'calc(8.5rem + env(safe-area-inset-bottom, 0px))' }}>
         {/* Inline page head */}
         <div className="pb-1">
           <p className="font-semibold uppercase mb-0.5" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
@@ -936,6 +936,26 @@ function CartPageItem({
     && Math.abs(item.resolved_price - item.unit_price) > 0.004,
   );
   const stockBadgeLabel = item.stock_status === 'out_of_stock' ? 'Out of stock' : 'Low stock';
+  const [quantityDraft, setQuantityDraft] = useState(String(item.quantity));
+
+  useEffect(() => {
+    setQuantityDraft(String(item.quantity));
+  }, [item.quantity]);
+
+  function commitQuantityInput(value: string): void {
+    if (value.trim() === '') {
+      setQuantityDraft(String(item.quantity));
+      return;
+    }
+    const nextQuantity = Number(value);
+    if (!Number.isFinite(nextQuantity)) {
+      setQuantityDraft(String(item.quantity));
+      return;
+    }
+    const normalizedQuantity = Math.max(0, Math.floor(nextQuantity));
+    setQuantityDraft(String(normalizedQuantity));
+    onQtyChange(item.tenant_product_id, normalizedQuantity);
+  }
 
   return (
     <>
@@ -960,17 +980,59 @@ function CartPageItem({
           )}
         </div>
 
-        {/* Left: name + sku + delete */}
-        <div className="flex flex-1 min-w-0 flex-col justify-between py-0.5">
+        {/* Left: name + sku + controls */}
+        <div className="flex flex-1 min-w-0 flex-col py-0.5">
           <div className="min-w-0">
-            <p className="font-semibold leading-snug truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
+            <p className="font-semibold leading-snug [overflow-wrap:anywhere]" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
               {item.name}
             </p>
             {subline ? (
-              <p className="mt-0.5 truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
+              <p className="mt-0.5 [overflow-wrap:anywhere]" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
                 {subline}
               </p>
             ) : null}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center overflow-hidden rounded-full" style={{ background: 'var(--teal-500)' }}>
+                <button
+                  onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
+                  className="flex h-8 w-8 items-center justify-center text-white"
+                  aria-label="Decrease"
+                >
+                  <Minus className="h-3 w-3" />
+                </button>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={quantityDraft}
+                  onChange={(event) => setQuantityDraft(event.target.value)}
+                  onBlur={(event) => commitQuantityInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  className="h-8 w-10 bg-transparent text-center font-semibold tabular-nums text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}
+                  aria-label={`Quantity for ${item.name}`}
+                />
+                <button
+                  onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
+                  className="flex h-8 w-8 items-center justify-center text-white"
+                  aria-label="Increase"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+              {!hiddenPriceEnquiry ? (
+                <span
+                  className="tabular-nums font-semibold"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
+                >
+                  {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
+                </span>
+              ) : null}
+            </div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
               {hiddenPriceEnquiry ? (
                 <span className="font-medium" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-2)' }}>
@@ -1024,50 +1086,12 @@ function CartPageItem({
           </div>
           <button
             onClick={() => onRemove(item.tenant_product_id)}
-            className="self-start mt-1.5"
+            className="mt-2 self-start"
             style={{ color: 'var(--cream-400)' }}
             aria-label="Remove item"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        </div>
-
-        {/* Right: qty stepper + item total */}
-        <div className="flex flex-col items-end justify-between shrink-0 py-0.5">
-          {/* Pill stepper — no input, just buttons */}
-          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: 'var(--teal-500)' }}>
-            <button
-              onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
-              className="flex items-center justify-center"
-              style={{ width: 24, height: 24, color: '#fff' }}
-              aria-label="Decrease"
-            >
-              <Minus className="h-2.5 w-2.5" />
-            </button>
-            <span
-              className="tabular-nums font-semibold text-center"
-              style={{ minWidth: '1.25rem', fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', color: '#fff' }}
-            >
-              {item.quantity}
-            </span>
-            <button
-              onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
-              className="flex items-center justify-center"
-              style={{ width: 24, height: 24, color: '#fff' }}
-              aria-label="Increase"
-            >
-              <Plus className="h-2.5 w-2.5" />
-            </button>
-          </div>
-          {/* Item total */}
-          {!hiddenPriceEnquiry ? (
-          <span
-            className="tabular-nums font-semibold"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
-          >
-            {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
-          </span>
-          ) : null}
         </div>
       </div>
     </>

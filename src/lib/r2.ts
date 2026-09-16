@@ -46,6 +46,17 @@ export async function putObjectJson(key: string, value: unknown): Promise<void> 
   await r2Client.send(command);
 }
 
+export async function putObjectBlob(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    CacheControl: R2_UPLOAD_CACHE_CONTROL,
+  });
+  await r2Client.send(command);
+}
+
 export function getPublicUrl(key: string): string {
   return `${R2_PUBLIC_URL}/${key}`;
 }

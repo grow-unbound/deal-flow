@@ -9,6 +9,23 @@ export const BUYER_TWO_LINE_TITLE_CLASS =
 export const BUYER_PRODUCT_GRID_CLASS =
   'grid grid-cols-2 gap-x-2.5 gap-y-1.5 px-1.5 pb-3 md:grid-cols-3 md:gap-x-3 md:gap-y-2 md:px-2 lg:grid-cols-4 min-[1240px]:grid-cols-5 min-[1380px]:grid-cols-6' as const;
 
+/** Shared split layout for buyer category/brand/list detail pages with a master-list rail.
+ * The base rail width clamps down on sub-400px phones so the product cards retain usable width. */
+export const BUYER_DETAIL_RAIL_GRID_CLASS =
+  'grid items-start grid-cols-[clamp(64px,19vw,84px)_minmax(0,1fr)] gap-2 px-1.5 pb-4 sm:grid-cols-[108px_minmax(0,1fr)] sm:gap-4 sm:px-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-4 lg:pb-6' as const;
+
+/** Shared rail item density for buyer category/brand detail pages. */
+export const BUYER_DETAIL_RAIL_ITEM_CLASS =
+  'flex min-h-[72px] flex-col items-center justify-center gap-1.5 px-0.5 py-2 sm:min-h-[96px] sm:gap-2 sm:px-2 sm:py-3 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1 lg:py-3' as const;
+
+/** Shared thumbnail size for buyer category/brand detail rails. */
+export const BUYER_DETAIL_RAIL_THUMB_CLASS =
+  'h-10 w-10 p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:p-2' as const;
+
+/** Shared two-line label density for buyer category/brand detail rails. */
+export const BUYER_DETAIL_RAIL_LABEL_CLASS =
+  'line-clamp-2 text-center text-[10px] font-medium leading-tight sm:text-[11px] lg:text-left lg:text-[var(--b-text-label)]' as const;
+
 /** Category tile grid — fixed 3-column density on mobile (auto-fill's 180px floor is too
  * coarse below md, it collapses to 1 column); at md+ switches to auto-fill so tiles stretch
  * to fill available width instead of leaving a dead gutter at wide viewports. Pair with a

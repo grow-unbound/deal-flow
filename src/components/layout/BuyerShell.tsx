@@ -49,7 +49,7 @@ function BuyerShellMain({
     shouldShowBuyerDesktopBreadcrumbs(pathname) || isBuyerCampaignShareRoute(pathname, hasShareToken);
   const { tabBarVisible } = useBuyerScrollChromeState();
   const { triggerRefresh } = useBuyerRealtimeContext();
-  const showTabBarPadding = !isChromeless && (!isLanding || tabBarVisible);
+  const showTabBarPadding = !isChromeless && !isDeep && tabBarVisible;
   const canPullToRefresh = !isBuyerChromelessRoute(pathname);
 
   const handleRefresh = useCallback(async () => {

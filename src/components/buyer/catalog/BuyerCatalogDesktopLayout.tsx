@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { BUYER_DETAIL_RAIL_GRID_CLASS } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 
 interface BuyerCatalogDesktopLayoutProps {
@@ -71,13 +72,13 @@ export function BuyerCatalogDesktopLayout({
     <div
       style={style}
       className={cn(
-        'grid items-start grid-cols-[92px_minmax(0,1fr)] gap-3 px-2 pb-4 sm:grid-cols-[108px_minmax(0,1fr)] sm:gap-4 sm:px-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-4 lg:pb-6',
-        splitScroll ? 'min-h-0 h-full flex-1 items-stretch grid-rows-[minmax(0,1fr)] overflow-hidden' : '',
+        BUYER_DETAIL_RAIL_GRID_CLASS,
+        splitScroll ? 'min-h-0 h-full flex-1 items-stretch grid-rows-[minmax(0,1fr)] overflow-hidden pb-0 lg:pb-0' : '',
       )}
     >
       <aside
         className={cn(
-          'min-w-0 self-start pr-2 sm:pr-3 lg:pt-6 lg:pr-4',
+          'min-w-0 self-start pr-1.5 sm:pr-3 lg:pt-6 lg:pr-4',
           splitScroll ? 'min-h-0 h-full self-stretch overflow-hidden' : '',
         )}
       >
@@ -87,7 +88,7 @@ export function BuyerCatalogDesktopLayout({
               'border-r border-[var(--border-1)]',
               splitScroll
                 ? cn(
-                    'dashboard-vscroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 [touch-action:pan-y] [-webkit-overflow-scrolling:touch]',
+                    'dashboard-vscroll min-h-0 flex-1 overflow-y-auto overscroll-contain [touch-action:pan-y] [-webkit-overflow-scrolling:touch]',
                     railScroll.active && 'dashboard-vscroll--active',
                   )
                 : '',

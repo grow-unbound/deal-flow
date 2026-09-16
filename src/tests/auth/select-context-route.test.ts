@@ -37,6 +37,15 @@ vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
 }));
 
+const requestSupabaseGetUserMock = vi.fn();
+vi.mock('@/lib/server/request-supabase', () => ({
+  getRequestSupabaseClient: async () => ({
+    auth: {
+      getUser: (...args: unknown[]) => requestSupabaseGetUserMock(...args),
+    },
+  }),
+}));
+
 const otpMemory = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
   let counter = 0;
@@ -103,7 +112,9 @@ describe('phone-otp select-context route', () => {
     mintBuyerHandoffLinkMock.mockReset();
     recordBuyerAppActivitySafeMock.mockReset();
     getVerifiedClaimsMock.mockReset();
+    requestSupabaseGetUserMock.mockReset();
     getVerifiedClaimsMock.mockResolvedValue({ sub: null, tenant_id: null, role: null, buyer_id: null, location_ids: null });
+    requestSupabaseGetUserMock.mockResolvedValue({ data: { user: null }, error: null });
   });
 
   async function writeVerifiedRecord(candidates: unknown[], createdByUserId: string | null = null): Promise<string> {
@@ -373,5 +384,64 @@ describe('phone-otp select-context route', () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.session.access_token).toBe('access-token');
+  });
+
+  it('allows redeeming a switch-context-created record using the Supabase cookie session when auth middleware headers are absent', async () => {
+    mintSellerSessionMock.mockResolvedValue({
+      session: { access_token: 'seller-access-token', refresh_token: 'seller-refresh-token' },
+      user: { id: 'target-seller-user-id' },
+    });
+
+    const sellerCandidate = {
+      kind: 'seller' as const,
+      tenant_id: 'tenant-2',
+      tenant_name: 'Tenant Two',
+      tenant_slug: 'tenant-two',
+      tenant_whatsapp_number: null,
+      tenant_whatsapp_display_name: null,
+      role: 'seller_admin',
+      buyer_id: null,
+      principal_type: 'seller' as const,
+      user_id: 'target-seller-user-id',
+      buyer_user_id: null,
+      phone: '9876543210',
+      business_name: '',
+      contact_name: 'Owner Name',
+    };
+    const refId = await writeVerifiedRecord([sellerCandidate], 'creator-user-id');
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: null,
+      tenant_id: null,
+      role: null,
+      buyer_id: null,
+      location_ids: null,
+    });
+    requestSupabaseGetUserMock.mockResolvedValue({
+      data: { user: { id: 'creator-user-id' } },
+      error: null,
+    });
+
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('http://app.localhost/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'seller',
+        tenant_id: 'tenant-2',
+        buyer_id: null,
+        role: 'seller_admin',
+      }),
+    }), {
+      nextUrl: new URL('http://app.localhost/api/auth/phone-otp/select-context'),
+    });
+    const response = await POST(request as any);
+    const body = await response.json();
+
+    expect(getVerifiedClaimsMock).toHaveBeenCalled();
+    expect(requestSupabaseGetUserMock).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.session.access_token).toBe('seller-access-token');
   });
 });

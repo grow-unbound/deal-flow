@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { findAllLoginCandidates } from '@/lib/server/buyer-access';
+import { resolveSwitchLookupPhone, restrictSwitchContextCandidates } from '@/lib/server/auth-switch-phone';
 import { writeVerifiedCandidatesRecord } from '@/lib/server/buyer-otp-store';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -13,17 +14,14 @@ import { supabaseAdmin } from '@/lib/supabase';
  * Lets an already-logged-in seller/buyer jump straight to the multi-account
  * picker (/login/select-context) without a fresh OTP.
  *
- * SECURITY: the phone driving the candidate lookup MUST be the caller's
- * OTP-verified phone (`app_metadata.otp_verified_phone`, stamped only by a
- * real OTP hash check — see 20260911013323_fix_buyer_signup_rpcs_otp_anchor.sql
- * and 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql — moved out of
- * user_metadata, which is client-writable via the public
- * supabase.auth.updateUser({data:...}) call and was therefore self-forgeable),
- * never `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone). Those
- * are ordinary mutable business columns with no OTP re-verification on write
- * (PATCH /api/buyer/me can rewrite them to an arbitrary phone, including a
- * victim's, with only a same-tenant uniqueness check) — using them here let
- * an attacker redirect this lookup at a victim's own login candidates.
+ * SECURITY: prefer the caller's OTP-verified phone
+ * (`app_metadata.otp_verified_phone`, stamped only by a real OTP hash check).
+ * Legacy authenticated seller sessions may fall back to the auth identity's
+ * phone when the current seller membership is present in that phone lookup;
+ * the fallback only exposes seller memberships, not buyer rows. Never use
+ * `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone) for broad
+ * buyer candidate lookup: those are mutable business columns with no OTP
+ * re-verification on write.
  *
  * The resulting `verified` OTP-store record is also stamped with the
  * caller's own auth.uid() (`created_by_user_id`) so that only this same
@@ -46,20 +44,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
-    const phone = typeof otpVerifiedPhone === 'string' && otpVerifiedPhone.trim() ? otpVerifiedPhone : null;
-    if (!phone) {
-      // Fail closed rather than fall back to a mutable business-column phone
-      // lookup — this session predates the OTP-verified-phone claim (or was
-      // minted without one). The user must complete a fresh OTP login once
-      // to populate it.
+    const lookup = resolveSwitchLookupPhone(userData.user);
+    if (!lookup) {
       return NextResponse.json(
         { error: 'Please log in again to switch accounts.' },
         { status: 400 },
       );
     }
 
-    const candidates = await findAllLoginCandidates(phone);
+    const candidates = restrictSwitchContextCandidates(
+      await findAllLoginCandidates(lookup.phone),
+      claims,
+      lookup,
+    );
     if (candidates.length < 2) {
       return NextResponse.json({ error: 'No other accounts linked to this number.' }, { status: 400 });
     }
@@ -68,7 +65,7 @@ export async function POST(request: NextRequest) {
     // OTP-verified phone, this call itself is not a fresh OTP challenge.
     // select-context must not stamp otp_verified_phone off the back of this
     // record (unrelated, already-covered concern — see buyer-otp-store.ts).
-    const refId = await writeVerifiedCandidatesRecord(phone, candidates, false, claims.sub);
+    const refId = await writeVerifiedCandidatesRecord(lookup.phone, candidates, false, claims.sub);
     if (!refId) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

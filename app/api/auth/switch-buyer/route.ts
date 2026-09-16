@@ -6,6 +6,7 @@ import {
   findBuyerLoginCandidates,
   mintBuyerSession,
 } from '@/lib/server/buyer-access';
+import { resolveSwitchLookupPhone, restrictCandidatesToAuthenticatedUser } from '@/lib/server/auth-switch-phone';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const SwitchBuyerSchema = z.object({
@@ -16,20 +17,13 @@ const SwitchBuyerSchema = z.object({
  * POST /api/auth/switch-buyer
  * Remint buyer JWT for another buyer_id in the same tenant (Buy As).
  *
- * SECURITY: the phone driving the candidate lookup MUST be the caller's
- * OTP-verified phone (`app_metadata.otp_verified_phone`, stamped only by a
- * real OTP hash check — see 20260911013323_fix_buyer_signup_rpcs_otp_anchor.sql
- * and 20260913023654_fix_otp_anchor_rpcs_app_metadata.sql — moved out of
- * user_metadata, which is client-writable via the public
- * supabase.auth.updateUser({data:...}) call and was therefore self-forgeable),
- * never `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone). Those
- * are ordinary mutable business columns with no OTP re-verification on write
- * (PATCH /api/buyer/me can rewrite them, including to collide with another
- * same-tenant delegate's `buyer_users.phone`, with only a same-tenant
- * uniqueness check) — using them here let an attacker poison their own phone
- * to match a victim delegate's login-candidate phone, then call this route to
- * mint a full session as that delegate with zero OTP. Mirrors the fix already
- * applied to app/api/auth/switch-context/route.ts.
+ * SECURITY: prefer the caller's OTP-verified phone
+ * (`app_metadata.otp_verified_phone`, stamped only by a real OTP hash check).
+ * Legacy authenticated sessions may fall back to the auth identity's phone,
+ * but those results are restricted to candidates already linked to the same
+ * auth user id. Never use `app.buyers.phone`/`app.buyer_users.phone`
+ * (resolveCallerPhone) for broad candidate lookup: those are mutable business
+ * columns with no OTP re-verification on write.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -56,20 +50,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const otpVerifiedPhone = (userData.user.app_metadata as Record<string, unknown> | null)?.otp_verified_phone;
-    const phone = typeof otpVerifiedPhone === 'string' && otpVerifiedPhone.trim() ? otpVerifiedPhone : null;
-    if (!phone) {
-      // Fail closed rather than fall back to a mutable business-column phone
-      // lookup — this session predates the OTP-verified-phone claim (or was
-      // minted without one). The user must complete a fresh OTP login once
-      // to populate it.
+    const lookup = resolveSwitchLookupPhone(userData.user);
+    if (!lookup) {
       return NextResponse.json(
         { error: 'Please log in again to switch accounts.' },
         { status: 400 },
       );
     }
 
-    const candidates = await findBuyerLoginCandidates(phone);
+    const candidates = restrictCandidatesToAuthenticatedUser(
+      await findBuyerLoginCandidates(lookup.phone),
+      claims,
+      lookup,
+    );
     const match = candidates.find(
       (candidate) =>
         candidate.tenant_id === claims.tenant_id

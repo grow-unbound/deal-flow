@@ -113,7 +113,14 @@ export function BuyerDetailShell({
         ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      <div className={cn('min-h-0 flex-1 overflow-hidden pt-3', hideDesktopHeader && 'md:overflow-visible md:pt-0')}>{children}</div>
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-visible pt-3 md:overflow-hidden',
+          hideDesktopHeader && 'md:overflow-visible md:pt-0',
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
