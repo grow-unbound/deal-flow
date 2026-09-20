@@ -33,14 +33,15 @@ function renderBar(entry: InboxEntry, applyLocalAction = vi.fn()) {
 describe('InboxActionBar', () => {
   beforeEach(() => {
     mutateAsyncMock.mockClear();
-    window.localStorage.clear();
+    window.localStorage?.clear?.();
   });
 
-  it('renders a button per allowed action', () => {
+  it('renders only entry-specific text CTAs and keeps reject as an icon action', () => {
     renderBar(baseEntry);
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Contact buyer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 
   it('applies a non-destructive local action immediately without a confirm dialog', () => {
@@ -61,9 +62,50 @@ describe('InboxActionBar', () => {
   });
 
   it('calls the real mutation for a generic action', async () => {
-    renderBar({ ...baseEntry, allowed_actions: ['remind_later'] });
+    renderBar({ ...baseEntry, entry_type: 'invoice_due', allowed_actions: ['send_reminder', 'remind_later'] });
     fireEvent.click(screen.getByRole('button', { name: 'Remind later' }));
+    expect(screen.getByText('Remind later')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tomorrow' }));
     await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalled());
+  });
+
+  it('opens Add note inline and persists the note through the entry action API', async () => {
+    renderBar({ ...baseEntry, allowed_actions: ['accept_order', 'add_note'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.change(screen.getByPlaceholderText('Type a short note for this item'), {
+      target: { value: 'Buyer asked for dispatch after 4 pm.' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add note' }).at(-1)!);
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        entryId: 'e1',
+        action: 'add_note',
+        note: 'Buyer asked for dispatch after 4 pm.',
+      });
+    });
+  });
+
+  it('shows previous notes inline when note events exist', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <InboxActionBar
+          entry={{ ...baseEntry, allowed_actions: ['add_note'] }}
+          tenantId="t1"
+          applyLocalAction={vi.fn()}
+          historyEvents={[
+            {
+              id: 'note-1',
+              entry_id: 'e1',
+              action: 'add_note',
+              note: 'Already promised to call tomorrow.',
+              actor_id: 'u1',
+              created_at: '2026-09-18T08:00:00Z',
+            },
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText('Already promised to call tomorrow.')).toBeInTheDocument();
   });
 });

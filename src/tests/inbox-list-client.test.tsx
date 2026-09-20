@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const useInboxEntriesMock = vi.fn();
+const useParamsMock = vi.fn();
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
 
@@ -11,7 +12,7 @@ vi.mock('@/hooks/useInboxEntries', () => ({
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
-  useParams: () => ({ id: 'b1' }),
+  useParams: () => useParamsMock(),
 }));
 
 import { InboxListClient } from '@/components/seller/inbox/InboxListClient';
@@ -19,6 +20,18 @@ import { InboxListClient } from '@/components/seller/inbox/InboxListClient';
 function renderWithClient(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+function mockMedia(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
 }
 
 const ENTRIES = [
@@ -36,8 +49,12 @@ const ENTRIES = [
 describe('InboxListClient', () => {
   beforeEach(() => {
     useInboxEntriesMock.mockReset();
+    useParamsMock.mockReset();
+    useParamsMock.mockReturnValue({ id: 'b1' });
     pushMock.mockReset();
     replaceMock.mockReset();
+    window.localStorage?.clear?.();
+    mockMedia(false);
   });
 
   it('renders date sections with customer rows', () => {
@@ -45,7 +62,7 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
-    expect(screen.getByText(/Invoice overdue · 22,000/)).toBeInTheDocument();
+    expect(screen.getByText(/₹22,000 dues · 1 overdue/)).toBeInTheDocument();
   });
 
   it('links the row to the buyer detail route', () => {
@@ -66,5 +83,22 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getByText(/couldn't load inbox/i)).toBeInTheDocument();
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps mobile on the entry list when landing on Today without a selected buyer', () => {
+    useParamsMock.mockReturnValue({});
+    mockMedia(false);
+    useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
+    renderWithClient(<InboxListClient />);
+    expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the first buyer on desktop when landing on Today without a selected buyer', () => {
+    useParamsMock.mockReturnValue({});
+    mockMedia(true);
+    useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
+    renderWithClient(<InboxListClient />);
+    expect(replaceMock).toHaveBeenCalledWith('/today/b1');
   });
 });

@@ -276,6 +276,7 @@ export function useBuyerProductRecommendations(tenantProductId: string) {
     queryKey: buyerProductRecommendationsQueryKey(tenantProductId),
     queryFn: async () =>
       fetchJson<BuyerProductPageRecos>(buyerProductRecommendationsUrl(tenantProductId)),
+    enabled: Boolean(tenantProductId),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
@@ -288,6 +289,7 @@ export function useBuyerProductDetail(tenantProductId: string) {
     queryKey: buyerProductDetailQueryKey(tenantProductId, stockSignature),
     queryFn: async () =>
       fetchJson<BuyerProductDetailApiResponse>(buyerProductDetailUrl(tenantProductId), { fresh: true }),
+    enabled: Boolean(tenantProductId),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
@@ -311,6 +313,7 @@ export function useBuyerProductFamilyDetail(productFamilyId: string) {
     queryKey: buyerProductFamilyDetailQueryKey(productFamilyId, stockSignature),
     queryFn: async () =>
       fetchJson<BuyerProductFamilyDetailApiResponse>(buyerProductFamilyDetailUrl(productFamilyId), { fresh: true }),
+    enabled: Boolean(productFamilyId),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });

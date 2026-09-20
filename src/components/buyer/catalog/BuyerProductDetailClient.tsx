@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
@@ -89,8 +89,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       line_total: hiddenPriceEnquiry ? 0 : (item.price ?? 0),
       cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
       collect_target_unit_price_range: item.collect_target_unit_price_range === true,
-      buyer_target_unit_price_min: targetMin.trim() ? Number(targetMin) : null,
-      buyer_target_unit_price_max: targetMax.trim() ? Number(targetMax) : null,
+      buyer_target_unit_price_min: parseNumberInput(targetMin, 'CURRENCY_EXACT'),
+      buyer_target_unit_price_max: parseNumberInput(targetMax, 'CURRENCY_EXACT'),
       tenant_category_id: item.category_id ?? undefined,
     }, item.campaign_id ?? campaignId, {
       source_surface: 'product_detail',
@@ -294,27 +294,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   <div className="grid grid-cols-2 gap-2">
                     <label className="space-y-1">
                       <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Min target rate</span>
-                      <input
-                        value={targetMin}
-                        onChange={(event) => setTargetMin(event.target.value)}
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]"
-                        placeholder="Min"
-                      />
+                      <CurrencyTargetRateInput value={targetMin} onChange={setTargetMin} placeholder="Min" />
                     </label>
                     <label className="space-y-1">
                       <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Max target rate</span>
-                      <input
-                        value={targetMax}
-                        onChange={(event) => setTargetMax(event.target.value)}
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]"
-                        placeholder="Max"
-                      />
+                      <CurrencyTargetRateInput value={targetMax} onChange={setTargetMax} placeholder="Max" />
                     </label>
                   </div>
                   {item.default_uom ? (
@@ -548,6 +532,31 @@ function ProductHeroStockLabel({ status }: { status: 'limited' | 'out_of_stock' 
     >
       {isLimited ? 'Low stock' : 'Out of stock'}
     </span>
+  );
+}
+
+function CurrencyTargetRateInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="flex h-10 overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white focus-within:border-[var(--teal-500)]">
+      <span className="flex h-full items-center border-r border-[var(--border-1)] bg-cream-100 px-2.5 text-sm font-semibold text-cream-700">
+        ₹
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(formatNumberInput(event.target.value, 'CURRENCY_EXACT'))}
+        inputMode="decimal"
+        className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none"
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 

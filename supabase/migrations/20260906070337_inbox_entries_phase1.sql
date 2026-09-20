@@ -313,7 +313,7 @@ BEGIN
     WHEN 'invoice_overdue' THEN
       RETURN jsonb_build_array('send_reminder', 'log_call', 'view_invoice', 'view_buyer', 'remind_later', 'add_note');
     WHEN 'credit_limit_breach' THEN
-      RETURN jsonb_build_array('hold_new_orders', 'adjust_limit', 'view_account', 'view_details', 'view_buyer', 'remind_later', 'add_note');
+      RETURN jsonb_build_array('send_reminder', 'adjust_limit', 'view_account', 'view_details', 'view_buyer', 'remind_later', 'add_note');
     ELSE
       RETURN jsonb_build_array('view_details', 'view_buyer', 'add_note');
   END CASE;
@@ -853,6 +853,7 @@ BEGIN
       b.id AS buyer_id,
       b.business_name,
       b.credit_limit,
+      b.payment_terms_days,
       COALESCE(SUM(i.outstanding_balance) FILTER (
         WHERE app.invoice_status_has_receivable(i.status, i.outstanding_balance)
       ), 0)::numeric AS outstanding_balance,
@@ -866,7 +867,7 @@ BEGIN
       AND b.deleted_at IS NULL
       AND b.is_active = true
       AND COALESCE(b.credit_limit, 0) > 0
-    GROUP BY b.id, b.business_name, b.credit_limit
+    GROUP BY b.id, b.business_name, b.credit_limit, b.payment_terms_days
     HAVING COALESCE(SUM(i.outstanding_balance) FILTER (
       WHERE app.invoice_status_has_receivable(i.status, i.outstanding_balance)
     ), 0) > COALESCE(b.credit_limit, 0)
@@ -883,6 +884,7 @@ BEGIN
       jsonb_build_object(
         'business_name', v_row.business_name,
         'credit_limit', v_row.credit_limit,
+        'payment_terms_days', v_row.payment_terms_days,
         'outstanding_balance', v_row.outstanding_balance,
         'over_limit_amount', v_row.outstanding_balance - v_row.credit_limit
       ),

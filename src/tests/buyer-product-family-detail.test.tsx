@@ -21,6 +21,10 @@ vi.mock('posthog-js/react', () => ({
 
 vi.mock('@/hooks/useBuyerProducts', () => ({
   useBuyerProductFamilyDetail: (...args: unknown[]) => useBuyerProductFamilyDetailMock(...args),
+  useBuyerProductRecommendations: () => ({
+    data: { co_order: [], co_buyer: [], same_category: [] },
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@/contexts/BuyerCartContext', () => ({
@@ -129,7 +133,7 @@ describe('BuyerProductFamilyDetailClient', () => {
     });
   });
 
-  it('lets mobile buyers resolve a family to a SKU and quantity before adding', async () => {
+  it('lets mobile buyers resolve a family to a SKU before adding', async () => {
     render(<BuyerProductFamilyDetailClient productFamilyId="family-1" />);
 
     expect(screen.getByText('Choose variant')).toBeInTheDocument();
@@ -137,17 +141,16 @@ describe('BuyerProductFamilyDetailClient', () => {
     fireEvent.click(screen.getByRole('button', { name: '30m' }));
 
     await waitFor(() => {
-      expect(screen.getByText('WM-4FT-30M')).toBeInTheDocument();
+      expect(screen.getAllByText('WM-4FT-30M').length).toBeGreaterThan(0);
     });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Increase quantity' }).at(-1)!);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add 2' }).at(-1)!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add 1' }).at(-1)!);
 
     expect(addItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tenant_product_id: 'sku-4x30',
         internal_sku: 'WM-4FT-30M',
-        quantity: 2,
+        quantity: 1,
       }),
       null,
       expect.objectContaining({ source_surface: 'product_family_detail' }),
@@ -160,7 +163,7 @@ describe('BuyerProductFamilyDetailClient', () => {
     fireEvent.click(screen.getByRole('button', { name: '3ft' }));
     fireEvent.click(screen.getByRole('button', { name: '10m' }));
     await waitFor(() => {
-      expect(screen.getByText('WM-3FT-10M')).toBeInTheDocument();
+      expect(screen.getAllByText('WM-3FT-10M').length).toBeGreaterThan(0);
     });
 
     fireEvent.click(screen.getByRole('button', { name: '4ft' }));

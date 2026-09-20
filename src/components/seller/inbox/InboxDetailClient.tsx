@@ -1,30 +1,47 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { History, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Bot, ChevronLeft, ChevronRight, ExternalLink, History, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
 import { DetailActions, DetailHeader } from '@/components/seller/detail';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
-import { useInboxEntries } from '@/hooks/useInboxEntries';
+import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { ENTRY_TYPE_LABEL, getInitials } from '@/lib/inbox/inbox-entry-copy';
+import { ENTRY_TYPE_LABEL } from '@/lib/inbox/inbox-entry-copy';
+import { buildCollectionGroup, isCollectionEntry, sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxActionBar } from './InboxActionBar';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
 import { InboxHistorySheet } from './InboxHistorySheet';
-import { InboxRecordSheet } from './InboxRecordSheet';
+import { InboxCollectionGroupCard } from './InboxCollectionGroupCard';
+import type { InboxEntry } from '@/lib/inbox/inbox-types';
+
+const CHANNEL_ICON: Record<InboxChannel, typeof ShoppingBag> = {
+  storefront: ShoppingBag,
+  backend: Workflow,
+  manual: UserRound,
+  whatsapp: MessageCircle,
+  email: Mail,
+  phone: Phone,
+  unknown: Bot,
+};
+
+function channelIcon(entries: InboxEntry[]) {
+  const Icon = CHANNEL_ICON[sourceChannelForEntries(entries)] ?? Bot;
+  return <Icon className="h-5 w-5" aria-hidden />;
+}
 
 export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const router = useRouter();
   const { data } = useInboxEntries('active');
   const { overrides, localEvents, applyLocalAction } = useLocalEntryActions();
+  const history = useEntryHistory(buyerId);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [recordOpen, setRecordOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -60,8 +77,12 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
 
   const buyerName = buyerEntries[0].buyer_name;
   const buyerPhone = buyerEntries[0].buyer_phone;
+  const linkedBuyerId = buyerEntries[0].buyer_id;
   const tenantId = buyerEntries[0].tenant_id;
-  const singleItem = buyerEntries.length === 1;
+  const collectionGroup = buildCollectionGroup(buyerEntries);
+  const nonCollectionEntries = buyerEntries.filter((entry) => !isCollectionEntry(entry));
+  const visibleGroupCount = (collectionGroup ? 1 : 0) + nonCollectionEntries.length;
+  const onlyGroupId = visibleGroupCount === 1 ? (collectionGroup?.id ?? nonCollectionEntries[0]?.id ?? null) : null;
   const openCount = buyerEntries.length;
 
   return (
@@ -72,8 +93,24 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
             SplitPaneCloseContext is present) is suppressed here on purpose. */}
         <SplitPaneCloseContext.Provider value={null}>
           <DetailHeader
-            avatar={{ kind: 'customer', initials: getInitials(buyerName), hue: 'cream' }}
-            title={buyerName}
+            avatar={{ kind: 'channel', icon: channelIcon(buyerEntries) }}
+            title={
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <span className="min-w-0 truncate">{buyerName}</span>
+                {linkedBuyerId ? (
+                  <Link
+                    href={`/customers/${linkedBuyerId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open buyer in new tab"
+                    title="Open buyer in new tab"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-cream-500 transition-colors hover:bg-cream-100 hover:text-cream-900"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                  </Link>
+                ) : null}
+              </span>
+            }
             status={{
               label: `${openCount} open issue${openCount === 1 ? '' : 's'}`,
               tone: openCount > 0 ? 'warning' : 'success',
@@ -94,9 +131,6 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
               <DetailActions
                 inline={
                   <>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setRecordOpen(true)}>
-                      View {buyerName}
-                    </Button>
                     <div className="flex items-center overflow-hidden rounded-full border border-cream-300">
                       <button
                         type="button"
@@ -126,23 +160,27 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 md:px-6">
-        {singleItem ? (
-          <InboxEntryCard
-            entry={buyerEntries[0]}
-            expanded
-            onToggle={() => {}}
-            tenantId={tenantId}
-            applyLocalAction={applyLocalAction}
-          />
-        ) : isDesktop ? (
+        {isDesktop ? (
           <div className="space-y-4">
-            {buyerEntries.map((entry) => (
+            {collectionGroup ? (
+              <InboxCollectionGroupCard
+                group={collectionGroup}
+                buyerId={buyerId}
+                expanded={visibleGroupCount === 1 || expandedId === collectionGroup.id}
+                historyEvents={history.data?.events}
+                localEvents={localEvents}
+                onToggle={() => setExpandedId((prev) => (prev === collectionGroup.id ? null : collectionGroup.id))}
+              />
+            ) : null}
+            {nonCollectionEntries.map((entry) => (
               <InboxEntryCard
                 key={entry.id}
                 entry={entry}
-                expanded={expandedId === entry.id}
+                expanded={visibleGroupCount === 1 || expandedId === entry.id}
                 onToggle={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
                 tenantId={tenantId}
+                historyEvents={history.data?.events}
+                localEvents={localEvents}
                 applyLocalAction={applyLocalAction}
               />
             ))}
@@ -151,10 +189,25 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
           <Accordion
             type="single"
             collapsible
-            value={expandedId ?? undefined}
+            value={expandedId ?? onlyGroupId ?? undefined}
             onValueChange={(value) => setExpandedId(value || null)}
           >
-            {buyerEntries.map((entry) => (
+            {collectionGroup ? (
+              <AccordionItem value={collectionGroup.id}>
+                <AccordionTrigger aria-label="Dues">Dues</AccordionTrigger>
+                <AccordionContent>
+                  <InboxCollectionGroupCard
+                    group={collectionGroup}
+                    buyerId={buyerId}
+                    expanded
+                    historyEvents={history.data?.events}
+                    localEvents={localEvents}
+                    onToggle={() => {}}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            ) : null}
+            {nonCollectionEntries.map((entry) => (
               <AccordionItem key={entry.id} value={entry.id}>
                 <AccordionTrigger aria-label={ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}>
                   {ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}
@@ -163,10 +216,22 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                   {entry.entry_type === 'business_approval' || entry.entry_type === 'new_user_login' ? (
                     <>
                       <InboxApprovalDocuments entryId={entry.id} />
-                      <InboxApprovalActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                      <InboxApprovalActionBar
+                        entry={entry}
+                        tenantId={tenantId}
+                        historyEvents={history.data?.events}
+                        localEvents={localEvents}
+                        applyLocalAction={applyLocalAction}
+                      />
                     </>
                   ) : (
-                    <InboxActionBar entry={entry} tenantId={tenantId} applyLocalAction={applyLocalAction} />
+                    <InboxActionBar
+                      entry={entry}
+                      tenantId={tenantId}
+                      historyEvents={history.data?.events}
+                      localEvents={localEvents}
+                      applyLocalAction={applyLocalAction}
+                    />
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -181,13 +246,6 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
         buyerId={buyerId}
         buyerName={buyerName}
         localEvents={localEvents}
-      />
-      <InboxRecordSheet
-        open={recordOpen}
-        onOpenChange={setRecordOpen}
-        buyerId={buyerId}
-        buyerName={buyerName}
-        buyerPhone={buyerPhone}
       />
     </div>
   );

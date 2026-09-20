@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { Bell, Loader2, CheckCircle2, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,8 +26,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useApplyGenericEntryAction, useApplyApprovalEntryAction } from '@/hooks/useInboxEntries';
+import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
+import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import { missingFieldKeysForEntryType, MISSING_FIELD_LABELS } from '@/lib/inbox/missing-field-labels';
 import { GENERIC_ACTIONS, ACTION_LABELS } from './InboxActionBar';
+import { InboxInlineNote } from './InboxInlineNote';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
 
 const APPROVAL_ACTIONS = new Set(['approve', 'request_more_info', 'decline']);
@@ -35,6 +38,8 @@ const APPROVAL_ACTIONS = new Set(['approve', 'request_more_info', 'decline']);
 interface InboxApprovalActionBarProps {
   entry: InboxEntry;
   tenantId: string;
+  historyEvents?: EntryHistoryEvent[];
+  localEvents?: LocalEntryEvent[];
   applyLocalAction: (
     entry: InboxEntry,
     action: string,
@@ -203,13 +208,13 @@ function DeclineDialog({
  * updated local optimistic state and never called the real RPC — with the
  * real mutation plus the richer UI the brief calls for: a checklist for
  * request-more-info, a required-note confirm step for decline, and a
- * pending/success state for approve. Any other allowed action for this entry
- * (add_note, view_details, view_buyer, view_activity, ignore, reopen) still
- * goes through the same generic/local paths InboxActionBar uses.
+ * pending/success state for approve. Utility actions stay on the left edge of
+ * the card; buyer/account navigation belongs in the detail header.
  */
-export function InboxApprovalActionBar({ entry, tenantId, applyLocalAction }: InboxApprovalActionBarProps) {
+export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEvents, applyLocalAction }: InboxApprovalActionBarProps) {
   const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [approveState, setApproveState] = useState<'idle' | 'pending' | 'done'>('idle');
   const applyGenericAction = useApplyGenericEntryAction();
   const applyApprovalAction = useApplyApprovalEntryAction();
@@ -235,13 +240,14 @@ export function InboxApprovalActionBar({ entry, tenantId, applyLocalAction }: In
   }
 
   function handleOtherAction(action: string) {
+    if (action === 'add_note') {
+      setNoteOpen((open) => !open);
+      return;
+    }
     if (GENERIC_ACTIONS.has(action)) {
       void runGenericAction(action);
       return;
     }
-    // view_details / view_buyer / view_activity / ignore — no dedicated
-    // routing surface yet; matches InboxActionBar's existing placeholder
-    // behavior for these across every other entry type.
     applyLocalAction(entry, action, { nextSummary: `${ACTION_LABELS[action] ?? action} done` });
   }
 
@@ -249,7 +255,7 @@ export function InboxApprovalActionBar({ entry, tenantId, applyLocalAction }: In
     ? (entry.metadata.missing_fields as unknown[]).filter((v): v is string => typeof v === 'string')
     : [];
 
-  const otherActions = entry.allowed_actions.filter((a) => !APPROVAL_ACTIONS.has(a) && a !== 'reopen');
+  const leftActions = entry.allowed_actions.filter((a) => a === 'add_note' || a === 'remind_later');
   const canReopen = entry.allowed_actions.includes('reopen');
 
   return (
@@ -260,38 +266,66 @@ export function InboxApprovalActionBar({ entry, tenantId, applyLocalAction }: In
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {entry.allowed_actions.includes('approve') ? (
-          <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approveState !== 'idle'}>
-            {approveState === 'pending' ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : approveState === 'done' ? (
-              <CheckCircle2 className="h-4 w-4" aria-hidden />
-            ) : null}
-            {approveState === 'done' ? 'Approved' : 'Approve'}
-          </Button>
-        ) : null}
-        {entry.allowed_actions.includes('request_more_info') ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => setMoreInfoOpen(true)}>
-            Request more info
-          </Button>
-        ) : null}
-        {entry.allowed_actions.includes('decline') ? (
-          <Button type="button" size="sm" variant="destructive" onClick={() => setDeclineOpen(true)}>
-            Decline
-          </Button>
-        ) : null}
-        {canReopen ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => runGenericAction('reopen')}>
-            {ACTION_LABELS.reopen}
-          </Button>
-        ) : null}
-        {otherActions.map((action) => (
-          <Button key={action} type="button" size="sm" variant="outline" onClick={() => handleOtherAction(action)}>
-            {ACTION_LABELS[action] ?? action}
-          </Button>
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {leftActions.map((action) => {
+            const Icon = action === 'remind_later' ? Bell : StickyNote;
+            return (
+              <button
+                key={action}
+                type="button"
+                title={ACTION_LABELS[action] ?? action}
+                aria-label={ACTION_LABELS[action] ?? action}
+                onClick={() => handleOtherAction(action)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-cream-600 transition-colors hover:bg-cream-100 hover:text-cream-900 active:scale-[var(--yk-press-scale)]"
+              >
+                <Icon className="h-4 w-4" aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {entry.allowed_actions.includes('approve') ? (
+            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approveState !== 'idle'}>
+              {approveState === 'pending' ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : approveState === 'done' ? (
+                <CheckCircle2 className="h-4 w-4" aria-hidden />
+              ) : null}
+              {approveState === 'done' ? 'Approved' : 'Approve'}
+            </Button>
+          ) : null}
+          {entry.allowed_actions.includes('request_more_info') ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setMoreInfoOpen(true)}>
+              Request info
+            </Button>
+          ) : null}
+          {canReopen ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => runGenericAction('reopen')}>
+              {ACTION_LABELS.reopen}
+            </Button>
+          ) : null}
+          {entry.allowed_actions.includes('decline') ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setDeclineOpen(true)}
+            >
+              Decline
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      <InboxInlineNote
+        entryIds={[entry.id]}
+        primaryEntryId={entry.id}
+        historyEvents={historyEvents}
+        localEvents={localEvents}
+        open={noteOpen}
+        onOpenChange={setNoteOpen}
+      />
 
       <RequestMoreInfoDialog entry={entry} open={moreInfoOpen} onOpenChange={setMoreInfoOpen} onSubmitted={() => {}} />
       <DeclineDialog entry={entry} open={declineOpen} onOpenChange={setDeclineOpen} onSubmitted={() => {}} />

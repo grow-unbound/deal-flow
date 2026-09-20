@@ -7,6 +7,7 @@ const useInboxEntriesMock = vi.fn();
 vi.mock('@/hooks/useInboxEntries', () => ({
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEntryHistory: () => ({ data: { events: [] }, isLoading: false }),
 }));
 vi.mock('next/navigation', () => ({
@@ -33,7 +34,7 @@ const ENTRIES = [
     title: 'Sri Krishna Enterprises', summary: '₹18,400 due in 4 days', amount: 18400, currency: 'INR',
     priority_at: '2026-09-05T10:00:00Z', remind_at: null, created_at: '2026-09-05T10:00:00Z',
     last_actor_id: null, last_action: null, last_action_at: null, external_sync_status: 'not_required',
-    metadata: {}, allowed_actions: ['send_reminder'], time_bucket: 'this_week', customer_entry_count: 2,
+    metadata: { invoice_number: 'INV-1042', due_date: '2026-09-18T00:00:00Z', days_from_due: 4, aging_tier: 'due_soon' }, allowed_actions: ['send_reminder'], time_bucket: 'this_week', customer_entry_count: 2,
   },
 ];
 
@@ -75,7 +76,7 @@ describe('InboxDetailClient on mobile', () => {
   it('enforces single-expand accordion behavior: opening one row collapses the other', () => {
     renderDetail();
     const firstTrigger = screen.getByRole('button', { name: 'New order' });
-    const secondTrigger = screen.getByRole('button', { name: 'Invoice due' });
+    const secondTrigger = screen.getByRole('button', { name: 'Dues' });
 
     // Initially both rows are collapsed.
     expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -96,5 +97,6 @@ describe('InboxDetailClient on mobile', () => {
     expect(secondTrigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+    expect(screen.getByText('INV-1042')).toBeInTheDocument();
   });
 });

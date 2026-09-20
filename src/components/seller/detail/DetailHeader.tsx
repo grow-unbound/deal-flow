@@ -5,10 +5,11 @@ import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShe
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface DetailAvatar {
-  kind: 'brand' | 'product' | 'catalog' | 'customer' | 'warehouse' | 'location' | 'category' | 'cohort' | 'price-list' | 'campaign' | 'generic';
+  kind: 'brand' | 'product' | 'catalog' | 'customer' | 'warehouse' | 'location' | 'category' | 'cohort' | 'price-list' | 'campaign' | 'generic' | 'channel';
   initials?: string;
   hue?: EntityAvatarHue;
   imageUrl?: string | null;
+  icon?: ReactNode;
 }
 
 interface DetailStatus {
@@ -18,7 +19,7 @@ interface DetailStatus {
 
 interface DetailHeaderProps {
   avatar: DetailAvatar;
-  title: string;
+  title: ReactNode;
   status: DetailStatus;
   subtitle: ReactNode[];
   statusActions?: ReactNode;
@@ -28,6 +29,14 @@ interface DetailHeaderProps {
 }
 
 function renderAvatar(avatar: DetailAvatar) {
+  if (avatar.kind === 'channel') {
+    return (
+      <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border border-cream-300 bg-white text-cream-700">
+        {avatar.icon}
+      </span>
+    );
+  }
+
   if (avatar.kind !== 'product' && avatar.kind !== 'catalog') {
     return <EntityAvatar initials={avatar.initials ?? 'BR'} hue={avatar.hue ?? 'cream'} imageUrl={avatar.imageUrl} size={48} className="rounded-[14px]" />;
   }

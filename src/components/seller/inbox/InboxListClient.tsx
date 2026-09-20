@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { Bot, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
-import { EntityAvatar } from '@/components/seller/layout/EntityAvatar';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { TIME_BUCKET_LABEL, type InboxEntryType, type InboxGroupedBuyer } from '@/lib/inbox/inbox-types';
-import { buildEntrySubtitleParts, getInitials } from '@/lib/inbox/inbox-entry-copy';
+import { buildListSupportingLine } from '@/lib/inbox/inbox-entry-copy';
+import { sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
 import { InboxEmptyState } from './InboxEmptyState';
 
 const LAST_OPENED_STORAGE_KEY = 'inbox-last-opened-buyer';
@@ -22,15 +23,34 @@ const FILTER_CHIPS: Array<{ label: string; types: InboxEntryType[] }> = [
   { label: 'Collections', types: ['invoice_due', 'invoice_overdue', 'credit_limit_breach'] },
 ];
 
+const CHANNEL_ICON: Record<InboxChannel, typeof ShoppingBag> = {
+  storefront: ShoppingBag,
+  backend: Workflow,
+  manual: UserRound,
+  whatsapp: MessageCircle,
+  email: Mail,
+  phone: Phone,
+  unknown: Bot,
+};
+
+function ChannelBadge({ channel }: { channel: InboxChannel }) {
+  const Icon = CHANNEL_ICON[channel] ?? Bot;
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-cream-300 bg-white text-cream-700" title={channel}>
+      <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  );
+}
+
 function buyerListItem(buyer: InboxGroupedBuyer, activeId: string | undefined): SellerMobileListItem {
-  const primaryEntry = buyer.entries[0];
   return {
     id: buyer.buyerKey,
     href: `/today/${buyer.buyerId ?? buyer.buyerKey}`,
-    leading: <EntityAvatar initials={getInitials(buyer.buyerName)} hue="cream" size={32} />,
+    leading: <ChannelBadge channel={sourceChannelForEntries(buyer.entries)} />,
     primary: buyer.buyerName,
-    supporting: buildEntrySubtitleParts(primaryEntry).join(' · '),
+    supporting: buildListSupportingLine(buyer.entries),
     trailing: buyer.totalCount > 1 ? String(buyer.totalCount) : undefined,
+    badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
     onClick: () => {
       try {
@@ -47,6 +67,7 @@ export function InboxListClient() {
   const params = useParams<{ id?: string }>();
   const [tab, setTab] = useState<'active' | 'resolved'>('active');
   const [activeChip, setActiveChip] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const chipTypes = activeChip ? FILTER_CHIPS.find((c) => c.label === activeChip)?.types : undefined;
   const { data, isLoading, isError, refetch } = useInboxEntries(tab, chipTypes);
@@ -56,11 +77,21 @@ export function InboxListClient() {
     [data?.entries],
   );
 
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(query.matches);
+    const onChange = () => setIsDesktop(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
   // Today has no "closed" state — a customer is always open. On landing at bare
   // /today (no detail param), jump straight to the last customer this device had
-  // open, or the first row in the list if there's no remembered one.
+  // open on desktop, or the first row in the list if there's no remembered one.
+  // Mobile stays on the list so the user can choose the entry item first.
   useEffect(() => {
     if (params.id != null) return;
+    if (!isDesktop) return;
     if (isLoading || sections.length === 0) return;
 
     const allBuyers = sections.flatMap((section) => section.buyers);
@@ -76,7 +107,7 @@ export function InboxListClient() {
     }
 
     router.replace(`/today/${target.buyerId ?? target.buyerKey}`);
-  }, [params.id, isLoading, sections, router]);
+  }, [params.id, isDesktop, isLoading, sections, router]);
 
   return (
     <div className="flex h-full flex-col">
