@@ -5,10 +5,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { AppNotification } from './useNotificationStore';
 
+// Catalog announcements arrive already audience-scoped by the database
+// (20260920133936_realtime_per_buyer_broadcast_topics.sql): no client-side scope check, and the
+// payload never carries other buyers' scope lists.
 interface CatalogRecord {
   id: string;
-  scope_type: 'all' | 'buyer' | 'cohort' | 'geography';
-  scope_value: Record<string, unknown> | null;
   status: string;
   name: string;
   share_token: string;
@@ -16,23 +17,9 @@ interface CatalogRecord {
   updated_at: string;
 }
 
-function isBuyerInScope(record: CatalogRecord, buyerId: string, cohortIds: string[]): boolean {
-  if (record.scope_type === 'all') return true;
-  if (record.scope_type === 'buyer') {
-    const ids = (record.scope_value?.buyer_ids ?? []) as string[];
-    return ids.includes(buyerId);
-  }
-  if (record.scope_type === 'cohort') {
-    const ids = (record.scope_value?.cohort_ids ?? []) as string[];
-    return ids.some((id) => cohortIds.includes(id));
-  }
-  return true; // geography — RLS handles final access
-}
-
 interface UseBuyerRealtimeOptions {
   tenantId: string;
   buyerId: string;
-  buyerCohortIds: string[];
   onNew: (n: AppNotification) => void;
   onPatch?: (entityType: AppNotification['entityType'], entityId: string, patch: Pick<AppNotification, 'title' | 'body'>) => void;
   onRefresh?: () => void;
@@ -82,7 +69,7 @@ function buildBuyerEstimateInsertNotification(record: Record<string, unknown>): 
   };
 }
 
-export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onPatch, onRefresh }: UseBuyerRealtimeOptions) {
+export function useBuyerRealtime({ tenantId, buyerId, onNew, onPatch, onRefresh }: UseBuyerRealtimeOptions) {
   const [updatedEntityIds, setUpdatedEntityIds] = useState<Map<string, 'new' | 'updated'>>(new Map());
   const onNewRef = useRef(onNew);
   const onPatchRef = useRef(onPatch);
@@ -103,23 +90,19 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
   useEffect(() => {
     if (!tenantId || !buyerId) return;
 
-    // Shared per-tenant Broadcast topic (not postgres_changes) — see
-    // 20260823141106_realtime_notifications_broadcast_cutover.sql. Same
-    // shared tenant-wide topic useSellerRealtime/useDocumentWhatsAppRealtime
-    // use — the server-side scope was always tenant-wide (buyer_id is
-    // nullable/shared across campaigns), so this buyer's own rows are still
-    // picked out client-side same as the cohort/buyer scope check already
-    // did under postgres_changes.
+    // Server-scoped private Broadcast topics (F20, 20260920133936):
+    //  - buyer-notifications:<tenant>:<buyer>  this buyer's own orders/estimates/invoices (slim
+    //    payload) and catalogs targeted at exactly this buyer. RLS on realtime.messages only lets
+    //    a buyer join the topic matching their own JWT tenant_id + buyer_id.
+    //  - catalog-updates:<tenant>  catalogs published to all buyers of the tenant.
+    // The payload is a notification only; the UI refetches through the RLS-protected APIs
+    // (onRefresh). Signed-in buyers only: buyerId is empty for anonymous/preview sessions, which
+    // return above and open no socket. The tenant-wide topic is sellers-only (migration B).
     //
     // { config: { private: true } } required -- the DB trigger sends
     // realtime.send(..., private=true); without this the channel opens in
     // public/non-RLS mode and never receives the private broadcast.
-    const channel = supabaseBrowser
-      .channel(`tenant-notifications:${tenantId}`, { config: { private: true } })
-      .on(
-        'broadcast',
-        { event: 'notification' },
-        (payload) => {
+    const handleNotification = (payload: { payload: unknown }) => {
           const row = payload.payload as {
             entity_type: string;
             event_type: string;
@@ -133,7 +116,6 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
           if (row.entity_type === 'campaigns') {
             const catalog = record as unknown as CatalogRecord;
             if (catalog.status !== 'published') return;
-            if (!isBuyerInScope(catalog, buyerId, buyerCohortIds)) return;
             const entityId = catalog.id;
             onNewRef.current({
               id: `${entityId}_new_catalog_${catalog.updated_at}`,
@@ -227,14 +209,22 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onP
             setUpdatedEntityIds((prev) => new Map(prev).set(entityId, isInsert ? 'new' : 'updated'));
             onRefreshRef.current?.();
           }
-        },
-      )
+    };
+
+    const buyerChannel = supabaseBrowser
+      .channel(`buyer-notifications:${tenantId}:${buyerId}`, { config: { private: true } })
+      .on('broadcast', { event: 'notification' }, handleNotification)
+      .subscribe();
+    const catalogChannel = supabaseBrowser
+      .channel(`catalog-updates:${tenantId}`, { config: { private: true } })
+      .on('broadcast', { event: 'notification' }, handleNotification)
       .subscribe();
 
     return () => {
-      void supabaseBrowser.removeChannel(channel);
+      void supabaseBrowser.removeChannel(buyerChannel);
+      void supabaseBrowser.removeChannel(catalogChannel);
     };
-  }, [tenantId, buyerId, buyerCohortIds]);
+  }, [tenantId, buyerId]);
 
   return { updatedEntityIds, markSeen };
 }

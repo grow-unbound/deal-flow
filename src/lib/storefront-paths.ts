@@ -159,6 +159,9 @@ export function isStorefrontPagePath(pathname: string): boolean {
 }
 
 export function isGuestCatalogApiPath(pathname: string): boolean {
+  // Guest-only cacheable twins (see guest-public-api.ts) are guest catalog APIs too: same live
+  // check, host-tenant verification and rate limiting as their /api/buyer/* originals.
+  if (pathname.startsWith('/api/public/g/')) return true;
   if (pathname === '/api/buyer/catalog' || pathname.startsWith('/api/buyer/catalog/')) return true;
   if (pathname === '/api/buyer/brands' || pathname === '/api/buyer/categories') return true;
   if (pathname === '/api/buyer/search' || pathname.startsWith('/api/buyer/search/')) return true;
@@ -173,6 +176,8 @@ export function isGuestCatalogApiPath(pathname: string): boolean {
 }
 
 export function isGuestSearchApiPath(pathname: string, search = ''): boolean {
+  if (pathname === '/api/public/g/search') return true;
+  if (pathname === '/api/public/g/catalog') return /(?:^|[?&])search=/.test(search);
   if (pathname === '/api/buyer/search' || pathname.startsWith('/api/buyer/search/')) return true;
   return pathname === '/api/buyer/catalog' && /(?:^|[?&])search=/.test(search);
 }

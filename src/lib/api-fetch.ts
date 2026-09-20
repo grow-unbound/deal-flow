@@ -2,6 +2,7 @@
 
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { clearClientAuthSnapshot, getClientAccessToken, setClientAuthSnapshot } from '@/lib/auth-client-store';
+import { toGuestPublicUrl } from '@/lib/guest-public-api';
 
 type CachedAuth = {
   token: string;
@@ -54,7 +55,12 @@ export type ApiFetchInit = RequestInit & {
 export async function apiFetch(url: string, init?: ApiFetchInit): Promise<Response> {
   const { fresh, ...requestInit } = init ?? {};
   const authHeaders = await getAuthHeaders();
-  return fetch(url, {
+  // Anonymous storefront visitors (no session) read the catalog through the guest-only, CDN-cacheable
+  // twin of the /api/buyer/* GETs. Anything with credentials, a non-GET, or a tokenized/campaign
+  // query keeps the private per-buyer route.
+  const isAnonymousGet = !authHeaders.Authorization && (requestInit.method ?? 'GET').toUpperCase() === 'GET' && !fresh;
+  const target = (isAnonymousGet && toGuestPublicUrl(url)) || url;
+  return fetch(target, {
     ...requestInit,
     cache: fresh ? 'no-store' : requestInit.cache,
     headers: {
