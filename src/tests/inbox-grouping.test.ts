@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { groupEntriesByDateAndCustomer, isPinnedEntry, sortEntriesForStack } from '@/lib/inbox/inbox-grouping';
+import { buildCollectionGroup } from '@/lib/inbox/inbox-detail-groups';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
 function makeEntry(overrides: Partial<InboxEntry>): InboxEntry {
@@ -31,6 +32,46 @@ describe('isPinnedEntry', () => {
   });
 });
 
+describe('buildCollectionGroup', () => {
+  it('groups due and overdue invoices with document number, date context, and currency amount', () => {
+    const due = makeEntry({
+      id: 'due',
+      entry_type: 'invoice_due',
+      source_entity_id: '11111111-1111-1111-1111-111111111111',
+      amount: 3500,
+      metadata: { invoice_number: 'INV-1042', days_from_due: 1, aging_tier: 'due_soon' },
+    });
+    const overdue = makeEntry({
+      id: 'overdue',
+      entry_type: 'invoice_overdue',
+      source_entity_id: '22222222-2222-2222-2222-222222222222',
+      amount: 6750,
+      metadata: { invoice_number: 'INV-1029', days_from_due: -12, aging_tier: '8-15d' },
+    });
+
+    const group = buildCollectionGroup([due, overdue]);
+    expect(group?.summary?.totalAmountLabel).toBe('₹10,250');
+    expect(group?.summary?.dueCount).toBe(1);
+    expect(group?.summary?.overdueCount).toBe(1);
+    expect(group?.rowsByAging?.map((section) => ({
+      label: section.label,
+      count: section.count,
+      totalAmountLabel: section.totalAmountLabel,
+    }))).toEqual([
+      { label: '8-15 days overdue', count: 1, totalAmountLabel: '₹6,750' },
+      { label: 'Due in 7 days', count: 1, totalAmountLabel: '₹3,500' },
+    ]);
+    expect(group?.rowsByAging?.flatMap((section) => section.rows).map((row) => ({
+      invoiceNumber: row.invoiceNumber,
+      amountLabel: row.amountLabel,
+      dateLabel: row.dateLabel,
+    }))).toEqual([
+      { invoiceNumber: 'INV-1029', amountLabel: '₹6,750', dateLabel: '12 days overdue' },
+      { invoiceNumber: 'INV-1042', amountLabel: '₹3,500', dateLabel: 'Due tomorrow' },
+    ]);
+  });
+});
+
 describe('sortEntriesForStack', () => {
   it('puts pinned entries above newer, lower-stakes entries', () => {
     const newEnquiry = makeEntry({ id: 'a', entry_type: 'new_enquiry', priority_at: '2026-09-07T12:00:00Z' });
@@ -46,9 +87,9 @@ describe('sortEntriesForStack', () => {
 });
 
 describe('groupEntriesByDateAndCustomer', () => {
-  it('places a customer under the bucket of their freshest entry, count is the true total', () => {
-    const oldInvoice = makeEntry({ id: 'inv', time_bucket: 'yesterday', priority_at: '2026-09-06T09:00:00Z', customer_entry_count: 2 });
-    const newEnquiry = makeEntry({ id: 'enq', entry_type: 'new_enquiry', time_bucket: 'today', priority_at: '2026-09-07T09:00:00Z', customer_entry_count: 2 });
+  it('places a customer under the bucket of their freshest entry, count is the displayed open-entry total', () => {
+    const oldInvoice = makeEntry({ id: 'inv', time_bucket: 'yesterday', priority_at: '2026-09-06T09:00:00Z', customer_entry_count: 9 });
+    const newEnquiry = makeEntry({ id: 'enq', entry_type: 'new_enquiry', time_bucket: 'today', priority_at: '2026-09-07T09:00:00Z', customer_entry_count: 9 });
     const grouped = groupEntriesByDateAndCustomer([oldInvoice, newEnquiry]);
     const todaySection = grouped.find((g) => g.bucket === 'today');
     expect(todaySection?.buyers).toHaveLength(1);

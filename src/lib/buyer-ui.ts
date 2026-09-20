@@ -69,6 +69,27 @@ type BuyerProductImageLike = {
   brand_logo_url?: string | null;
 };
 
+type BuyerCatalogItemLike = {
+  item_type?: 'sku' | 'family';
+  id: string;
+  tenant_product_id: string;
+  display_name: string;
+  brand_id?: string | null;
+  category_id?: string | null;
+};
+
+export function dedupeBuyerCatalogItems<T extends BuyerCatalogItemLike>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.item_type === 'family'
+      ? ['family', item.brand_id ?? '', item.category_id ?? '', item.display_name.trim().toLowerCase()].join(':')
+      : `sku:${item.tenant_product_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function getBuyerProductImageCandidates(input: BuyerProductImageLike): string[] {
   const productImage = input.image_urls?.find((url) => typeof url === 'string' && url.trim().length > 0)?.trim() ?? null;
   const categoryImage = typeof input.category_image_url === 'string' && input.category_image_url.trim().length > 0

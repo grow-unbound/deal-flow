@@ -8,6 +8,7 @@ import {
   useBuyerCampaignName,
   useBuyerCampaignShareName,
   useBuyerCategories,
+  useBuyerProductFamilyDetail,
   useBuyerProductDetail,
 } from '@/hooks/useBuyerProducts';
 import { useBuyerEffectivePathname } from '@/hooks/useBuyerRailPathnameOverride';
@@ -23,7 +24,7 @@ interface Crumb {
 function buildCrumbs(
   pathname: string,
   hasShareToken: boolean,
-  labels: { category?: string; categoryId?: string; brand?: string; product?: string; campaign?: string },
+  labels: { category?: string; categoryId?: string; brand?: string; product?: string; family?: string; campaign?: string },
 ): Crumb[] {
   const crumbs: Crumb[] = [{ label: 'Home', href: STOREFRONT.home }];
   const path = normalizeBuyerPathname(pathname);
@@ -47,6 +48,16 @@ function buildCrumbs(
     }
     return [...crumbs, { label: labels.product ?? 'Product details' }];
   }
+  if (path.startsWith('/buy/family/')) {
+    if (labels.family && labels.category) {
+      return [
+        ...crumbs,
+        { label: labels.category, href: labels.categoryId ? STOREFRONT.category(labels.categoryId) : undefined },
+        { label: labels.family },
+      ];
+    }
+    return [...crumbs, { label: labels.family ?? 'Product family' }];
+  }
   if (path === '/buy/search') return [...crumbs, { label: 'Search' }];
   if (path === '/buy/location') return [...crumbs, { label: 'Select location' }];
   return crumbs;
@@ -62,11 +73,13 @@ export function BuyerDesktopBreadcrumbs() {
   const categoryId = pathname.startsWith('/buy/home/category/') ? pathname.split('/').at(-1) ?? '' : '';
   const brandId = pathname.startsWith('/buy/home/brand/') ? pathname.split('/').at(-1) ?? '' : '';
   const productId = pathname.startsWith('/buy/product/') ? pathname.split('/').at(-1) ?? '' : '';
+  const familyId = pathname.startsWith('/buy/family/') ? pathname.split('/').at(-1) ?? '' : '';
   const campaignId = pathname.startsWith('/buy/home/list/') ? pathname.split('/').at(-1) ?? '' : '';
   const shareToken = searchParams?.get('share_token') ?? '';
   const { data: categories } = useBuyerCategories();
   const { data: brands } = useBuyerBrands();
   const productDetail = useBuyerProductDetail(productId);
+  const familyDetail = useBuyerProductFamilyDetail(familyId);
   const { data: campaignName } = useBuyerCampaignName(campaignId);
   const { data: campaignShareName } = useBuyerCampaignShareName(
     isBuyerCampaignShareRoute(pathname, hasShareToken) ? shareToken : '',
@@ -75,10 +88,12 @@ export function BuyerDesktopBreadcrumbs() {
     category:
       categories?.find((category) => category.id === categoryId)?.name
       ?? productDetail.item?.category_name
+      ?? familyDetail.family?.category_name
       ?? undefined,
-    categoryId: categoryId || (productDetail.item?.category_id ?? undefined),
+    categoryId: categoryId || (productDetail.item?.category_id ?? familyDetail.family?.category_id ?? undefined),
     brand: brands?.find((brand) => brand.id === brandId)?.name ?? undefined,
     product: productDetail.item?.display_name ?? undefined,
+    family: familyDetail.family?.display_name ?? undefined,
     campaign: campaignName ?? campaignShareName,
   });
 

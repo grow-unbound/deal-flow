@@ -109,6 +109,12 @@ interface ApprovalActionInput {
   metadata?: Record<string, unknown>;
 }
 
+interface CollectionReminderInput {
+  buyerId: string;
+  entryIds: string[];
+  note?: string;
+}
+
 /**
  * Approve / decline / request-more-info on a `business_approval` /
  * `new_user_login` entry — calls the same POST .../actions route as the
@@ -132,6 +138,36 @@ export function useApplyApprovalEntryAction() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['inbox-entries'] });
       queryClient.invalidateQueries({ queryKey: ['inbox-entry-history'] });
+    },
+  });
+}
+
+export function useSendCollectionReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CollectionReminderInput) => {
+      const res = await apiPost('/api/tenant/entries/collections/remind', {
+        buyer_id: body.buyerId,
+        entry_ids: body.entryIds,
+        note: body.note,
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? 'Failed to send reminder');
+      }
+      return (await res.json()) as {
+        data: {
+          entry_ids: string[];
+          last_reminder_at: string;
+          recipient_phone: string;
+          message: string;
+        };
+      };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['inbox-entry-history'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-invoices'] });
     },
   });
 }

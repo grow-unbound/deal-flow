@@ -30,6 +30,7 @@ import {
   BUYER_DETAIL_RAIL_ITEM_CLASS,
   BUYER_DETAIL_RAIL_THUMB_CLASS,
   BUYER_INFINITE_SCROLL_RATIO,
+  dedupeBuyerCatalogItems,
   guestPriceReveal,
 } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
@@ -115,7 +116,7 @@ export function CatalogFilteredBrowse({
     isInitialDataStillValid ? initialCatalogPage : undefined,
   );
   const pages = listQuery.data?.pages ?? [];
-  const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
+  const items = React.useMemo(() => dedupeBuyerCatalogItems(pages.flatMap((page) => page.items ?? [])), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
   const isSwitchingEntity = mode !== 'list' && activeId !== resolvedGridId;
   // Cold-cache only, plus detail-rail switches where we want the grid to show an explicit refresh state.

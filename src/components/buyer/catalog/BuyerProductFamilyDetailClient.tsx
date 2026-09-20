@@ -8,15 +8,16 @@ import { usePostHog } from 'posthog-js/react';
 
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
+import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
-import { useBuyerProductFamilyDetail } from '@/hooks/useBuyerProducts';
+import { useBuyerProductFamilyDetail, useBuyerProductRecommendations } from '@/hooks/useBuyerProducts';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
 import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import type { BuyerFamilySkuOption } from '@/types/buyer';
 
 interface BuyerProductFamilyDetailClientProps {
@@ -54,6 +55,15 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
   const canAddResolvedSku = Boolean(selectedSku && (hiddenPriceEnquiry || hasVisibleBuyerPrice(selectedSku.price)));
   const canClickResolvedSku = Boolean(selectedSku && (canAddResolvedSku || isGuest || priceReveal === 'login_cta'));
   const displayedPrice = selectedSku?.price ?? family?.price_summary?.min_price ?? family?.price ?? null;
+  const recoProductId = selectedSku?.tenant_product_id ?? family?.tenant_product_id ?? '';
+  const recosQuery = useBuyerProductRecommendations(recoProductId);
+  const categoryRecoTitle = family?.category_name ? `More in ${family.category_name}` : 'More in this category';
+  const taxLabel = selectedSku?.gst_rate != null
+    ? `${selectedSku.gst_rate}% GST`
+    : family?.gst_rate != null
+      ? `${family.gst_rate}% GST`
+      : '—';
+  const selectedStockLabel = selectedSku ? stockLabel(selectedSku) : 'Select a variant';
 
   React.useEffect(() => {
     if (!family) return;
@@ -130,8 +140,8 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
       line_total: hiddenPriceEnquiry ? 0 : (selectedSku.price ?? 0) * quantity,
       cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
       collect_target_unit_price_range: family.collect_target_unit_price_range === true,
-      buyer_target_unit_price_min: targetMin.trim() ? Number(targetMin) : null,
-      buyer_target_unit_price_max: targetMax.trim() ? Number(targetMax) : null,
+      buyer_target_unit_price_min: parseNumberInput(targetMin, 'CURRENCY_EXACT'),
+      buyer_target_unit_price_max: parseNumberInput(targetMax, 'CURRENCY_EXACT'),
       tenant_category_id: family.category_id ?? undefined,
       stock_status: selectedSku.stock_status,
       on_hand: selectedSku.on_hand,
@@ -280,9 +290,43 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
                   </>
                 )}
               </div>
+              <div className={`overflow-hidden md:border md:border-[var(--border-1)] md:bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`}>
+                <div className="border-b border-[var(--border-1)] px-4 py-2.5 md:px-5 md:py-3">
+                  <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                    Product Details
+                  </span>
+                </div>
+                {isLoading || !family ? (
+                  <>
+                    <SpecRowSkeleton />
+                    <SpecRowSkeleton />
+                    <SpecRowSkeleton />
+                    <SpecRowSkeleton isLast />
+                  </>
+                ) : (
+                  <>
+                    <SpecRow label="SKU" value={selectedSku?.internal_sku ?? 'Select a variant'} mono />
+                    {family.brand_name ? <SpecRow label="Brand" value={family.brand_name} /> : null}
+                    {family.category_name ? <SpecRow label="Category" value={family.category_name} /> : null}
+                    <SpecRow label="Tax" value={taxLabel} isLast={!stockVisible} />
+                    {stockVisible ? <SpecRow label="Stock" value={selectedStockLabel} isLast /> : null}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        <RecoSection
+          title={categoryRecoTitle}
+          widget="same_category"
+          items={recosQuery.data?.same_category ?? []}
+          sourceProductId={recoProductId}
+          isLoading={recosQuery.isLoading}
+          sectionClassName="px-3 pb-3"
+          scrollClassName="gap-3 px-3"
+          priceReveal={priceReveal}
+        />
       </BuyerDetailShell>
 
       <BuyerFixedFooter
@@ -385,10 +429,51 @@ function TargetRangeInputs({ targetMin, targetMax, setTargetMin, setTargetMax, u
     <div className="space-y-2 rounded-[10px] border border-[var(--border-1)] bg-[var(--bg-base)] p-3">
       <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Target buying price per unit</p>
       <div className="grid grid-cols-2 gap-2">
-        <input value={targetMin} onChange={(event) => setTargetMin(event.target.value)} type="number" min="0" inputMode="decimal" className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]" placeholder="Min" />
-        <input value={targetMax} onChange={(event) => setTargetMax(event.target.value)} type="number" min="0" inputMode="decimal" className="h-10 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--teal-500)]" placeholder="Max" />
+        <CurrencyTargetRateInput value={targetMin} onChange={setTargetMin} placeholder="Min" />
+        <CurrencyTargetRateInput value={targetMax} onChange={setTargetMax} placeholder="Max" />
       </div>
       {unit ? <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>Per {unit}</p> : null}
+    </div>
+  );
+}
+
+function CurrencyTargetRateInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <div className="flex h-10 overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white focus-within:border-[var(--teal-500)]">
+      <span className="flex h-full items-center border-r border-[var(--border-1)] bg-cream-100 px-2.5 text-sm font-semibold text-cream-700">₹</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(formatNumberInput(event.target.value, 'CURRENCY_EXACT'))}
+        inputMode="decimal"
+        className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none"
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function SpecRow({ label, value, mono, isLast }: { label: string; value: string; mono?: boolean; isLast?: boolean }) {
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-4 px-4 py-2.5 md:px-5 md:py-3"
+      style={{ borderBottom: isLast ? undefined : '1px solid var(--border-1)' }}
+    >
+      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>{label}</span>
+      <span className="text-right font-medium md:text-left" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-1)', fontFamily: mono ? 'var(--font-mono)' : undefined }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SpecRowSkeleton({ isLast }: { isLast?: boolean }) {
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-4 px-4 py-2.5 md:px-5 md:py-3"
+      style={{ borderBottom: isLast ? undefined : '1px solid var(--border-1)' }}
+    >
+      <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
+      <div className="ml-auto h-4 w-24 animate-pulse rounded bg-cream-200 md:ml-0" />
     </div>
   );
 }
@@ -406,7 +491,7 @@ function FamilyActionButton({ cartLineQty, desiredQuantity, hiddenPriceEnquiry, 
   return (
     <button type="button" disabled={disabled} onClick={onAdd} className="flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'var(--teal-500)' }}>
       <Plus className="h-4 w-4" aria-hidden />
-      {hiddenPriceEnquiry ? `Enquire ${desiredQuantity}` : `Add ${desiredQuantity}`}
+      {hiddenPriceEnquiry ? 'Add to Enquiry' : `Add ${desiredQuantity}`}
     </button>
   );
 }

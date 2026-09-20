@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { Bell, MoreHorizontal, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useApplyGenericEntryAction } from '@/hooks/useInboxEntries';
 import { shouldSkipConfirm } from '@/lib/inbox/inbox-confirm-prefs';
 import { InboxConfirmDialog } from './InboxConfirmDialog';
+import { InboxInlineNote } from './InboxInlineNote';
+import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
+import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
 
 export const GENERIC_ACTIONS = new Set(['remind_later', 'add_note', 'dismiss', 'reopen']);
@@ -34,7 +38,6 @@ export const ACTION_LABELS: Record<string, string> = {
   send_reminder: 'Send reminder',
   view_invoice: 'View invoice',
   log_call: 'Log a call',
-  hold_new_orders: 'Hold new orders',
   adjust_limit: 'Adjust limit',
   view_account: 'View account',
   reopen: 'Reopen',
@@ -59,9 +62,37 @@ const REMIND_OPTIONS = [
   { label: '1 week', days: 7 },
 ];
 
+const LEFT_ICON_ACTIONS = new Set(['add_note', 'remind_later']);
+const CARD_HEADER_ACTIONS = new Set(['view_buyer', 'view_account']);
+
+const ACTION_ICON: Record<string, typeof StickyNote> = {
+  add_note: StickyNote,
+  remind_later: Bell,
+};
+
+function primaryActionsFor(entry: InboxEntry): string[] {
+  switch (entry.entry_type) {
+    case 'credit_limit_breach':
+      return ['send_reminder', 'adjust_limit'];
+    case 'new_enquiry':
+      return ['convert', 'reply_quote'];
+    case 'new_order_confirmation':
+      return ['accept_order', 'contact_buyer'];
+    case 'order_dispatch_needed':
+      return ['mark_dispatched'];
+    case 'invoice_due':
+    case 'invoice_overdue':
+      return ['send_reminder', 'log_call'];
+    default:
+      return entry.allowed_actions.filter((action) => !LEFT_ICON_ACTIONS.has(action) && !CARD_HEADER_ACTIONS.has(action) && action !== 'hold_new_orders').slice(0, 2);
+  }
+}
+
 interface InboxActionBarProps {
   entry: InboxEntry;
   tenantId: string;
+  historyEvents?: EntryHistoryEvent[];
+  localEvents?: LocalEntryEvent[];
   applyLocalAction: (
     entry: InboxEntry,
     action: string,
@@ -69,9 +100,10 @@ interface InboxActionBarProps {
   ) => void;
 }
 
-export function InboxActionBar({ entry, tenantId, applyLocalAction }: InboxActionBarProps) {
+export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, applyLocalAction }: InboxActionBarProps) {
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [remindPickerOpen, setRemindPickerOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const applyGenericAction = useApplyGenericEntryAction();
 
   function runLocalAction(action: string) {
@@ -91,6 +123,10 @@ export function InboxActionBar({ entry, tenantId, applyLocalAction }: InboxActio
       setRemindPickerOpen(true);
       return;
     }
+    if (action === 'add_note') {
+      setNoteOpen((open) => !open);
+      return;
+    }
     if (GENERIC_ACTIONS.has(action)) {
       void runGenericAction(action);
       return;
@@ -103,23 +139,52 @@ export function InboxActionBar({ entry, tenantId, applyLocalAction }: InboxActio
   }
 
   const destructiveMeta = pendingConfirm ? DESTRUCTIVE_ACTIONS[pendingConfirm] : null;
+  const effectiveAllowedActions = entry.entry_type === 'credit_limit_breach'
+    ? Array.from(new Set(['send_reminder', ...entry.allowed_actions]))
+    : entry.allowed_actions;
+  const textActions = primaryActionsFor(entry).filter((action) => effectiveAllowedActions.includes(action) && action !== 'hold_new_orders').slice(0, 2);
+  const destructiveTextActions = effectiveAllowedActions.filter((action) => DESTRUCTIVE_ACTIONS[action] && !textActions.includes(action));
+  const rightActions = [...textActions, ...destructiveTextActions];
+  const iconActions = effectiveAllowedActions.filter((action) => LEFT_ICON_ACTIONS.has(action) && !rightActions.includes(action));
 
   return (
-    <div className="flex flex-wrap items-center gap-2 pt-4">
-      {entry.allowed_actions.map((action) => (
-        <Button
-          key={action}
-          type="button"
-          size="sm"
-          variant={action === entry.allowed_actions[0] ? 'primary' : 'outline'}
-          onClick={() => handleActionClick(action)}
-        >
-          {ACTION_LABELS[action] ?? action}
-        </Button>
-      ))}
+    <div className="space-y-2 pt-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {iconActions.map((action) => {
+            const Icon = ACTION_ICON[action] ?? MoreHorizontal;
+            return (
+              <button
+                key={action}
+                type="button"
+                title={ACTION_LABELS[action] ?? action}
+                aria-label={ACTION_LABELS[action] ?? action}
+                onClick={() => handleActionClick(action)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-cream-600 transition-colors hover:bg-cream-100 hover:text-cream-900 active:scale-[var(--yk-press-scale)]"
+              >
+                <Icon className="h-4 w-4" aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {rightActions.map((action, index) => (
+            <Button
+              key={action}
+              type="button"
+              size="sm"
+              variant={index === 0 && !DESTRUCTIVE_ACTIONS[action] ? 'primary' : 'outline'}
+              onClick={() => handleActionClick(action)}
+            >
+              {ACTION_LABELS[action] ?? action}
+            </Button>
+          ))}
+        </div>
+      </div>
 
       {remindPickerOpen ? (
         <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+          <p className="w-full text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Remind later</p>
           {REMIND_OPTIONS.map((opt) => (
             <Button
               key={opt.label}
@@ -137,6 +202,15 @@ export function InboxActionBar({ entry, tenantId, applyLocalAction }: InboxActio
           ))}
         </div>
       ) : null}
+
+      <InboxInlineNote
+        entryIds={[entry.id]}
+        primaryEntryId={entry.id}
+        historyEvents={historyEvents}
+        localEvents={localEvents}
+        open={noteOpen}
+        onOpenChange={setNoteOpen}
+      />
 
       {destructiveMeta ? (
         <InboxConfirmDialog

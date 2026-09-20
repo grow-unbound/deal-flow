@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { formatNumberValue } from '@/lib/number-format';
-import { hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { dedupeBuyerCatalogItems, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
 
 describe('buyer-ui helpers', () => {
   it('formats buyer currency as absolute INR without compacting', () => {
@@ -19,5 +19,34 @@ describe('buyer-ui helpers', () => {
     expect(hasBuyerCampaignPrice({ has_campaign_price: true, price: 950, resolved_price: 950 })).toBe(false);
     expect(hasBuyerCampaignPrice({ has_campaign_price: false, price: 950, resolved_price: 1200 })).toBe(false);
     expect(hasBuyerCampaignPrice({ has_campaign_price: true, price: null, resolved_price: 1200 })).toBe(false);
+  });
+
+  it('dedupes repeated public product-family cards by family identity', () => {
+    const items = dedupeBuyerCatalogItems([
+      {
+        id: 'family-1',
+        item_type: 'family',
+        tenant_product_id: 'sku-1',
+        display_name: 'Dewatering Pump',
+        brand_id: 'brand-1',
+        category_id: 'cat-1',
+      },
+      {
+        id: 'family-2',
+        item_type: 'family',
+        tenant_product_id: 'sku-2',
+        display_name: 'Dewatering Pump',
+        brand_id: 'brand-1',
+        category_id: 'cat-1',
+      },
+      {
+        id: 'sku-1',
+        item_type: 'sku',
+        tenant_product_id: 'sku-1',
+        display_name: 'Dewatering Pump 1HP',
+      },
+    ]);
+
+    expect(items.map((item) => item.id)).toEqual(['family-1', 'sku-1']);
   });
 });

@@ -50,7 +50,7 @@ export function groupEntriesByDateAndCustomer(
       buyerName: buyerEntries[0].buyer_name,
       timeBucket: bucket,
       entries: sortEntriesForStack(buyerEntries),
-      totalCount: buyerEntries[0].customer_entry_count,
+      totalCount: buyerEntries.length,
     });
   }
 

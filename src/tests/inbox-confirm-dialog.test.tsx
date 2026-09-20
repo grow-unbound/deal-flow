@@ -3,8 +3,22 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { InboxConfirmDialog } from '@/components/seller/inbox/InboxConfirmDialog';
 import * as confirmPrefs from '@/lib/inbox/inbox-confirm-prefs';
 
+function ensureLocalStorage() {
+  if (window.localStorage) return;
+  const store = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      clear: () => store.clear(),
+    },
+  });
+}
+
 describe('InboxConfirmDialog', () => {
   beforeEach(() => {
+    ensureLocalStorage();
     window.localStorage.clear();
   });
 

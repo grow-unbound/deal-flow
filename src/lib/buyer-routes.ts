@@ -21,6 +21,7 @@ export type BuyerLandingRoute = (typeof BUYER_LANDING_ROUTES)[number];
 /** Prefixes: hide tab bar when pathname starts with one of these. */
 export const BUYER_DEEP_PREFIXES = [
   '/buy/product/',
+  '/buy/family/',
   '/buy/home/category/',
   '/buy/home/brand/',
   '/buy/home/list/',
@@ -84,6 +85,7 @@ const BUYER_CART_PILL_PREFIXES = [
   '/buy/home/brand/',
   '/buy/home/list/',
   '/buy/product/',
+  '/buy/family/',
 ] as const;
 
 /** Home + catalog tree: show floating View Cart pill when cart is non-empty. */

@@ -28,7 +28,7 @@ import {
   BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
 } from '@/lib/buyer-lookbook';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS, guestPriceReveal } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS, dedupeBuyerCatalogItems, guestPriceReveal } from '@/lib/buyer-ui';
 import { BUYER_REFERENCE_QUERY_GC_TIME, BUYER_REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import { cn } from '@/lib/utils';
@@ -106,14 +106,14 @@ export function CatalogDiscoveryLanding({
   const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
   const browseQueryResult = useBuyerCatalogSearchInfinite('', {}, isGuest, { allowEmpty: true });
   const searchPages = searchQueryResult.data?.pages ?? [];
-  const searchItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
+  const searchItems = React.useMemo(() => dedupeBuyerCatalogItems(searchPages.flatMap((page) => page.items ?? [])), [searchPages]);
   const searchHasMore = searchPages.at(-1)?.has_more ?? false;
   const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
   const searchError = searchQueryResult.isError;
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
 
   const browsePages = browseQueryResult.data?.pages ?? [];
-  const browseItems = React.useMemo(() => browsePages.flatMap((page) => page.items ?? []), [browsePages]);
+  const browseItems = React.useMemo(() => dedupeBuyerCatalogItems(browsePages.flatMap((page) => page.items ?? [])), [browsePages]);
   const browseHasMore = browsePages.at(-1)?.has_more ?? false;
   const browseLoading = isGuest && browseQueryResult.isLoading && browseItems.length === 0;
   const browseError = isGuest && browseQueryResult.isError;

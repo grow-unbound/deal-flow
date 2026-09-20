@@ -1,0 +1,171 @@
+'use client';
+
+import Link from 'next/link';
+import { useState } from 'react';
+import { Bell, ChevronDown, Loader2, Send, StickyNote } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { useApplyGenericEntryAction, useSendCollectionReminder, type EntryHistoryEvent } from '@/hooks/useInboxEntries';
+import { cn } from '@/lib/utils';
+import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
+import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
+import { InboxInlineNote } from './InboxInlineNote';
+
+interface InboxCollectionGroupCardProps {
+  group: InboxDetailGroup;
+  buyerId: string;
+  historyEvents?: EntryHistoryEvent[];
+  localEvents?: LocalEntryEvent[];
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+const REMIND_OPTIONS = [
+  { label: 'Tomorrow', days: 1 },
+  { label: '3 days', days: 3 },
+  { label: '1 week', days: 7 },
+];
+
+export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localEvents, expanded, onToggle }: InboxCollectionGroupCardProps) {
+  const sendReminder = useSendCollectionReminder();
+  const genericAction = useApplyGenericEntryAction();
+  const [noteOpen, setNoteOpen] = useState(false);
+  const summary = group.summary;
+  const rowsByAging = group.rowsByAging ?? [];
+
+  async function handleSendReminder() {
+    if (!summary) return;
+    try {
+      await sendReminder.mutateAsync({ buyerId, entryIds: summary.entryIds });
+      toast.success('Reminder sent');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send reminder');
+    }
+  }
+
+  async function remindLater(days: number) {
+    const remindAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      await Promise.all(group.entries.map((entry) => genericAction.mutateAsync({
+        entryId: entry.id,
+        action: 'remind_later',
+        remind_at: remindAt,
+      })));
+      toast.success('Reminder set');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not set reminder');
+    }
+  }
+
+  const subtitle = summary
+    ? [
+        `${summary.totalAmountLabel} dues`,
+        summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null,
+        summary.dueCount > 0 ? `${summary.dueCount} due soon` : null,
+      ].filter(Boolean).join(' · ')
+    : 'Dues';
+
+  return (
+    <section className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn('flex w-full items-start justify-between gap-4 px-5 py-4 text-left', expanded ? 'border-b border-cream-200' : undefined)}
+      >
+        <div className="min-w-0">
+          <h3 className="font-display text-md text-cream-900">Dues</h3>
+          <p className="mt-1 text-sm text-cream-600">{subtitle}</p>
+        </div>
+        <ChevronDown
+          size={16}
+          className={cn('mt-1 shrink-0 text-cream-500 transition-transform duration-200', expanded && 'rotate-180')}
+          aria-hidden
+        />
+      </button>
+
+      {expanded ? (
+        <div className="space-y-4 px-5 py-4">
+          <div className="space-y-4">
+            {rowsByAging.map((section) => (
+              <div key={section.key} className="space-y-2">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  <span aria-hidden />
+                  <p className="text-center text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">
+                    {section.label} ({section.count})
+                  </p>
+                  <p className="justify-self-end font-mono text-xs font-semibold tabular-nums text-cream-700">{section.totalAmountLabel}</p>
+                </div>
+                <div className="divide-y divide-cream-200 rounded-[10px] border border-cream-200">
+                  {section.rows.map((row) => (
+                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5 sm:grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_auto]">
+                      <Link
+                        href={`/invoices/${row.invoiceId}`}
+                        className="min-w-0 truncate font-mono text-sm font-semibold text-cream-950 underline-offset-4 hover:underline"
+                      >
+                        {row.invoiceNumber}
+                      </Link>
+                      <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1">{row.dateLabel}</p>
+                      <p className="font-mono text-sm font-semibold tabular-nums text-cream-900">{row.amountLabel}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="sticky bottom-0 -mx-5 -mb-4 flex items-center justify-between gap-3 border-t border-cream-200 bg-white/95 px-5 py-3 backdrop-blur md:static md:m-0 md:border-t-0 md:bg-transparent md:p-0 md:backdrop-blur-0">
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                title="Add note"
+                aria-label="Add note"
+                onClick={() => setNoteOpen((open) => !open)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-cream-600 transition-colors hover:bg-cream-100 hover:text-cream-900 active:scale-[var(--yk-press-scale)]"
+              >
+                <StickyNote className="h-4 w-4" aria-hidden />
+              </button>
+              <div className="group/remind relative">
+                <button
+                  type="button"
+                  title="Remind later"
+                  aria-label="Remind later"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-cream-600 transition-colors hover:bg-cream-100 hover:text-cream-900 active:scale-[var(--yk-press-scale)]"
+                >
+                  <Bell className="h-4 w-4" aria-hidden />
+                </button>
+                <div className="invisible absolute bottom-full left-0 z-10 mb-2 flex min-w-36 flex-col rounded-[10px] border border-cream-200 bg-white p-1 opacity-0 shadow-lg transition group-hover/remind:visible group-hover/remind:opacity-100 group-focus-within/remind:visible group-focus-within/remind:opacity-100">
+                  <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Remind later</p>
+                  {REMIND_OPTIONS.map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => void remindLater(option.days)}
+                      className="rounded-[8px] px-3 py-2 text-left text-sm text-cream-800 hover:bg-cream-100"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button type="button" size="sm" onClick={handleSendReminder} disabled={sendReminder.isPending}>
+              {sendReminder.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+              Send reminder
+            </Button>
+          </div>
+
+          {group.entries[0] ? (
+            <InboxInlineNote
+              entryIds={group.entries.map((entry) => entry.id)}
+              primaryEntryId={group.entries[0].id}
+              historyEvents={historyEvents}
+              localEvents={localEvents}
+              open={noteOpen}
+              onOpenChange={setNoteOpen}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
