@@ -372,6 +372,31 @@ describe('middleware auth redirects', () => {
     expect(api.status).toBe(404);
   });
 
+  it('guest-only cacheable twin: never served for an unpublished tenant host, unknown slug, or over the rate limit', async () => {
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+
+    // Unpublished tenant: middleware (which runs before any CDN cache) answers 404, so a previously
+    // cached 200 for this host can never be served once the catalog is taken offline.
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-x', slug: 'acme', catalogId: 'cat-1', liveAt: null, pricingMode: null, priceListId: null,
+    });
+    const notLive = await middleware(tenantRequest('/api/public/g/catalog', 'acme.useyukti.in'));
+    expect(notLive.status).toBe(404);
+    expect(notLive.headers.get('Cache-Control')).toBe('private, no-store');
+
+    // Unknown slug: same real 404 as /api/buyer/catalog, no oracle.
+    resolveStorefrontMock.mockResolvedValue(null);
+    const unknown = await middleware(tenantRequest('/api/public/g/catalog', 'gibberish.useyukti.in'));
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ error: 'Not found' });
+
+    // Enumeration limiter still applies to the twin path.
+    consumeEnumerationRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 45 });
+    const limited = await middleware(tenantRequest('/api/public/g/catalog', 'probe-slug.useyukti.in'));
+    expect(limited.status).toBe(429);
+  });
+
   it('preserves yukti.so in unpublished tenant return_to on Vercel preview', async () => {
     const original = process.env.VERCEL_ENV;
     process.env.VERCEL_ENV = 'preview';

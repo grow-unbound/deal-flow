@@ -8,9 +8,11 @@
 --   * neither table is ever pruned: one row per (ip, slug, kind) / per ip accumulates forever,
 --   * default fillfactor (100) leaves no room for HOT updates on a table that is pure UPDATE churn.
 --
--- This migration adds one-statement atomic RPCs (1 round trip, 1 upsert, race-free), makes both
--- tables HOT-friendly, and adds an hourly bounded prune job. The app code switches to the RPCs
--- (fail-open behaviour unchanged). Tables come from 20260902055517 / 20260902125009.
+-- This migration adds one-statement atomic RPCs (1 round trip, 1 upsert, race-free) and an hourly
+-- bounded prune job. The app code switches to the RPCs (fail-open behaviour unchanged). The tables
+-- come from 20260902055517 / 20260902125009; plpgsql does not resolve table names at CREATE time,
+-- so this migration applies cleanly even before those tables exist (prod, pre-release), and the
+-- prune function no-ops until they do. HOT-friendly storage settings live in 20260920151921.
 --
 -- Idempotent.
 
@@ -78,13 +80,7 @@ GRANT EXECUTE ON FUNCTION app.consume_public_catalog_rate_limit(text, integer, i
 GRANT EXECUTE ON FUNCTION app.record_ip_challenge_violation(text, integer, integer) TO service_role;
 
 -- ---------------------------------------------------------------------------------------------
--- 3. HOT-friendly storage: pure-UPDATE churn on non-indexed columns
--- ---------------------------------------------------------------------------------------------
-ALTER TABLE app.public_catalog_rate_limits SET (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.02, autovacuum_vacuum_threshold = 50);
-ALTER TABLE app.ip_challenge_state         SET (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.02, autovacuum_vacuum_threshold = 50);
-
--- ---------------------------------------------------------------------------------------------
--- 4. Bounded retention (windows are 60 s / 15 min; keep generous slack)
+-- 3. Bounded retention (windows are 60 s / 15 min; keep generous slack)
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION app.prune_public_edge_state(p_limit integer DEFAULT 5000)
 RETURNS integer
@@ -96,6 +92,10 @@ DECLARE
   v_total integer := 0;
   v_n integer;
 BEGIN
+  IF to_regclass('app.public_catalog_rate_limits') IS NULL OR to_regclass('app.ip_challenge_state') IS NULL THEN
+    RETURN 0;
+  END IF;
+
   WITH doomed AS (
     SELECT key FROM app.public_catalog_rate_limits
     WHERE updated_at < now() - interval '1 hour'
