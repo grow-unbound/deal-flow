@@ -590,6 +590,40 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('Retry-After')).toBe('30');
   });
 
+  it('does not spend rate-limit budget on router PREFETCH requests of guest pages (landing tile storm)', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: true, retryAfterSec: 0 });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+
+    const prefetch = (path: string, headers: Record<string, string>) =>
+      new NextRequest(`https://wineyard.useyukti.in${path}`, { headers: { host: 'wineyard.useyukti.in', ...headers } });
+
+    // 40 tile prefetches (brand/category/product) on one landing view: none may be counted.
+    for (let i = 0; i < 40; i += 1) {
+      await middleware(prefetch(`/product/id-${i}`, { 'next-router-prefetch': '1', rsc: '1' }));
+    }
+    await middleware(prefetch('/brand/abc', { purpose: 'prefetch' }));
+    expect(consumeRateLimitMock).not.toHaveBeenCalled();
+
+    // A real navigation to the same page IS counted (one hit).
+    await middleware(prefetch('/product/id-1', { rsc: '1' }));
+    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
+    expect(consumeRateLimitMock).toHaveBeenCalledWith(expect.any(String), 'wineyard', 'browse');
+  });
+
+  it('never lets the client-controllable prefetch header bypass the limiter on API routes', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(
+      new NextRequest('https://wineyard.useyukti.in/api/buyer/catalog', {
+        headers: { host: 'wineyard.useyukti.in', 'next-router-prefetch': '1' },
+      }),
+    );
+    expect(response.status).toBe(429);
+    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
+  });
+
   it('301s yukti.so tenant hosts to useyukti.in', async () => {
     const { middleware } = await import('../../../middleware');
     const response = await middleware(tenantRequest('/', 'wineyard.yukti.so'));

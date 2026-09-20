@@ -26,7 +26,7 @@ describe('public edge state uses single atomic RPCs', () => {
     expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenCalledWith('consume_public_catalog_rate_limit', {
       p_key: 'browse:1.2.3.4:acme',
-      p_limit: 60,
+      p_limit: 180,
       p_window_seconds: 60,
     });
   });
@@ -35,7 +35,7 @@ describe('public edge state uses single atomic RPCs', () => {
     rpcMock.mockResolvedValue({ data: [{ allowed: true, hit_count: 1 }], error: null });
     await consumePublicCatalogRateLimit('1.2.3.4', 'acme', 'search');
     await consumeEnumerationRateLimit('1.2.3.4');
-    expect(rpcMock.mock.calls[0][1]).toMatchObject({ p_key: 'search:1.2.3.4:acme', p_limit: 20 });
+    expect(rpcMock.mock.calls[0][1]).toMatchObject({ p_key: 'search:1.2.3.4:acme', p_limit: 40 });
     expect(rpcMock.mock.calls[1][1]).toMatchObject({ p_key: 'enumeration:1.2.3.4:__enumeration__', p_limit: 20 });
   });
 

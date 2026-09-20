@@ -1,7 +1,10 @@
 import { supabaseAdmin } from '@/lib/supabase';
 
-const BROWSE_LIMIT_PER_MINUTE = 60;
-const SEARCH_LIMIT_PER_MINUTE = 20;
+// Counted per IP + tenant slug for real visitor actions (page navigations and catalog API calls),
+// not router prefetches. A landing view is ~1 page + ~6-8 API calls, and offices/carriers put many
+// visitors behind one IP, so 60/min (the original value) throttled 3-4 ordinary page views.
+const BROWSE_LIMIT_PER_MINUTE = 180;
+const SEARCH_LIMIT_PER_MINUTE = 40;
 // Global (not per-slug) — catches a phone probing MANY different subdomains
 // looking for real tenants, which the per-(ip,slug) limits below can't see
 // since each individual slug never repeats enough to trip them.

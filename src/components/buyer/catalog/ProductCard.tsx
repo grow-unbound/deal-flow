@@ -201,6 +201,7 @@ export function ProductCard({
         <Pressable asChild haptic>
           <Link
             href={productHref}
+            prefetch={false}
             onClick={() => markBuyerNavigationForward()}
             onPointerDown={prefetchProduct}
             onTouchStart={prefetchProduct}
@@ -358,6 +359,7 @@ export function ProductCard({
       <Pressable asChild haptic>
         <Link
           href={productHref}
+          prefetch={false}
           onClick={() => markBuyerNavigationForward()}
           onPointerDown={prefetchProduct}
           onTouchStart={prefetchProduct}
