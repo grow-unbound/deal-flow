@@ -64,6 +64,7 @@ import {
   toInternalBuyPath,
   toPublicStorefrontPath,
 } from '@/lib/storefront-paths';
+import { isNextPrefetchRequest } from '@/lib/next-prefetch';
 import { clientIpFromRequest, consumeEnumerationRateLimit, consumePublicCatalogRateLimit, tooManyRequestsResponse } from '@/lib/server/public-catalog-rate-limit';
 import { isPublicCatalogLive, resolveStorefrontTenantBySlug, resolveTenantSlugById } from '@/lib/server/resolve-storefront-tenant';
 import { recordViolationAndCheckChallenge } from '@/lib/server/ip-challenge';
@@ -414,7 +415,11 @@ async function handleTenantHost(
     return redirectToCatalogLogin(request);
   }
 
-  if (!hasSession && isGuestRateLimitedPath(pathname)) {
+  // Router prefetches of guest PAGES (a landing page prefetches every visible tile) are speculative,
+  // not visitor actions: exempt them from the per-visitor limiter. Never exempt API paths - the
+  // header is client-controllable, and the edge firewall rule is the flood backstop for those.
+  const isPagePrefetch = !guestApi && guestPage && isNextPrefetchRequest(request.headers);
+  if (!hasSession && isGuestRateLimitedPath(pathname) && !isPagePrefetch) {
     const kind = isGuestSearchApiPath(pathname, request.nextUrl.search) ? 'search' : 'browse';
     const limited = await consumePublicCatalogRateLimit(clientIpFromRequest(request.headers), slug, kind);
     if (!limited.ok) {

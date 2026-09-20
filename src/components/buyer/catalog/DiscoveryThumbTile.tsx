@@ -36,6 +36,7 @@ export function DiscoveryThumbTile({
   return (
     <Link
       href={href}
+      prefetch={false}
       onClick={onNavigate}
       className={cn(
         'group flex h-full flex-col text-left no-underline transition-[background-color,border-color,box-shadow] duration-200 ease-standard',
