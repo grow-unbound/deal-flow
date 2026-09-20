@@ -15,35 +15,26 @@ export async function recordViolationAndCheckChallenge(
   ip: string,
   now = Date.now(),
 ): Promise<{ challengeRequired: boolean; violationCount: number }> {
+  void now;
   if (!supabaseAdmin) return { challengeRequired: false, violationCount: 0 };
 
   try {
-    const { data: existing } = await supabaseAdmin
-      .schema('app')
-      .from('ip_challenge_state')
-      .select('violation_count, window_start')
-      .eq('ip', ip)
-      .maybeSingle();
+    // One atomic round trip (migration 20260920145507) instead of SELECT + UPSERT.
+    const { data, error } = await supabaseAdmin.schema('app').rpc('record_ip_challenge_violation', {
+      p_ip: ip,
+      p_window_seconds: VIOLATION_WINDOW_MS / 1000,
+      p_threshold: CHALLENGE_THRESHOLD,
+    });
+    if (error) throw error;
 
-    const windowStart = existing?.window_start ? new Date(existing.window_start as string).getTime() : 0;
-    const inWindow = windowStart > now - VIOLATION_WINDOW_MS;
-    const nextCount = inWindow ? Number(existing?.violation_count ?? 0) + 1 : 1;
-    const nowIso = new Date(now).toISOString();
-
-    await supabaseAdmin
-      .schema('app')
-      .from('ip_challenge_state')
-      .upsert(
-        {
-          ip,
-          violation_count: nextCount,
-          window_start: inWindow && existing?.window_start ? existing.window_start : nowIso,
-          updated_at: nowIso,
-        },
-        { onConflict: 'ip' },
-      );
-
-    return { challengeRequired: nextCount >= CHALLENGE_THRESHOLD, violationCount: nextCount };
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { challenge_required?: boolean; violation_count?: number }
+      | null
+      | undefined;
+    return {
+      challengeRequired: Boolean(row?.challenge_required),
+      violationCount: Number(row?.violation_count ?? 0),
+    };
   } catch (error) {
     console.error('[ip-challenge] failed to record violation', error);
     // Fail open — never let a tracking outage turn into an outright block.

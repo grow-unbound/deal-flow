@@ -39,9 +39,11 @@ export function clientIpFromRequest(headers: Headers): string {
 }
 
 /**
- * Sliding 60s window per IP + tenant slug. Fail-open if the store is unavailable
- * so a limiter outage does not take down the catalog; 429s still fire when the
- * counter is over limit.
+ * Fixed 60s window per IP + tenant slug, counted atomically in ONE round trip
+ * (app.consume_public_catalog_rate_limit, migration 20260920145507). The previous
+ * SELECT-then-UPSERT cost two PostgREST calls on every guest request from middleware and lost
+ * updates under concurrency. Fail-open if the store is unavailable so a limiter outage does not
+ * take down the catalog; 429s still fire when the counter is over limit.
  */
 export async function consumePublicCatalogRateLimit(
   ip: string,
@@ -49,39 +51,20 @@ export async function consumePublicCatalogRateLimit(
   kind: PublicCatalogRateKind,
   now = Date.now(),
 ): Promise<PublicCatalogRateLimitResult> {
+  void now;
   const retryAfterSec = Math.ceil(WINDOW_MS / 1000);
   if (!supabaseAdmin) return { ok: true, retryAfterSec: 0 };
 
-  const key = publicCatalogRateLimitKey(ip, slug, kind);
-  const limit = limitFor(kind);
-  const nowIso = new Date(now).toISOString();
-
   try {
-    const { data: existing } = await supabaseAdmin
-      .schema('app')
-      .from('public_catalog_rate_limits')
-      .select('hit_count, window_start')
-      .eq('key', key)
-      .maybeSingle();
+    const { data, error } = await supabaseAdmin.schema('app').rpc('consume_public_catalog_rate_limit', {
+      p_key: publicCatalogRateLimitKey(ip, slug, kind),
+      p_limit: limitFor(kind),
+      p_window_seconds: WINDOW_MS / 1000,
+    });
+    if (error) throw error;
 
-    const windowStart = existing?.window_start ? new Date(existing.window_start as string).getTime() : 0;
-    const inWindow = windowStart > now - WINDOW_MS;
-    const nextCount = inWindow ? Number(existing?.hit_count ?? 0) + 1 : 1;
-
-    await supabaseAdmin
-      .schema('app')
-      .from('public_catalog_rate_limits')
-      .upsert(
-        {
-          key,
-          hit_count: nextCount,
-          window_start: inWindow && existing?.window_start ? existing.window_start : nowIso,
-          updated_at: nowIso,
-        },
-        { onConflict: 'key' },
-      );
-
-    if (nextCount > limit) {
+    const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean } | null | undefined;
+    if (row && row.allowed === false) {
       return { ok: false, retryAfterSec };
     }
     return { ok: true, retryAfterSec: 0 };
