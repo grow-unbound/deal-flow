@@ -452,20 +452,28 @@ function LoginForm() {
                   <>
                     <p className="text-body-sm text-warning-700 font-medium">
                       {isCatalogHost
-                        ? 'This number is not linked to a buyer account yet.'
+                        ? AUTH_LOGIN_COPY.resolution.unregisteredCatalog.title
                         : AUTH_LOGIN_COPY.resolution.unregistered.title}
                     </p>
+                    {(isCatalogHost
+                      ? AUTH_LOGIN_COPY.resolution.unregisteredCatalog.lines
+                      : AUTH_LOGIN_COPY.resolution.unregistered.lines
+                    ).map((line) => (
+                      <p key={line} className="text-body-sm text-warning-700/90">
+                        {line}
+                      </p>
+                    ))}
                     {isCatalogHost ? (
                       <p className="text-body-sm text-warning-700/90">
-                        Ask your supplier to add you as a buyer, or sign in on the seller app if you distribute products.
+                        {AUTH_LOGIN_COPY.resolution.unregisteredCatalog.supportPrefix}{' '}
+                        <a
+                          href={AUTH_LOGIN_COPY.login.supportWhatsAppHref}
+                          className="font-semibold underline"
+                        >
+                          {AUTH_LOGIN_COPY.login.supportWhatsAppDisplay}
+                        </a>
                       </p>
-                    ) : (
-                      AUTH_LOGIN_COPY.resolution.unregistered.lines.map((line) => (
-                        <p key={line} className="text-body-sm text-warning-700/90">
-                          {line}
-                        </p>
-                      ))
-                    )}
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -503,12 +511,21 @@ function LoginForm() {
                   </>
                 ) : resolution.kind === 'unregistered' ? (
                   isCatalogHost ? (
-                    <a
-                      href={sellerLoginUrl}
-                      className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
-                    >
-                      Go to seller login
-                    </a>
+                    <>
+                      <button
+                        type="button"
+                        onClick={resetPhoneEntry}
+                        className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                      >
+                        {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                      </button>
+                      <a
+                        href={sellerLoginUrl}
+                        className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.resolution.unregisteredCatalog.sellerLogin}
+                      </a>
+                    </>
                   ) : (
                     <>
                       <Link
