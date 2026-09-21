@@ -111,7 +111,9 @@ export async function POST(request: NextRequest) {
     const onCatalogHost = isCatalogRequest(request);
     if (onCatalogHost && returnTo) {
       const tenantScoped = dedupeBuyerAccountCandidates(filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo));
-      if (tenantScoped.length === 1 && tenantScoped[0]?.buyer_app_enabled === true) {
+      // A single tenant-scoped account is never a "pick one" situation — including a not-yet-approved
+      // one, which mintCandidateSession hands off to the tenant host's /onboarding or /pending.
+      if (tenantScoped.length === 1) {
         return buildMintedCandidateResponse(request, tenantScoped[0], returnTo, record.phone);
       }
 
