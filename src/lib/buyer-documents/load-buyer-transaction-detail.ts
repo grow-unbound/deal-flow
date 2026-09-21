@@ -59,10 +59,17 @@ export async function loadBuyerDocumentLineItems(
         ? 'order_id'
         : 'invoice_id';
 
+  // buyer_target_* columns exist only on estimate_items (hidden-price enquiries);
+  // selecting them from order_items/invoice_items fails with "column does not exist".
+  const itemColumns =
+    parentTable === 'estimates'
+      ? 'tenant_product_id, qty, unit_price, tax_rate, line_total, buyer_target_unit_price_min, buyer_target_unit_price_max, deleted_at'
+      : 'tenant_product_id, qty, unit_price, tax_rate, line_total, deleted_at';
+
   const { data: itemRows, error: itemError } = await d
     .schema('app')
     .from(childTable)
-    .select('tenant_product_id, qty, unit_price, tax_rate, line_total, buyer_target_unit_price_min, buyer_target_unit_price_max, deleted_at')
+    .select(itemColumns)
     .eq(parentIdColumn, parentId)
     .is('deleted_at', null);
 
