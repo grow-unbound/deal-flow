@@ -322,18 +322,25 @@ export function ProductCard({
             </Pressable>
           </div>
         ) : isFamilyCard ? (
-          <span
-            className={cn(
-              BUYER_QUICK_ADD_IDLE_CLASS,
-              'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
-              isCompact
-                ? 'bottom-1.5 right-1.5 px-2 py-0.5'
-                : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
-            )}
-            style={{ fontSize: 'var(--b-text-eyebrow)' }}
-          >
-            OPTIONS
-          </span>
+          <Pressable asChild haptic>
+            <Link
+              href={productHref}
+              prefetch={false}
+              onPointerDown={prefetchProduct}
+              onClick={() => markBuyerNavigationForward()}
+              className={cn(
+                BUYER_QUICK_ADD_IDLE_CLASS,
+                'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
+                isCompact
+                  ? 'bottom-1.5 right-1.5 px-2 py-0.5'
+                  : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
+              )}
+              style={{ fontSize: 'var(--b-text-eyebrow)' }}
+              aria-label={`View options for ${item.display_name}`}
+            >
+              OPTIONS
+            </Link>
+          </Pressable>
         ) : (
           <Pressable asChild haptic>
             <button

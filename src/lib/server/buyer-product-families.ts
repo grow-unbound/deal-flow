@@ -127,7 +127,11 @@ export async function fetchBuyerFamilyCatalogPage(params: {
     .order('display_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
     .range(params.offset, params.offset + params.limit - 1);
-  if (error) throw new Error(error.message);
+  // PGRST103: offset is past the last row. Happens when the client paginates
+  // from a flat-product SSR seed (has_more from product count) into this
+  // family-grouped list, which has fewer rows. Treat as an empty last page.
+  const pastEnd = error?.code === 'PGRST103';
+  if (error && !pastEnd) throw new Error(error.message);
 
   const families = (familyData ?? []) as FamilyRow[];
   if (families.length === 0) {

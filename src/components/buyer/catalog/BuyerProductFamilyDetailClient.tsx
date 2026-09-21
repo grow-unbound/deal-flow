@@ -276,7 +276,7 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
                           : 'Choose one value from each option to resolve the final SKU.'}
                       </p>
                     </div>
-                    <div className="hidden pt-1 md:block">
+                    <div className="hidden pt-1 md:flex">
                       <FamilyActionButton
                         cartLineQty={cartLine?.quantity}
                         desiredQuantity={desiredQuantity}
@@ -481,7 +481,7 @@ function SpecRowSkeleton({ isLast }: { isLast?: boolean }) {
 function FamilyActionButton({ cartLineQty, desiredQuantity, hiddenPriceEnquiry, disabled, onAdd, onIncrement, onDecrement }: { cartLineQty?: number; desiredQuantity: number; hiddenPriceEnquiry: boolean; disabled: boolean; onAdd: () => void; onIncrement: () => void; onDecrement: () => void }) {
   if (cartLineQty != null) {
     return (
-      <div className="flex min-h-11 items-center overflow-hidden rounded-xl" style={{ background: 'var(--teal-500)' }}>
+      <div className="flex min-h-11 w-40 items-center justify-between overflow-hidden rounded-xl" style={{ background: 'var(--teal-500)' }}>
         <button type="button" className="flex h-11 w-11 items-center justify-center text-white" aria-label="Decrease quantity" onClick={onDecrement}><Minus className="h-4 w-4" /></button>
         <span className="min-w-[2rem] text-center text-sm font-semibold text-white" style={{ fontFamily: 'var(--font-mono)' }}>{cartLineQty}</span>
         <button type="button" className="flex h-11 w-11 items-center justify-center text-white" aria-label="Increase quantity" onClick={onIncrement}><Plus className="h-4 w-4" /></button>
@@ -489,7 +489,7 @@ function FamilyActionButton({ cartLineQty, desiredQuantity, hiddenPriceEnquiry, 
     );
   }
   return (
-    <button type="button" disabled={disabled} onClick={onAdd} className="flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'var(--teal-500)' }}>
+    <button type="button" disabled={disabled} onClick={onAdd} className="flex min-h-11 w-40 items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'var(--teal-500)' }}>
       <Plus className="h-4 w-4" aria-hidden />
       {hiddenPriceEnquiry ? 'Add to Enquiry' : `Add ${desiredQuantity}`}
     </button>
