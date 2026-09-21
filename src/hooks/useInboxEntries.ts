@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
+import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 
 export interface EntryHistoryEvent {
   id: string;
@@ -193,6 +194,20 @@ export function useInboxActiveCount() {
       const res = await apiFetch('/api/tenant/entries/count', { fresh: true });
       if (!res.ok) throw new Error('Failed to load count');
       return (await res.json()) as { count: number };
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export function useEnquiryTriage(entryId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['inbox-entry-enquiry', entryId],
+    enabled,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/tenant/entries/${entryId}/enquiry`, { fresh: true });
+      if (!res.ok) throw new Error('Failed to load enquiry');
+      return (await res.json()) as EnquiryTriagePayload;
     },
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
