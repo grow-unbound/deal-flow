@@ -42,7 +42,7 @@ export function InboxConvertEnquiryModal({ entry, open, onOpenChange, onConverte
     void queryClient.invalidateQueries({ queryKey: ['inbox-entry-enquiry', entry.id] });
   }
 
-  function handleSO(payload: { line_ids: string[]; qty_overrides: Record<string, number>; delivery_date: string; order_number?: string; added_lines?: AddedLine[] }) {
+  function handleSO(payload: { line_ids: string[]; qty_overrides: Record<string, number>; price_overrides?: Record<string, number>; delivery_date: string; order_number?: string; added_lines?: AddedLine[] }) {
     convertMut.mutate(payload, {
       onSuccess: (res) => {
         const orderId = typeof res.data.order_id === 'string' ? res.data.order_id : null;
@@ -51,7 +51,7 @@ export function InboxConvertEnquiryModal({ entry, open, onOpenChange, onConverte
     });
   }
 
-  function handleInvoice(payload: { line_ids: string[]; qty_overrides: Record<string, number>; invoice_date: string; invoice_number?: string; added_lines?: AddedLine[] }) {
+  function handleInvoice(payload: { line_ids: string[]; qty_overrides: Record<string, number>; price_overrides?: Record<string, number>; invoice_date: string; invoice_number?: string; added_lines?: AddedLine[] }) {
     convertToInvoiceMut.mutate(payload, {
       onSuccess: (res) => {
         const invoiceId = typeof res.data.invoice_id === 'string' ? res.data.invoice_id : null;
@@ -71,6 +71,7 @@ export function InboxConvertEnquiryModal({ entry, open, onOpenChange, onConverte
       createSalesOrders={createSalesOrders}
       createInvoices={createInvoices}
       isSubmitting={convertMut.isPending || convertToInvoiceMut.isPending}
+      promptForMissingPrices
       onConfirmSO={handleSO}
       onConfirmInvoice={handleInvoice}
     />

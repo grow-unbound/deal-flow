@@ -50,6 +50,7 @@ export function ModalConvertEstimate({
   createSalesOrders,
   createInvoices,
   isSubmitting,
+  promptForMissingPrices = false,
   onConfirmSO,
   onConfirmInvoice,
 }: {
@@ -62,13 +63,17 @@ export function ModalConvertEstimate({
   createSalesOrders: boolean;
   createInvoices: boolean;
   isSubmitting: boolean;
-  onConfirmSO: (input: { line_ids: string[]; qty_overrides: Record<string, number>; delivery_date: string; order_number?: string; added_lines?: AddedLinePayload[] }) => void;
-  onConfirmInvoice: (input: { line_ids: string[]; qty_overrides: Record<string, number>; invoice_date: string; invoice_number?: string; added_lines?: AddedLinePayload[] }) => void;
+  /** Hidden-price enquiries: ask for a unit price on every line that has none. */
+  promptForMissingPrices?: boolean;
+  onConfirmSO: (input: { line_ids: string[]; qty_overrides: Record<string, number>; price_overrides?: Record<string, number>; delivery_date: string; order_number?: string; added_lines?: AddedLinePayload[] }) => void;
+  onConfirmInvoice: (input: { line_ids: string[]; qty_overrides: Record<string, number>; price_overrides?: Record<string, number>; invoice_date: string; invoice_number?: string; added_lines?: AddedLinePayload[] }) => void;
 }) {
   const defaultTarget: Target = createSalesOrders ? 'sales_order' : 'invoice';
   const [target, setTarget] = useState<Target>(defaultTarget);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [qtyOverrides, setQtyOverrides] = useState<Record<string, string>>({});
+  // Hidden-price enquiries arrive without a seller price; the seller enters one per line.
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
   const [primaryDate, setPrimaryDate] = useState('');
   const [docNumber, setDocNumber] = useState('');
   const [addedLines, setAddedLines] = useState<AddedLine[]>([]);
@@ -139,12 +144,20 @@ export function ModalConvertEstimate({
 
   const existingIncluded = useMemo(() => lines.filter((l) => selected[l.id]), [lines, selected]);
 
+  const needsPrice = (l: { unit_price: number }) => promptForMissingPrices && !(l.unit_price > 0);
+  const enteredPrice = (id: string): number | null => {
+    const n = parseFloat(priceInputs[id] ?? '');
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const unitPriceFor = (l: { id: string; unit_price: number }) => (needsPrice(l) ? enteredPrice(l.id) ?? 0 : l.unit_price);
+  const missingPriceCount = existingIncluded.filter((l) => needsPrice(l) && enteredPrice(l.id) == null).length;
+
   const total = useMemo(() => {
     const existingTotal = existingIncluded.reduce((sum, l) => {
       const overrideStr = qtyOverrides[l.id];
       const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
       const qty = override && override > 0 ? override : l.qty;
-      return sum + lineAmount(l.unit_price, qty, l.disc_pct, l.tax_pct, gstInclusive);
+      return sum + lineAmount(unitPriceFor(l), qty, l.disc_pct, l.tax_pct, gstInclusive);
     }, 0);
     const addedTotal = addedLines.reduce((sum, al) => {
       const overrideStr = addedQtyOverrides[al.id];
@@ -153,14 +166,14 @@ export function ModalConvertEstimate({
       return sum + lineAmount(al.product.unit_price, qty, 0, al.product.tax_pct ?? 0, gstInclusive);
     }, 0);
     return existingTotal + addedTotal;
-  }, [existingIncluded, qtyOverrides, addedLines, addedQtyOverrides, gstInclusive]);
+  }, [existingIncluded, qtyOverrides, priceInputs, addedLines, addedQtyOverrides, gstInclusive]);
 
   const subtotal = useMemo(() => {
     const existingSubtotal = existingIncluded.reduce((sum, l) => {
       const overrideStr = qtyOverrides[l.id];
       const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
       const qty = override && override > 0 ? override : l.qty;
-      return sum + computeLineTaxableAmount({ qty, unit_price: l.unit_price, disc_pct: l.disc_pct });
+      return sum + computeLineTaxableAmount({ qty, unit_price: unitPriceFor(l), disc_pct: l.disc_pct });
     }, 0);
     const addedSubtotal = addedLines.reduce((sum, al) => {
       const overrideStr = addedQtyOverrides[al.id];
@@ -169,7 +182,7 @@ export function ModalConvertEstimate({
       return sum + computeLineTaxableAmount({ qty, unit_price: al.product.unit_price, disc_pct: 0 });
     }, 0);
     return existingSubtotal + addedSubtotal;
-  }, [existingIncluded, qtyOverrides, addedLines, addedQtyOverrides]);
+  }, [existingIncluded, qtyOverrides, priceInputs, addedLines, addedQtyOverrides]);
   const taxTotal = useMemo(() => total - subtotal, [total, subtotal]);
 
   function toggle(id: string, checked: boolean) {
@@ -180,6 +193,14 @@ export function ModalConvertEstimate({
     const lineIds = lines.filter((l) => selected[l.id]).map((l) => l.id);
     if (lineIds.length === 0 && addedLines.length === 0) return;
     if (!primaryDate) return;
+    if (missingPriceCount > 0) return;
+
+    const priceOverrides: Record<string, number> = {};
+    for (const l of existingIncluded) {
+      const price = needsPrice(l) ? enteredPrice(l.id) : null;
+      if (price != null) priceOverrides[l.id] = price;
+    }
+    const priceOverridesPayload = Object.keys(priceOverrides).length > 0 ? priceOverrides : undefined;
 
     const overrides: Record<string, number> = {};
     for (const [id, raw] of Object.entries(qtyOverrides)) {
@@ -204,6 +225,7 @@ export function ModalConvertEstimate({
       onConfirmSO({
         line_ids: lineIds,
         qty_overrides: overrides,
+        price_overrides: priceOverridesPayload,
         delivery_date: primaryDate,
         order_number: docNumber.trim() || undefined,
         added_lines: addedPayload.length > 0 ? addedPayload : undefined,
@@ -212,6 +234,7 @@ export function ModalConvertEstimate({
       onConfirmInvoice({
         line_ids: lineIds,
         qty_overrides: overrides,
+        price_overrides: priceOverridesPayload,
         invoice_date: primaryDate,
         invoice_number: docNumber.trim() || undefined,
         added_lines: addedPayload.length > 0 ? addedPayload : undefined,
@@ -219,7 +242,7 @@ export function ModalConvertEstimate({
     }
   }
 
-  const canSubmit = (existingIncluded.length > 0 || addedLines.length > 0) && !!primaryDate && !isSubmitting;
+  const canSubmit = (existingIncluded.length > 0 || addedLines.length > 0) && !!primaryDate && missingPriceCount === 0 && !isSubmitting;
   const confirmLabel = target === 'sales_order' ? 'Create Sales Order' : 'Create Invoice';
   const totalLineCount = existingIncluded.length + addedLines.length;
 
@@ -324,6 +347,26 @@ export function ModalConvertEstimate({
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{line.product_name}</p>
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
+                    {needsPrice(line) ? (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="text-xs font-medium text-amber-800">Unit price</span>
+                        <Input
+                          type="number"
+                          min={0.01}
+                          step="any"
+                          value={priceInputs[line.id] ?? ''}
+                          disabled={!on}
+                          placeholder={
+                            line.buyer_target_unit_price_min != null && line.buyer_target_unit_price_max != null
+                              ? `Target ${line.buyer_target_unit_price_min}–${line.buyer_target_unit_price_max}`
+                              : 'Required'
+                          }
+                          onChange={(e) => setPriceInputs((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                          aria-label={`Unit price for ${line.product_name}`}
+                          className="h-7 w-[140px] px-2 text-right text-sm tabular-nums"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <p className="text-right text-sm tabular-nums text-cream-500">{line.qty}</p>
                   <div className="flex justify-end">
@@ -338,7 +381,7 @@ export function ModalConvertEstimate({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {on ? formatNumberValue(lineAmount(line.unit_price, effectiveQty, line.disc_pct, line.tax_pct, gstInclusive), 'CURRENCY_EXACT') : '—'}
+                    {on ? formatNumberValue(lineAmount(unitPriceFor(line), effectiveQty, line.disc_pct, line.tax_pct, gstInclusive), 'CURRENCY_EXACT') : '—'}
                   </p>
                 </div>
               );

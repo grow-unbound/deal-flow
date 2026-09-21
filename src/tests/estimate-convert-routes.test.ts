@@ -31,6 +31,16 @@ vi.mock('@/lib/supabase', () => {
     is() {
       return this;
     }
+    in() {
+      return this;
+    }
+    update() {
+      return this;
+    }
+    // Awaited directly by the line-price validation (no unpriced lines in these fixtures).
+    then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+      return Promise.resolve({ data: [], error: null }).then(resolve);
+    }
     maybeSingle() {
       if (this.table === 'estimates') {
         return Promise.resolve({

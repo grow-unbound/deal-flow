@@ -7,6 +7,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
+import { applyEstimateLinePrices, syncInboxEntryForEstimate } from '@/lib/server/estimate-convert-support';
 
 const AddedLineSchema = z.object({
   tenant_product_id: z.string().uuid(),
@@ -21,6 +22,7 @@ const ConvertToInvoiceBodySchema = z.object({
   line_ids: z.array(z.string().uuid()),
   qty_overrides: z.record(z.string().uuid(), z.number().positive()).optional(),
   invoice_number: z.string().min(1).max(64).optional(),
+  price_overrides: z.record(z.string().uuid(), z.number().positive()).optional(),
   added_lines: z.array(AddedLineSchema).optional(),
 }).refine((d) => d.line_ids.length > 0 || (d.added_lines && d.added_lines.length > 0), {
   message: 'At least one line or added product is required',
@@ -85,6 +87,11 @@ export async function PATCH(
     if (estimate.tenant_id !== claims.tenant_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const priceError = await applyEstimateLinePrices(db, id, parsed.data.line_ids, parsed.data.price_overrides);
+    if (priceError) {
+      return NextResponse.json({ error: priceError }, { status: priceError.startsWith('Price required') ? 400 : 500 });
+    }
+
     const rpcInput: Record<string, unknown> = {
       p_tenant_id: claims.tenant_id,
       p_estimate_id: id,
@@ -139,6 +146,8 @@ export async function PATCH(
         return NextResponse.json({ error: 'Failed to add new products to invoice' }, { status: 500 });
       }
     }
+
+    await syncInboxEntryForEstimate(db, id);
 
     return NextResponse.json({ data: (data ?? {}) as Record<string, unknown> });
   } catch (e) {
