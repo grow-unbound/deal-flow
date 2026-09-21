@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 /** Left rail placeholder — shared with CatalogFilteredBrowse's own chips-loading state. */
 export function CatalogRailSkeleton() {
   return (
-    <div className="flex flex-col" role="status" aria-label="Loading filters">
+    <div className="flex flex-col" role="status" aria-label="Loading desktop filters">
       {Array.from({ length: 8 }).map((_, index) => (
         <div
           key={index}
