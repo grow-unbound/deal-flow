@@ -1,3 +1,4 @@
+import dynamic from 'next/dynamic';
 import { ChevronDown } from 'lucide-react';
 import { StatusPill } from '@/components/ui/status-pill';
 import { cn, formatNumberValue } from '@/lib/utils';
@@ -9,6 +10,11 @@ import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
+
+const InboxEnquiryPanel = dynamic(
+  () => import('./InboxEnquiryPanel').then((m) => m.InboxEnquiryPanel),
+  { ssr: false, loading: () => <div className="h-[220px]" aria-hidden /> },
+);
 
 const APPROVAL_ENTRY_TYPES = new Set(['business_approval', 'new_user_login']);
 
@@ -96,13 +102,13 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEve
         type="button"
         onClick={onToggle}
         className={cn(
-          'flex w-full items-start justify-between gap-4 px-5 py-4 text-left',
+          'flex w-full items-start justify-between gap-4 px-6 py-5 text-left',
           expanded ? 'border-b border-cream-200' : undefined,
         )}
       >
         <div className="min-w-0">
-          <h3 className="font-display text-md text-cream-900">{title}</h3>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">{title}</h3>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {amountLabel ? <p className="text-sm text-cream-600">{amountLabel}</p> : null}
             {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} /> : null}
           </div>
@@ -114,13 +120,14 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEve
         />
       </button>
       {expanded ? (
-        <div className="space-y-3 px-5 py-4">
+        <div className="space-y-5 px-6 py-6">
           {entry.metadata.last_reminder_at ? (
-            <p className="text-sm leading-relaxed text-cream-600">
+            <p className="text-base leading-relaxed text-cream-700">
               Last reminder sent {new Date(String(entry.metadata.last_reminder_at)).toLocaleDateString()}.
             </p>
           ) : null}
           <CreditLimitContext entry={entry} />
+          {entry.entry_type === 'new_enquiry' ? <InboxEnquiryPanel entryId={entry.id} /> : null}
           {APPROVAL_ENTRY_TYPES.has(entry.entry_type) ? (
             <>
               <InboxApprovalDocuments entryId={entry.id} />

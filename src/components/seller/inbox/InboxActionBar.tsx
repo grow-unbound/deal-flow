@@ -75,7 +75,7 @@ function primaryActionsFor(entry: InboxEntry): string[] {
     case 'credit_limit_breach':
       return ['send_reminder', 'adjust_limit'];
     case 'new_enquiry':
-      return ['convert', 'reply_quote'];
+      return ['convert', 'reply_quote', 'contact_buyer'];
     case 'new_order_confirmation':
       return ['accept_order', 'contact_buyer'];
     case 'order_dispatch_needed':
@@ -142,13 +142,13 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
   const effectiveAllowedActions = entry.entry_type === 'credit_limit_breach'
     ? Array.from(new Set(['send_reminder', ...entry.allowed_actions]))
     : entry.allowed_actions;
-  const textActions = primaryActionsFor(entry).filter((action) => effectiveAllowedActions.includes(action) && action !== 'hold_new_orders').slice(0, 2);
+  const textActions = primaryActionsFor(entry).filter((action) => effectiveAllowedActions.includes(action) && action !== 'hold_new_orders').slice(0, entry.entry_type === 'new_enquiry' ? 3 : 2);
   const destructiveTextActions = effectiveAllowedActions.filter((action) => DESTRUCTIVE_ACTIONS[action] && !textActions.includes(action));
   const rightActions = [...textActions, ...destructiveTextActions];
   const iconActions = effectiveAllowedActions.filter((action) => LEFT_ICON_ACTIONS.has(action) && !rightActions.includes(action));
 
   return (
-    <div className="space-y-2 pt-2">
+    <div className="space-y-3 pt-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {iconActions.map((action) => {
@@ -167,12 +167,12 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
             );
           })}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
           {rightActions.map((action, index) => (
             <Button
               key={action}
               type="button"
-              size="sm"
+              size="md"
               variant={index === 0 && !DESTRUCTIVE_ACTIONS[action] ? 'primary' : 'outline'}
               onClick={() => handleActionClick(action)}
             >

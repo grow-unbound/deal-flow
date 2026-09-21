@@ -16,6 +16,7 @@ import { InboxEntryCard } from './InboxEntryCard';
 import { InboxActionBar } from './InboxActionBar';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
+import { InboxEnquiryPanel } from './InboxEnquiryPanel';
 import { InboxHistorySheet } from './InboxHistorySheet';
 import { InboxCollectionGroupCard } from './InboxCollectionGroupCard';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
@@ -159,9 +160,10 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
         </SplitPaneCloseContext.Provider>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 md:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 md:px-8">
         {isDesktop ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            <p className="text-sm text-cream-600">{openCount} open item{openCount === 1 ? '' : 's'}</p>
             {collectionGroup ? (
               <InboxCollectionGroupCard
                 group={collectionGroup}
@@ -225,6 +227,8 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                       />
                     </>
                   ) : (
+                    <>
+                    {entry.entry_type === 'new_enquiry' ? <InboxEnquiryPanel entryId={entry.id} /> : null}
                     <InboxActionBar
                       entry={entry}
                       tenantId={tenantId}
@@ -232,6 +236,7 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                       localEvents={localEvents}
                       applyLocalAction={applyLocalAction}
                     />
+                    </>
                   )}
                 </AccordionContent>
               </AccordionItem>

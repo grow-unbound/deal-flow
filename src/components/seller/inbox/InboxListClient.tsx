@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/seller/layout/PageHeader';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
@@ -72,6 +71,17 @@ export function InboxListClient() {
   const chipTypes = activeChip ? FILTER_CHIPS.find((c) => c.label === activeChip)?.types : undefined;
   const { data, isLoading, isError, refetch } = useInboxEntries(tab, chipTypes);
 
+  const unfiltered = useInboxEntries(tab);
+  const allEntries = unfiltered.data?.entries ?? [];
+  const totalCount = allEntries.length;
+  const chipCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const chip of FILTER_CHIPS) {
+      counts[chip.label] = allEntries.filter((e) => chip.types.includes(e.entry_type)).length;
+    }
+    return counts;
+  }, [allEntries]);
+
   const sections = useMemo(
     () => groupEntriesByDateAndCustomer(data?.entries ?? []),
     [data?.entries],
@@ -111,41 +121,38 @@ export function InboxListClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-cream-200 px-4 pt-4">
-        <PageHeader
-          eyebrow="Inbox"
-          title="Today"
-          subtitle="What needs action now across orders, collections, buyer requests, and follow-ups."
-          horizon=""
-          showHorizonControl={false}
-          compact
-        />
+      <div className="shrink-0 px-5 pt-5">
+        <p className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
+        <h1 className="mt-1 pb-4 text-xl font-bold tracking-[-0.02em] text-cream-950">
+          {tab === 'active' ? `${totalCount} need${totalCount === 1 ? 's' : ''} your attention` : 'Resolved'}
+        </h1>
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'active' | 'resolved')}>
           <TabsList className="flex w-full gap-0">
             <TabsTrigger value="active" className="flex-1">Needs attention</TabsTrigger>
             <TabsTrigger value="resolved" className="flex-1">Resolved</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex flex-wrap gap-2 py-3">
+        <div className="flex flex-wrap gap-2 py-4">
           {FILTER_CHIPS.map((chip) => (
             <button
               key={chip.label}
               type="button"
               onClick={() => setActiveChip((prev) => (prev === chip.label ? null : chip.label))}
               className={[
-                'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                'rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
                 activeChip === chip.label
                   ? 'border-ember-300 bg-ember-50 text-ember-700'
                   : 'border-cream-300 text-cream-700 hover:bg-cream-100',
               ].join(' ')}
             >
               {chip.label}
+              {chipCounts[chip.label] ? <span className="ml-1.5 font-mono tabular-nums text-cream-500">{chipCounts[chip.label]}</span> : null}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
         {isLoading ? (
           <div className="pt-4">
             <SellerMobileListSkeleton forceVisible showLeading />
@@ -160,13 +167,13 @@ export function InboxListClient() {
           <InboxEmptyState tab={tab} />
         ) : (
           sections.map(({ bucket, buyers }) => (
-            <div key={bucket} className="px-2 pt-5">
-              <p className="px-1 pb-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">
+            <div key={bucket} className="pt-6">
+              <p className="px-3.5 pb-2 text-xs font-medium uppercase tracking-[0.08em] text-cream-500">
                 {TIME_BUCKET_LABEL[bucket]}
               </p>
               <SellerMobileList
                 forceVisible
-                className="overflow-hidden rounded-[14px] border-t"
+                density="roomy"
                 items={buyers.map((buyer) => buyerListItem(buyer, params.id))}
               />
             </div>

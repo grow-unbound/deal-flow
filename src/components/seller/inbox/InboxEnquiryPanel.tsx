@@ -1,0 +1,211 @@
+'use client';
+
+import Link from 'next/link';
+import { AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { useEnquiryTriage } from '@/hooks/useInboxEntries';
+import type { EnquiryTriageLine, EnquiryVelocity } from '@/lib/inbox/enquiry-triage';
+import { cn, formatNumberValue } from '@/lib/utils';
+
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_3.5rem_7.5rem] items-start gap-x-4 sm:grid-cols-[minmax(0,1fr)_3.5rem_8.5rem_6.5rem_6.5rem]';
+const HEAD_CLASS = 'text-xs font-medium uppercase tracking-[0.08em] text-cream-500';
+
+function money(value: number) {
+  return formatNumberValue(value, 'CURRENCY_EXACT');
+}
+
+function velocityLabel(v: EnquiryVelocity): string {
+  if (v.unitsPerWeek <= 0) return 'No recent sales';
+  return `~${v.unitsPerWeek}/wk`;
+}
+
+function priceCell(line: EnquiryTriageLine, hidden: boolean) {
+  if (hidden) {
+    if (line.targetMin == null || line.targetMax == null) {
+      return <span className="text-cream-500">No target</span>;
+    }
+    const range = line.targetMin === line.targetMax ? money(line.targetMin) : `${money(line.targetMin)} – ${money(line.targetMax)}`;
+    return (
+      <span className="flex flex-col items-end">
+        <span className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Buyer target</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">{range}</span>
+      </span>
+    );
+  }
+  return line.unitPrice != null
+    ? <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">{money(line.unitPrice)}</span>
+    : <span className="text-cream-500">—</span>;
+}
+
+function StockCell({ line }: { line: EnquiryTriageLine }) {
+  const { tone, label } = line.stock;
+  return (
+    <span className="flex flex-col items-end">
+      <span
+        className={cn(
+          'text-sm font-semibold',
+          tone === 'danger' && 'text-danger-700',
+          tone === 'warning' && 'text-amber-800',
+          tone === 'ok' && 'text-cream-700',
+        )}
+      >
+        {tone === 'danger' || tone === 'warning' ? '▲ ' : null}
+        {label}
+      </span>
+      <span className="font-mono text-xs tabular-nums text-cream-500">{line.onHand} on hand</span>
+    </span>
+  );
+}
+
+function VelocityCell({ velocity }: { velocity: EnquiryVelocity }) {
+  return (
+    <span className="flex flex-col items-end">
+      <span className="font-mono text-sm tabular-nums text-cream-800">{velocityLabel(velocity)}</span>
+      {velocity.daysCover != null ? (
+        <span className="font-mono text-xs tabular-nums text-cream-500">{Math.round(velocity.daysCover)}d cover</span>
+      ) : null}
+    </span>
+  );
+}
+
+function ShortfallAlert({ line, estimateId }: { line: EnquiryTriageLine; estimateId: string }) {
+  const danger = line.stock.tone === 'danger';
+  return (
+    <div
+      className={cn(
+        'rounded-[12px] border-l-[3px] px-5 py-4',
+        danger ? 'border-danger-500 bg-danger-50' : 'border-amber-500 bg-amber-50',
+      )}
+    >
+      <p className={cn('flex items-center gap-2 text-base font-semibold', danger ? 'text-danger-700' : 'text-amber-900')}>
+        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+        {line.name} {danger ? 'is out of stock' : `short by ${line.stock.shortBy}`}
+      </p>
+      <p className="mt-1 text-sm text-cream-700">
+        Buyer asked for {line.qty}; {line.onHand} available.
+        {line.alternates.length > 0
+          ? ' Suggested alternatives from the same category:'
+          : ' No in-stock alternatives found in this category.'}
+      </p>
+      {line.alternates.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {line.alternates.map((alt) => (
+            <li
+              key={alt.tenantProductId}
+              className="flex items-center justify-between gap-4 rounded-[10px] border border-cream-300 bg-white px-4 py-2.5"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-cream-900">{alt.name}</p>
+                <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+                  {alt.sku}{alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-4 text-right">
+                <span className="font-mono text-sm tabular-nums text-cream-800">{alt.available} in stock</span>
+                <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
+                <Link
+                  href={`/estimates/${estimateId}`}
+                  className="inline-flex items-center gap-1 rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 no-underline transition-colors hover:bg-cream-100"
+                >
+                  Substitute
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+export function InboxEnquirySkeleton() {
+  return (
+    <div className="space-y-3" role="status" aria-label="Loading enquiry">
+      <div className="h-4 w-56 animate-pulse rounded-full bg-cream-200" />
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-[52px] animate-pulse rounded-[10px] bg-cream-100" />
+      ))}
+    </div>
+  );
+}
+
+export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
+  const { data, isLoading, isError } = useEnquiryTriage(entryId);
+
+  if (isLoading) return <InboxEnquirySkeleton />;
+  if (isError || !data) {
+    return <p className="text-sm text-cream-600">Couldn&apos;t load enquiry items.</p>;
+  }
+
+  const shortLines = data.lines.filter((l) => l.stock.tone !== 'ok');
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-sm text-cream-700">
+          <span className="font-mono font-semibold text-cream-900">{data.estimateNumber}</span>
+          <span className="text-cream-500"> · {data.lines.length} item{data.lines.length === 1 ? '' : 's'}</span>
+          {data.hiddenPricing ? <span className="text-cream-500"> · Prices hidden — buyer targets shown</span> : null}
+        </p>
+        {!data.hiddenPricing && data.totalAmount != null ? (
+          <p className="font-mono text-base font-bold tabular-nums text-cream-950">{money(data.totalAmount)}</p>
+        ) : null}
+      </div>
+
+      <div className="overflow-hidden rounded-[12px] border border-cream-200">
+        <div className={cn(ROW_GRID, 'border-b border-cream-200 bg-cream-50 px-4 py-2.5')}>
+          <span className={HEAD_CLASS}>Item</span>
+          <span className={cn(HEAD_CLASS, 'text-right')}>Qty</span>
+          <span className={cn(HEAD_CLASS, 'text-right')}>{data.hiddenPricing ? 'Target' : 'Price'}</span>
+          <span className={cn(HEAD_CLASS, 'hidden text-right sm:block')}>Stock</span>
+          <span className={cn(HEAD_CLASS, 'hidden text-right sm:block')}>Velocity</span>
+        </div>
+        <div className="divide-y divide-cream-200">
+          {data.lines.map((line) => (
+            <div
+              key={line.id}
+              className={cn(
+                ROW_GRID,
+                'px-4 py-3.5',
+                line.stock.tone === 'danger' && 'doc-line-stock-danger',
+                line.stock.tone === 'warning' && 'doc-line-stock-warning',
+              )}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
+                <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+                  {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
+                </p>
+                {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
+                <div className="mt-1.5 flex gap-4 sm:hidden">
+                  <StockCell line={line} />
+                  <VelocityCell velocity={line.velocity} />
+                </div>
+              </div>
+              <span className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</span>
+              <span className="text-right">{priceCell(line, data.hiddenPricing)}</span>
+              <span className="hidden text-right sm:block"><StockCell line={line} /></span>
+              <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {shortLines.map((line) => (
+        <ShortfallAlert key={line.id} line={line} estimateId={data.estimateId} />
+      ))}
+
+      {data.notes ? (
+        <p className="text-sm text-cream-600">
+          <span className="font-medium text-cream-800">Buyer note:</span> {data.notes}
+        </p>
+      ) : null}
+
+      <Link
+        href={`/estimates/${data.estimateId}`}
+        className="inline-flex items-center gap-1 text-sm font-medium text-cream-700 underline-offset-4 hover:underline"
+      >
+        Open full enquiry <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+      </Link>
+    </div>
+  );
+}

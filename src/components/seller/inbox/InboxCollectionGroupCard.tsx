@@ -70,10 +70,10 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
       <button
         type="button"
         onClick={onToggle}
-        className={cn('flex w-full items-start justify-between gap-4 px-5 py-4 text-left', expanded ? 'border-b border-cream-200' : undefined)}
+        className={cn('flex w-full items-start justify-between gap-4 px-6 py-5 text-left', expanded ? 'border-b border-cream-200' : undefined)}
       >
         <div className="min-w-0">
-          <h3 className="font-display text-md text-cream-900">Dues</h3>
+          <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">Dues</h3>
           <p className="mt-1 text-sm text-cream-600">{subtitle}</p>
         </div>
         <ChevronDown
@@ -84,7 +84,7 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
       </button>
 
       {expanded ? (
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-6 px-6 py-6">
           <div className="space-y-7">
             {rowsByAging.map((section) => (
               <div key={section.key} className="space-y-3">
