@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Bot, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
+import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
@@ -23,8 +23,8 @@ const FILTER_CHIPS: Array<{ label: string; types: InboxEntryType[] }> = [
   { label: 'Collections', types: ['invoice_due', 'invoice_overdue', 'credit_limit_breach'] },
 ];
 
-const CHANNEL_ICON: Record<InboxChannel, typeof ShoppingBag> = {
-  storefront: ShoppingBag,
+const CHANNEL_ICON: Record<InboxChannel, typeof Smartphone> = {
+  storefront: Smartphone,
   backend: Workflow,
   manual: UserRound,
   whatsapp: MessageCircle,
@@ -121,9 +121,9 @@ export function InboxListClient() {
           compact
         />
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'active' | 'resolved')}>
-          <TabsList>
-            <TabsTrigger value="active">Needs attention</TabsTrigger>
-            <TabsTrigger value="resolved">Resolved</TabsTrigger>
+          <TabsList className="flex w-full gap-0">
+            <TabsTrigger value="active" className="flex-1">Needs attention</TabsTrigger>
+            <TabsTrigger value="resolved" className="flex-1">Resolved</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap gap-2 py-3">
@@ -166,6 +166,7 @@ export function InboxListClient() {
               </p>
               <SellerMobileList
                 forceVisible
+                className="overflow-hidden rounded-[14px] border-t"
                 items={buyers.map((buyer) => buyerListItem(buyer, params.id))}
               />
             </div>

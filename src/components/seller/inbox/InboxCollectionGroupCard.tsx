@@ -85,27 +85,26 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
 
       {expanded ? (
         <div className="space-y-4 px-5 py-4">
-          <div className="space-y-4">
+          <div className="space-y-7">
             {rowsByAging.map((section) => (
-              <div key={section.key} className="space-y-2">
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <span aria-hidden />
-                  <p className="text-center text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">
-                    {section.label} ({section.count})
+              <div key={section.key} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-semibold uppercase tracking-[0.06em] text-cream-800">
+                    {section.label} <span className="font-medium text-cream-500">({section.count})</span>
                   </p>
-                  <p className="justify-self-end font-mono text-xs font-semibold tabular-nums text-cream-700">{section.totalAmountLabel}</p>
+                  <p className="font-mono text-base font-bold tabular-nums text-cream-950">{section.totalAmountLabel}</p>
                 </div>
                 <div className="divide-y divide-cream-200 rounded-[10px] border border-cream-200">
                   {section.rows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5 sm:grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_auto]">
+                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-x-3 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7.5rem]">
                       <Link
                         href={`/invoices/${row.invoiceId}`}
                         className="min-w-0 truncate font-mono text-sm font-semibold text-cream-950 underline-offset-4 hover:underline"
                       >
                         {row.invoiceNumber}
                       </Link>
-                      <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1">{row.dateLabel}</p>
-                      <p className="font-mono text-sm font-semibold tabular-nums text-cream-900">{row.amountLabel}</p>
+                      <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1 max-sm:row-start-2">{row.dateLabel}</p>
+                      <p className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900 max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1 max-sm:self-center">{row.amountLabel}</p>
                     </div>
                   ))}
                 </div>
