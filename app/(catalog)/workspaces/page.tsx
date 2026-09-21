@@ -56,6 +56,10 @@ export default function WorkspacesPage() {
     fetch('/api/auth/workspaces')
       .then(async (res) => {
         const data = (await res.json()) as WorkspacesResponse;
+        if (res.status === 401) {
+          window.location.assign('/login');
+          return [];
+        }
         if (!res.ok) {
           throw new Error(data.error ?? 'Failed to load workspaces');
         }

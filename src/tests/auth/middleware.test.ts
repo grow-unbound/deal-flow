@@ -709,6 +709,25 @@ describe('catalog host middleware', () => {
     expect(response.headers.get('location')).toBe('https://catalog.useyukti.in/workspaces');
   });
 
+  it('injects session headers for /api/auth/workspaces on the catalog host', async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(catalogRequest('/api/auth/workspaces'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-request-x-verified-user-id')).toBe('b1');
+  });
+
+  it('returns 401 JSON (not a login redirect) for /api/auth/workspaces without a session', async () => {
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(catalogRequest('/api/auth/workspaces'));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Not authenticated' });
+  });
+
   it('redirects seller session on catalog host to app.useyukti.in', async () => {
     getClaimsMock.mockResolvedValue({
       data: { claims: { sub: 's1', tenant_id: 'tenant-wy', user_role: 'seller_admin' } },
