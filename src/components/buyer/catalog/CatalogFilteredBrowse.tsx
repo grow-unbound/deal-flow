@@ -8,6 +8,7 @@ import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock, CampaignTitleRow } from '@/components/buyer/catalog/CampaignSummaryBlock';
+import { CatalogRailSkeleton } from '@/components/buyer/catalog/CatalogBrowseDetailLoading';
 import { CatalogSearchState } from '@/components/buyer/catalog/CatalogSearchState';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
@@ -27,8 +28,6 @@ import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCateg
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import {
-  BUYER_DETAIL_RAIL_ITEM_CLASS,
-  BUYER_DETAIL_RAIL_THUMB_CLASS,
   BUYER_INFINITE_SCROLL_RATIO,
   dedupeBuyerCatalogItems,
   guestPriceReveal,
@@ -240,7 +239,7 @@ export function CatalogFilteredBrowse({
   const desktopRail =
     mode === 'category' ? (
       showChipsSkeleton ? (
-        <DesktopRailSkeleton />
+        <CatalogRailSkeleton />
       ) : (categories?.length ?? 0) > 0 ? (
         <BuyerEntityChipNav
           kind="category"
@@ -253,7 +252,7 @@ export function CatalogFilteredBrowse({
       ) : null
     ) : mode === 'brand' ? (
       showChipsSkeleton ? (
-        <DesktopRailSkeleton />
+        <CatalogRailSkeleton />
       ) : (brands?.length ?? 0) > 0 ? (
         <BuyerEntityChipNav
           kind="brand"
@@ -398,25 +397,5 @@ function NoProductsFoundState(): React.ReactNode {
         </Link>
       )}
     />
-  );
-}
-
-function DesktopRailSkeleton(): React.ReactNode {
-  return (
-    <div className="flex flex-col" role="status" aria-label="Loading desktop filters">
-      {Array.from({ length: 8 }).map((_, index) => (
-        <div
-          key={index}
-          className={cn(BUYER_DETAIL_RAIL_ITEM_CLASS, 'border-b border-cream-200 last:border-b-0')}
-        >
-          <div className={cn(BUYER_DETAIL_RAIL_THUMB_CLASS, 'shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] lg:rounded-[12px]')}>
-            <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="h-4 w-14 animate-pulse rounded bg-cream-200 lg:w-4/5" />
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
