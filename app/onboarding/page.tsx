@@ -184,7 +184,7 @@ export default function BuyerOnboardingPage() {
 
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;
-  const isReturning = me?.pending?.is_returning_yukti_user ?? false;
+  const tenantName = me?.tenant?.name ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -251,12 +251,10 @@ export default function BuyerOnboardingPage() {
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">
-        {isReturning ? `You're new here at ${sellerName}` : "Looks like you're new on Yukti"}
+        {tenantName ? `Looks like you're new to ${tenantName}'s catalog` : "Looks like you're new to this catalog"}
       </h1>
       <p className="text-body-sm text-cream-600 mb-6">
-        {isReturning
-          ? `Share a few details so we can pass them on to ${sellerName}.`
-          : `We couldn't find your account — share your details so we can pass them on to ${sellerName}.`}
+        {`Share a few details and we'll pass them on to ${tenantName ? `the ${tenantName} team` : 'the seller'}.`}
       </p>
     </>
   );

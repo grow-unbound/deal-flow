@@ -170,7 +170,7 @@ function LoginForm() {
       const res = await fetch('/api/auth/phone-otp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, ...(returnTo ? { return_to: returnTo } : {}) }),
       });
 
       const data = (await res.json()) as PhoneOtpSendResponse | { error?: string };
@@ -381,6 +381,8 @@ function LoginForm() {
     posthog?.capture('login_failed', {
       ...properties,
       has_next: Boolean(next),
+      has_return_to: Boolean(returnTo),
+      is_catalog_host: isCatalogHost,
       requested_view: view,
     });
   }
