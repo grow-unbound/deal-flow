@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasNonPublicParams, toBuyerUpstreamPath, toGuestPublicUrl } from '@/lib/guest-public-api';
+import { appendWarehouseParam, hasNonPublicParams, toBuyerUpstreamPath, toGuestPublicUrl, validateGuestPublicQuery } from '@/lib/guest-public-api';
 import { isGuestCatalogApiPath, isGuestSearchApiPath, isGuestRateLimitedPath } from '@/lib/storefront-paths';
 
 describe('toGuestPublicUrl', () => {
@@ -49,5 +49,46 @@ describe('storefront path helpers know the guest twin', () => {
     expect(isGuestSearchApiPath('/api/public/g/search')).toBe(true);
     expect(isGuestSearchApiPath('/api/public/g/catalog', '?search=x')).toBe(true);
     expect(isGuestSearchApiPath('/api/public/g/catalog', '?limit=1')).toBe(false);
+  });
+});
+
+const WH = '4f1c2b7e-9d3a-4c11-8a55-0b6f3a9e1d20';
+const q = (s: string) => new URLSearchParams(s);
+
+describe('validateGuestPublicQuery (cache-buster / abuse guard)', () => {
+  it('accepts exactly what the storefront sends', () => {
+    expect(validateGuestPublicQuery('catalog', q('limit=40&offset=80&search=camera&category_id=abc-123&brand_id=b1'))).toBeNull();
+    expect(validateGuestPublicQuery('catalog', q(`limit=40&wh=${WH}`))).toBeNull();
+    expect(validateGuestPublicQuery('search', q('q=cctv&scope=catalog'))).toBeNull();
+    expect(validateGuestPublicQuery('recommendations', q('product_id=p-1'))).toBeNull();
+    expect(validateGuestPublicQuery('brands', q(''))).toBeNull();
+    expect(validateGuestPublicQuery('products/abc', q(`wh=${WH}`))).toBeNull();
+  });
+
+  it('rejects unknown params, so a random query string cannot force a database render per request', () => {
+    expect(validateGuestPublicQuery('catalog', q('limit=40&x=8f3a'))).toBe('unsupported_param:x');
+    expect(validateGuestPublicQuery('catalog', q('_=1789000000'))).toBe('unsupported_param:_');
+    expect(validateGuestPublicQuery('brands', q('limit=5'))).toBe('unsupported_param:limit');
+    expect(validateGuestPublicQuery('products/abc', q('v=2'))).toBe('unsupported_param:v');
+  });
+
+  it('rejects malformed or oversized values', () => {
+    expect(validateGuestPublicQuery('catalog', q('wh=not-a-uuid'))).toBe('invalid_param:wh');
+    expect(validateGuestPublicQuery('catalog', q('limit=abc'))).toBe('invalid_param:limit');
+    expect(validateGuestPublicQuery('catalog', q('offset=99999'))).toBe('invalid_param:offset');
+    expect(validateGuestPublicQuery('catalog', q(`search=${'a'.repeat(101)}`))).toBe('invalid_param:search');
+    expect(validateGuestPublicQuery('search', q(`q=${'a'.repeat(101)}`))).toBe('invalid_param:q');
+    expect(validateGuestPublicQuery('search', q('scope=orders'))).toBe('invalid_param:scope');
+    expect(validateGuestPublicQuery('catalog', q('category_id=' + encodeURIComponent('a b;drop')))).toBe('invalid_param:category_id');
+  });
+});
+
+describe('appendWarehouseParam', () => {
+  it('adds a valid warehouse to guest twin URLs only', () => {
+    expect(appendWarehouseParam('/api/public/g/catalog?limit=40', WH)).toBe(`/api/public/g/catalog?limit=40&wh=${WH}`);
+    expect(appendWarehouseParam('/api/public/g/brands', WH)).toBe(`/api/public/g/brands?wh=${WH}`);
+    expect(appendWarehouseParam('/api/public/g/brands', null)).toBe('/api/public/g/brands');
+    expect(appendWarehouseParam('/api/public/g/brands', 'nope')).toBe('/api/public/g/brands');
+    expect(appendWarehouseParam('/api/buyer/catalog', WH)).toBe('/api/buyer/catalog');
   });
 });

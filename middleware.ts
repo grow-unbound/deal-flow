@@ -57,17 +57,15 @@ import {
 import {
   isGuestCatalogApiPath,
   isGuestIsrPagePath,
-  isGuestRateLimitedPath,
   isGuestSearchApiPath,
   isGuestStorefrontPagePath,
   isStorefrontPagePath,
   toInternalBuyPath,
   toPublicStorefrontPath,
 } from '@/lib/storefront-paths';
-import { isNextPrefetchRequest } from '@/lib/next-prefetch';
 import { classifyMiddlewareRequest, parseSampleRate } from '@/lib/middleware-cpu-sample';
 import { hasSupabaseAuthCookie } from '@/lib/server/supabase-auth-cookie';
-import { clientIpFromRequest, consumeEnumerationRateLimit, consumePublicCatalogRateLimit, tooManyRequestsResponse } from '@/lib/server/public-catalog-rate-limit';
+import { clientIpFromRequest, consumeEnumerationRateLimit, consumePublicCatalogRateLimit, deviceKeyFromHeaders, tooManyRequestsResponse } from '@/lib/server/public-catalog-rate-limit';
 import { isPublicCatalogLive, resolveStorefrontTenantBySlug, resolveTenantSlugById } from '@/lib/server/resolve-storefront-tenant';
 import { recordViolationAndCheckChallenge } from '@/lib/server/ip-challenge';
 import { HUMAN_VERIFIED_COOKIE, verifyHumanVerifiedToken } from '@/lib/server/human-verify-token';
@@ -381,7 +379,7 @@ async function handleTenantHost(
           challengeUrl.searchParams.set('return_to', request.nextUrl.pathname + request.nextUrl.search);
           return NextResponse.redirect(challengeUrl);
         }
-        return tooManyRequestsResponse(enumerationLimit.retryAfterSec) as unknown as NextResponse;
+        return tooManyRequestsResponse(enumerationLimit.retryAfterSec, isApiRequest ? 'api' : 'page') as unknown as NextResponse;
       }
     }
 
@@ -436,15 +434,15 @@ async function handleTenantHost(
     return redirectToCatalogLogin(request);
   }
 
-  // Router prefetches of guest PAGES (a landing page prefetches every visible tile) are speculative,
-  // not visitor actions: exempt them from the per-visitor limiter. Never exempt API paths - the
-  // header is client-controllable, and the edge firewall rule is the flood backstop for those.
-  const isPagePrefetch = !guestApi && guestPage && isNextPrefetchRequest(request.headers);
-  if (!hasSession && isGuestRateLimitedPath(pathname) && !isPagePrefetch) {
-    const kind = isGuestSearchApiPath(pathname, request.nextUrl.search) ? 'search' : 'browse';
-    const limited = await consumePublicCatalogRateLimit(clientIpFromRequest(request.headers), slug, kind);
+  // Limit by COST, not count. Only the expensive, uncacheable guest work (search) is counted: cheap and
+  // cacheable reads (pages, prefetches, catalog pages, brands, categories, product detail) never pay a
+  // database round trip here. The CDN absorbs repeats and the edge firewall rule is the flood backstop.
+  // The key adds a device fingerprint so many real visitors behind one carrier/office IP do not share
+  // a bucket. (Prefetch requests are search-free by construction, so they are never counted.)
+  if (!hasSession && isGuestSearchApiPath(pathname, request.nextUrl.search)) {
+    const limited = await consumePublicCatalogRateLimit(deviceKeyFromHeaders(request.headers), slug, 'search');
     if (!limited.ok) {
-      return tooManyRequestsResponse(limited.retryAfterSec) as unknown as NextResponse;
+      return tooManyRequestsResponse(limited.retryAfterSec, 'api') as unknown as NextResponse;
     }
   }
 

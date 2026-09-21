@@ -45,6 +45,7 @@ vi.mock('@/lib/server/resolve-storefront-tenant', () => ({
 
 vi.mock('@/lib/server/public-catalog-rate-limit', () => ({
   clientIpFromRequest: () => '203.0.113.1',
+  deviceKeyFromHeaders: () => '203.0.113.1~dev',
   consumePublicCatalogRateLimit: (...args: unknown[]) => consumeRateLimitMock(...args),
   consumeEnumerationRateLimit: (...args: unknown[]) => consumeEnumerationRateLimitMock(...args),
   tooManyRequestsResponse: (retryAfterSec: number) =>
@@ -591,47 +592,49 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('x-middleware-rewrite')).toContain('/tenant-not-found');
   });
 
-  it('rate-limits anonymous catalog GETs', async () => {
-    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
+  it('rate-limits anonymous SEARCH (expensive, uncacheable) with a device-keyed bucket', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 7 });
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/api/buyer/catalog'));
+    const response = await middleware(tenantRequest('/api/buyer/search?q=camera'));
     expect(response.status).toBe(429);
-    expect(response.headers.get('Retry-After')).toBe('30');
+    expect(response.headers.get('Retry-After')).toBe('7');
+    expect(consumeRateLimitMock).toHaveBeenCalledWith('203.0.113.1~dev', 'wineyard', 'search');
   });
 
-  it('does not spend rate-limit budget on router PREFETCH requests of guest pages (landing tile storm)', async () => {
+  it('does NOT spend the database limiter on cheap/cacheable guest reads (limit by cost, not count)', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z', pricingMode: 'assigned_price_list', priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const paths = [
+      '/', '/product/abc', '/brand/x', '/category/y',
+      '/api/buyer/catalog?limit=40', '/api/public/g/catalog?limit=40', '/api/public/g/brands', '/api/public/g/categories',
+      '/api/public/g/products/abc', '/api/buyer/me',
+    ];
+    for (const path of paths) {
+      const response = await middleware(tenantRequest(path, 'wineyard.useyukti.in'));
+      expect(response.status, `${path} must not be limited`).not.toBe(429);
+    }
+    expect(consumeRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('a page-prefetch storm (40 tile prefetches) costs no limiter budget, and search with a prefetch header is still counted', async () => {
     consumeRateLimitMock.mockResolvedValue({ ok: true, retryAfterSec: 0 });
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
-
-    const prefetch = (path: string, headers: Record<string, string>) =>
+    const req = (path: string, headers: Record<string, string>) =>
       new NextRequest(`https://wineyard.useyukti.in${path}`, { headers: { host: 'wineyard.useyukti.in', ...headers } });
 
-    // 40 tile prefetches (brand/category/product) on one landing view: none may be counted.
-    for (let i = 0; i < 40; i += 1) {
-      await middleware(prefetch(`/product/id-${i}`, { 'next-router-prefetch': '1', rsc: '1' }));
-    }
-    await middleware(prefetch('/brand/abc', { purpose: 'prefetch' }));
+    for (let i = 0; i < 40; i += 1) await middleware(req(`/product/id-${i}`, { 'next-router-prefetch': '1', rsc: '1' }));
     expect(consumeRateLimitMock).not.toHaveBeenCalled();
 
-    // A real navigation to the same page IS counted (one hit).
-    await middleware(prefetch('/product/id-1', { rsc: '1' }));
-    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
-    expect(consumeRateLimitMock).toHaveBeenCalledWith(expect.any(String), 'wineyard', 'browse');
-  });
-
-  it('never lets the client-controllable prefetch header bypass the limiter on API routes', async () => {
-    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
-    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
-    const { middleware } = await import('../../../middleware');
-    const response = await middleware(
-      new NextRequest('https://wineyard.useyukti.in/api/buyer/catalog', {
-        headers: { host: 'wineyard.useyukti.in', 'next-router-prefetch': '1' },
-      }),
-    );
-    expect(response.status).toBe(429);
-    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
+    // The prefetch header is client-controllable: it must never exempt the expensive search endpoint.
+    await middleware(req('/api/buyer/search?q=a', { 'next-router-prefetch': '1' }));
+    await middleware(req('/api/public/g/catalog?search=a', { 'next-router-prefetch': '1' }));
+    expect(consumeRateLimitMock).toHaveBeenCalledTimes(2);
   });
 
   it('anonymous requests (no Supabase auth cookie) skip client construction and getClaims entirely', async () => {
