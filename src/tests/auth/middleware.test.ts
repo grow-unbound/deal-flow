@@ -11,6 +11,7 @@ const {
   consumeEnumerationRateLimitMock,
   recordViolationMock,
   verifyHumanVerifiedMock,
+  hasAuthCookieMock,
 } = vi.hoisted(() => ({
   getClaimsMock: vi.fn(),
   resolveStorefrontMock: vi.fn(),
@@ -19,6 +20,13 @@ const {
   consumeEnumerationRateLimitMock: vi.fn(),
   recordViolationMock: vi.fn(),
   verifyHumanVerifiedMock: vi.fn(),
+  hasAuthCookieMock: vi.fn(),
+}));
+
+// Existing tests emulate sessions through getClaimsMock without setting real cookies, so the cookie
+// gate defaults to "has a session cookie"; the fast-path tests below flip it to false.
+vi.mock('@/lib/server/supabase-auth-cookie', () => ({
+  hasSupabaseAuthCookie: (...args: unknown[]) => hasAuthCookieMock(...args),
 }));
 
 vi.mock('@supabase/ssr', () => ({
@@ -37,6 +45,7 @@ vi.mock('@/lib/server/resolve-storefront-tenant', () => ({
 
 vi.mock('@/lib/server/public-catalog-rate-limit', () => ({
   clientIpFromRequest: () => '203.0.113.1',
+  deviceKeyFromHeaders: () => '203.0.113.1~dev',
   consumePublicCatalogRateLimit: (...args: unknown[]) => consumeRateLimitMock(...args),
   consumeEnumerationRateLimit: (...args: unknown[]) => consumeEnumerationRateLimitMock(...args),
   tooManyRequestsResponse: (retryAfterSec: number) =>
@@ -66,6 +75,8 @@ function catalogRequest(path: string, host = 'catalog.useyukti.in') {
 describe('middleware auth redirects', () => {
   beforeEach(() => {
     getClaimsMock.mockReset();
+    hasAuthCookieMock.mockReset();
+    hasAuthCookieMock.mockReturnValue(true);
     resolveStorefrontMock.mockReset();
     resolveTenantSlugMock.mockReset();
     resolveTenantSlugMock.mockResolvedValue(null);
@@ -581,47 +592,119 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('x-middleware-rewrite')).toContain('/tenant-not-found');
   });
 
-  it('rate-limits anonymous catalog GETs', async () => {
-    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
+  it('rate-limits anonymous SEARCH (expensive, uncacheable) with a device-keyed bucket', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 7 });
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(tenantRequest('/api/buyer/catalog'));
+    const response = await middleware(tenantRequest('/api/buyer/search?q=camera'));
     expect(response.status).toBe(429);
-    expect(response.headers.get('Retry-After')).toBe('30');
+    expect(response.headers.get('Retry-After')).toBe('7');
+    expect(consumeRateLimitMock).toHaveBeenCalledWith('203.0.113.1~dev', 'wineyard', 'search');
   });
 
-  it('does not spend rate-limit budget on router PREFETCH requests of guest pages (landing tile storm)', async () => {
+  it('does NOT spend the database limiter on cheap/cacheable guest reads (limit by cost, not count)', async () => {
+    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z', pricingMode: 'assigned_price_list', priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const paths = [
+      '/', '/product/abc', '/brand/x', '/category/y',
+      '/api/buyer/catalog?limit=40', '/api/public/g/catalog?limit=40', '/api/public/g/brands', '/api/public/g/categories',
+      '/api/public/g/products/abc', '/api/buyer/me',
+    ];
+    for (const path of paths) {
+      const response = await middleware(tenantRequest(path, 'wineyard.useyukti.in'));
+      expect(response.status, `${path} must not be limited`).not.toBe(429);
+    }
+    expect(consumeRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('a page-prefetch storm (40 tile prefetches) costs no limiter budget, and search with a prefetch header is still counted', async () => {
     consumeRateLimitMock.mockResolvedValue({ ok: true, retryAfterSec: 0 });
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
     const { middleware } = await import('../../../middleware');
-
-    const prefetch = (path: string, headers: Record<string, string>) =>
+    const req = (path: string, headers: Record<string, string>) =>
       new NextRequest(`https://wineyard.useyukti.in${path}`, { headers: { host: 'wineyard.useyukti.in', ...headers } });
 
-    // 40 tile prefetches (brand/category/product) on one landing view: none may be counted.
-    for (let i = 0; i < 40; i += 1) {
-      await middleware(prefetch(`/product/id-${i}`, { 'next-router-prefetch': '1', rsc: '1' }));
-    }
-    await middleware(prefetch('/brand/abc', { purpose: 'prefetch' }));
+    for (let i = 0; i < 40; i += 1) await middleware(req(`/product/id-${i}`, { 'next-router-prefetch': '1', rsc: '1' }));
     expect(consumeRateLimitMock).not.toHaveBeenCalled();
 
-    // A real navigation to the same page IS counted (one hit).
-    await middleware(prefetch('/product/id-1', { rsc: '1' }));
-    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
-    expect(consumeRateLimitMock).toHaveBeenCalledWith(expect.any(String), 'wineyard', 'browse');
+    // The prefetch header is client-controllable: it must never exempt the expensive search endpoint.
+    await middleware(req('/api/buyer/search?q=a', { 'next-router-prefetch': '1' }));
+    await middleware(req('/api/public/g/catalog?search=a', { 'next-router-prefetch': '1' }));
+    expect(consumeRateLimitMock).toHaveBeenCalledTimes(2);
   });
 
-  it('never lets the client-controllable prefetch header bypass the limiter on API routes', async () => {
-    consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
-    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+  it('anonymous requests (no Supabase auth cookie) skip client construction and getClaims entirely', async () => {
+    hasAuthCookieMock.mockReturnValue(false);
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z', pricingMode: 'assigned_price_list', priceListId: null,
+    });
+    consumeRateLimitMock.mockResolvedValue({ ok: true, retryAfterSec: 0 });
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(
-      new NextRequest('https://wineyard.useyukti.in/api/buyer/catalog', {
-        headers: { host: 'wineyard.useyukti.in', 'next-router-prefetch': '1' },
-      }),
-    );
-    expect(response.status).toBe(429);
-    expect(consumeRateLimitMock).toHaveBeenCalledTimes(1);
+    const response = await middleware(tenantRequest('/product/abc', 'wineyard.useyukti.in'));
+    expect(response.status).toBeLessThan(400);
+    expect(getClaimsMock).not.toHaveBeenCalled();
+  });
+
+  it('requests that carry a session cookie still verify claims', async () => {
+    hasAuthCookieMock.mockReturnValue(true);
+    getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z', pricingMode: 'assigned_price_list', priceListId: null,
+    });
+    consumeRateLimitMock.mockResolvedValue({ ok: true, retryAfterSec: 0 });
+    const { middleware } = await import('../../../middleware');
+    await middleware(tenantRequest('/product/abc', 'wineyard.useyukti.in'));
+    expect(getClaimsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('matcher: skips real static files and the PostHog proxy, but never API routes or tenant-branded/page routes', async () => {
+    const { config } = await import('../../../middleware');
+    const re = new RegExp(`^${config.matcher[0]}$`);
+    const runs = (p: string) => re.test(p);
+    for (const p of ['/brand/app-icon-copper.svg', '/logo.png', '/images/hero.webp', '/buyer-sw.js', '/ingest', '/ingest/i/v0/e/', '/_next/static/a.js', '/_next/image', '/favicon.ico', '/robots.txt']) {
+      expect(runs(p), `${p} should skip middleware`).toBe(false);
+    }
+    for (const p of ['/', '/login', '/product/abc', '/brand/e1cb16b7-97de-438b-bb4d-f2a95a092aae', '/category/x', '/manifest.webmanifest', '/api/buyer/catalog', '/api/public/g/catalog', '/api/tenant/export.txt', '/api/tenant/report.js', '/api/tenant/logo.png', '/ingestion-report']) {
+      expect(runs(p), `${p} must still run middleware`).toBe(true);
+    }
+  });
+
+  describe('CPU sampling flag', () => {
+    it('logs nothing when MIDDLEWARE_CPU_SAMPLE_RATE is unset', async () => {
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
+      const { middleware } = await import('../../../middleware');
+      await middleware(catalogRequest('/login'));
+      expect(spy.mock.calls.filter((c) => String(c[0]).includes('mw_cpu_sample'))).toHaveLength(0);
+      spy.mockRestore();
+    });
+
+    it('logs one PII-free JSON line per request at rate 1', async () => {
+      const original = process.env.MIDDLEWARE_CPU_SAMPLE_RATE;
+      process.env.MIDDLEWARE_CPU_SAMPLE_RATE = '1';
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        hasAuthCookieMock.mockReturnValue(false);
+        const { middleware } = await import('../../../middleware');
+        await middleware(catalogRequest('/login?return_to=https%3A%2F%2Fsecret.example%2Fx'));
+        const lines = spy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('mw_cpu_sample'));
+        expect(lines).toHaveLength(1);
+        const record = JSON.parse(lines[0]);
+        expect(record).toMatchObject({ evt: 'mw_cpu_sample', cls: 'page', has_session_cookie: false });
+        expect(typeof record.cpu_us).toBe('number');
+        expect(typeof record.wall_ms).toBe('number');
+        expect(lines[0]).not.toContain('secret.example');
+        expect(lines[0]).not.toContain('return_to');
+      } finally {
+        spy.mockRestore();
+        if (original === undefined) delete process.env.MIDDLEWARE_CPU_SAMPLE_RATE;
+        else process.env.MIDDLEWARE_CPU_SAMPLE_RATE = original;
+      }
+    });
   });
 
   it('301s yukti.so tenant hosts to useyukti.in', async () => {

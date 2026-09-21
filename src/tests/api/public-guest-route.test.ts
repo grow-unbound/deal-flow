@@ -94,4 +94,41 @@ describe('GET /api/public/g/*', () => {
     const ctx = handlers.product.mock.calls[0][1] as { params: Promise<{ id: string }> };
     expect(await ctx.params).toEqual({ id: 'prod-9' });
   });
+
+  it('rejects unknown query params with 400 BEFORE any upstream (database) work, and never caches the rejection', async () => {
+    for (const path of ['catalog?limit=40&x=8f3a', 'catalog?_=123', 'brands?limit=5', 'products/prod-9?v=2']) {
+      const res = await call(path, CREDENTIALS);
+      expect(res.status, path).toBe(400);
+      expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    }
+    expect(handlers.catalog).not.toHaveBeenCalled();
+    expect(handlers.brands).not.toHaveBeenCalled();
+    expect(handlers.product).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed values and ids', async () => {
+    for (const path of ['catalog?wh=nope', 'catalog?offset=999999', `catalog?search=${'a'.repeat(101)}`, 'products/bad%20id', 'products/%E0%A4%A']) {
+      const res = await call(path, CREDENTIALS);
+      expect(res.status, path).toBe(400);
+    }
+    expect(handlers.product).not.toHaveBeenCalled();
+  });
+
+  it('turns ?wh=<uuid> into ONLY the delivery cookie the private handlers read (no other cookie survives)', async () => {
+    const wh = '4f1c2b7e-9d3a-4c11-8a55-0b6f3a9e1d20';
+    await call(`catalog?limit=40&wh=${wh}`, CREDENTIALS);
+    const upstreamReq = handlers.catalog.mock.calls[0][0] as NextRequest;
+    const cookie = upstreamReq.headers.get('cookie') ?? '';
+    expect(cookie.startsWith('df_buyer_delivery_v1=')).toBe(true);
+    expect(cookie).not.toContain('sb-');
+    expect(cookie).not.toContain('SECRET');
+    expect(decodeURIComponent(cookie.split('=').slice(1).join('='))).toContain(`"nearest_warehouse_id":"${wh}"`);
+    expect(new URL(upstreamReq.url).searchParams.has('wh')).toBe(false);
+    expect(new URL(upstreamReq.url).searchParams.get('limit')).toBe('40');
+  });
+
+  it('sends no cookie at all when no warehouse is given', async () => {
+    await call('catalog?limit=40', CREDENTIALS);
+    expect((handlers.catalog.mock.calls[0][0] as NextRequest).headers.get('cookie')).toBeNull();
+  });
 });
