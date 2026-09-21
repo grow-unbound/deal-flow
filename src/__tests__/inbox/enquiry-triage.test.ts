@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { deriveVelocity, enquiryStockStatus, pickAlternates, type AlternateCandidate } from '@/lib/inbox/enquiry-triage';
 
 const vel = (u: number) => deriveVelocity({ invoice_units_90d: u });
-const cand = (id: string, brandId: string | null, available: number, units: number): AlternateCandidate => ({
-  tenantProductId: id, name: id, sku: id, brandId, brandName: null, available, velocity: vel(units),
+const cand = (id: string, brandId: string | null, available: number, units: number, categoryId: string | null = 'c1'): AlternateCandidate => ({
+  tenantProductId: id, name: id, sku: id, brandId, brandName: null, categoryId, available, velocity: vel(units),
 });
 
 describe('enquiryStockStatus', () => {
@@ -22,7 +22,7 @@ describe('deriveVelocity', () => {
 });
 
 describe('pickAlternates', () => {
-  const line = { tenantProductId: 'x', brandId: 'b1', qty: 10 };
+  const line = { tenantProductId: 'x', brandId: 'b1', categoryId: 'c1', qty: 10 };
   it('excludes self and under-stocked, ranks same brand then velocity, caps at 3', () => {
     const out = pickAlternates(line, [
       cand('x', 'b1', 99, 99),
@@ -34,5 +34,14 @@ describe('pickAlternates', () => {
     ]);
     expect(out.map((a) => a.tenantProductId)).toEqual(['same-slow', 'other-fast', 'other-mid']);
     expect(out[0].sameBrand).toBe(true);
+  });
+
+  it('ranks same-category ahead of same-brand from another category', () => {
+    const out = pickAlternates(line, [
+      cand('brand-other-cat', 'b1', 20, 99, 'c2'),
+      cand('cat-other-brand', 'b2', 20, 1, 'c1'),
+    ]);
+    expect(out.map((a) => a.tenantProductId)).toEqual(['cat-other-brand', 'brand-other-cat']);
+    expect(out[1]).toMatchObject({ sameBrand: true, sameCategory: false });
   });
 });

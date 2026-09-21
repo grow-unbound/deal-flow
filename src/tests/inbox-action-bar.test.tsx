@@ -39,9 +39,15 @@ describe('InboxActionBar', () => {
   it('renders only entry-specific text CTAs and keeps reject as an icon action', () => {
     renderBar(baseEntry);
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Contact buyer' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Contact buyer' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('puts the primary CTA rightmost, after secondary actions', () => {
+    renderBar(baseEntry);
+    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    expect(labels).toEqual(['Reject', 'Accept order']);
   });
 
   it('applies a non-destructive local action immediately without a confirm dialog', () => {

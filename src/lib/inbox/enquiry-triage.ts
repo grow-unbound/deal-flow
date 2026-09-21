@@ -21,6 +21,7 @@ export interface EnquiryAlternate {
   available: number;
   velocity: EnquiryVelocity;
   sameBrand: boolean;
+  sameCategory: boolean;
 }
 
 export interface EnquiryTriageLine {
@@ -81,22 +82,30 @@ export interface AlternateCandidate {
   sku: string;
   brandId: string | null;
   brandName: string | null;
+  categoryId: string | null;
   available: number;
   velocity: EnquiryVelocity;
 }
 
-/** Same-brand first, then fastest-selling; only candidates that can cover the requested qty. */
+/** Same-category first, then same-brand, then fastest-selling; only candidates that can cover the requested qty. */
 export function pickAlternates(
-  line: { tenantProductId: string; brandId: string | null; qty: number },
+  line: { tenantProductId: string; brandId: string | null; categoryId: string | null; qty: number },
   candidates: AlternateCandidate[],
   limit = 3,
 ): EnquiryAlternate[] {
   return candidates
     .filter((c) => c.tenantProductId !== line.tenantProductId && c.available >= line.qty)
-    .map((c) => ({ c, sameBrand: line.brandId != null && c.brandId === line.brandId }))
-    .sort((a, b) => Number(b.sameBrand) - Number(a.sameBrand) || b.c.velocity.unitsPerWeek - a.c.velocity.unitsPerWeek)
+    .map((c) => ({
+      c,
+      sameBrand: line.brandId != null && c.brandId === line.brandId,
+      sameCategory: line.categoryId != null && c.categoryId === line.categoryId,
+    }))
+    .sort((a, b) =>
+      Number(b.sameCategory) - Number(a.sameCategory)
+      || Number(b.sameBrand) - Number(a.sameBrand)
+      || b.c.velocity.unitsPerWeek - a.c.velocity.unitsPerWeek)
     .slice(0, limit)
-    .map(({ c, sameBrand }) => ({
+    .map(({ c, sameBrand, sameCategory }) => ({
       tenantProductId: c.tenantProductId,
       name: c.name,
       sku: c.sku,
@@ -104,5 +113,6 @@ export function pickAlternates(
       available: c.available,
       velocity: c.velocity,
       sameBrand,
+      sameCategory,
     }));
 }

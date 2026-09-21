@@ -71,15 +71,34 @@ export async function loadEnquiryTriage(
   const categoryIds = Array.from(new Set(
     needsAlt.map((i) => asString(productMap.get(i.tenant_product_id as string)?.tenant_category_id)).filter((v): v is string => !!v),
   ));
+  const shortBrandIds = Array.from(new Set(
+    needsAlt.map((i) => asString(productMap.get(i.tenant_product_id as string)?.tenant_brand_id)).filter((v): v is string => !!v),
+  ));
 
-  const poolByCategory = new Map<string, AlternateCandidate[]>();
+  const poolCandidates: AlternateCandidate[] = [];
   const nameSources: Array<Record<string, unknown>> = [...products];
   let poolRows: Array<Record<string, unknown>> = [];
-  if (categoryIds.length) {
-    const poolRes = await d.schema('app').from('tenant_products')
-      .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, tenant_category_id')
-      .eq('tenant_id', tenantId).in('tenant_category_id', categoryIds).is('deleted_at', null).limit(ALTERNATE_POOL_LIMIT * categoryIds.length);
-    poolRows = ((poolRes.data ?? []) as Array<Record<string, unknown>>).filter((r) => !productMap.has(r.id as string));
+  if (needsAlt.length) {
+    const cols = 'id, internal_sku, name_override, master_product_id, tenant_brand_id, tenant_category_id';
+    // Same category first; same-brand products from other categories fill the gap.
+    const [catRes, brandRes] = await Promise.all([
+      categoryIds.length
+        ? d.schema('app').from('tenant_products').select(cols)
+            .eq('tenant_id', tenantId).in('tenant_category_id', categoryIds).is('deleted_at', null).limit(ALTERNATE_POOL_LIMIT * categoryIds.length)
+        : Promise.resolve({ data: [] }),
+      shortBrandIds.length
+        ? d.schema('app').from('tenant_products').select(cols)
+            .eq('tenant_id', tenantId).in('tenant_brand_id', shortBrandIds).is('deleted_at', null).limit(ALTERNATE_POOL_LIMIT * shortBrandIds.length)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const seen = new Set<string>();
+    poolRows = [...((catRes.data ?? []) as Array<Record<string, unknown>>), ...((brandRes.data ?? []) as Array<Record<string, unknown>>)]
+      .filter((r) => {
+        const id = r.id as string;
+        if (productMap.has(id) || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
     nameSources.push(...poolRows);
   }
 
@@ -115,19 +134,16 @@ export async function loadEnquiryTriage(
   const brandOf = (p: Record<string, unknown>) => brandName.get(p.tenant_brand_id as string) ?? null;
 
   for (const row of poolRows) {
-    const cat = asString(row.tenant_category_id);
-    if (!cat) continue;
-    const list = poolByCategory.get(cat) ?? [];
-    list.push({
+    poolCandidates.push({
       tenantProductId: row.id as string,
       name: nameOf(row),
       sku: asString(row.internal_sku) ?? '—',
       brandId: asString(row.tenant_brand_id),
       brandName: brandOf(row),
+      categoryId: asString(row.tenant_category_id),
       available: poolInventory.get(row.id as string) ?? 0,
       velocity: deriveVelocity(poolSnapshotMap.get(row.id as string)),
     });
-    poolByCategory.set(cat, list);
   }
 
   const lines: EnquiryTriageLine[] = items.map((item) => {
@@ -136,7 +152,6 @@ export async function loadEnquiryTriage(
     const qty = Number(item.qty ?? 0);
     const onHand = inventory.get(pid) ?? 0;
     const stock = enquiryStockStatus(qty, onHand);
-    const catId = asString(product?.tenant_category_id);
     return {
       id: item.id as string,
       tenantProductId: pid,
@@ -151,8 +166,13 @@ export async function loadEnquiryTriage(
       onHand,
       stock,
       velocity: deriveVelocity(snapshotMap.get(pid)),
-      alternates: stock.tone !== 'ok' && catId
-        ? pickAlternates({ tenantProductId: pid, brandId: asString(product?.tenant_brand_id), qty }, poolByCategory.get(catId) ?? [])
+      alternates: stock.tone !== 'ok'
+        ? pickAlternates({
+            tenantProductId: pid,
+            brandId: asString(product?.tenant_brand_id),
+            categoryId: asString(product?.tenant_category_id),
+            qty,
+          }, poolCandidates)
         : [],
     };
   });

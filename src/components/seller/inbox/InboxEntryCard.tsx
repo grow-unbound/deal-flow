@@ -110,6 +110,9 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEve
           <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">{title}</h3>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {amountLabel ? <p className="text-sm text-cream-600">{amountLabel}</p> : null}
+            {entry.status === 'waiting' && entry.remind_at ? (
+              <StatusPill label={`Snoozed · ${new Date(entry.remind_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`} tone="neutral" />
+            ) : null}
             {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} /> : null}
           </div>
         </div>

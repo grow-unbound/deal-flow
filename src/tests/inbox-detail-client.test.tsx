@@ -119,7 +119,7 @@ describe('InboxDetailClient', () => {
     expect(screen.queryByRole('button', { name: /View Sri Krishna Enterprises/i })).not.toBeInTheDocument();
   });
 
-  it('shows credit-limit context and orders reminder before adjust-limit on over-limit cards', () => {
+  it('shows credit-limit context and keeps the primary reminder CTA rightmost, after adjust-limit, on over-limit cards', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: [CREDIT_LIMIT_ENTRY], nextCursor: null }, isLoading: false });
     renderDetail();
 
@@ -129,6 +129,6 @@ describe('InboxDetailClient', () => {
     expect(screen.getByText('₹1,25,000')).toBeInTheDocument();
 
     const actions = screen.getAllByRole('button').map((button) => button.textContent?.trim()).filter(Boolean);
-    expect(actions.indexOf('Send reminder')).toBeLessThan(actions.indexOf('Adjust limit'));
+    expect(actions.indexOf('Adjust limit')).toBeLessThan(actions.indexOf('Send reminder'));
   });
 });

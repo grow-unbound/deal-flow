@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import { useEnquiryTriage } from '@/hooks/useInboxEntries';
 import type { EnquiryTriageLine, EnquiryVelocity } from '@/lib/inbox/enquiry-triage';
 import { cn, formatNumberValue } from '@/lib/utils';
@@ -67,24 +68,14 @@ function VelocityCell({ velocity }: { velocity: EnquiryVelocity }) {
   );
 }
 
-function ShortfallAlert({ line, estimateId }: { line: EnquiryTriageLine; estimateId: string }) {
-  const danger = line.stock.tone === 'danger';
+function AlternatesList({ line, estimateId }: { line: EnquiryTriageLine; estimateId: string }) {
   return (
-    <div
-      className={cn(
-        'rounded-[12px] border-l-[3px] px-5 py-4',
-        danger ? 'border-danger-500 bg-danger-50' : 'border-amber-500 bg-amber-50',
-      )}
-    >
-      <p className={cn('flex items-center gap-2 text-base font-semibold', danger ? 'text-danger-700' : 'text-amber-900')}>
-        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-        {line.name} {danger ? 'is out of stock' : `short by ${line.stock.shortBy}`}
-      </p>
-      <p className="mt-1 text-sm text-cream-700">
+    <div className="border-t border-cream-200 bg-cream-50 px-4 py-4">
+      <p className="text-sm text-cream-700">
         Buyer asked for {line.qty}; {line.onHand} available.
         {line.alternates.length > 0
-          ? ' Suggested alternatives from the same category:'
-          : ' No in-stock alternatives found in this category.'}
+          ? ' In-stock alternatives, same category first:'
+          : ' No in-stock alternatives found in this category or brand.'}
       </p>
       {line.alternates.length > 0 ? (
         <ul className="mt-3 space-y-2">
@@ -96,7 +87,9 @@ function ShortfallAlert({ line, estimateId }: { line: EnquiryTriageLine; estimat
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-cream-900">{alt.name}</p>
                 <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
-                  {alt.sku}{alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
+                  {alt.sku}
+                  {alt.sameCategory ? ' · same category' : ''}
+                  {alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-4 text-right">
@@ -104,7 +97,7 @@ function ShortfallAlert({ line, estimateId }: { line: EnquiryTriageLine; estimat
                 <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
                 <Link
                   href={`/estimates/${estimateId}`}
-                  className="inline-flex items-center gap-1 rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 no-underline transition-colors hover:bg-cream-100"
+                  className="inline-flex items-center rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 no-underline transition-colors hover:bg-cream-100"
                 >
                   Substitute
                 </Link>
@@ -113,6 +106,55 @@ function ShortfallAlert({ line, estimateId }: { line: EnquiryTriageLine; estimat
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+function LineRow({ line, hidden, estimateId }: { line: EnquiryTriageLine; hidden: boolean; estimateId: string }) {
+  const [open, setOpen] = useState(false);
+  const short = line.stock.tone !== 'ok';
+  const altLabel = line.alternates.length > 0
+    ? `${line.alternates.length} alternative${line.alternates.length === 1 ? '' : 's'}`
+    : 'No alternatives';
+
+  return (
+    <div>
+      <div
+        className={cn(
+          ROW_GRID,
+          'px-4 py-3.5',
+          line.stock.tone === 'danger' && 'doc-line-stock-danger',
+          line.stock.tone === 'warning' && 'doc-line-stock-warning',
+        )}
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
+          <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+            {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
+          </p>
+          {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
+          {short ? (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950"
+            >
+              {altLabel}
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
+            </button>
+          ) : null}
+          <div className="mt-1.5 flex gap-4 sm:hidden">
+            <StockCell line={line} />
+            <VelocityCell velocity={line.velocity} />
+          </div>
+        </div>
+        <span className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</span>
+        <span className="text-right">{priceCell(line, hidden)}</span>
+        <span className="hidden text-right sm:block"><StockCell line={line} /></span>
+        <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
+      </div>
+      {short && open ? <AlternatesList line={line} estimateId={estimateId} /> : null}
     </div>
   );
 }
@@ -135,8 +177,6 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
   if (isError || !data) {
     return <p className="text-sm text-cream-600">Couldn&apos;t load enquiry items.</p>;
   }
-
-  const shortLines = data.lines.filter((l) => l.stock.tone !== 'ok');
 
   return (
     <div className="space-y-5">
@@ -161,38 +201,10 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
         </div>
         <div className="divide-y divide-cream-200">
           {data.lines.map((line) => (
-            <div
-              key={line.id}
-              className={cn(
-                ROW_GRID,
-                'px-4 py-3.5',
-                line.stock.tone === 'danger' && 'doc-line-stock-danger',
-                line.stock.tone === 'warning' && 'doc-line-stock-warning',
-              )}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
-                <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
-                  {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
-                </p>
-                {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
-                <div className="mt-1.5 flex gap-4 sm:hidden">
-                  <StockCell line={line} />
-                  <VelocityCell velocity={line.velocity} />
-                </div>
-              </div>
-              <span className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</span>
-              <span className="text-right">{priceCell(line, data.hiddenPricing)}</span>
-              <span className="hidden text-right sm:block"><StockCell line={line} /></span>
-              <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
-            </div>
+            <LineRow key={line.id} line={line} hidden={data.hiddenPricing} estimateId={data.estimateId} />
           ))}
         </div>
       </div>
-
-      {shortLines.map((line) => (
-        <ShortfallAlert key={line.id} line={line} estimateId={data.estimateId} />
-      ))}
 
       {data.notes ? (
         <p className="text-sm text-cream-600">
