@@ -1,0 +1,151 @@
+import { describe, expect, it } from 'vitest';
+
+import { landingMetricsToPulseContribution, portfolioToPulseContribution, portfolioToPulseOpportunities } from '@/lib/server/pulse-core';
+import type { MetricsV2DashboardPortfolio } from '@/types/seller-dashboard';
+
+const portfolio: MetricsV2DashboardPortfolio = {
+  as_of: '2026-09-22T04:00:00.000Z',
+  commercial_horizon_days: 90,
+  table_period: null,
+  primary_demand_kind: 'orders',
+  calculation_version: 1,
+  source_watermark: '2026-09-22T03:45:00.000Z',
+  freshness: {},
+  availability: {},
+  metrics: [
+    {
+      id: 'customers_submitting_app_demand',
+      label: 'Customers submitting app demand',
+      time_basis: 'QTD',
+      feasibility: 'READY',
+      available: true,
+      count: 6,
+      unit: 'count',
+    },
+    {
+      id: 'app_sourced_demand_value_share',
+      label: 'App-sourced demand value + share',
+      time_basis: 'QTD',
+      feasibility: 'READY',
+      available: true,
+      value: 18,
+      count: 9,
+      unit: 'percent',
+      meta: {
+        app_demand_value_90d: 840000,
+        total_demand_value_90d: 4200000,
+      },
+    },
+    {
+      id: 'app_sourced_invoiced_sales_share',
+      label: 'App-sourced invoiced sales + share',
+      time_basis: 'QTD',
+      feasibility: 'READY',
+      available: true,
+      value: 12,
+      unit: 'percent',
+      meta: {
+        app_invoiced_sales_90d: 510000,
+        total_invoiced_sales_90d: 4250000,
+      },
+    },
+    {
+      id: 'repeat_app_customers',
+      label: 'Repeat app customers',
+      time_basis: 'QTD',
+      feasibility: 'READY',
+      available: true,
+      count: 3,
+      unit: 'count',
+    },
+  ],
+  actions: [
+    {
+      id: 'valuable_assisted_customers_without_access',
+      label: 'Valuable assisted customers without app access',
+      time_basis: 'NOW + QTD',
+      feasibility: 'READY',
+      available: true,
+      count: 12,
+      unit: 'count',
+      meta: {
+        rows: [
+          { buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_90d: 410000 },
+          { buyer_id: 'buyer-2', name: 'Bravo Stores', invoice_value_90d: 250000 },
+          { buyer_id: 'buyer-3', name: 'City Cameras', invoice_value_90d: 180000 },
+          { buyer_id: 'buyer-4', name: 'Delta Security', invoice_value_90d: 120000 },
+        ],
+      },
+    },
+    {
+      id: 'app_demand_needing_operational_action',
+      label: 'App demand needing operational action',
+      time_basis: 'NOW',
+      feasibility: 'READY',
+      available: true,
+      count: 99,
+      unit: 'count',
+      meta: { rows: [{ buyer_id: 'buyer-hidden', name: 'Should Not Render' }] },
+    },
+  ],
+  explore: [],
+};
+
+describe('Pulse core mapping', () => {
+  it('maps seller-admin contribution from buyer-app landing metrics without access-enabled filler', () => {
+    const response = landingMetricsToPulseContribution({
+      page_key: 'buyer_app',
+      period: {
+        period_key: 'this_quarter',
+        grain: 'quarter',
+        period_start: '2026-07-01',
+        period_end_exclusive: '2026-10-01',
+        label: 'This Quarter',
+      },
+      computed_at: '2026-09-22T04:00:00.000Z',
+      source_watermark: '2026-09-22T03:45:00.000Z',
+      cards: [
+        { id: 'customers_with_access', value: 272, entity_count: 272, secondary_value: 11894, time_basis: 'now' },
+        { id: 'app_sourced_demand_qtd', value: 840000, entity_count: 6, document_count: 9, time_basis: 'quarter' },
+        { id: 'app_sourced_invoiced_sales_qtd', value: 510000, entity_count: 4, document_count: 5, secondary_value: 4250000, time_basis: 'quarter' },
+      ],
+    });
+
+    expect(response.source).toBe('app.get_landing_metrics_v4');
+    expect(response.cards.map((card) => card.id)).toEqual([
+      'demand_captured',
+      'invoiced_from_captured_demand',
+      'active_yukti_buyers',
+    ]);
+    expect(JSON.stringify(response)).not.toContain('customers_with_access');
+  });
+
+  it('maps contribution cards from existing buyer-app v4 aggregate portfolio without access-enabled filler', () => {
+    const response = portfolioToPulseContribution(portfolio);
+
+    expect(response.source).toBe('app.get_buyer_app_dashboard_v4');
+    expect(response.freshness_label).toBe('2026-09-22T03:45:00.000Z');
+    expect(response.cards.map((card) => card.id)).toEqual([
+      'demand_captured',
+      'invoiced_from_captured_demand',
+      'active_yukti_buyers',
+      'repeat_yukti_buyers',
+    ]);
+    expect(response.cards[0]).toEqual(expect.objectContaining({
+      value: 840000,
+      document_count: 9,
+      buyer_count: 6,
+      time_basis: 'QTD',
+    }));
+  });
+
+  it('maps no more than three allowed opportunity groups and excludes Inbox-owned operational demand', () => {
+    const response = portfolioToPulseOpportunities(portfolio);
+
+    expect(response.groups).toHaveLength(1);
+    expect(response.groups[0].id).toBe('valuable_assisted_customers_without_access');
+    expect(response.groups[0].previews).toHaveLength(3);
+    expect(JSON.stringify(response)).not.toContain('app_demand_needing_operational_action');
+    expect(JSON.stringify(response)).not.toContain('Should Not Render');
+  });
+});
