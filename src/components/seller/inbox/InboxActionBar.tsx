@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Bell, MoreHorizontal, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/utils';
 import { useApplyGenericEntryAction } from '@/hooks/useInboxEntries';
 import { shouldSkipConfirm } from '@/lib/inbox/inbox-confirm-prefs';
 import { InboxConfirmDialog } from './InboxConfirmDialog';
@@ -117,6 +118,12 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
   async function runGenericAction(action: string, remindAt?: string) {
     try {
       await applyGenericAction.mutateAsync({ entryId: entry.id, action: action as 'remind_later' | 'dismiss' | 'reopen' | 'add_note', remind_at: remindAt });
+      if (action === 'remind_later' && remindAt) {
+        toast.success(`Snoozed until ${formatDate(remindAt)}`);
+        // The snooze pill sits at the top of this card -- bring it into view so the
+        // seller sees the state actually changed, not just a toast that fades.
+        document.getElementById(`inbox-entry-${entry.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update this item');
     }

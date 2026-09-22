@@ -6,7 +6,7 @@ import { Bell, ChevronDown, Loader2, Send, StickyNote } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useApplyGenericEntryAction, useSendCollectionReminder, type EntryHistoryEvent } from '@/hooks/useInboxEntries';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
 import { InboxInlineNote } from './InboxInlineNote';
@@ -51,7 +51,8 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
         action: 'remind_later',
         remind_at: remindAt,
       })));
-      toast.success('Reminder set');
+      toast.success(`Snoozed until ${formatDate(remindAt)}`);
+      document.getElementById('inbox-dues-group')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not set reminder');
     }
@@ -66,7 +67,7 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
     : 'Dues';
 
   return (
-    <section className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+    <section id="inbox-dues-group" className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       <button
         type="button"
         onClick={onToggle}

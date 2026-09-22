@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, ChevronDown } from 'lucide-react';
-import { useEnquiryTriage } from '@/hooks/useInboxEntries';
+import { toast } from 'sonner';
+import { useEnquiryTriage, useSubstituteEnquiryLine } from '@/hooks/useInboxEntries';
 import type { EnquiryTriageLine, EnquiryVelocity } from '@/lib/inbox/enquiry-triage';
 import { cn, formatNumberValue } from '@/lib/utils';
 
@@ -68,49 +69,69 @@ function VelocityCell({ velocity }: { velocity: EnquiryVelocity }) {
   );
 }
 
-function AlternatesList({ line, estimateId }: { line: EnquiryTriageLine; estimateId: string }) {
+function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine; estimateId: string; entryId: string }) {
+  const substitute = useSubstituteEnquiryLine(entryId);
+  const [substitutingId, setSubstitutingId] = useState<string | null>(null);
+
+  async function handleSubstitute(alt: EnquiryTriageLine['alternates'][number]) {
+    setSubstitutingId(alt.tenantProductId);
+    try {
+      await substitute.mutateAsync({ estimateId, lineId: line.id, tenantProductId: alt.tenantProductId });
+      toast.success(`Substituted with ${alt.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not substitute this item');
+    } finally {
+      setSubstitutingId(null);
+    }
+  }
+
   return (
     <div className="border-t border-cream-200 bg-cream-50 px-4 py-4">
       <p className="text-sm text-cream-700">
         Buyer asked for {line.qty}; {line.onHand} available.
         {line.alternates.length > 0
-          ? ' In-stock alternatives, same category first:'
+          ? ' In-stock alternatives, same category first — substituting updates this line in place:'
           : ' No in-stock alternatives found in this category or brand.'}
       </p>
       {line.alternates.length > 0 ? (
         <ul className="mt-3 space-y-2">
-          {line.alternates.map((alt) => (
-            <li
-              key={alt.tenantProductId}
-              className="flex items-center justify-between gap-4 rounded-[10px] border border-cream-300 bg-white px-4 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-cream-900">{alt.name}</p>
-                <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
-                  {alt.sku}
-                  {alt.sameCategory ? ' · same category' : ''}
-                  {alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-4 text-right">
-                <span className="font-mono text-sm tabular-nums text-cream-800">{alt.available} in stock</span>
-                <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
-                <Link
-                  href={`/estimates/${estimateId}`}
-                  className="inline-flex items-center rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 no-underline transition-colors hover:bg-cream-100"
-                >
-                  Substitute
-                </Link>
-              </div>
-            </li>
-          ))}
+          {line.alternates.map((alt) => {
+            const isPending = substitute.isPending && substitutingId === alt.tenantProductId;
+            return (
+              <li
+                key={alt.tenantProductId}
+                className="flex items-center justify-between gap-4 rounded-[10px] border border-cream-300 bg-white px-4 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-cream-900">{alt.name}</p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+                    {alt.sku}
+                    {alt.sameCategory ? ' · same category' : ''}
+                    {alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-4 text-right">
+                  <span className="font-mono text-sm tabular-nums text-cream-800">{alt.available} in stock</span>
+                  <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
+                  <button
+                    type="button"
+                    disabled={substitute.isPending}
+                    onClick={() => void handleSubstitute(alt)}
+                    className="inline-flex items-center rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 transition-colors hover:bg-cream-100 disabled:opacity-50"
+                  >
+                    {isPending ? 'Substituting…' : 'Substitute'}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>
   );
 }
 
-function LineRow({ line, hidden, estimateId }: { line: EnquiryTriageLine; hidden: boolean; estimateId: string }) {
+function LineRow({ line, hidden, estimateId, entryId }: { line: EnquiryTriageLine; hidden: boolean; estimateId: string; entryId: string }) {
   const [open, setOpen] = useState(false);
   const short = line.stock.tone !== 'ok';
   const altLabel = line.alternates.length > 0
@@ -154,7 +175,7 @@ function LineRow({ line, hidden, estimateId }: { line: EnquiryTriageLine; hidden
         <span className="hidden text-right sm:block"><StockCell line={line} /></span>
         <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
       </div>
-      {short && open ? <AlternatesList line={line} estimateId={estimateId} /> : null}
+      {short && open ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
     </div>
   );
 }
@@ -201,7 +222,7 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
         </div>
         <div className="divide-y divide-cream-200">
           {data.lines.map((line) => (
-            <LineRow key={line.id} line={line} hidden={data.hiddenPricing} estimateId={data.estimateId} />
+            <LineRow key={line.id} line={line} hidden={data.hiddenPricing} estimateId={data.estimateId} entryId={entryId} />
           ))}
         </div>
       </div>

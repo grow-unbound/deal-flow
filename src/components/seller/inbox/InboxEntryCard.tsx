@@ -1,7 +1,7 @@
 import dynamic from 'next/dynamic';
 import { ChevronDown } from 'lucide-react';
 import { StatusPill } from '@/components/ui/status-pill';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { cn, formatDate, formatNumberValue } from '@/lib/utils';
 import { InboxActionBar } from './InboxActionBar';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
@@ -94,7 +94,7 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEve
   const title = ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type;
 
   return (
-    <section className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+    <section id={`inbox-entry-${entry.id}`} className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       {isPinnedEntry(entry) ? (
         <span className="absolute right-4 top-4 h-2 w-2 rounded-full bg-ember-400" aria-label="Pinned — needs attention first" />
       ) : null}
@@ -111,7 +111,7 @@ export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEve
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {amountLabel ? <p className="text-sm text-cream-600">{amountLabel}</p> : null}
             {entry.status === 'waiting' && entry.remind_at ? (
-              <StatusPill label={`Snoozed · ${new Date(entry.remind_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`} tone="neutral" />
+              <StatusPill label={`Snoozed until ${formatDate(entry.remind_at)}`} tone="neutral" />
             ) : null}
             {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} /> : null}
           </div>

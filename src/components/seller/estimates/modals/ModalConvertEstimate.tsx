@@ -17,8 +17,9 @@ import { Input } from '@/components/ui/input';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { useEstimateProductSearch } from '@/hooks/useEstimates';
 import { computeLineGrossAmount, computeLineTaxableAmount } from '@/lib/gst';
+import { enquiryStockStatus } from '@/lib/inbox/enquiry-triage';
 import type { EstimateComposerLineInput, EstimateComposerProductSearchRow } from '@/types/estimate-composer';
-import { formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberValue } from '@/lib/utils';
 
 type Target = 'sales_order' | 'invoice';
 
@@ -145,6 +146,10 @@ export function ModalConvertEstimate({
   const existingIncluded = useMemo(() => lines.filter((l) => selected[l.id]), [lines, selected]);
 
   const needsPrice = (l: { unit_price: number }) => promptForMissingPrices && !(l.unit_price > 0);
+  const shortLineIds = useMemo(
+    () => lines.filter((l) => selected[l.id] && enquiryStockStatus(l.qty, l.on_hand).tone !== 'ok').map((l) => l.id),
+    [lines, selected],
+  );
   const enteredPrice = (id: string): number | null => {
     const n = parseFloat(priceInputs[id] ?? '');
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -269,6 +274,24 @@ export function ModalConvertEstimate({
         </DialogHeader>
 
         <DialogBody className="space-y-4 px-6 py-5">
+          {shortLineIds.length > 0 ? (
+            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="text-sm text-amber-900">
+                {shortLineIds.length} line{shortLineIds.length === 1 ? '' : 's'} short or out of stock.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSelected((prev) => {
+                  const next = { ...prev };
+                  for (const id of shortLineIds) next[id] = false;
+                  return next;
+                })}
+                className="shrink-0 text-sm font-semibold text-amber-900 underline-offset-4 hover:underline"
+              >
+                Exclude these
+              </button>
+            </div>
+          ) : null}
           {/* Target selector */}
           {createSalesOrders && createInvoices && (
             <div className="flex gap-2">
@@ -347,6 +370,15 @@ export function ModalConvertEstimate({
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{line.product_name}</p>
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
+                    {(() => {
+                      const stock = enquiryStockStatus(effectiveQty, line.on_hand);
+                      if (stock.tone === 'ok') return null;
+                      return (
+                        <p className={cn('mt-0.5 text-xs font-semibold', stock.tone === 'danger' ? 'text-danger-700' : 'text-amber-800')}>
+                          {stock.label} · {line.on_hand} on hand
+                        </p>
+                      );
+                    })()}
                     {needsPrice(line) ? (
                       <div className="mt-1.5 flex items-center gap-2">
                         <span className="text-xs font-medium text-amber-800">Unit price</span>
