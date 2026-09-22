@@ -26,7 +26,7 @@ export function WorkspaceTabs({ tabs, className }: { tabs: WorkspaceTab[]; class
   return (
     <nav
       className={cn(
-        'mb-5 mt-4 hidden min-w-0 overflow-x-auto rounded-[10px] bg-cream-200 p-[3px] md:mb-6 md:mt-5 md:flex md:rounded-none md:border-b md:border-cream-300 md:bg-transparent md:p-0',
+        'mb-5 mt-4 flex min-w-0 items-center gap-3 overflow-x-auto border-b border-cream-300 md:mb-6 md:mt-5',
         className,
       )}
       aria-label="Workspace tabs"
@@ -38,8 +38,8 @@ export function WorkspaceTabs({ tabs, className }: { tabs: WorkspaceTab[]; class
             key={tab.href}
             href={preserveDetailPane && !active ? `${tab.href}?${SPLIT_PANE_DETAIL_QUERY_KEY}=${SPLIT_PANE_DETAIL_QUERY_VALUE}` : tab.href}
             className={cn(
-              'relative inline-flex h-9 flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-medium text-cream-700 transition-colors hover:text-cream-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-300/70 md:-mb-px md:h-11 md:flex-none md:rounded-none md:border-b-2 md:border-transparent md:px-5 md:text-base',
-              active && 'bg-white text-teal-600 shadow-[0_1px_2px_rgba(31,58,52,0.06)] md:border-ember-500 md:bg-transparent md:text-cream-950 md:shadow-none',
+              'inline-flex shrink-0 items-center justify-center whitespace-nowrap border-b-2 border-transparent px-1 py-2.5 text-body-sm font-medium text-cream-700 transition-all duration-fast ease-standard hover:text-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2',
+              active && 'border-ember-400 text-cream-900 font-semibold',
             )}
           >
             {tab.label}

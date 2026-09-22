@@ -78,7 +78,7 @@ export function BuyerRowContent({
           {formatNumberValue(buyer.invoice_count ?? 0, 'COUNT')} invoices QTD
         </p>
         {overdue ? (
-          <p className="mt-0.5 truncate text-sm text-danger-600">
+          <p className="mt-0.5 truncate text-sm text-danger-500">
             {formatNumberValue(buyer.overdue_amount ?? 0, 'CURRENCY_THRESHOLD')} overdue
           </p>
         ) : buyer.credit_used > 0 ? (

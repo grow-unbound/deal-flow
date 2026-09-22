@@ -255,9 +255,9 @@ const CREDIT_BAR_FILL_CLASS: Record<EstimateComposerCreditTone, string> = {
 };
 
 const CREDIT_BAR_PREVIEW_CLASS: Record<EstimateComposerCreditTone, string> = {
-  success: 'bg-success-400/85',
-  warning: 'bg-warning-400/85',
-  danger: 'bg-danger-400/85',
+  success: 'bg-success-500/85',
+  warning: 'bg-warning-500/85',
+  danger: 'bg-danger-500/85',
 };
 
 export function CreditBar({

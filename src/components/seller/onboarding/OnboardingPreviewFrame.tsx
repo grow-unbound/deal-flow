@@ -214,7 +214,7 @@ function PreviewDesktopHeader({
           <span className="inline-flex items-center gap-2 rounded-[12px] px-2 py-1.5 text-cream-800">
             <Store className="h-4 w-4" />
             <span className="flex flex-col leading-none">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-500">Store</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Store</span>
               <span className="mt-0.5 text-body-sm font-medium">Main</span>
             </span>
             <ChevronDown className="h-3.5 w-3.5 text-cream-500" />

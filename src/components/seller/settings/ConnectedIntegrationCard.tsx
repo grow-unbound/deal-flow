@@ -386,7 +386,7 @@ function StatusPill({
   variant: 'success' | 'info' | 'warning' | 'outline' | 'danger';
   icon?: ReactNode;
 } & ComponentPropsWithoutRef<'span'>) {
-  const base = 'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em]';
+  const base = 'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.08em]';
   const variants: Record<typeof variant, string> = {
     success: 'border-success-50 bg-success-50 text-success-700',
     info: 'border-info-50 bg-info-50 text-info-700',
@@ -938,22 +938,22 @@ function PhaseErrorFlyout({ errors }: { errors: IntegrationEntityError[] }) {
   const [open, setOpen] = useState(false);
   if (errors.length === 0) return null;
   return (
-    <div className="rounded-lg border border-danger-200 bg-danger-50">
+    <div className="rounded-lg border border-danger-50 bg-danger-50">
       <button
         type="button"
         className="flex w-full items-center justify-between px-3 py-2 text-sm"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span className="font-medium text-danger-800">{errors.length} row{errors.length !== 1 ? 's' : ''} skipped</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 text-danger-600 transition-transform', open ? 'rotate-180' : '')} />
+        <span className="font-medium text-danger-700">{errors.length} row{errors.length !== 1 ? 's' : ''} skipped</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 text-danger-500 transition-transform', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
-        <div className="border-t border-danger-200 px-3 pb-2 pt-1 space-y-1">
+        <div className="border-t border-danger-50 px-3 pb-2 pt-1 space-y-1">
           {errors.map((e, i) => (
-            <div key={`${e.entity_type}-${e.external_id ?? i}`} className="text-xs text-danger-900">
+            <div key={`${e.entity_type}-${e.external_id ?? i}`} className="text-xs text-danger-700">
               <span className="font-medium">{labelizePhase(e.entity_type)}</span>
-              {e.external_id ? <span className="text-danger-600"> · {e.external_id}</span> : null}
+              {e.external_id ? <span className="text-danger-500"> · {e.external_id}</span> : null}
               {e.error_reason ? <span className="text-danger-700"> — {e.error_reason}</span> : null}
             </div>
           ))}
@@ -1198,7 +1198,7 @@ export function ConnectedIntegrationCard({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-danger-700 hover:bg-danger-50 hover:text-danger-800"
+                className="text-danger-700 hover:bg-danger-50 hover:text-danger-700"
                 onClick={onDisconnect}
                 disabled={isSyncingNow || isStoppingSync}
               >
@@ -1285,7 +1285,7 @@ export function ConnectedIntegrationCard({
                 className={cn(
                   'rounded-2xl px-4 py-4',
                   aggregateFreshness.status === 'failed'
-                    ? 'border border-danger-200 bg-danger-50'
+                    ? 'border border-danger-50 bg-danger-50'
                     : 'border border-warning-500/30 bg-warning-50',
                 )}
               >
@@ -1294,7 +1294,7 @@ export function ConnectedIntegrationCard({
                     <div className={cn('text-sm font-semibold', aggregateFreshness.status === 'failed' ? 'text-danger-950' : 'text-warning-950')}>
                       {aggregateFreshness.status === 'failed' ? 'Aggregate rebuild needs repair' : 'Aggregate freshness needs attention'}
                     </div>
-                    <p className={cn('mt-1 text-sm leading-6', aggregateFreshness.status === 'failed' ? 'text-danger-900' : 'text-warning-900')}>
+                    <p className={cn('mt-1 text-sm leading-6', aggregateFreshness.status === 'failed' ? 'text-danger-700' : 'text-warning-700')}>
                       {aggregateFreshness.warning_message}
                     </p>
                     {aggregateFreshness.last_retried_at ? (
@@ -1601,7 +1601,7 @@ export function ConnectedIntegrationCard({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-warning-950">Last sync failed</div>
-                    <p className="mt-1 text-sm leading-6 text-warning-900">
+                    <p className="mt-1 text-sm leading-6 text-warning-700">
                       {getLatestJobErrorMessage(failedRun) ??
                         'The sync worker stopped before it could complete. Open History to review the run.'}
                     </p>
@@ -1612,11 +1612,11 @@ export function ConnectedIntegrationCard({
             ) : null}
 
             {recentEntityErrors.length > 0 ? (
-              <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-4">
+              <div className="rounded-2xl border border-danger-50 bg-danger-50 px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-danger-950">Recent entity sync errors</div>
-                    <p className="mt-1 text-sm leading-6 text-danger-900">
+                    <p className="mt-1 text-sm leading-6 text-danger-700">
                       These are the latest entity-map failures captured with `error_reason` for faster debugging.
                     </p>
                   </div>
@@ -1624,7 +1624,7 @@ export function ConnectedIntegrationCard({
                 </div>
                 <div className="mt-3 space-y-2">
                   {recentEntityErrors.map((error: IntegrationEntityError) => (
-                    <div key={`${error.entity_type}-${error.external_id ?? error.updated_at ?? error.error_reason}`} className="rounded-lg border border-danger-200 bg-white px-3 py-2 text-sm text-danger-950">
+                    <div key={`${error.entity_type}-${error.external_id ?? error.updated_at ?? error.error_reason}`} className="rounded-lg border border-danger-50 bg-white px-3 py-2 text-sm text-danger-950">
                       {getEntityErrorLabel(error)}
                     </div>
                   ))}
@@ -1791,12 +1791,12 @@ export function ConnectedIntegrationCard({
                             {scopeLabel} · Since {sinceLabel} · {completedLabel}
                           </p>
                           {job.status === 'cancelled' ? (
-                            <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
+                            <p className="mt-2 rounded-lg border border-success-50 bg-success-50 px-3 py-2 text-sm leading-6 text-success-700">
                               {job.progress?.note ?? 'Cancelled by user request. The worker stopped before the next fetch page.'}
                             </p>
                           ) : null}
                           {job.status === 'failed' ? (
-                            <p className="mt-2 text-sm leading-6 text-warning-800">
+                            <p className="mt-2 text-sm leading-6 text-warning-700">
                               {getLatestJobErrorMessage(job) ?? 'The worker failed before it could record a detailed error.'}
                             </p>
                           ) : null}

@@ -17,6 +17,7 @@ The canonical design system for **Yukti** — the operating layer of the busines
 | **R10** | Brand identity locked — palette (Charcoal + Copper), Voussoir keystone mark, type roles (Mukta + Baloo 2), Paper ground, tagline, status = shape + label. |
 | **R11** | Sidebar **light** in light mode (dark only in dark mode) · Primary buttons **charcoal**, copper reserved to ≤1 accent CTA per screen · Base UI text **15px** with explicit Mukta 700–800 heading tier · Mono swapped **IBM Plex Mono → JetBrains Mono** everywhere · Icon **strokeWidth default 2.0** (context overrides) · **₹ spacing tightened** · Page spacing increased · Full screen coverage spec. |
 | **R11.1** | Base UI text **16px** · Mono swap completed · **Hover + press ("haptic") states** added across Button, Card, ProductCard, Input, Select, nav · Nav/tab-bar icon stroke reduced 2.25→1.75 · ₹ prefix proportional (0.58em) and hugging · Avatar border restored · Select rebuilt as styled dropdown · DatePicker added · Active nav: copper left border + 8% tint bg. |
+| **R12.1 (addendum)** | **Seller cockpit — mobile views** section added: row-priority schema (Primary/Secondary/Tertiary, max 2 equal-weight groups on mobile), mobile-first build order for Today/Inbox/Pulse dashboard/customer-transaction-detail/global search, container-driven one-component guidance, density-by-screen-type table, and a new **Count chip** component (numeric badge, distinct from status `Badge` — no mono/uppercase/glyph). |
 | **R12 (this revision)** | **Primary UI font: Mukta → Inter** (Latin-first; higher x-height; production choice of Razorpay/Groww/Zepto; Noto Sans Devanagari added at Indic localisation time) · **Base: 16px → 14px** (Inter's x-height is ~7% taller than Mukta's; no compensation needed) · **Body weight: 400 → 500** (Inter 500 is optically equivalent to Mukta 400 in density) · **Page title: 22–24px Mukta → 36px Inter 800, letter-spacing -0.02em** · **Active nav: copper left border removed** — background-tint-only active state (`rgba(181,100,47,0.09)` bg, `#221E1A` text, no border) · **Stat card eyebrow label: JetBrains Mono 10px → Inter 500 11px uppercase 0.08em** · **JetBrains Mono scope tightened**: use only when the value is a code/ID/pure number the user would scan or copy; replace with Inter + `tabular-nums` everywhere else · **Type scale expressed as `calc()` multipliers** from a single `--yk-text-base` source of truth so the entire scale shifts when base changes · Supporting/date text: JetBrains Mono removed, now Inter with `tabular-nums` where needed · Tailwind `fontFamily.sans` and `--font-sans` CSS variable both point to Inter (shadcn/ui consumes `--font-sans`, not `--yk-font-ui`). |
 
 ### What did **not** change (locked per R10)
@@ -316,6 +317,89 @@ Always `shape glyph + text label`. Never colour alone.
 
 ### Buyer PWA — 10 screens
 OTP login · Home · Catalog · Product detail · Cart *(**Place order = copper accent**)* · Checkout *(confirm = charcoal)* · Order placed · Orders list · Order detail · Profile.
+
+---
+
+## Seller cockpit — mobile views (`src/components/seller/mobile/`, R12 addendum)
+
+The seller cockpit is desktop-first for reference/entry screens (Products,
+Price Lists, Exports) but several screens — Today, transaction/customer
+detail, enquiry review — are triage screens: glanced at between calls,
+often on a phone, decision made in seconds. These use the seller-mobile
+token override (`[data-app="seller"]` under `@media (max-width: 767px)`
+in globals.css), which intentionally matches buyer-PWA density
+(`--b-text-*`, 15px base) rather than desktop cockpit density
+(`--yk-text-base: 13px`). Do not compact these screens toward desktop
+density — that override exists on purpose.
+
+**Mobile-first build order.** Yukti is a mobile-first system: most owners
+touch Today/Inbox, the Pulse dashboard, customer/transaction detail, and
+global search from a phone between calls, not from a desk. For these four
+surfaces specifically, design and build the mobile layout first — the
+desktop layout is what that mobile layout *expands into* at `≥768px`
+(more columns/detail revealed on the same row structure), not a separately
+designed table that mobile then has to be squeezed into. This reverses the
+implicit "desktop is canonical, mobile is the override" reading of the
+Screen Inventory table above, but only for these four surfaces — Products,
+Price Lists, Exports, Settings, and other reference/entry screens stay
+desktop-first, and the density classification table below is unchanged by
+this.
+
+**Row-priority schema.** Any list/table row rendered on a seller-mobile
+screen (InboxEntryCard, SellerMobileList, SellerMobileTransactionDetail,
+InboxEnquiryPanel, and any future addition to src/components/seller/mobile/
+or src/components/seller/inbox/) must declare its fields as:
+
+- **Primary** — always visible, largest weight in the row (e.g. item
+  name, customer name). Uses `--b-text-body` or `--b-text-section`.
+- **Secondary** — visible when the row has room, smaller weight (e.g.
+  price, due date, status). Uses `--b-text-sub` or `--b-text-label`.
+- **Tertiary** — supporting/reference data that does not change the
+  decision (e.g. sales velocity, SKU on a triage screen). Hidden by
+  default; available via row expand/tap, never forced onto its own
+  wrapped line in the collapsed row.
+
+A row must never render more than 2 field groups at equal visual weight
+on mobile. If a screen currently shows Item/Qty/Price/Stock/Velocity as
+five equal columns (desktop DataTable shape), the mobile version reduces
+to: Primary = item + qty, Secondary = price + stock status (status
+leads, since it's what drives the decision), Tertiary = everything else,
+collapsed.
+
+**One component, container-driven, not two hand-built screens.** Prefer
+building/extending one adaptive row component that reads its own
+rendered width (CSS container queries on the row's wrapping container)
+over maintaining a separate "mobile card" version and "desktop table
+row" version of the same data. This keeps SellerMobileList /
+SellerMobileTransactionDetail / InboxEntryCard / InboxEnquiryPanel and
+their desktop equivalents (v2-table, DataTable) from drifting out of sync
+as fields are added. New seller list/table surfaces should default to this
+pattern rather than forking markup per breakpoint.
+
+**Density is per screen-type, not per device.** Desktop cockpit density
+(13px, compact `--ctl-*`) is for reference/entry screens used by a
+trained operator in a long session (Products, Price Lists, Invoices
+list, ledger-style detail). Seller-mobile density (15px, buyer-PWA
+scale) is for triage/decision screens regardless of what device they're
+viewed on. When adding a new seller screen, classify it against this
+table before picking a density tier:
+
+| Screen type | Example | Density |
+|---|---|---|
+| Triage / decision | Today, Pulse dashboard, enquiry review, dues follow-up, global search | Comfortable (seller-mobile tier — 15px base) |
+| Reference / entry | Products, Price Lists, Invoice line items | Compact (seller-desktop tier — 13px base) |
+
+### Count chip
+
+A numeric badge for unread/item counts (e.g. "6", "13" trailing a list
+row) — distinct from the status `Badge`. Shares `Badge`'s `--ctl-badge-px`
+/ `--ctl-badge-py` / `--ctl-badge-text` sizing tokens (so it shrinks under
+the seller-desktop density override the same way `Badge` does), `rounded-
+pill`, neutral `--cream-*` tones — but **no** uppercase/mono/glyph
+treatment. It is a plain `tabular-nums` numeral, not a status label, so it
+should not borrow `Badge`'s `font-mono uppercase tracking-[0.1em]`
+styling. Use for: unread/item counts on list rows. Do not use for status —
+that's still `Badge`/`StatusChip`.
 
 ---
 

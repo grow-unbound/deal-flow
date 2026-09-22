@@ -92,7 +92,7 @@ export function UpgradePlanDialog({
 
         {sent ? (
           <DialogBody className="flex flex-col items-center gap-3 pb-2 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-50 text-success-600">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-50 text-success-500">
               <Check className="h-6 w-6" strokeWidth={2.5} />
             </div>
             <p className="font-semibold text-cream-900">Request sent</p>

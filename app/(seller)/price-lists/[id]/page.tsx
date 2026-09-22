@@ -94,7 +94,7 @@ export default function PriceListDetailPage() {
       <FeatureGate flag="PRICING_ENGINE">
         <RoleGuard roles={[ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT]}>
           <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">
-            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
+            <div className="rounded-[14px] border border-danger-50 bg-danger-50 p-4 text-base text-danger-700">
               Price list not found.
             </div>
           </div>

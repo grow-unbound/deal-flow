@@ -24,7 +24,7 @@ export interface TransactionalPageHeadDangerAction {
 
 export interface TransactionalPageHeadProps {
   docTypeLabel: string;
-  /** Override doc-type label tone (e.g. overdue → text-danger-600). */
+  /** Override doc-type label tone (e.g. overdue → text-danger-500). */
   docTypeLabelClassName?: string;
   idLine: string;
   title: string;
@@ -95,7 +95,7 @@ export function TransactionalPageHead({
         {dangerAction && DangerIcon ? (
           <button
             type="button"
-            className="cockpit-btn cockpit-btn-ghost cockpit-btn-sm text-danger-700 hover:bg-danger-50 hover:text-danger-800"
+            className="cockpit-btn cockpit-btn-ghost cockpit-btn-sm text-danger-700 hover:bg-danger-50 hover:text-danger-700"
             onClick={dangerAction.onClick}
           >
             <DangerIcon className="h-[13px] w-[13px]" aria-hidden />

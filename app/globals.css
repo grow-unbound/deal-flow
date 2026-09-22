@@ -616,13 +616,13 @@
   }
 
   .doc-type-chip--so {
-    background: var(--amber-50);
-    color: var(--amber-700);
-    border-color: var(--amber-100);
+    background: var(--warning-50);
+    color: var(--warning-700);
+    border-color: var(--warning-50);
   }
 
   .doc-type-chip--so .dot {
-    background: var(--amber-500);
+    background: var(--warning-500);
   }
 
   .doc-type-chip--invoice {
@@ -677,7 +677,7 @@
   }
 
   .doc-status--paid .dot {
-    background: var(--success-600);
+    background: var(--success-500);
   }
 
   .doc-status--void .dot {
@@ -759,7 +759,7 @@
 
   .doc-status--confirmed {
     background: var(--success-50);
-    color: var(--success-800);
+    color: var(--success-700);
     border-color: #c8ddc9;
   }
 
@@ -768,18 +768,18 @@
   }
 
   .doc-status--dispatched {
-    background: var(--amber-50);
-    color: var(--amber-900);
-    border-color: var(--amber-200);
+    background: var(--warning-50);
+    color: var(--warning-700);
+    border-color: var(--warning-50);
   }
 
   .doc-status--dispatched .dot {
-    background: var(--amber-500);
+    background: var(--warning-500);
   }
 
   .doc-status--delivered {
     background: var(--success-50);
-    color: var(--success-900);
+    color: var(--success-700);
     border-color: #a3c9a5;
   }
 
@@ -847,9 +847,9 @@
   }
 
   .callout--warning {
-    border: 1px solid var(--amber-200);
-    background: var(--amber-50);
-    color: var(--amber-700);
+    border: 1px solid var(--warning-50);
+    background: var(--warning-50);
+    color: var(--warning-700);
     border-radius: 12px;
     padding: 12px 14px;
     font-size: var(--yk-text-sm);
@@ -913,8 +913,8 @@
   }
 
   .doc-line-stock-warning {
-    background: var(--amber-50);
-    box-shadow: inset 3px 0 0 var(--amber-500);
+    background: var(--warning-50);
+    box-shadow: inset 3px 0 0 var(--warning-500);
   }
 
   .doc-line-stock-danger {
@@ -948,9 +948,9 @@
   }
 
   .stock-warn-badge {
-    border: 1px solid var(--amber-200);
-    background: var(--amber-50);
-    color: var(--amber-700);
+    border: 1px solid var(--warning-50);
+    background: var(--warning-50);
+    color: var(--warning-700);
   }
 
   .doc-readonly .qty-cell button,

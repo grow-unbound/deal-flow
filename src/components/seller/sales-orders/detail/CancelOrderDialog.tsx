@@ -47,7 +47,7 @@ export function CancelOrderDialog({ open, onOpenChange, onConfirm, isPending }: 
           </p>
           <div className="space-y-2">
             <Label htmlFor="cancel-reason" className="text-base">
-              Reason <span className="text-danger-600">*</span>
+              Reason <span className="text-danger-500">*</span>
             </Label>
             <Textarea
               id="cancel-reason"

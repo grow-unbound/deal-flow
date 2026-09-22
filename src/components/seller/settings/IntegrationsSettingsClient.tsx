@@ -709,7 +709,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
-            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-700">
               {disconnectDialogIntegration ? (
                 <>
                   <div className="font-semibold text-warning-950">
@@ -754,7 +754,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
-            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-700">
               {stopSyncDialogIntegration ? (
                 <>
                   <div className="font-semibold text-warning-950">
@@ -943,12 +943,12 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     wizard.step === index
                       ? 'border-teal-200 bg-teal-50'
                       : index < wizard.step
-                        ? 'border-success-200 bg-success-50'
+                        ? 'border-success-50 bg-success-50'
                         : 'border-cream-200 bg-white',
                   )}
                 >
                   <div className="flex items-center gap-1.5">
-                    {index < wizard.step ? <CheckCircle2 className="h-3.5 w-3.5 text-success-600" /> : null}
+                    {index < wizard.step ? <CheckCircle2 className="h-3.5 w-3.5 text-success-500" /> : null}
                     <div
                       className={cn(
                         'text-xs font-semibold uppercase tracking-[0.12em]',
@@ -961,7 +961,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                   <div
                     className={cn(
                       'mt-1 text-sm font-medium',
-                      index < wizard.step ? 'text-success-900' : 'text-cream-900',
+                      index < wizard.step ? 'text-success-700' : 'text-cream-900',
                     )}
                   >
                     {stepLabel}
@@ -1005,7 +1005,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                                   className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-100 px-3 py-2 last:border-b-0"
                                 >
                                   <div className="flex items-center gap-2 text-sm font-medium text-cream-900">
-                                    <CheckCircle2 className="h-4 w-4 text-success-600" />
+                                    <CheckCircle2 className="h-4 w-4 text-success-500" />
                                     <span>{mapping.source_label}</span>
                                   </div>
                                   <div className="text-sm text-cream-700">{mapping.target_label}</div>
@@ -1070,8 +1070,8 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                         className={cn(
                           'rounded-2xl border px-3 py-2 text-sm',
                           oauthNotice.kind === 'success'
-                            ? 'border-success-200 bg-success-50 text-success-900'
-                            : 'border-warning-500/30 bg-warning-50 text-warning-800',
+                            ? 'border-success-50 bg-success-50 text-success-700'
+                            : 'border-warning-500/30 bg-warning-50 text-warning-700',
                         )}
                       >
                         {oauthNotice.message}
@@ -1107,13 +1107,13 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     ) : null}
 
                     {!isSellerAdmin ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-700">
                         Seller admin access is required to connect and start syncing.
                       </div>
                     ) : null}
 
                     {missingRequired.length > 0 ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-700">
                         Fill the required fields before continuing.
                       </div>
                     ) : null}

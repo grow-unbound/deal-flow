@@ -23,7 +23,7 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
           return (
             <div
               key={l.id}
-              className={cn('flex items-start justify-between gap-3 px-5 py-3', short && 'bg-amber-50/60')}
+              className={cn('flex items-start justify-between gap-3 px-5 py-3', short && 'bg-warning-50/60')}
             >
               <div className="min-w-0 flex-1">
                 <div className="text-base font-medium text-cream-900">{l.name}</div>
@@ -31,7 +31,7 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
                   {l.brand} · {l.sku}
                 </div>
                 {short ? (
-                  <div className="mt-1 text-xs text-amber-800">
+                  <div className="mt-1 text-xs text-warning-700">
                     {l.on_hand} of {l.qty} in stock · {l.qty - l.on_hand} short
                   </div>
                 ) : null}

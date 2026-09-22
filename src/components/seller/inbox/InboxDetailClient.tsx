@@ -36,7 +36,7 @@ function channelIcon(entries: InboxEntry[]) {
   return <Icon className="h-5 w-5" aria-hidden />;
 }
 
-function InboxDetailSkeleton() {
+export function InboxDetailSkeleton() {
   return (
     <div className="mx-auto flex h-full w-full max-w-[1920px] flex-col" role="status" aria-label="Loading">
       <div className="shrink-0 px-4 py-4 md:px-6 md:py-4">

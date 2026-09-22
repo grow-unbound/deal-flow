@@ -35,7 +35,7 @@ export function WhatsAppConnectedCard({ integration, isSellerAdmin, onDisconnect
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-display text-lg text-cream-900">{integration.display_name}</h2>
               <span
-                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] ${
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.08em] ${
                   isConnected
                     ? 'border-success-50 bg-success-50 text-success-700'
                     : 'border-cream-300 bg-transparent text-cream-700'
@@ -54,7 +54,7 @@ export function WhatsAppConnectedCard({ integration, isSellerAdmin, onDisconnect
             type="button"
             variant="ghost"
             size="sm"
-            className="text-danger-700 hover:bg-danger-50 hover:text-danger-800"
+            className="text-danger-700 hover:bg-danger-50 hover:text-danger-700"
             onClick={onDisconnect}
           >
             <Unplug className="h-4 w-4" />

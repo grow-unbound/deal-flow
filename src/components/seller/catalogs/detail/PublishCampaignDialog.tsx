@@ -395,7 +395,7 @@ export function PublishCampaignDialog({
               {whatsappBlockers.map((blocker) => (
                 <div
                   key={blocker}
-                  className="flex items-start gap-2 rounded-[10px] border border-danger-200 bg-danger-50 px-3 py-2.5 text-sm text-danger-800"
+                  className="flex items-start gap-2 rounded-[10px] border border-danger-50 bg-danger-50 px-3 py-2.5 text-sm text-danger-700"
                 >
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
                   <p>{blocker}</p>

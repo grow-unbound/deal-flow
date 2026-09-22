@@ -3,14 +3,15 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, Home, LogOut, Menu, Package, Search, ShoppingBag, Users } from 'lucide-react';
+import { Bell, LogOut, Menu, Search, ShoppingBag, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Pressable } from '@/components/ui/pressable';
+import { MobileBackButton } from '@/components/seller/mobile/MobileBackButton';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
 import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
-import { navGroups, type NavFlagKey, type NavItem } from '@/components/layout/SellerSidebar';
+import { navGroups, DashboardIcon, TodayIcon, type NavFlagKey, type NavItem } from '@/components/layout/SellerSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { useTenant } from '@/contexts/TenantContext';
@@ -50,20 +51,42 @@ function isTransactionsPath(pathname: string) {
   return isSalesPath(pathname);
 }
 
+const SELLER_MOBILE_LANDING_PATHS = new Set([
+  '/dashboard',
+  '/today',
+  '/pulse',
+  '/customers',
+  SELLER_ROUTES.products.root,
+  SELLER_ROUTES.products.brands,
+  SELLER_ROUTES.products.categories,
+  '/brands',
+  '/categories',
+  SELLER_ROUTES.sales.invoices,
+  SELLER_ROUTES.sales.estimates,
+  SELLER_ROUTES.sales.orders,
+  '/invoices',
+  '/estimates',
+  '/sales-orders',
+  SELLER_ROUTES.business.branches,
+  SELLER_ROUTES.business.warehouses,
+  SELLER_ROUTES.business.team,
+  '/locations',
+  '/warehouses',
+  SELLER_ROUTES.market.catalogs,
+  SELLER_ROUTES.market.campaigns,
+  SELLER_ROUTES.market.announcements,
+  SELLER_ROUTES.market.pricing,
+  SELLER_ROUTES.market.customerGroups,
+  SELLER_ROUTES.market.recommendations,
+  '/campaigns',
+  SELLER_ROUTES.settings.general,
+  SELLER_ROUTES.settings.integrations,
+  SELLER_ROUTES.settings.billing,
+  '/buyer-app',
+]);
+
 function isSellerMobileLandingPath(pathname: string) {
-  return (
-    pathname === '/dashboard' ||
-    pathname === '/today' ||
-    pathname === '/pulse' ||
-    pathname === '/customers' ||
-    pathname === '/products' ||
-    pathname === '/estimates' ||
-    pathname === '/sales/estimates' ||
-    pathname === '/sales-orders' ||
-    pathname === '/sales/orders' ||
-    pathname === '/sales/invoices' ||
-    pathname === '/invoices'
-  );
+  return SELLER_MOBILE_LANDING_PATHS.has(pathname);
 }
 
 function isSellerMobileDashboardPath(pathname: string) {
@@ -329,14 +352,7 @@ export function SellerMobileTopbar({
             !chromeVisible && '-translate-y-full',
           )}
         >
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--fg-2)] transition-colors active:bg-[var(--cream-100)]"
-            aria-label="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
+          <MobileBackButton onClick={() => router.back()} />
           <p
             className="min-w-0 flex-1 truncate text-center font-semibold capitalize leading-tight text-cream-900"
             style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)', letterSpacing: '-0.01em' }}
@@ -355,11 +371,11 @@ export function SellerMobileTopbar({
 }
 
 const bottomTabs = [
-  { label: 'Today', href: SELLER_ROUTES.today, icon: Home },
+  { label: 'Home', href: SELLER_ROUTES.pulse, icon: DashboardIcon },
+  { label: 'Today', href: SELLER_ROUTES.today, icon: TodayIcon },
+  { label: 'Search', href: '/search', icon: Search },
   { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: ShoppingBag },
-  { label: 'Search', href: '/search', icon: Search, center: true },
   { label: 'Customers', href: '/customers', icon: Users },
-  { label: 'Products', href: '/products', icon: Package },
 ];
 
 export function SellerMobileBottomTabs() {
@@ -384,23 +400,13 @@ export function SellerMobileBottomTabs() {
           return (
             <Pressable key={tab.href} asChild haptic>
               <Link href={tab.href} className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-center">
-                <span
-                  className={cn(
-                    'flex items-center justify-center',
-                    tab.center
-                      ? 'h-10 w-10 rounded-full bg-cream-900 text-white shadow-sm'
-                      : active
-                        ? 'text-ember-500'
-                        : 'text-cream-600',
-                  )}
-                >
-                  <Icon size={tab.center ? 19 : 21} strokeWidth={2} />
+                <span className={cn('flex items-center justify-center', active ? 'text-ember-500' : 'text-cream-600')}>
+                  <Icon size={21} strokeWidth={2} />
                 </span>
                 <span
                   className={cn(
-                    'max-w-full truncate text-[11px] font-semibold leading-tight tracking-0',
+                    'max-w-full truncate text-xs font-semibold leading-tight tracking-0',
                     active ? 'text-ember-500' : 'text-cream-600',
-                    tab.center && 'text-cream-700',
                   )}
                 >
                   {tab.label}

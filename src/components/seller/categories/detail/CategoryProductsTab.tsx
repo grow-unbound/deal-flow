@@ -160,7 +160,7 @@ export function CategoryProductsTab({ categoryId }: CategoryProductsTabProps) {
                   </td>
                   <td className="px-3 py-3 text-right">
                     {onHand <= 0 ? (
-                      <span className="rounded-full bg-danger-100 px-2 py-0.5 text-xs font-medium text-danger-700">OOS</span>
+                      <span className="rounded-full bg-danger-50 px-2 py-0.5 text-xs font-medium text-danger-700">OOS</span>
                     ) : (
                       <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
                     )}

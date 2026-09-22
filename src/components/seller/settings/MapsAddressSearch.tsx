@@ -104,7 +104,7 @@ export function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearch
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-white px-3 py-[10px] text-left transition-colors hover:bg-cream-50"
+        className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-white px-3 py-2.5 text-left transition-colors hover:bg-cream-50"
       >
         <div className="flex min-w-0 items-center gap-3">
           <MapPin size={14} className="shrink-0 text-teal-600" />
@@ -163,7 +163,7 @@ export function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearch
                     type="button"
                     disabled={fetchingIndex !== null}
                     onClick={() => void handleSelect(s, i)}
-                    className="flex w-full items-start gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors hover:bg-cream-100 disabled:opacity-60"
+                    className="flex w-full items-start gap-3 rounded-[8px] px-3 py-2.5 text-left transition-colors hover:bg-cream-100 disabled:opacity-60"
                   >
                     <MapPin size={14} className="mt-0.5 shrink-0 text-cream-500" />
                     <p className="text-sm text-cream-900">

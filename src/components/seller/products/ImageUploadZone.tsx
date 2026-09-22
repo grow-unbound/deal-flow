@@ -75,7 +75,7 @@ function SortableImageItem({ id, url, index, onRemove }: SortableImageItemProps)
       <button
         type="button"
         onClick={() => onRemove(url)}
-        className="absolute top-0.5 right-0.5 p-0.5 rounded bg-white/80 text-cream-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-0.5 right-0.5 p-0.5 rounded bg-white/80 text-cream-500 hover:text-danger-500 opacity-0 group-hover:opacity-100 transition-opacity"
         aria-label={`Remove image ${index + 1}`}
       >
         <X size={12} />

@@ -22,6 +22,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useCategoriesLandingMetrics,
@@ -74,6 +75,7 @@ function CategoriesLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.products.categories);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
   useSellerPageView();
@@ -156,14 +158,14 @@ function CategoriesLandingContent({
 
   const showRefreshingState = isLoading && !data;
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading categories"
         showLeading
         eyebrowWidth="w-20"
         titleWidth="w-44"
         subtitleWidth="w-52"
-        showHeader={false}
+        showTransactionTabs
       />
     ) : (
       <CategoriesLandingSkeleton />

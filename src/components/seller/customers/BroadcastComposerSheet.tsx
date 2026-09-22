@@ -217,7 +217,7 @@ export function BroadcastComposerSheet({
 
       <FormOverlayBody className="space-y-5">
         {qualityBanner?.showBanner ? (
-          <div className="flex items-start gap-2 rounded-[10px] border border-warning-300 bg-warning-50 px-3 py-2.5 text-sm text-warning-800">
+          <div className="flex items-start gap-2 rounded-[10px] border border-warning-50 bg-warning-50 px-3 py-2.5 text-sm text-warning-700">
             <Info size={16} className="mt-0.5 shrink-0" />
             <p>{qualityBanner.message}</p>
           </div>
@@ -387,7 +387,7 @@ export function BroadcastComposerSheet({
                 onChange={setScheduledDate}
                 mode="overlay"
                 showSummary={false}
-                triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-[#B5642F] focus-visible:ring-2 focus-visible:ring-[#B5642F]/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
+                triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-ember-400 focus-visible:ring-2 focus-visible:ring-ember-400/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
               />
 
               <div className="space-y-1.5">
@@ -396,7 +396,7 @@ export function BroadcastComposerSheet({
                   type="time"
                   value={scheduledTime}
                   onChange={(event) => setScheduledTime(event.target.value)}
-                  className="h-[42px] rounded-[10px] border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] focus-visible:border-[#B5642F] focus-visible:ring-[#B5642F]/20"
+                  className="h-[42px] rounded-[10px] border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] focus-visible:border-ember-400 focus-visible:ring-ember-400/20"
                 />
               </div>
             </div>
