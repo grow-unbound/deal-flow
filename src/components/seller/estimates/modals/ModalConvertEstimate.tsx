@@ -276,8 +276,8 @@ export function ModalConvertEstimate({
 
         <DialogBody className="space-y-4 px-6 py-5">
           {allShortLineIds.length > 0 ? (
-            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <p className="text-sm text-amber-900">
+            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-warning-50 bg-warning-50 px-3 py-2.5">
+              <p className="text-sm text-warning-700">
                 {allShortLineIds.length} line{allShortLineIds.length === 1 ? '' : 's'} short or out of stock
                 {selectedShortCount < allShortLineIds.length ? ` · ${allShortLineIds.length - selectedShortCount} excluded` : ''}.
               </p>
@@ -289,7 +289,7 @@ export function ModalConvertEstimate({
                   for (const id of allShortLineIds) next[id] = include;
                   return next;
                 })}
-                className="shrink-0 text-sm font-semibold text-amber-900 underline-offset-4 hover:underline"
+                className="shrink-0 text-sm font-semibold text-warning-700 underline-offset-4 hover:underline"
               >
                 {selectedShortCount === 0 ? `Include these (${allShortLineIds.length})` : `Exclude these (${selectedShortCount})`}
               </button>
@@ -380,13 +380,13 @@ export function ModalConvertEstimate({
                     <p className="truncate text-base font-medium text-cream-900">{line.product_name}</p>
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
                     {stock.tone !== 'ok' ? (
-                      <p className={cn('mt-0.5 text-xs font-semibold', stock.tone === 'danger' ? 'text-danger-700' : 'text-amber-800')}>
+                      <p className={cn('mt-0.5 text-xs font-semibold', stock.tone === 'danger' ? 'text-danger-700' : 'text-warning-700')}>
                         {stock.label} · {line.on_hand} on hand
                       </p>
                     ) : null}
                     {needsPrice(line) ? (
                       <div className="mt-1.5 flex items-center gap-2">
-                        <span className="text-xs font-medium text-amber-800">Unit price</span>
+                        <span className="text-xs font-medium text-warning-700">Unit price</span>
                         <Input
                           type="number"
                           min={0.01}

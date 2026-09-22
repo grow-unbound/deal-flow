@@ -165,7 +165,7 @@ export function BuyerUsersSection({ buyerId, users }: BuyerUsersSectionProps) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-danger-600 hover:text-danger-700"
+                      className="h-8 px-2 text-danger-500 hover:text-danger-700"
                       disabled={deleteMutation.isPending}
                       onClick={() => setDeleteUser(user)}
                     >

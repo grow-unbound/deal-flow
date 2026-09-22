@@ -251,7 +251,7 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
                   />
                   <CommandList>
                     {buyersQuery.isError ? (
-                      <div className="px-3 py-6 text-center text-sm text-red-600">
+                      <div className="px-3 py-6 text-center text-sm text-danger-500">
                         Unable to search buyers.
                       </div>
                     ) : buyers.length === 0 && !buyerResultsUpdating ? (
@@ -295,7 +295,7 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
           )}
 
         {formError && (
-            <p className="text-sm text-red-600 xl:col-span-3">{formError}</p>
+            <p className="text-sm text-danger-500 xl:col-span-3">{formError}</p>
         )}
 
         <MutationButton

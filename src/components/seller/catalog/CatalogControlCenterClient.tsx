@@ -196,7 +196,7 @@ export function CatalogControlCenterClient(): ReactNode {
       />
 
       {hasOperationalIssues ? (
-        <p className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 p-3 text-body-sm text-amber-900">
+        <p className="flex items-start gap-2 rounded-[8px] border border-warning-50 bg-warning-50 p-3 text-body-sm text-warning-700">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           Fixing product data and photos improves buyer trust, but it does not block saving catalog settings.
         </p>

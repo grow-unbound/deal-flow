@@ -47,7 +47,7 @@ function StepNode({ state }: { state: TransactionalStatusStepState }) {
   if (state === 'current') {
     return (
       <div
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400 text-white ring-4 ring-amber-100 animate-pulse"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning-500 text-white ring-4 ring-warning-50 animate-pulse"
         aria-hidden
       />
     );
@@ -55,7 +55,7 @@ function StepNode({ state }: { state: TransactionalStatusStepState }) {
   if (state === 'current_danger') {
     return (
       <div
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger-500 text-white ring-4 ring-danger-100 animate-pulse"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger-500 text-white ring-4 ring-danger-50 animate-pulse"
         aria-hidden
       />
     );
@@ -63,7 +63,7 @@ function StepNode({ state }: { state: TransactionalStatusStepState }) {
   if (state === 'cancelled') {
     return (
       <div
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger-100 text-danger-600"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger-50 text-danger-500"
         aria-hidden
       >
         <X className="h-3 w-3" strokeWidth={2.4} />

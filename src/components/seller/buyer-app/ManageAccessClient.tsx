@@ -418,7 +418,7 @@ function AccessTable({
                         onCheckedChange={(checked) => onToggle(buyer.id, checked)}
                       />
                       {buyer.is_suggested ? (
-                        <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <span className="inline-flex rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold text-warning-700">
                           Suggested
                         </span>
                       ) : null}

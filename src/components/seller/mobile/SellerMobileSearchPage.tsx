@@ -145,7 +145,7 @@ export function SellerMobileSearchPage() {
 
         {!hasQuery && recent.length > 0 ? (
           <section>
-            <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-500">
+            <div className="mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-[0.1em] text-cream-500">
               <Clock size={12} />
               Recent
             </div>
@@ -185,7 +185,7 @@ export function SellerMobileSearchPage() {
           <div className="space-y-4">
             {groups.map((group) => (
               <section key={group.entity_type}>
-                <div className="mb-2 flex items-center justify-between px-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-500">
+                <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-[0.1em] text-cream-500">
                   <span>{ENTITY_LABEL[group.entity_type] ?? group.entity_type}</span>
                   <span className="font-mono">{group.items.length}</span>
                 </div>

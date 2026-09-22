@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
+import { CountChip } from '@/components/ui/badge';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
 import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
@@ -36,7 +37,7 @@ function ChannelBadge({ channel }: { channel: InboxChannel }) {
   const Icon = CHANNEL_ICON[channel] ?? Bot;
   return (
     <span className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-cream-300 bg-white text-cream-700" title={channel}>
-      <Icon className="h-4 w-4" aria-hidden />
+      <Icon className="h-4 w-4" strokeWidth={1.85} aria-hidden />
     </span>
   );
 }
@@ -48,7 +49,7 @@ function buyerListItem(buyer: InboxGroupedBuyer, activeId: string | undefined): 
     leading: <ChannelBadge channel={sourceChannelForEntries(buyer.entries)} />,
     primary: buyer.buyerName,
     supporting: buildListSupportingLine(buyer.entries),
-    trailing: buyer.totalCount > 1 ? String(buyer.totalCount) : undefined,
+    trailing: buyer.totalCount > 1 ? <CountChip>{buyer.totalCount}</CountChip> : undefined,
     badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
     onClick: () => {

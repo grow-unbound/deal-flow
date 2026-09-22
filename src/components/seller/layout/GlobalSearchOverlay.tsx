@@ -266,18 +266,18 @@ export function GlobalSearchOverlay({ className }: Props) {
           onClick={() => setOpen(true)}
           className={cn(
             'h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--bg-surface)] pl-10 pr-24',
-            'text-[14px] font-medium tracking-[-0.01em] text-[#221E1A] placeholder:text-cream-500',
+            'text-base font-medium tracking-[-0.01em] text-cream-900 placeholder:text-cream-500',
             'transition-colors duration-fast outline-none hover:border-cream-400 focus:border-cream-400 focus:bg-white focus:ring-2 focus:ring-ember-400/20',
           )}
         />
-        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-cream-300 bg-cream-100 px-2 py-0.5 text-[11px] font-medium text-cream-500 sm:inline-flex">
+        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-cream-300 bg-cream-100 px-2 py-0.5 text-xs font-medium text-cream-500 sm:inline-flex">
           ⌘K
         </kbd>
         {query ? (
           <button
             type="button"
             onClick={() => handleQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-cream-500 transition-colors hover:text-[#221E1A]"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-cream-500 transition-colors hover:text-cream-900"
             aria-label="Clear search"
           >
             <X size={14} strokeWidth={2} />
@@ -328,9 +328,9 @@ export function GlobalSearchOverlay({ className }: Props) {
                         className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-left transition-colors hover:bg-[rgba(34,30,26,0.04)]"
                       >
                         <Icon size={15} className="shrink-0 text-cream-500" />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#221E1A]">{item.label}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-cream-900">{item.label}</span>
                         {item.sublabel ? <span className="shrink-0 truncate text-xs text-cream-500">{item.sublabel}</span> : null}
-                        <span className="shrink-0 rounded-full bg-cream-100 px-2 py-0.5 text-[10px] text-cream-500">
+                        <span className="shrink-0 rounded-full bg-cream-100 px-2 py-0.5 text-xs text-cream-500">
                           {ENTITY_LABEL[item.entity_type] ?? item.entity_type}
                         </span>
                       </button>
@@ -366,7 +366,7 @@ export function GlobalSearchOverlay({ className }: Props) {
                             className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-left transition-colors hover:bg-[rgba(34,30,26,0.04)]"
                           >
                             <Icon size={15} className="shrink-0 text-cream-500" />
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#221E1A]">{item.label}</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-cream-900">{item.label}</span>
                             {item.sublabel ? <span className="max-w-[160px] shrink-0 truncate text-xs text-cream-500">{item.sublabel}</span> : null}
                           </button>
                         ))}

@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { DetailCardRenderer, DistributionList, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import { formatNumberValue } from '@/lib/utils';
 import type { LocationDetailResponse } from '@/hooks/useLocations';
+import { CHART_AXIS_TICK_COLOR, CHART_BAR_ACCENT, CHART_TICK_FONT_SIZE } from '@/lib/theme/chart-colors';
 
 interface LocationOverviewTabProps {
   data: LocationDetailResponse['overview'];
@@ -34,18 +35,18 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
               <BarChart data={data.gmv_trend} barSize={28}>
                 <XAxis
                   dataKey="week_label"
-                  tick={{ fontSize: 11, fill: '#8A7E74' }}
+                  tick={{ fontSize: CHART_TICK_FONT_SIZE, fill: CHART_AXIS_TICK_COLOR }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   tickFormatter={(v) => formatNumberValue(v, 'CURRENCY_THRESHOLD')}
-                  tick={{ fontSize: 11, fill: '#8A7E74' }}
+                  tick={{ fontSize: CHART_TICK_FONT_SIZE, fill: CHART_AXIS_TICK_COLOR }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip formatter={(v: number) => [formatNumberValue(v, 'CURRENCY_THRESHOLD'), 'GMV']} />
-                <Bar dataKey="gmv" fill="#0D9488" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="gmv" fill={CHART_BAR_ACCENT} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : null}

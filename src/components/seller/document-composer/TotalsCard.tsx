@@ -81,15 +81,15 @@ export function TotalsCard({
             <TotalRow label="Grand total" value={formatNumberValue(totals.grand_total, 'CURRENCY_EXACT')} previous={previousTotals?.grand_total ?? null} strong />
           </div>
           {stagedChanges && stagedChanges.length > 0 ? (
-            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-base text-amber-900">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">Staged changes</p>
+            <div className="mt-4 space-y-2 rounded-[10px] border border-warning-50 bg-warning-50 px-3 py-3 text-base text-warning-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-warning-700">Staged changes</p>
               {stagedChanges.map((row) => (
                 <div key={row.label} className="flex items-start justify-between gap-4">
-                  <span className="text-amber-800">{row.label}</span>
-                  <span className="max-w-[180px] text-right font-medium text-amber-950">{row.value}</span>
+                  <span className="text-warning-700">{row.label}</span>
+                  <span className="max-w-[180px] text-right font-medium text-warning-700">{row.value}</span>
                 </div>
               ))}
-              {stagedCallout ? <div className="pt-2 text-sm leading-[1.5] text-amber-900">{stagedCallout}</div> : null}
+              {stagedCallout ? <div className="pt-2 text-sm leading-[1.5] text-warning-700">{stagedCallout}</div> : null}
             </div>
           ) : null}
         </div>

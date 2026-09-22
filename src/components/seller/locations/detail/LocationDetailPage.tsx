@@ -43,17 +43,17 @@ function LocationProfileStrip({
     <div className="mt-4 rounded-[14px] border border-cream-200 bg-white p-4">
       <div className="grid gap-4 md:grid-cols-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Phone</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Phone</p>
           <p className="mt-1 text-sm font-medium text-cream-900">{phoneNumber ?? '—'}</p>
         </div>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Status</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Status</p>
           <p className="mt-1 text-sm font-medium text-cream-900">
             {status === 'active' ? 'Active' : 'Inactive'}
           </p>
         </div>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Associated users</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Associated users</p>
           {users.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-2">
               {users.map((user) => (
@@ -153,7 +153,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
           value: formatNumberValue(meta.overdue_amount, 'CURRENCY_THRESHOLD'),
           sub:
             meta.overdue_amount > 0 ? (
-              <span className="text-danger-600">across {meta.overdue_invoice_count} invoices</span>
+              <span className="text-danger-500">across {meta.overdue_invoice_count} invoices</span>
             ) : undefined,
         },
         {

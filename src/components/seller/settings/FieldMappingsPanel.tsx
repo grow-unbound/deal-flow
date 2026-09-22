@@ -89,7 +89,7 @@ export function FieldMappingsPanel({ tenantIntegrationId }: { tenantIntegrationI
                       <StatusTag
                         label={row.is_active ? 'Active' : 'Inactive'}
                         tone={row.is_active ? 'success' : 'neutral'}
-                        className="text-[11px]"
+                        className="text-xs"
                       />
                     </td>
                   </tr>

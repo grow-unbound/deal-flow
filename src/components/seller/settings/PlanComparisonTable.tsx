@@ -27,7 +27,7 @@ function Cell({
   if (val === true) {
     return (
       <td className={cn('border-b border-cream-100 px-3 py-3 text-center align-middle', current && 'bg-teal-50/80')}>
-        <Check className="mx-auto h-4 w-4 text-success-600" strokeWidth={2.5} aria-label="Included" />
+        <Check className="mx-auto h-4 w-4 text-success-500" strokeWidth={2.5} aria-label="Included" />
       </td>
     );
   }

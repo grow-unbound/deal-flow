@@ -352,7 +352,7 @@ export function WarehousesLandingClient({
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.sold_sku_count > 0 ? row.sold_sku_count : '—'}</td>
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.sold_units > 0 ? formatNumberValue(row.sold_units, 'COUNT') : '—'}</td>
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
-              <td className={cn('px-3 py-3 text-sm font-medium', stockTone(row.stock_status) === 'danger' ? 'text-red-700' : stockTone(row.stock_status) === 'warning' ? 'text-amber-700' : 'text-emerald-700')}>
+              <td className={cn('px-3 py-3 text-sm font-medium', stockTone(row.stock_status) === 'danger' ? 'text-danger-700' : stockTone(row.stock_status) === 'warning' ? 'text-warning-700' : 'text-emerald-700')}>
                 {stockLabel(row.stock_status)}
               </td>
               <td className="px-3 py-3 text-right text-cream-500">

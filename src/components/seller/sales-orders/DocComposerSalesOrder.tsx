@@ -965,7 +965,7 @@ export function DocComposerSalesOrder({
             <Button
               type="button"
               variant="accent"
-              className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
+              className={effectiveShortLines.length > 0 ? 'gap-2 border-warning-500 text-warning-700 hover:bg-warning-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
               disabled={(primaryDisabled || isSubmitting) && submitAction !== 'confirm'}
               onClick={() => void handleConfirmClick()}
             >
@@ -1000,8 +1000,8 @@ export function DocComposerSalesOrder({
           <DialogBody>
             <div className="space-y-3">
               {effectiveShortLines.map((line) => (
-                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                  <p className="font-medium text-amber-900">{line.product_name}</p>
+                <div key={line.line_id} className="rounded-[12px] border border-warning-50 bg-warning-50 px-3 py-3 text-sm text-warning-700">
+                  <p className="font-medium text-warning-700">{line.product_name}</p>
                   <p className="mt-1">
                     Ordered {line.qty}, only {line.on_hand} on hand. Backorder {line.shortfall}.
                   </p>
@@ -1020,7 +1020,7 @@ export function DocComposerSalesOrder({
             <Button
               type="button"
               variant="secondary"
-              className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
+              className="gap-2 border-warning-500 text-warning-700 hover:bg-warning-50"
               disabled={!pendingConfirmOrderId || isSubmitting}
               onClick={() => {
                 if (!pendingConfirmOrderId || isLeavingRef.current) return;

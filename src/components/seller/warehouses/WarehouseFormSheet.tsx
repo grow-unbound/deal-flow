@@ -518,7 +518,7 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
                                 type="button"
                                 onClick={() => upsertSelectedUser(member, !selected)}
                                 className={[
-                                  'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                  'flex w-full items-center justify-between rounded-[8px] px-3 py-2.5 text-left transition-colors',
                                   selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
                                 ].join(' ')}
                               >
@@ -569,7 +569,7 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
               />
 
               {form.formState.errors.root ? (
-                <p className="text-body-sm text-danger-600">{form.formState.errors.root.message}</p>
+                <p className="text-body-sm text-danger-500">{form.formState.errors.root.message}</p>
               ) : null}
             </FormOverlayBody>
 

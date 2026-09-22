@@ -46,7 +46,7 @@ export function WhatsAppCreditsCard({
       </div>
 
       {lowBalance ? (
-        <div className="flex items-start gap-2 rounded-lg border border-warning-500/40 bg-warning-50 px-3 py-2 text-body-sm text-warning-900">
+        <div className="flex items-start gap-2 rounded-lg border border-warning-500/40 bg-warning-50 px-3 py-2 text-body-sm text-warning-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-700" aria-hidden />
           <span>
             {empty

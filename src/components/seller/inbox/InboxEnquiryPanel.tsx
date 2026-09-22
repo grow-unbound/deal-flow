@@ -45,7 +45,7 @@ function StockCell({ line }: { line: EnquiryTriageLine }) {
         className={cn(
           'text-sm font-semibold',
           tone === 'danger' && 'text-danger-700',
-          tone === 'warning' && 'text-amber-800',
+          tone === 'warning' && 'text-warning-700',
           tone === 'ok' && 'text-cream-700',
         )}
       >
@@ -57,9 +57,9 @@ function StockCell({ line }: { line: EnquiryTriageLine }) {
   );
 }
 
-function VelocityCell({ velocity }: { velocity: EnquiryVelocity }) {
+function VelocityCell({ velocity, align = 'end' }: { velocity: EnquiryVelocity; align?: 'start' | 'end' }) {
   return (
-    <span className="flex flex-col items-end">
+    <span className={cn('flex flex-col', align === 'end' ? 'items-end' : 'items-start')}>
       <span className="font-mono text-sm tabular-nums text-cream-800">{velocityLabel(velocity)}</span>
       {velocity.daysCover != null ? (
         <span className="font-mono text-xs tabular-nums text-cream-500">{Math.round(velocity.daysCover)}d cover</span>
@@ -139,6 +139,10 @@ function LineRow({ line, hidden, estimateId, entryId }: { line: EnquiryTriageLin
   const altLabel = line.alternates.length > 0
     ? `${line.alternates.length} alternative${line.alternates.length === 1 ? '' : 's'}`
     : 'No alternatives';
+  // Tertiary metadata (velocity) stays collapsed on mobile — it doesn't change the
+  // fulfil/don't-fulfil decision. Short/low-stock rows expand into substitute
+  // alternatives too; ok-stock rows just reveal velocity on tap.
+  const expandLabel = short ? altLabel : 'Details';
 
   return (
     <div>
@@ -156,27 +160,31 @@ function LineRow({ line, hidden, estimateId, entryId }: { line: EnquiryTriageLin
             {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
           </p>
           {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
-          {short ? (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950"
-            >
-              {altLabel}
-              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
-            </button>
-          ) : null}
-          <div className="mt-1.5 flex gap-4 sm:hidden">
+          {/* Secondary — stock status leads on mobile since it drives the decision. */}
+          <div className="mt-1.5 sm:hidden">
             <StockCell line={line} />
-            <VelocityCell velocity={line.velocity} />
           </div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950 sm:hidden"
+          >
+            {expandLabel}
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
+          </button>
         </div>
         <span className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</span>
         <span className="text-right">{priceCell(line, hidden)}</span>
         <span className="hidden text-right sm:block"><StockCell line={line} /></span>
         <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
       </div>
+      {/* Tertiary — collapsed by default on mobile, revealed on tap. */}
+      {open ? (
+        <div className="px-4 pb-3 sm:hidden">
+          <VelocityCell velocity={line.velocity} align="start" />
+        </div>
+      ) : null}
       {short && open ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
     </div>
   );

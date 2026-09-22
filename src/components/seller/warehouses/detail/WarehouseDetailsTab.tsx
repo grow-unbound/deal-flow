@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/utils';
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
       <p className={mono ? 'font-mono text-base text-cream-900' : 'text-base text-cream-900'}>{value}</p>
     </div>
   );

@@ -107,7 +107,7 @@ export function SellerMobileTransactionDetail({
         </section>
 
         <section className={cn(BUYER_CARD_RADIUS_CLASS, 'border border-[var(--border-1)] bg-white px-4 py-4')}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Buyer</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Buyer</p>
           <p className="mt-2 truncate text-[var(--b-text-body)] font-semibold text-cream-900">
             {buyerName || 'No buyer assigned'}
           </p>
@@ -177,7 +177,7 @@ export function SellerMobileTransactionDetail({
 
         {notes ? (
           <section className={cn(BUYER_CARD_RADIUS_CLASS, 'border border-[var(--border-1)] bg-white px-4 py-4')}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Notes</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Notes</p>
             <p className="mt-2 whitespace-pre-wrap text-[var(--b-text-body)] leading-6 text-[var(--cream-800)]">{notes}</p>
           </section>
         ) : null}

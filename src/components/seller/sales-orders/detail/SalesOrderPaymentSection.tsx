@@ -74,7 +74,7 @@ export function SalesOrderPaymentSection({ uiStatus, invoice, orderTotal, buyer 
   const used = Math.min(limit, p.creditNumerator);
   const pct = limit > 0 ? Math.round((used / limit) * 1000) / 10 : 0;
   const available = Math.max(0, limit - used);
-  const barClass = pct >= 90 ? 'bg-danger-500' : pct >= 80 ? 'bg-amber-500' : 'bg-teal-500';
+  const barClass = pct >= 90 ? 'bg-danger-500' : pct >= 80 ? 'bg-warning-500' : 'bg-teal-500';
 
   return (
     <div>
