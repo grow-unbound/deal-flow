@@ -58,12 +58,15 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
     }
   }
 
+  const invoiceCount = summary?.entryIds.length ?? 0;
   const subtitle = summary
-    ? [
-        `${summary.totalAmountLabel} dues`,
-        summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null,
-        summary.dueCount > 0 ? `${summary.dueCount} due soon` : null,
-      ].filter(Boolean).join(' · ')
+    ? invoiceCount > 0 && summary.overdueCount === invoiceCount
+      ? `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'} · ${summary.totalAmountLabel} overdue`
+      : [
+          `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`,
+          `${summary.totalAmountLabel} due`,
+          summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null,
+        ].filter(Boolean).join(' · ')
     : 'Dues';
 
   return (

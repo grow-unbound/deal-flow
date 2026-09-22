@@ -163,7 +163,6 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 md:px-8">
         {isDesktop ? (
           <div className="space-y-5">
-            <p className="text-sm text-cream-600">{openCount} open item{openCount === 1 ? '' : 's'}</p>
             {collectionGroup ? (
               <InboxCollectionGroupCard
                 group={collectionGroup}

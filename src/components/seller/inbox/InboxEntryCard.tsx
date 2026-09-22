@@ -8,6 +8,7 @@ import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
 import { isPinnedEntry } from '@/lib/inbox/inbox-grouping';
 import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
+import { buildCreditLimitSupportingLine } from '@/lib/inbox/inbox-entry-copy';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
@@ -91,7 +92,9 @@ interface InboxEntryCardProps {
 
 export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEvents, localEvents, applyLocalAction }: InboxEntryCardProps) {
   const agingTier = typeof entry.metadata.aging_tier === 'string' ? entry.metadata.aging_tier : null;
-  const amountLabel = buildEntryAmountLabel(entry);
+  const amountLabel = entry.entry_type === 'credit_limit_breach'
+    ? buildCreditLimitSupportingLine(entry)
+    : buildEntryAmountLabel(entry);
   const isEnquiry = entry.entry_type === 'new_enquiry';
   const estimateNumber = typeof entry.metadata.estimate_number === 'string' ? entry.metadata.estimate_number : null;
   const title = ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type;
