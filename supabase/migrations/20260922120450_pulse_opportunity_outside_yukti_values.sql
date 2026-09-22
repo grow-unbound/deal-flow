@@ -115,7 +115,7 @@ BEGIN
       SELECT id FROM app.buyers WHERE tenant_id = p_tenant_id AND buyer_app_enabled
     ),
     assisted_all AS (
-      SELECT bp.buyer_id, b.business_name, bp.invoice_value
+      SELECT bp.buyer_id, b.business_name, bp.invoice_value, bp.invoice_count
       FROM app.metrics_buyer_period_summary bp
       JOIN app.buyers b ON b.id = bp.buyer_id
       WHERE bp.tenant_id = p_tenant_id AND bp.grain = 'quarter' AND bp.period_start = v_quarter.period_start AND bp.deleted_at IS NULL
@@ -123,10 +123,10 @@ BEGIN
         AND NOT EXISTS (SELECT 1 FROM enabled_buyer_ids eb WHERE eb.id = bp.buyer_id)
     ),
     assisted AS (
-      SELECT * FROM assisted_all ORDER BY invoice_value DESC, business_name LIMIT 20
+      SELECT * FROM assisted_all ORDER BY invoice_value DESC, business_name LIMIT 100
     )
     SELECT
-      COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', buyer_id, 'name', business_name, 'invoice_value_90d', invoice_value)) FROM assisted), '[]'::jsonb),
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', buyer_id, 'name', business_name, 'invoice_value_qtd', invoice_value, 'invoice_count_qtd', invoice_count)) FROM assisted), '[]'::jsonb),
       (SELECT COUNT(*) FROM assisted_all)
     INTO v_assisted_without_access, v_assisted_without_access_count;
   ELSE
@@ -207,7 +207,7 @@ BEGIN
       SELECT id FROM app.buyers WHERE tenant_id = p_tenant_id AND buyer_app_enabled
     ),
     assisted_all AS (
-      SELECT bp.buyer_id, b.business_name, bp.invoice_value
+      SELECT bp.buyer_id, b.business_name, bp.invoice_value, bp.invoice_count
       FROM app.metrics_buyer_period_summary bp
       JOIN app.buyers b ON b.id = bp.buyer_id
       WHERE bp.tenant_id = p_tenant_id AND bp.grain = 'quarter' AND bp.period_start = v_quarter.period_start AND bp.deleted_at IS NULL
@@ -215,10 +215,10 @@ BEGIN
         AND NOT EXISTS (SELECT 1 FROM enabled_buyer_ids eb WHERE eb.id = bp.buyer_id)
     ),
     assisted AS (
-      SELECT * FROM assisted_all ORDER BY invoice_value DESC, business_name LIMIT 20
+      SELECT * FROM assisted_all ORDER BY invoice_value DESC, business_name LIMIT 100
     )
     SELECT
-      COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', buyer_id, 'name', business_name, 'invoice_value_90d', invoice_value)) FROM assisted), '[]'::jsonb),
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', buyer_id, 'name', business_name, 'invoice_value_qtd', invoice_value, 'invoice_count_qtd', invoice_count)) FROM assisted), '[]'::jsonb),
       (SELECT COUNT(*) FROM assisted_all)
     INTO v_assisted_without_access, v_assisted_without_access_count;
   END IF;
@@ -240,28 +240,30 @@ BEGIN
     SELECT
       b.id,
       b.business_name,
-      COALESCE(NULLIF(mbs.assisted_invoice_value_90d, 0), NULLIF(mbs.invoice_value_90d, 0), 0) AS business_outside_yukti_90d
+      COALESCE(bp.invoice_value, 0) AS invoice_value_qtd,
+      COALESCE(bp.invoice_count, 0) AS invoice_count_qtd
     FROM app.buyers b
     LEFT JOIN used u ON u.buyer_id = b.id
-    LEFT JOIN app.metrics_buyer_snapshot mbs ON mbs.tenant_id = b.tenant_id AND mbs.buyer_id = b.id AND mbs.deleted_at IS NULL
+    LEFT JOIN app.metrics_buyer_period_summary bp ON bp.tenant_id = b.tenant_id AND bp.buyer_id = b.id AND bp.grain = 'quarter' AND bp.period_start = v_quarter.period_start AND bp.deleted_at IS NULL
     WHERE b.tenant_id = p_tenant_id AND b.deleted_at IS NULL AND b.is_active AND b.buyer_app_enabled AND u.buyer_id IS NULL
   ), used_no_demand_all AS (
     SELECT
       b.id,
       b.business_name,
-      COALESCE(NULLIF(mbs.assisted_invoice_value_90d, 0), NULLIF(mbs.invoice_value_90d, 0), 0) AS business_outside_yukti_90d
+      COALESCE(bp.invoice_value, 0) AS invoice_value_qtd,
+      COALESCE(bp.invoice_count, 0) AS invoice_count_qtd
     FROM app.buyers b
     JOIN used u ON u.buyer_id = b.id
     LEFT JOIN demand d ON d.buyer_id = b.id
-    LEFT JOIN app.metrics_buyer_snapshot mbs ON mbs.tenant_id = b.tenant_id AND mbs.buyer_id = b.id AND mbs.deleted_at IS NULL
+    LEFT JOIN app.metrics_buyer_period_summary bp ON bp.tenant_id = b.tenant_id AND bp.buyer_id = b.id AND bp.grain = 'quarter' AND bp.period_start = v_quarter.period_start AND bp.deleted_at IS NULL
     WHERE b.tenant_id = p_tenant_id AND b.deleted_at IS NULL AND d.buyer_id IS NULL
   )
   SELECT
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', ranked.id, 'name', ranked.business_name, 'business_outside_yukti_90d', ranked.business_outside_yukti_90d) ORDER BY ranked.business_outside_yukti_90d DESC, ranked.business_name)
-      FROM (SELECT * FROM enabled_never_used_all ORDER BY business_outside_yukti_90d DESC, business_name LIMIT 20) ranked), '[]'::jsonb),
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', ranked.id, 'name', ranked.business_name, 'invoice_value_qtd', ranked.invoice_value_qtd, 'invoice_count_qtd', ranked.invoice_count_qtd) ORDER BY ranked.invoice_value_qtd DESC, ranked.business_name)
+      FROM (SELECT * FROM enabled_never_used_all ORDER BY invoice_value_qtd DESC, business_name LIMIT 100) ranked), '[]'::jsonb),
     (SELECT COUNT(*) FROM enabled_never_used_all),
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', ranked.id, 'name', ranked.business_name, 'business_outside_yukti_90d', ranked.business_outside_yukti_90d) ORDER BY ranked.business_outside_yukti_90d DESC, ranked.business_name)
-      FROM (SELECT * FROM used_no_demand_all ORDER BY business_outside_yukti_90d DESC, business_name LIMIT 20) ranked), '[]'::jsonb),
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('buyer_id', ranked.id, 'name', ranked.business_name, 'invoice_value_qtd', ranked.invoice_value_qtd, 'invoice_count_qtd', ranked.invoice_count_qtd) ORDER BY ranked.invoice_value_qtd DESC, ranked.business_name)
+      FROM (SELECT * FROM used_no_demand_all ORDER BY invoice_value_qtd DESC, business_name LIMIT 100) ranked), '[]'::jsonb),
     (SELECT COUNT(*) FROM used_no_demand_all)
   INTO v_enabled_never_used, v_enabled_never_used_count, v_used_no_demand, v_used_no_demand_count;
 

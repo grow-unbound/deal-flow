@@ -79,10 +79,12 @@ const portfolio: MetricsV2DashboardPortfolio = {
       unit: 'count',
       meta: {
         rows: [
-          { buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_90d: 410000 },
-          { buyer_id: 'buyer-2', name: 'Bravo Stores', invoice_value_90d: 250000 },
-          { buyer_id: 'buyer-3', name: 'City Cameras', invoice_value_90d: 180000 },
-          { buyer_id: 'buyer-4', name: 'Delta Security', invoice_value_90d: 120000 },
+          { buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_qtd: 410000, invoice_count_qtd: 8 },
+          { buyer_id: 'buyer-2', name: 'Bravo Stores', invoice_value_qtd: 250000, invoice_count_qtd: 5 },
+          { buyer_id: 'buyer-3', name: 'City Cameras', invoice_value_qtd: 180000, invoice_count_qtd: 4 },
+          { buyer_id: 'buyer-4', name: 'Delta Security', invoice_value_qtd: 120000, invoice_count_qtd: 3 },
+          { buyer_id: 'buyer-7', name: 'Echo Security', invoice_value_qtd: 90000, invoice_count_qtd: 2 },
+          { buyer_id: 'buyer-8', name: 'Frame Security', invoice_value_qtd: 70000, invoice_count_qtd: 1 },
         ],
       },
     },
@@ -106,7 +108,7 @@ const portfolio: MetricsV2DashboardPortfolio = {
       unit: 'count',
       meta: {
         rows: [
-          { buyer_id: 'buyer-5', name: 'Enabled Retail', business_outside_yukti_90d: 320000 },
+          { buyer_id: 'buyer-5', name: 'Enabled Retail', invoice_value_qtd: 320000, invoice_count_qtd: 6 },
         ],
       },
     },
@@ -120,7 +122,7 @@ const portfolio: MetricsV2DashboardPortfolio = {
       unit: 'count',
       meta: {
         rows: [
-          { buyer_id: 'buyer-6', name: 'Browsing Retail', business_outside_yukti_90d: 220000 },
+          { buyer_id: 'buyer-6', name: 'Browsing Retail', invoice_value_qtd: 220000, invoice_count_qtd: 4 },
         ],
       },
     },
@@ -186,22 +188,27 @@ describe('Pulse core mapping', () => {
 
     expect(response.groups).toHaveLength(3);
     expect(response.groups[0].id).toBe('valuable_assisted_customers_without_access');
-    expect(response.groups[0].previews).toHaveLength(3);
+    expect(response.groups[0].previews).toHaveLength(5);
+    expect(response.groups[0].previews[0]).toEqual(expect.objectContaining({
+      supporting_text: '₹4,10,000 · 8 invoices',
+    }));
     expect(response.groups[1]).toEqual(expect.objectContaining({
       id: 'access_enabled_but_never_used',
       description: 'Customers have access enabled but still do business outside Yukti.',
     }));
     expect(response.groups[1].previews[0]).toEqual(expect.objectContaining({
-      evidence_value: 320000,
-      evidence_label: 'business outside Yukti',
+      invoice_value_qtd: 320000,
+      invoice_count_qtd: 6,
+      supporting_text: '₹3,20,000 · 6 invoices',
     }));
     expect(response.groups[2]).toEqual(expect.objectContaining({
       id: 'used_app_but_no_demand',
-      description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
+      title: 'Follow up with browsing customers without demand',
     }));
     expect(response.groups[2].previews[0]).toEqual(expect.objectContaining({
-      evidence_value: 220000,
-      evidence_label: 'business outside Yukti',
+      invoice_value_qtd: 220000,
+      invoice_count_qtd: 4,
+      supporting_text: '₹2,20,000 · 4 invoices',
     }));
     expect(JSON.stringify(response)).not.toContain('app_demand_needing_operational_action');
     expect(JSON.stringify(response)).not.toContain('Should Not Render');

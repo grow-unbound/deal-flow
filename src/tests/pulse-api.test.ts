@@ -18,6 +18,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import { GET as getContribution } from '../../app/api/tenant/pulse/contribution/route';
 import { GET as getOpportunities } from '../../app/api/tenant/pulse/opportunities/route';
+import { GET as getOpportunityBuyers } from '../../app/api/tenant/pulse/opportunities/[id]/buyers/route';
 
 const rpcPortfolio = {
   as_of: '2026-09-22T04:00:00.000Z',
@@ -44,7 +45,7 @@ const rpcPortfolio = {
       time_basis: 'NOW + QTD',
       available: true,
       count: 1,
-      meta: { rows: [{ buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_90d: 150000 }] },
+      meta: { rows: [{ buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_qtd: 150000, invoice_count_qtd: 3 }] },
     },
   ],
   explore: [],
@@ -122,6 +123,25 @@ describe('Pulse API routes', () => {
     expect(response.status).toBe(200);
     expect(body.groups[0].id).toBe('valuable_assisted_customers_without_access');
     expect(response.headers.get('Server-Timing')).toContain('pulse_opportunities_api');
+  });
+
+  it('returns a paginated opportunity buyer resultset for the slide-over', async () => {
+    const response = await getOpportunityBuyers(
+      new NextRequest('http://localhost/api/tenant/pulse/opportunities/valuable_assisted_customers_without_access/buyers?limit=1'),
+      { params: Promise.resolve({ id: 'valuable_assisted_customers_without_access' }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.group.id).toBe('valuable_assisted_customers_without_access');
+    expect(body.rows).toEqual([
+      expect.objectContaining({
+        buyer_id: 'buyer-1',
+        supporting_text: '₹1,50,000 · 3 invoices',
+      }),
+    ]);
+    expect(body.nextCursor).toBeNull();
+    expect(response.headers.get('Server-Timing')).toContain('pulse_opportunity_buyers_api');
   });
 
   it('does not query the database for an unassigned seller assistant', async () => {

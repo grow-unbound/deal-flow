@@ -5,6 +5,7 @@ import type { MetricsV2DashboardPortfolio, MetricsV2PortfolioItem, SellerDashboa
 import type {
   PulseContributionCard,
   PulseContributionResponse,
+  PulseOpportunityBuyerPage,
   PulseOpportunityGroup,
   PulseOpportunityPreview,
 } from '@/types/pulse';
@@ -77,6 +78,12 @@ function rowNumber(row: Record<string, unknown>, keys: string[]) {
     if (Number.isFinite(value) && value > 0) return value;
   }
   return null;
+}
+
+function formatInvoiceSupport(value: number | null, count: number | null) {
+  const invoiceCount = count ?? 0;
+  const invoiceWord = invoiceCount === 1 ? 'invoice' : 'invoices';
+  return `${value != null && value > 0 ? `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}` : '₹0'} · ${invoiceCount} ${invoiceWord}`;
 }
 
 function initials(name: string) {
@@ -273,76 +280,59 @@ export function landingMetricsToPulseContribution(metrics: SellerDashboardMetric
   };
 }
 
-function previewRows(item: MetricsV2PortfolioItem | null, valueKeys: string[] = [], evidenceLabel = 'assisted business'): PulseOpportunityPreview[] {
-  return rowsFromItem(item).slice(0, 3).map((row) => {
+function previewRows(item: MetricsV2PortfolioItem | null, limit = 5): PulseOpportunityPreview[] {
+  return rowsFromItem(item).slice(0, limit).map((row) => {
     const name = String(row.name ?? row.business_name ?? 'Customer');
     const buyerId = String(row.buyer_id ?? row.id ?? '');
-    const evidenceValue = rowNumber(row, valueKeys);
+    const invoiceValue = rowNumber(row, ['invoice_value_qtd', 'business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d']);
+    const invoiceCount = rowNumber(row, ['invoice_count_qtd', 'invoice_count_90d']);
     return {
       buyer_id: buyerId,
       name,
       initials: initials(name),
-      evidence_value: evidenceValue,
-      evidence_label: evidenceValue ? evidenceLabel : null,
+      invoice_value_qtd: invoiceValue,
+      invoice_count_qtd: invoiceCount,
+      supporting_text: formatInvoiceSupport(invoiceValue, invoiceCount),
       href: buyerId ? `/customers/${buyerId}` : '/customers',
     };
   });
 }
 
+const PULSE_OPPORTUNITY_DEFINITIONS: Array<{
+  id: PulseOpportunityGroup['id'];
+  title: string;
+  description: string;
+}> = [
+  {
+    id: 'valuable_assisted_customers_without_access',
+    title: 'Activate valuable customers',
+    description: 'High-value customers still order manually and do not have Yukti access enabled.',
+  },
+  {
+    id: 'access_enabled_but_never_used',
+    title: 'Convert interested customers',
+    description: 'Customers have access enabled but still do business outside Yukti.',
+  },
+  {
+    id: 'used_app_but_no_demand',
+    title: 'Follow up with browsing customers without demand',
+    description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
+  },
+  {
+    id: 'previously_submitted_app_demand_now_inactive',
+    title: 'Reactivate customers going quiet',
+    description: 'Customers previously submitted Yukti demand but have gone inactive.',
+  },
+];
+
+function opportunityDefinition(id: PulseOpportunityGroup['id']) {
+  return PULSE_OPPORTUNITY_DEFINITIONS.find((definition) => definition.id === id) ?? null;
+}
+
 export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortfolio | null) {
   if (!portfolio) return emptyPulseOpportunities();
 
-  const definitions: Array<{
-    id: PulseOpportunityGroup['id'];
-    title: string;
-    description: string;
-    evidence: (item: MetricsV2PortfolioItem) => string;
-    action_label: string;
-    href: string;
-    valueKeys?: string[];
-    valueLabel?: string;
-  }> = [
-    {
-      id: 'valuable_assisted_customers_without_access',
-      title: 'Activate valuable customers',
-      description: 'High-value customers still order manually and do not have Yukti access enabled.',
-      evidence: (item) => `${item.count ?? 0} customers ranked by assisted business in ${item.time_basis}`,
-      action_label: 'Open access management',
-      href: '/buyer-app/access?status=suggested',
-      valueKeys: ['invoice_value_90d'],
-      valueLabel: 'assisted business',
-    },
-    {
-      id: 'access_enabled_but_never_used',
-      title: 'Convert interested customers',
-      description: 'Customers have access enabled but still do business outside Yukti.',
-      evidence: (item) => `${item.count ?? 0} access-enabled customers have no recorded Yukti use`,
-      action_label: 'Review enabled customers',
-      href: '/buyer-app/access?status=inactive',
-      valueKeys: ['business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d'],
-      valueLabel: 'business outside Yukti',
-    },
-    {
-      id: 'used_app_but_no_demand',
-      title: 'Convert browsers into demand',
-      description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
-      evidence: (item) => `${item.count ?? 0} customers used Yukti without demand`,
-      action_label: 'Review customer access',
-      href: '/buyer-app/access?status=inactive',
-      valueKeys: ['business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d'],
-      valueLabel: 'business outside Yukti',
-    },
-    {
-      id: 'previously_submitted_app_demand_now_inactive',
-      title: 'Reactivate customers going quiet',
-      description: 'Customers previously submitted Yukti demand but have gone inactive.',
-      evidence: (item) => `${item.count ?? 0} prior Yukti-demand customers are now inactive`,
-      action_label: 'Review inactive customers',
-      href: '/buyer-app/access?status=inactive',
-    },
-  ];
-
-  const groups = definitions
+  const groups = PULSE_OPPORTUNITY_DEFINITIONS
     .map((definition) => {
       const item = findPortfolioItem(portfolio, 'actions', definition.id);
       if (!item || item.available === false || itemCount(item) <= 0) return null;
@@ -352,10 +342,7 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
         description: definition.description,
         count: itemCount(item),
         time_basis: item.time_basis,
-        evidence: definition.evidence(item),
-        action_label: definition.action_label,
-        href: definition.href,
-        previews: previewRows(item, definition.valueKeys, definition.valueLabel),
+        previews: previewRows(item, 5),
       };
     })
     .filter((group): group is PulseOpportunityGroup => Boolean(group))
@@ -367,5 +354,45 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
     source_watermark: portfolio.source_watermark,
     freshness_label: portfolio.source_watermark ?? portfolio.as_of,
     groups,
+  };
+}
+
+export function portfolioToPulseOpportunityBuyerPage(
+  portfolio: MetricsV2DashboardPortfolio | null,
+  id: PulseOpportunityGroup['id'],
+  offset: number,
+  limit: number,
+): PulseOpportunityBuyerPage {
+  const definition = opportunityDefinition(id);
+  if (!portfolio || !definition) {
+    return {
+      group: {
+        id,
+        title: definition?.title ?? 'Opportunity',
+        description: definition?.description ?? '',
+        count: 0,
+      },
+      rows: [],
+      nextCursor: null,
+      total: 0,
+    };
+  }
+
+  const item = findPortfolioItem(portfolio, 'actions', id);
+  const rows = previewRows(item, Number.MAX_SAFE_INTEGER);
+  const pageRows = rows.slice(offset, offset + limit);
+  const total = itemCount(item) || rows.length;
+  const nextOffset = offset + pageRows.length;
+
+  return {
+    group: {
+      id,
+      title: definition.title,
+      description: definition.description,
+      count: total,
+    },
+    rows: pageRows,
+    nextCursor: nextOffset < Math.min(total, rows.length) ? String(nextOffset) : null,
+    total,
   };
 }

@@ -63,16 +63,14 @@ const opportunities: PulseOpportunitiesResponse = {
       description: 'High-value customers still order manually and do not have Yukti access enabled.',
       count: 12,
       time_basis: 'NOW + QTD',
-      evidence: '12 customers ranked by assisted business in NOW + QTD',
-      action_label: 'Open access management',
-      href: '/buyer-app/access?status=suggested',
       previews: [
         {
           buyer_id: 'buyer-1',
           name: 'Alpha Retail',
           initials: 'AR',
-          evidence_value: 410000,
-          evidence_label: 'assisted business',
+          invoice_value_qtd: 410000,
+          invoice_count_qtd: 8,
+          supporting_text: '₹4,10,000 · 8 invoices',
           href: '/customers/buyer-1',
         },
       ],
@@ -83,16 +81,14 @@ const opportunities: PulseOpportunitiesResponse = {
       description: 'Customers have access enabled but still do business outside Yukti.',
       count: 7,
       time_basis: 'NOW',
-      evidence: '7 access-enabled customers have no recorded Yukti use',
-      action_label: 'Review enabled customers',
-      href: '/buyer-app/access?status=inactive',
       previews: [
         {
           buyer_id: 'buyer-2',
           name: 'Enabled Retail',
           initials: 'ER',
-          evidence_value: 320000,
-          evidence_label: 'business outside Yukti',
+          invoice_value_qtd: 320000,
+          invoice_count_qtd: 6,
+          supporting_text: '₹3,20,000 · 6 invoices',
           href: '/customers/buyer-2',
         },
       ],
@@ -118,7 +114,10 @@ describe('PulseDashboardClient', () => {
     expect(await screen.findByText(/Demand captured through Yukti/)).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
     expect(await screen.findByText('Convert interested customers')).toBeInTheDocument();
-    expect(await screen.findByText('business outside Yukti')).toBeInTheDocument();
+    expect(await screen.findByText('₹3,20,000 · 6 invoices')).toBeInTheDocument();
+    expect(screen.queryByText(/NOW \+ QTD|NOW \+ 90D/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/assisted business/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Open access management/i)).not.toBeInTheDocument();
 
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
     expect(screen.queryByText('Customer activity')).not.toBeInTheDocument();

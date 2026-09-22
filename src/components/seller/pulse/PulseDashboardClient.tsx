@@ -1,16 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
-import { AlertCircle, ArrowRight, RefreshCcw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, RefreshCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PerformanceCard, RankedList } from '@/components/seller/detail';
 import { InsightStrip4 } from '@/components/seller/layout';
-import { usePulseContribution, usePulseOpportunities } from '@/hooks/usePulse';
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { usePulseContribution, usePulseOpportunities, usePulseOpportunityBuyers } from '@/hooks/usePulse';
 import { cn, formatNumberValue } from '@/lib/utils';
-import type { PulseContributionCard, PulseOpportunityGroup } from '@/types/pulse';
+import type { PulseContributionCard, PulseOpportunityGroup, PulseOpportunityPreview } from '@/types/pulse';
+
+const PULSE_OPPORTUNITY_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
 function formatPulseFreshness(iso: string | null | undefined) {
   if (!iso) return null;
@@ -31,6 +34,41 @@ function formatCardValue(card: PulseContributionCard) {
   return card.value_kind === 'currency'
     ? formatNumberValue(card.value, 'CURRENCY_THRESHOLD')
     : formatNumberValue(card.value, 'COUNT');
+}
+
+function ScrollCardBody({ children }: { children: ReactNode }) {
+  const [scrollActive, setScrollActive] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current != null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        PULSE_OPPORTUNITY_SCROLL_CARD_HEIGHT,
+        'dashboard-vscroll overflow-y-auto',
+        scrollActive && 'dashboard-vscroll--active',
+      )}
+      onScroll={() => {
+        setScrollActive(true);
+        if (resetTimerRef.current != null) {
+          window.clearTimeout(resetTimerRef.current);
+        }
+        resetTimerRef.current = window.setTimeout(() => {
+          setScrollActive(false);
+          resetTimerRef.current = null;
+        }, 900);
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function PulseSectionShell({
@@ -86,13 +124,7 @@ function ContributionEmpty({ opportunity }: { opportunity?: PulseOpportunityGrou
           <h3 className="mt-2 font-display text-xl font-semibold text-cream-950">
             {opportunity.count} {opportunity.title.toLowerCase()}
           </h3>
-          <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">{opportunity.evidence}</p>
-          <Button asChild variant="secondary" size="sm" className="mt-4">
-            <Link href={opportunity.href}>
-              {opportunity.action_label}
-              <ArrowRight size={14} />
-            </Link>
-          </Button>
+          <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">{opportunity.description}</p>
         </div>
       </div>
     );
@@ -163,57 +195,130 @@ export function PulseOpportunitiesSkeleton() {
   );
 }
 
-function OpportunityCard({ group }: { group: PulseOpportunityGroup }) {
+function opportunityRows(previews: PulseOpportunityPreview[]) {
+  return previews.map((preview) => ({
+    id: preview.buyer_id || preview.name,
+    label: (
+      <Link href={preview.href} className="block truncate text-cream-900 no-underline hover:text-teal-700">
+        {preview.name}
+      </Link>
+    ),
+    meta: preview.supporting_text ?? undefined,
+    initials: preview.initials,
+  }));
+}
+
+function OpportunityCard({
+  group,
+  onShowAll,
+}: {
+  group: PulseOpportunityGroup;
+  onShowAll: (group: PulseOpportunityGroup) => void;
+}) {
   return (
     <PerformanceCard
       title={group.title}
-      subtitle={(
-        <>
-          <span className="block">{group.description}</span>
-          <span className="mt-1 block text-xs font-medium text-cream-600">{group.evidence}</span>
-        </>
-      )}
+      subtitle={group.description}
       actions={(
         <div className="text-right">
           <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(group.count, 'COUNT')}</p>
-          <p className="mt-1 text-xs font-semibold text-cream-600">{group.time_basis}</p>
+          <button
+            type="button"
+            className="mt-2 text-sm font-semibold text-teal-700 no-underline hover:text-teal-800"
+            onClick={() => onShowAll(group)}
+          >
+            Show all
+          </button>
         </div>
       )}
       bodyClassName="p-0"
       className="flex min-h-[320px] flex-col"
     >
-      <RankedList
-        className="min-h-[156px]"
-        items={group.previews.map((preview) => ({
-          id: preview.buyer_id || preview.name,
-          label: (
-            <Link href={preview.href} className="block truncate text-cream-900 no-underline hover:text-teal-700">
-              {preview.name}
-            </Link>
-          ),
-          value: preview.evidence_value ? formatNumberValue(preview.evidence_value, 'CURRENCY_THRESHOLD') : undefined,
-          supporting: preview.evidence_label ?? undefined,
-          initials: preview.initials,
-        }))}
-        emptyTitle="No preview customers"
-        emptyDescription="The group count is available; preview rows will appear when the source includes ranked buyers."
-        compact
-      />
-      <div className="mt-auto border-t border-cream-200 px-5 py-4">
-        <Button asChild variant="secondary" size="sm">
-          <Link href={group.href}>
-            {group.action_label}
-            <ArrowRight size={14} />
-          </Link>
-        </Button>
-      </div>
+      <ScrollCardBody>
+        <RankedList
+          items={opportunityRows(group.previews)}
+          emptyTitle="No preview customers"
+          emptyDescription="The group count is available; preview rows will appear when the source includes ranked buyers."
+          compact
+        />
+      </ScrollCardBody>
     </PerformanceCard>
+  );
+}
+
+function OpportunityBuyerSheet({
+  group,
+  onOpenChange,
+}: {
+  group: PulseOpportunityGroup | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const query = usePulseOpportunityBuyers(group?.id ?? null, Boolean(group));
+  const rows = useMemo(
+    () => query.data?.pages.flatMap((page) => page.rows) ?? [],
+    [query.data],
+  );
+  const total = query.data?.pages[0]?.total ?? group?.count ?? 0;
+
+  return (
+    <Sheet open={Boolean(group)} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full max-w-[540px] p-0 sm:max-w-[540px]">
+        <SheetHeader>
+          <SheetTitle className="font-display text-xl font-semibold text-cream-950">{group?.title ?? 'Opportunity customers'}</SheetTitle>
+          {group?.description ? <p className="mt-1 text-base text-cream-700">{group.description}</p> : null}
+          <p className="mt-2 text-sm font-medium text-cream-600">{formatNumberValue(total, 'COUNT')} customers</p>
+        </SheetHeader>
+        <SheetBody className="px-0 py-0">
+          {query.isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="grid grid-cols-[auto_1fr] items-center gap-3 border-b border-cream-200 px-3 py-3 last:border-b-0">
+                  <div className="h-8 w-8 animate-pulse rounded-full bg-cream-100" />
+                  <div className="min-w-0 space-y-2">
+                    <div className="h-4 w-44 animate-pulse rounded bg-cream-100" />
+                    <div className="h-3 w-28 animate-pulse rounded bg-cream-100" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : query.isError ? (
+            <div className="p-5">
+              <ErrorState heading="Customers could not load" description="Close this panel and try again." />
+            </div>
+          ) : (
+            <>
+              <RankedList
+                items={opportunityRows(rows)}
+                emptyTitle="No customers found"
+                emptyDescription="No ranked customers are available for this opportunity right now."
+                compact
+              />
+              {query.hasNextPage ? (
+                <div className="border-t border-cream-200 p-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    disabled={query.isFetchingNextPage}
+                    onClick={() => query.fetchNextPage()}
+                  >
+                    {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
 function OpportunitiesSection() {
   const query = usePulseOpportunities();
   const freshness = formatPulseFreshness(query.data?.freshness_label);
+  const [selectedGroup, setSelectedGroup] = useState<PulseOpportunityGroup | null>(null);
 
   return (
     <PulseSectionShell
@@ -236,7 +341,7 @@ function OpportunitiesSection() {
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) > 0 ? (
         <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
-          {query.data?.groups.map((group) => <OpportunityCard key={group.id} group={group} />)}
+          {query.data?.groups.map((group) => <OpportunityCard key={group.id} group={group} onShowAll={setSelectedGroup} />)}
         </div>
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) === 0 ? (
@@ -249,6 +354,7 @@ function OpportunitiesSection() {
           </div>
         </div>
       ) : null}
+      <OpportunityBuyerSheet group={selectedGroup} onOpenChange={(open) => setSelectedGroup(open ? selectedGroup : null)} />
     </PulseSectionShell>
   );
 }

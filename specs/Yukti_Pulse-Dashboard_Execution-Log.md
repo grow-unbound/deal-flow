@@ -29,7 +29,7 @@
 
 | Unit | Product-spec scope | Depends on | Status | Evidence / latest entry |
 |---|---|---|---|---|
-| `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 17:39 IST — p01-visual-data-refinement |
+| `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 18:52 IST — p01-opportunity-tile-refinement |
 | `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `not_started` | — |
 | `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `not_started` | — |
 | `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `not_started` | — |
@@ -374,3 +374,85 @@ Copy this section to the end of the file for every session.
 - Unit: `P2A`
 - Entry gate satisfied: yes
 - Evidence / remaining requirement: P01 remains complete after the visual/data refinement. Before or during P2A, separately validate/apply the included P01 migration on `yukti-dev` if outside-Yukti preview values are required in live dev data.
+
+---
+
+## 2026-09-22 18:52 IST — p01-opportunity-tile-refinement — P01
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR update pending
+
+**Objective:** Refine the P01 Opportunities tiles to remove redundant time/evidence labels, show five scrollable buyers per card, support a paginated Show all slide-over, and show QTD invoice support text under each buyer.
+
+### Completed
+
+- Removed Opportunity tile time indicators (`NOW`, `NOW + QTD`, `NOW + 90D`) from the visible cards.
+- Removed the repeated evidence/help text line from each tile and removed per-row `assisted business`/outside-Yukti labels.
+- Changed the visible opportunity list body to the archived Buyer App `Products most viewed` pattern: fixed-height `dashboard-vscroll` body with `RankedList`, up to five buyers.
+- Added a `Show all` label button below each tile count and removed the old tile CTAs (`Open access management`, `Review enabled customers`, `Review customer access`).
+- Added a right-side slide-over backed by `/api/tenant/pulse/opportunities/[id]/buyers`, with cursor pagination and independent query state.
+- Changed buyer support text to `₹X · Y invoices` under the buyer name.
+- Renamed `Convert browsers into demand` to `Follow up with browsing customers without demand`.
+- Updated the local migration file so `app.get_buyer_app_dashboard_v4` preview rows carry QTD invoice value/count from `app.metrics_buyer_period_summary` and keep up to 100 sorted rows for paginated slide-over use. No real remote migration push was run.
+
+### Files and database objects changed
+
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/hooks/usePulse.ts`
+- `src/lib/server/pulse-core.ts`
+- `src/types/pulse.ts`
+- `app/api/tenant/pulse/opportunities/[id]/buyers/route.ts`
+- `src/tests/pulse-core.test.ts`
+- `src/tests/pulse-api.test.ts`
+- `src/tests/pulse-client.test.tsx`
+- `supabase/migrations/20260922120450_pulse_opportunity_outside_yukti_values.sql`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects intended by migration: `app.get_buyer_app_dashboard_v4` only, preserving signature/grants and enriching action-row JSON with QTD invoice fields.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Focused tests | `pnpm exec vitest run src/tests/pulse-core.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx --pool=threads` | Passed: 3 files, 12 tests |
+| Focused tests, default pool | `pnpm exec vitest run src/tests/pulse-core.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx` | Blocked before import by Vitest fork-worker startup timeout (`[vitest-pool-runner]: Timeout waiting for worker to respond`). Re-run with `--pool=threads` passed. |
+| Type-check | `npx tsc --noEmit`; `npx tsc --noEmit --pretty false`; `npx tsc --noEmit --pretty false --incremental false` | Blocked: each run stayed silent for several minutes and had to be interrupted (`SIGINT`) to avoid leaving a compiler process running. No TypeScript diagnostic was emitted. |
+| Static hygiene | `git diff --check` | Passed |
+| API/query boundaries | New slide-over uses separate `/api/tenant/pulse/opportunities/[id]/buyers` GET and `useInfiniteQuery`; contribution and top-level opportunities queries remain independent. | Preserved |
+| Performance contract | Tile previews and slide-over pages are sourced from existing `app.get_buyer_app_dashboard_v4` rows enriched from `metrics_buyer_period_summary`, not request-time raw invoice aggregation. No `router.refresh()` or page-level invalidation added. | Preserved by static review/tests |
+| Migration safety | Only migration file edited locally. No `db push`, no production command, no remote mutation. | Passed local workflow; remote validation/push still deferred to explicit approval |
+
+### Findings
+
+- The existing opportunities response could support a server-paginated sheet by paging the sorted row array returned in the RPC payload, while keeping the widget isolated from the contribution cards.
+- QTD invoice value/count belongs in the existing aggregate-backed RPC row JSON; the UI should not derive invoice counts from visible rows or raw invoices.
+- The default Vitest fork pool was unstable in this session, but the same focused test files passed under the threads pool.
+- Full `tsc` did not fail with diagnostics; it hung silently in this session even with incremental disabled.
+
+### Decisions made
+
+- Kept Show all as a text label button in the tile count area, per request, rather than a footer CTA.
+- Kept the slide-over paginated with explicit `Load more` instead of automatic infinite loading, so the user controls additional fetches.
+- Did not add a new table or remote migration; continued to revise the already-authored P01 migration file.
+
+### Deferred / explicitly out of scope
+
+- Browser visual/Web Vital traces remain deferred because this pass did not restart the previously blocked local server harness.
+- Live `yukti-dev` migration dry-run/EXPLAIN/push remains deferred until explicit migration validation approval.
+- Full `npx tsc --noEmit` remains unresolved because the command hung without diagnostics in this session.
+
+### Risks or blockers
+
+- Live dev data will not show QTD invoice support text in opportunity previews until the local migration is validated and applied to `yukti-dev`.
+- The slide-over can paginate only through rows present in the RPC payload; the migration raises that sorted row payload to 100 rows. A future dedicated paginated RPC would be cleaner if pilot tenants need deeper result sets.
+- Full type-check verification is blocked by the local `tsc` hang and should be rerun in CI or a fresh shell before merge.
+
+### Rollback notes
+
+- Revert this refinement commit to restore the previous Opportunities tile layout and remove `/api/tenant/pulse/opportunities/[id]/buyers`. If the migration has been applied remotely, restore the prior `app.get_buyer_app_dashboard_v4` definition from `20260830042439_buyer_app_dashboard_v4_fix_adoption_by_group.sql`.
+
+### Recommended next unit
+
+- Unit: `P2A`
+- Entry gate satisfied: yes, with verification caveat
+- Evidence / remaining requirement: P01 UI/data refinement is complete and focused tests pass. Before merge or before P2A work depends on this branch, rerun full `npx tsc --noEmit` in a non-hung environment and validate the pending migration against `yukti-dev` if live preview support text is required.

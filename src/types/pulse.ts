@@ -24,8 +24,9 @@ export interface PulseOpportunityPreview {
   buyer_id: string;
   name: string;
   initials: string;
-  evidence_value?: number | null;
-  evidence_label?: string | null;
+  invoice_value_qtd?: number | null;
+  invoice_count_qtd?: number | null;
+  supporting_text?: string | null;
   href: string;
 }
 
@@ -39,10 +40,14 @@ export interface PulseOpportunityGroup {
   description: string;
   count: number;
   time_basis: string;
-  evidence: string;
-  action_label: string;
-  href: string;
   previews: PulseOpportunityPreview[];
+}
+
+export interface PulseOpportunityBuyerPage {
+  group: Pick<PulseOpportunityGroup, 'id' | 'title' | 'description' | 'count'>;
+  rows: PulseOpportunityPreview[];
+  nextCursor: string | null;
+  total: number;
 }
 
 export interface PulseOpportunitiesResponse {
