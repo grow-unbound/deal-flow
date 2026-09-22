@@ -30,6 +30,15 @@ const contribution: PulseContributionResponse = {
   primary_demand_kind: 'orders',
   cards: [
     {
+      id: 'yukti_access_enabled',
+      label: 'Customers with Yukti access',
+      value: 27,
+      value_kind: 'count',
+      buyer_count: 27,
+      time_basis: 'NOW',
+      evidence: 'Customers who can submit demand through Yukti',
+    },
+    {
       id: 'demand_captured',
       label: 'Demand captured through Yukti',
       value: 840000,
@@ -68,6 +77,26 @@ const opportunities: PulseOpportunitiesResponse = {
         },
       ],
     },
+    {
+      id: 'access_enabled_but_never_used',
+      title: 'Convert interested customers',
+      description: 'Customers have access enabled but still do business outside Yukti.',
+      count: 7,
+      time_basis: 'NOW',
+      evidence: '7 access-enabled customers have no recorded Yukti use',
+      action_label: 'Review enabled customers',
+      href: '/buyer-app/access?status=inactive',
+      previews: [
+        {
+          buyer_id: 'buyer-2',
+          name: 'Enabled Retail',
+          initials: 'ER',
+          evidence_value: 320000,
+          evidence_label: 'business outside Yukti',
+          href: '/customers/buyer-2',
+        },
+      ],
+    },
   ],
 };
 
@@ -85,8 +114,11 @@ describe('PulseDashboardClient', () => {
     renderPulse();
 
     expect(screen.getByRole('heading', { name: 'Pulse' })).toBeInTheDocument();
-    expect(await screen.findByText('Demand captured through Yukti')).toBeInTheDocument();
+    expect(await screen.findByText('Customers with Yukti access · NOW')).toBeInTheDocument();
+    expect(await screen.findByText(/Demand captured through Yukti/)).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
+    expect(await screen.findByText('Convert interested customers')).toBeInTheDocument();
+    expect(await screen.findByText('business outside Yukti')).toBeInTheDocument();
 
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
     expect(screen.queryByText('Customer activity')).not.toBeInTheDocument();

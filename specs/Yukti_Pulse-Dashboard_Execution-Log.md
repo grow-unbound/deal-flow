@@ -6,7 +6,7 @@
 
 **Created:** 22 September 2026
 
-**Overall status:** P01 implemented locally; remaining units not started.
+**Overall status:** P01 complete with follow-up visual/data refinement; remaining units not started.
 
 ---
 
@@ -29,7 +29,7 @@
 
 | Unit | Product-spec scope | Depends on | Status | Evidence / latest entry |
 |---|---|---|---|---|
-| `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 15:46 IST — p01-reliable-core |
+| `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 17:39 IST — p01-visual-data-refinement |
 | `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `not_started` | — |
 | `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `not_started` | — |
 | `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `not_started` | — |
@@ -300,3 +300,77 @@ Copy this section to the end of the file for every session.
 - Unit: `P2A`
 - Entry gate satisfied: yes
 - Evidence / remaining requirement: P01 surface is implemented and no P2A dependency is blocked. P2A should avoid editing seller Pulse components and focus on buyer/auth/PostHog event and identity audit/instrumentation.
+
+---
+
+## 2026-09-22 17:39 IST — p01-visual-data-refinement — P01
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR update pending
+
+**Objective:** Apply the post-implementation visual correction for P01: remove the newly introduced outer section boxes, reuse archived Pulse/Buyer App KPI and widget/list presentation patterns, restore a four-card KPI strip, and expose outside-Yukti business on the two conversion opportunity groups.
+
+### Completed
+
+- Removed the outer bordered section shells from `/pulse`; section headings are now simple title/supporting-text labels with freshness metadata.
+- Swapped contribution cards to the shared `InsightStrip4` / `MetricCard` style used by the archived dashboard KPI strips.
+- Swapped opportunity group rendering to the shared `PerformanceCard` + `RankedList` style used by archived dashboard widgets/lists, eliminating the bespoke nested-card/list row treatment.
+- Added the fourth KPI footprint card, `Customers with Yukti access`, from existing aggregate/RPC metrics so the strip matches the archived buyer-app four-card format.
+- Enriched `Convert interested customers` and `Convert browsers into demand` mapping to show `business outside Yukti` when the opportunity row provides `business_outside_yukti_90d`, with fallbacks to existing snapshot value keys.
+- Added migration file `20260922120450_pulse_opportunity_outside_yukti_values.sql` to enrich `app.get_buyer_app_dashboard_v4` preview rows from existing `app.metrics_buyer_snapshot` values. No real remote migration push was run.
+- Updated focused tests to cover the four KPI cards, shared presentation behavior, and outside-Yukti opportunity evidence.
+
+### Files and database objects changed
+
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/lib/server/pulse-core.ts`
+- `src/types/pulse.ts`
+- `src/tests/pulse-core.test.ts`
+- `src/tests/pulse-client.test.tsx`
+- `supabase/migrations/20260922120450_pulse_opportunity_outside_yukti_values.sql`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects intended by migration: `app.get_buyer_app_dashboard_v4` only, preserving signature/grants and enriching action-row JSON with `business_outside_yukti_90d`.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Focused tests | `pnpm exec vitest run src/tests/pulse-core.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx` | Passed: 3 files, 11 tests |
+| Type-check | `npx tsc --noEmit` | Passed |
+| UI/skeleton parity | Static diff review: Pulse sections no longer render outer bordered shells; KPI cards use `InsightStrip4`; opportunity cards use `PerformanceCard`/`RankedList`; skeletons mirror the same unboxed section labels and shared-card footprints. | Passed by code review and component tests |
+| API/query boundaries | Existing independent hooks/routes unchanged: contribution and opportunities remain separate query/API domains with navigation cache settings. | Preserved |
+| Performance contract | Contribution still uses existing aggregate/RPC sources. The opportunity migration enriches rows from `app.metrics_buyer_snapshot`, not request-time raw document aggregation. No `router.refresh()`, no hydration-forced refetch, no PostHog direct reads. | Preserved by static review |
+| Migration safety | Migration authored with Supabase CLI-generated timestamp after sandbox telemetry failure required escalated rerun. No `db push`, no production command, and no remote mutation was run. | Passed local workflow; remote validation/push still deferred to an explicitly authorized migration step |
+
+### Findings
+
+- The original P01 UI had correctly isolated data boundaries but introduced a new visual system for cards and row widgets; reusing `InsightStrip4`, `PerformanceCard`, and `RankedList` aligns Pulse with the archived dashboard surfaces.
+- The current latest `app.get_buyer_app_dashboard_v4` action rows for `access_enabled_but_never_used` and `used_app_but_no_demand` only carried buyer id/name. Showing outside-Yukti business requires the included RPC migration or an equivalent precomputed source enrichment.
+- `metrics_buyer_snapshot` already has the relevant precomputed buyer-level invoice fields, so the enrichment can avoid raw-table aggregation and stay within the Section 2.8 release gate.
+
+### Decisions made
+
+- Reintroduced access footprint as the fourth KPI because the requested archived buyer-app format expects four cards; it is labeled as access/footprint, while conversion/business evidence remains separate.
+- Did not start P2A/P2B or add PostHog demand-signal work.
+- Did not run a real remote migration push.
+
+### Deferred / explicitly out of scope
+
+- Browser visual/Web Vital traces remain deferred because the earlier P01 local server blockers were not re-tested in this refinement pass.
+- Remote migration list/dry-run/push and live RPC explain evidence for the new migration remain deferred until explicit migration validation approval.
+
+### Risks or blockers
+
+- The UI can render outside-Yukti business immediately when supplied by API fixtures/tests, but live data will not include `business_outside_yukti_90d` until the migration is validated and applied to `yukti-dev`.
+- The added buyer-snapshot join should remain cheaper than raw aggregation, but live `EXPLAIN` evidence is still needed before migration rollout.
+
+### Rollback notes
+
+- Revert this refinement commit to restore the first P01 presentation. If the migration has been applied remotely, roll back by restoring the prior `app.get_buyer_app_dashboard_v4` definition from `20260830042439_buyer_app_dashboard_v4_fix_adoption_by_group.sql`.
+
+### Recommended next unit
+
+- Unit: `P2A`
+- Entry gate satisfied: yes
+- Evidence / remaining requirement: P01 remains complete after the visual/data refinement. Before or during P2A, separately validate/apply the included P01 migration on `yukti-dev` if outside-Yukti preview values are required in live dev data.

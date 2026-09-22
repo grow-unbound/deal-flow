@@ -14,6 +14,15 @@ const portfolio: MetricsV2DashboardPortfolio = {
   availability: {},
   metrics: [
     {
+      id: 'customers_with_access',
+      label: 'Customers with Buyer App access',
+      time_basis: 'NOW',
+      feasibility: 'READY',
+      available: true,
+      count: 27,
+      unit: 'count',
+    },
+    {
       id: 'customers_submitting_app_demand',
       label: 'Customers submitting app demand',
       time_basis: 'QTD',
@@ -87,6 +96,34 @@ const portfolio: MetricsV2DashboardPortfolio = {
       unit: 'count',
       meta: { rows: [{ buyer_id: 'buyer-hidden', name: 'Should Not Render' }] },
     },
+    {
+      id: 'access_enabled_but_never_used',
+      label: 'Access enabled but never used',
+      time_basis: 'NOW',
+      feasibility: 'READY',
+      available: true,
+      count: 2,
+      unit: 'count',
+      meta: {
+        rows: [
+          { buyer_id: 'buyer-5', name: 'Enabled Retail', business_outside_yukti_90d: 320000 },
+        ],
+      },
+    },
+    {
+      id: 'used_app_but_no_demand',
+      label: 'Used the app but submitted no demand',
+      time_basis: 'NOW + 90D',
+      feasibility: 'READY',
+      available: true,
+      count: 1,
+      unit: 'count',
+      meta: {
+        rows: [
+          { buyer_id: 'buyer-6', name: 'Browsing Retail', business_outside_yukti_90d: 220000 },
+        ],
+      },
+    },
   ],
   explore: [],
 };
@@ -113,25 +150,30 @@ describe('Pulse core mapping', () => {
 
     expect(response.source).toBe('app.get_landing_metrics_v4');
     expect(response.cards.map((card) => card.id)).toEqual([
+      'yukti_access_enabled',
       'demand_captured',
       'invoiced_from_captured_demand',
       'active_yukti_buyers',
     ]);
-    expect(JSON.stringify(response)).not.toContain('customers_with_access');
+    expect(response.cards[0]).toEqual(expect.objectContaining({
+      label: 'Customers with Yukti access',
+      value: 272,
+    }));
   });
 
-  it('maps contribution cards from existing buyer-app v4 aggregate portfolio without access-enabled filler', () => {
+  it('maps contribution cards from existing buyer-app v4 aggregate portfolio with the buyer-app footprint card', () => {
     const response = portfolioToPulseContribution(portfolio);
 
     expect(response.source).toBe('app.get_buyer_app_dashboard_v4');
     expect(response.freshness_label).toBe('2026-09-22T03:45:00.000Z');
     expect(response.cards.map((card) => card.id)).toEqual([
+      'yukti_access_enabled',
       'demand_captured',
       'invoiced_from_captured_demand',
       'active_yukti_buyers',
       'repeat_yukti_buyers',
     ]);
-    expect(response.cards[0]).toEqual(expect.objectContaining({
+    expect(response.cards[1]).toEqual(expect.objectContaining({
       value: 840000,
       document_count: 9,
       buyer_count: 6,
@@ -142,9 +184,25 @@ describe('Pulse core mapping', () => {
   it('maps no more than three allowed opportunity groups and excludes Inbox-owned operational demand', () => {
     const response = portfolioToPulseOpportunities(portfolio);
 
-    expect(response.groups).toHaveLength(1);
+    expect(response.groups).toHaveLength(3);
     expect(response.groups[0].id).toBe('valuable_assisted_customers_without_access');
     expect(response.groups[0].previews).toHaveLength(3);
+    expect(response.groups[1]).toEqual(expect.objectContaining({
+      id: 'access_enabled_but_never_used',
+      description: 'Customers have access enabled but still do business outside Yukti.',
+    }));
+    expect(response.groups[1].previews[0]).toEqual(expect.objectContaining({
+      evidence_value: 320000,
+      evidence_label: 'business outside Yukti',
+    }));
+    expect(response.groups[2]).toEqual(expect.objectContaining({
+      id: 'used_app_but_no_demand',
+      description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
+    }));
+    expect(response.groups[2].previews[0]).toEqual(expect.objectContaining({
+      evidence_value: 220000,
+      evidence_label: 'business outside Yukti',
+    }));
     expect(JSON.stringify(response)).not.toContain('app_demand_needing_operational_action');
     expect(JSON.stringify(response)).not.toContain('Should Not Render');
   });

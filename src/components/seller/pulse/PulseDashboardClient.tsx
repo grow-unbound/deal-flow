@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { AlertCircle, ArrowRight, ExternalLink, RefreshCcw } from 'lucide-react';
+import { AlertCircle, ArrowRight, RefreshCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
+import { PerformanceCard, RankedList } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
 import { usePulseContribution, usePulseOpportunities } from '@/hooks/usePulse';
 import { cn, formatNumberValue } from '@/lib/utils';
 import type { PulseContributionCard, PulseOpportunityGroup } from '@/types/pulse';
@@ -45,8 +47,8 @@ function PulseSectionShell({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[8px] border border-cream-300 bg-white">
-      <div className="flex items-start justify-between gap-4 border-b border-cream-200 px-5 py-4">
+    <section>
+      <div className="mb-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold text-cream-950">{title}</h2>
           <p className="mt-1 max-w-[72ch] text-sm leading-5 text-cream-700">{subtitle}</p>
@@ -63,31 +65,15 @@ function PulseSectionShell({
 
 export function PulseContributionSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-4">
+    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="min-h-[132px] animate-pulse rounded-[8px] border border-cream-200 bg-cream-100 p-4">
+        <div key={index} className="min-h-[132px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 px-[18px] py-[16px]">
           <div className="h-3 w-24 rounded bg-cream-200" />
           <div className="mt-5 h-7 w-28 rounded bg-cream-200" />
           <div className="mt-4 h-3 w-36 rounded bg-cream-200" />
         </div>
       ))}
     </div>
-  );
-}
-
-function ContributionCard({ card }: { card: PulseContributionCard }) {
-  return (
-    <article className="min-h-[132px] rounded-[8px] border border-cream-200 bg-cream-50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">{card.time_basis}</p>
-        {card.share_pct != null && card.share_pct > 0 ? (
-          <span className="rounded-full bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">{card.share_pct}% share</span>
-        ) : null}
-      </div>
-      <h3 className="mt-3 text-sm font-medium text-cream-800">{card.label}</h3>
-      <p className="mt-2 font-display text-2xl font-semibold text-cream-950">{formatCardValue(card)}</p>
-      <p className="mt-2 min-h-[2.5rem] text-sm leading-5 text-cream-650">{card.evidence}</p>
-    </article>
   );
 }
 
@@ -137,14 +123,18 @@ function ContributionSection() {
     >
       {query.isLoading ? <PulseContributionSkeleton /> : null}
       {query.isError ? (
-        <div className="p-5">
+        <div className="mt-4">
           <ErrorState heading="Contribution could not load" description="Opportunities and the rest of Pulse remain available." />
         </div>
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) > 0 ? (
-        <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {query.data?.cards.map((card) => <ContributionCard key={card.id} card={card} />)}
-        </div>
+        <InsightStrip4
+          tiles={(query.data?.cards ?? []).slice(0, 4).map((card) => ({
+            label: `${card.label} · ${card.time_basis}`,
+            value: formatCardValue(card),
+            sub: card.share_pct != null && card.share_pct > 0 ? `${card.evidence} · ${card.share_pct}% share` : card.evidence,
+          }))}
+        />
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) === 0 ? (
         <ContributionEmpty opportunity={query.data?.empty_opportunity} />
@@ -155,9 +145,9 @@ function ContributionSection() {
 
 export function PulseOpportunitiesSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 p-5 xl:grid-cols-3">
+    <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="min-h-[256px] animate-pulse rounded-[8px] border border-cream-200 bg-cream-100 p-4">
+        <div key={index} className="min-h-[256px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 p-4">
           <div className="h-3 w-20 rounded bg-cream-200" />
           <div className="mt-4 h-6 w-44 rounded bg-cream-200" />
           <div className="mt-3 h-3 w-full rounded bg-cream-200" />
@@ -175,33 +165,41 @@ export function PulseOpportunitiesSkeleton() {
 
 function OpportunityCard({ group }: { group: PulseOpportunityGroup }) {
   return (
-    <article className="flex min-h-[256px] flex-col rounded-[8px] border border-cream-200 bg-cream-50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-cream-700">{group.time_basis}</span>
-        <span className="font-display text-xl font-semibold text-cream-950">{formatNumberValue(group.count, 'COUNT')}</span>
-      </div>
-      <h3 className="mt-3 font-display text-lg font-semibold text-cream-950">{group.title}</h3>
-      <p className="mt-1 min-h-[2.5rem] text-sm leading-5 text-cream-700">{group.description}</p>
-      <p className="mt-3 text-xs font-medium text-cream-600">{group.evidence}</p>
-      <div className="mt-4 space-y-2">
-        {group.previews.map((preview) => (
-          <Link
-            key={preview.buyer_id || preview.name}
-            href={preview.href}
-            className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[8px] border border-cream-200 bg-white px-3 py-2 no-underline transition hover:border-teal-300"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-50 text-xs font-semibold text-teal-700">{preview.initials}</span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-cream-900">{preview.name}</span>
-              {preview.evidence_value ? (
-                <span className="block truncate text-xs text-cream-600">{formatNumberValue(preview.evidence_value, 'CURRENCY_THRESHOLD')} {preview.evidence_label}</span>
-              ) : null}
-            </span>
-            <ExternalLink size={14} className="text-cream-500" aria-hidden="true" />
-          </Link>
-        ))}
-      </div>
-      <div className="mt-auto pt-4">
+    <PerformanceCard
+      title={group.title}
+      subtitle={(
+        <>
+          <span className="block">{group.description}</span>
+          <span className="mt-1 block text-xs font-medium text-cream-600">{group.evidence}</span>
+        </>
+      )}
+      actions={(
+        <div className="text-right">
+          <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(group.count, 'COUNT')}</p>
+          <p className="mt-1 text-xs font-semibold text-cream-600">{group.time_basis}</p>
+        </div>
+      )}
+      bodyClassName="p-0"
+      className="flex min-h-[320px] flex-col"
+    >
+      <RankedList
+        className="min-h-[156px]"
+        items={group.previews.map((preview) => ({
+          id: preview.buyer_id || preview.name,
+          label: (
+            <Link href={preview.href} className="block truncate text-cream-900 no-underline hover:text-teal-700">
+              {preview.name}
+            </Link>
+          ),
+          value: preview.evidence_value ? formatNumberValue(preview.evidence_value, 'CURRENCY_THRESHOLD') : undefined,
+          supporting: preview.evidence_label ?? undefined,
+          initials: preview.initials,
+        }))}
+        emptyTitle="No preview customers"
+        emptyDescription="The group count is available; preview rows will appear when the source includes ranked buyers."
+        compact
+      />
+      <div className="mt-auto border-t border-cream-200 px-5 py-4">
         <Button asChild variant="secondary" size="sm">
           <Link href={group.href}>
             {group.action_label}
@@ -209,7 +207,7 @@ function OpportunityCard({ group }: { group: PulseOpportunityGroup }) {
           </Link>
         </Button>
       </div>
-    </article>
+    </PerformanceCard>
   );
 }
 
@@ -226,7 +224,7 @@ function OpportunitiesSection() {
     >
       {query.isLoading ? <PulseOpportunitiesSkeleton /> : null}
       {query.isError ? (
-        <div className="p-5">
+        <div className="mt-4">
           <div className="flex min-h-[160px] items-center gap-3 rounded-[8px] border border-amber-200 bg-amber-50 p-5 text-amber-900">
             <AlertCircle size={18} aria-hidden="true" />
             <div>
@@ -237,12 +235,12 @@ function OpportunitiesSection() {
         </div>
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) > 0 ? (
-        <div className="grid grid-cols-1 gap-3 p-5 xl:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
           {query.data?.groups.map((group) => <OpportunityCard key={group.id} group={group} />)}
         </div>
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) === 0 ? (
-        <div className="p-5">
+        <div className="mt-4">
           <div className="rounded-[8px] border border-cream-200 bg-cream-50 p-5">
             <h3 className="font-display text-lg font-semibold text-cream-950">No qualifying opportunities right now</h3>
             <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">
@@ -263,15 +261,15 @@ export function PulseDashboardSkeleton() {
         <div className="mt-3 h-10 w-40 animate-pulse rounded bg-cream-200" />
         <div className="mt-3 h-5 w-[36rem] max-w-full animate-pulse rounded bg-cream-200" />
       </div>
-      <section className="rounded-[8px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-200 px-5 py-4">
+      <section>
+        <div className="mb-2">
           <div className="h-6 w-64 animate-pulse rounded bg-cream-200" />
           <div className="mt-2 h-4 w-[34rem] max-w-full animate-pulse rounded bg-cream-200" />
         </div>
         <PulseContributionSkeleton />
       </section>
-      <section className="mt-5 rounded-[8px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-200 px-5 py-4">
+      <section className="mt-5">
+        <div className="mb-2">
           <div className="h-6 w-40 animate-pulse rounded bg-cream-200" />
           <div className="mt-2 h-4 w-[38rem] max-w-full animate-pulse rounded bg-cream-200" />
         </div>

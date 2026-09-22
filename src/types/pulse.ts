@@ -1,5 +1,5 @@
 export interface PulseContributionCard {
-  id: 'demand_captured' | 'invoiced_from_captured_demand' | 'active_yukti_buyers' | 'repeat_yukti_buyers';
+  id: 'yukti_access_enabled' | 'demand_captured' | 'invoiced_from_captured_demand' | 'active_yukti_buyers' | 'repeat_yukti_buyers';
   label: string;
   value: number;
   value_kind: 'currency' | 'count';

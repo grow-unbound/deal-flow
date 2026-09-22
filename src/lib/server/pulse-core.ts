@@ -71,6 +71,14 @@ function numericMeta(item: MetricsV2PortfolioItem | null, key: string) {
   return typeof value === 'number' ? value : Number(value ?? 0);
 }
 
+function rowNumber(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = Number(row[key] ?? 0);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+}
+
 function initials(name: string) {
   return name
     .split(' ')
@@ -128,6 +136,7 @@ export function portfolioToPulseContribution(portfolio: MetricsV2DashboardPortfo
   const demandCustomers = findPortfolioItem(portfolio, 'metrics', 'customers_submitting_app_demand');
   const invoiced = findPortfolioItem(portfolio, 'metrics', 'app_sourced_invoiced_sales_share');
   const repeat = findPortfolioItem(portfolio, 'metrics', 'repeat_app_customers');
+  const access = findPortfolioItem(portfolio, 'metrics', 'customers_with_access');
   const contributionTimeBasis = demand?.time_basis || demandCustomers?.time_basis || 'QTD';
   const sourceWatermark = oldestTimestamp(portfolio.source_watermark, demand?.meta?.source_watermark as string | null, invoiced?.meta?.source_watermark as string | null);
 
@@ -136,8 +145,18 @@ export function portfolioToPulseContribution(portfolio: MetricsV2DashboardPortfo
   const demandCount = itemCount(demand);
   const activeBuyerCount = itemCount(demandCustomers);
   const repeatBuyerCount = itemCount(repeat);
+  const accessBuyerCount = itemCount(access);
 
   const maybeCards: Array<PulseContributionCard | null> = [
+    accessBuyerCount > 0 ? {
+      id: 'yukti_access_enabled',
+      label: 'Customers with Yukti access',
+      value: accessBuyerCount,
+      value_kind: 'count',
+      buyer_count: accessBuyerCount,
+      time_basis: access?.time_basis || 'NOW',
+      evidence: 'Customers who can submit demand through Yukti',
+    } : null,
     appDemandValue > 0 || demandCount > 0 || activeBuyerCount > 0 ? {
       id: 'demand_captured',
       label: 'Demand captured through Yukti',
@@ -196,8 +215,18 @@ export function landingMetricsToPulseContribution(metrics: SellerDashboardMetric
 
   const demand = metrics.cards.find((card) => card.id === 'app_sourced_demand_qtd') ?? null;
   const invoiced = metrics.cards.find((card) => card.id === 'app_sourced_invoiced_sales_qtd') ?? null;
+  const access = metrics.cards.find((card) => card.id === 'customers_with_access') ?? null;
   const timeBasis = metrics.period.label ?? 'This Quarter';
   const maybeCards: Array<PulseContributionCard | null> = [
+    access && Number(access.entity_count ?? access.value ?? 0) > 0 ? {
+      id: 'yukti_access_enabled',
+      label: 'Customers with Yukti access',
+      value: Number(access.entity_count ?? access.value ?? 0),
+      value_kind: 'count',
+      buyer_count: Number(access.entity_count ?? access.value ?? 0),
+      time_basis: access.time_basis || 'now',
+      evidence: 'Customers who can submit demand through Yukti',
+    } : null,
     demand && (Number(demand.value ?? 0) > 0 || Number(demand.document_count ?? 0) > 0 || Number(demand.entity_count ?? 0) > 0) ? {
       id: 'demand_captured',
       label: 'Demand captured through Yukti',
@@ -244,18 +273,17 @@ export function landingMetricsToPulseContribution(metrics: SellerDashboardMetric
   };
 }
 
-function previewRows(item: MetricsV2PortfolioItem | null, valueKey?: string): PulseOpportunityPreview[] {
+function previewRows(item: MetricsV2PortfolioItem | null, valueKeys: string[] = [], evidenceLabel = 'assisted business'): PulseOpportunityPreview[] {
   return rowsFromItem(item).slice(0, 3).map((row) => {
     const name = String(row.name ?? row.business_name ?? 'Customer');
     const buyerId = String(row.buyer_id ?? row.id ?? '');
-    const rawEvidenceValue = valueKey ? Number(row[valueKey] ?? 0) : 0;
-    const evidenceValue = Number.isFinite(rawEvidenceValue) && rawEvidenceValue > 0 ? rawEvidenceValue : null;
+    const evidenceValue = rowNumber(row, valueKeys);
     return {
       buyer_id: buyerId,
       name,
       initials: initials(name),
       evidence_value: evidenceValue,
-      evidence_label: evidenceValue ? 'assisted business' : null,
+      evidence_label: evidenceValue ? evidenceLabel : null,
       href: buyerId ? `/customers/${buyerId}` : '/customers',
     };
   });
@@ -271,7 +299,8 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
     evidence: (item: MetricsV2PortfolioItem) => string;
     action_label: string;
     href: string;
-    valueKey?: string;
+    valueKeys?: string[];
+    valueLabel?: string;
   }> = [
     {
       id: 'valuable_assisted_customers_without_access',
@@ -280,23 +309,28 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
       evidence: (item) => `${item.count ?? 0} customers ranked by assisted business in ${item.time_basis}`,
       action_label: 'Open access management',
       href: '/buyer-app/access?status=suggested',
-      valueKey: 'invoice_value_90d',
+      valueKeys: ['invoice_value_90d'],
+      valueLabel: 'assisted business',
     },
     {
       id: 'access_enabled_but_never_used',
       title: 'Convert interested customers',
-      description: 'Customers have access enabled but have not used Yukti yet.',
-      evidence: (item) => `${item.count ?? 0} access-enabled customers have no recorded use`,
+      description: 'Customers have access enabled but still do business outside Yukti.',
+      evidence: (item) => `${item.count ?? 0} access-enabled customers have no recorded Yukti use`,
       action_label: 'Review enabled customers',
       href: '/buyer-app/access?status=inactive',
+      valueKeys: ['business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d'],
+      valueLabel: 'business outside Yukti',
     },
     {
       id: 'used_app_but_no_demand',
       title: 'Convert browsers into demand',
-      description: 'Customers used Yukti but have not submitted demand in the qualifying period.',
+      description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
       evidence: (item) => `${item.count ?? 0} customers used Yukti without demand`,
       action_label: 'Review customer access',
       href: '/buyer-app/access?status=inactive',
+      valueKeys: ['business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d'],
+      valueLabel: 'business outside Yukti',
     },
     {
       id: 'previously_submitted_app_demand_now_inactive',
@@ -321,7 +355,7 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
         evidence: definition.evidence(item),
         action_label: definition.action_label,
         href: definition.href,
-        previews: previewRows(item, definition.valueKey),
+        previews: previewRows(item, definition.valueKeys, definition.valueLabel),
       };
     })
     .filter((group): group is PulseOpportunityGroup => Boolean(group))
