@@ -10,6 +10,7 @@ vi.mock('@/hooks/useInboxEntries', () => ({
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEntryHistory: () => ({ data: { events: [] }, isLoading: false }),
+  useEnquiryTriage: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),

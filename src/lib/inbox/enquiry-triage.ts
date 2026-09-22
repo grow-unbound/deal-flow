@@ -22,6 +22,8 @@ export interface EnquiryAlternate {
   velocity: EnquiryVelocity;
   sameBrand: boolean;
   sameCategory: boolean;
+  /** What this buyer would actually pay for it (app.resolve_price) -- null if it couldn't be resolved. */
+  buyerPrice: number | null;
 }
 
 export interface EnquiryTriageLine {
@@ -114,5 +116,6 @@ export function pickAlternates(
       velocity: c.velocity,
       sameBrand,
       sameCategory,
+      buyerPrice: null,
     }));
 }

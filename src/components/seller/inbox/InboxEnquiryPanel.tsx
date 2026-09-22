@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEnquiryTriage, useSubstituteEnquiryLine } from '@/hooks/useInboxEntries';
 import type { EnquiryTriageLine, EnquiryVelocity } from '@/lib/inbox/enquiry-triage';
@@ -111,6 +110,9 @@ function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-4 text-right">
+                  <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">
+                    {alt.buyerPrice != null ? money(alt.buyerPrice) : '—'}
+                  </span>
                   <span className="font-mono text-sm tabular-nums text-cream-800">{alt.available} in stock</span>
                   <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
                   <button
@@ -201,17 +203,6 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="text-sm text-cream-700">
-          <span className="font-mono font-semibold text-cream-900">{data.estimateNumber}</span>
-          <span className="text-cream-500"> · {data.lines.length} item{data.lines.length === 1 ? '' : 's'}</span>
-          {data.hiddenPricing ? <span className="text-cream-500"> · Prices hidden — buyer targets shown</span> : null}
-        </p>
-        {!data.hiddenPricing && data.totalAmount != null ? (
-          <p className="font-mono text-base font-bold tabular-nums text-cream-950">{money(data.totalAmount)}</p>
-        ) : null}
-      </div>
-
       <div className="overflow-hidden rounded-[12px] border border-cream-200">
         <div className={cn(ROW_GRID, 'border-b border-cream-200 bg-cream-50 px-4 py-2.5')}>
           <span className={HEAD_CLASS}>Item</span>
@@ -227,18 +218,6 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
         </div>
       </div>
 
-      {data.notes ? (
-        <p className="text-sm text-cream-600">
-          <span className="font-medium text-cream-800">Buyer note:</span> {data.notes}
-        </p>
-      ) : null}
-
-      <Link
-        href={`/estimates/${data.estimateId}`}
-        className="inline-flex items-center gap-1 text-sm font-medium text-cream-700 underline-offset-4 hover:underline"
-      >
-        Open full enquiry <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-      </Link>
     </div>
   );
 }

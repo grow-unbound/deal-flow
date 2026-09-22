@@ -30,7 +30,7 @@ export async function loadEnquiryTriage(
 
   const [estimateRes, itemsRes] = await Promise.all([
     d.schema('app').from('estimates')
-      .select('id, tenant_id, location_id, estimate_number, status, total_amount, notes, estimate_type, price_visibility')
+      .select('id, tenant_id, buyer_id, location_id, estimate_number, status, total_amount, notes, estimate_type, price_visibility')
       .eq('id', estimateId).eq('tenant_id', tenantId).is('deleted_at', null).maybeSingle(),
     d.schema('app').from('estimate_items')
       .select('id, tenant_product_id, qty, unit_price, item_order, buyer_target_unit_price_min, buyer_target_unit_price_max, buyer_note')
@@ -41,6 +41,7 @@ export async function loadEnquiryTriage(
   const estimate = estimateRes.data as Record<string, unknown> | null;
   if (!estimate) return null;
 
+  const buyerId = asString(estimate.buyer_id);
   const items = (itemsRes.data ?? []) as Array<Record<string, unknown>>;
   const productIds = Array.from(new Set(items.map((i) => asString(i.tenant_product_id)).filter((v): v is string => !!v)));
   const locationId = asString(estimate.location_id);
@@ -146,6 +147,39 @@ export async function loadEnquiryTriage(
     });
   }
 
+  // Resolve what this buyer would actually pay for each suggested alternate (app.resolve_price,
+  // same precedence catalog display uses) -- without it the seller can't judge the swap's impact.
+  const altPriceKey = (productId: string, qty: number) => `${productId}:${qty}`;
+  const altPriceMap = new Map<string, number>();
+  if (buyerId) {
+    const altsByQty = new Map<number, Set<string>>();
+    for (const item of items) {
+      const pid = asString(item.tenant_product_id);
+      const qty = Number(item.qty ?? 0);
+      if (!pid || enquiryStockStatus(qty, inventory.get(pid) ?? 0).tone === 'ok') continue;
+      const catId = asString(productMap.get(pid)?.tenant_category_id);
+      const brandId = asString(productMap.get(pid)?.tenant_brand_id);
+      const alts = pickAlternates({ tenantProductId: pid, brandId, categoryId: catId, qty }, poolCandidates);
+      const set = altsByQty.get(qty) ?? new Set<string>();
+      for (const alt of alts) set.add(alt.tenantProductId);
+      altsByQty.set(qty, set);
+    }
+    const responses = await Promise.all(
+      Array.from(altsByQty.entries()).map(async ([qty, ids]) => {
+        const { data, error } = await d.schema('app').rpc('resolve_prices_batch', {
+          p_tenant_product_ids: Array.from(ids),
+          p_buyer_id: buyerId,
+          p_qty: qty,
+        });
+        if (error) { console.error('[load-enquiry-triage] resolve_prices_batch', error); return { qty, rows: [] as Array<{ tenant_product_id: string; unit_price: number }> }; }
+        return { qty, rows: (data ?? []) as Array<{ tenant_product_id: string; unit_price: number }> };
+      }),
+    );
+    for (const { qty, rows } of responses) {
+      for (const row of rows) altPriceMap.set(altPriceKey(row.tenant_product_id, qty), Number(row.unit_price ?? 0));
+    }
+  }
+
   const lines: EnquiryTriageLine[] = items.map((item) => {
     const pid = item.tenant_product_id as string;
     const product = productMap.get(pid);
@@ -172,7 +206,10 @@ export async function loadEnquiryTriage(
             brandId: asString(product?.tenant_brand_id),
             categoryId: asString(product?.tenant_category_id),
             qty,
-          }, poolCandidates)
+          }, poolCandidates).map((alt) => ({
+            ...alt,
+            buyerPrice: altPriceMap.get(altPriceKey(alt.tenantProductId, qty)) ?? null,
+          }))
         : [],
     };
   });
