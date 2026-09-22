@@ -22,6 +22,7 @@ import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneSti
 import { SellerBusinessWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useLocationsLanding,
@@ -80,6 +81,7 @@ function LocationsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.business.branches);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -161,13 +163,13 @@ function LocationsLandingContent({
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && rows.length === 0;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading branches"
         eyebrowWidth="w-20"
         titleWidth="w-44"
         subtitleWidth="w-52"
-        showHeader={false}
+        showTransactionTabs
       />
     ) : (
       <LocationsLandingSkeleton />

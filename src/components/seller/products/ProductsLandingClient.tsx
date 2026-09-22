@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { SellerProductsWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -123,6 +124,7 @@ function ProductsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/products');
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const { isSellerAssistant } = useRole();
   const period = 'quarter';
@@ -205,8 +207,8 @@ function ProductsLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading products" showHeader={false} showLeading />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading products" showLeading showTransactionTabs />
     ) : (
       <ProductsLandingSkeleton />
     );

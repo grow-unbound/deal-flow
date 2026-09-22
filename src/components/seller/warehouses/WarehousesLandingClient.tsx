@@ -19,6 +19,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding, useWarehousesLandingMetrics } from '@/hooks/useWarehouses';
 import { cn, formatNumberValue } from '@/lib/utils';
@@ -92,6 +93,7 @@ export function WarehousesLandingClient({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.business.warehouses);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -202,8 +204,8 @@ export function WarehousesLandingClient({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading warehouses" showHeader={false} />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading warehouses" showTransactionTabs />
     ) : (
       <WarehousesLandingSkeleton />
     );

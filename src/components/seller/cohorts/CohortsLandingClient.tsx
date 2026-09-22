@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useCohortsLanding,
@@ -56,6 +57,7 @@ function CohortsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/customer-groups');
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -194,7 +196,7 @@ function CohortsLandingContent({
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading customer groups"
         eyebrowWidth="w-28"

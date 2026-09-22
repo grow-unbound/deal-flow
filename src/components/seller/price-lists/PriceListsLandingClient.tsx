@@ -22,6 +22,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, useTenantPriceListsMetrics, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
@@ -73,6 +74,7 @@ function PriceListsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.market.pricing);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -190,7 +192,7 @@ function PriceListsLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton ariaLabel="Loading price lists" />
     ) : (
       <PriceListsLandingSkeleton />

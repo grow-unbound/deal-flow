@@ -16,9 +16,10 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { SellerSalesWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
@@ -112,6 +113,7 @@ function InvoicesLandingContent({
   const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.sales.invoices);
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -229,8 +231,8 @@ function InvoicesLandingContent({
   }
   const showRefreshingState = isLoading && !data;
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading invoices" showHeader={false} showTransactionTabs variant="transaction" />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading invoices" showTransactionTabs variant="transaction" />
     ) : (
       <InvoicesLandingSkeleton />
     );
@@ -292,7 +294,6 @@ function InvoicesLandingContent({
           compact={isPaneOpen}
         />
         <SellerSalesWorkspaceTabs />
-        <SellerMobileTransactionTabs active="invoices" />
 
         {isPaneOpen ? null : (
           <>

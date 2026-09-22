@@ -93,7 +93,7 @@ export function SellerMobileTransactionDetail({
               {originMark}
               <h1
                 className="min-w-0 flex-1 font-mono font-semibold leading-tight text-[var(--cream-900)]"
-                style={{ fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.02em' }}
+                style={{ fontSize: 'var(--b-text-header)', letterSpacing: '-0.02em' }}
               >
                 {documentNumber}
               </h1>

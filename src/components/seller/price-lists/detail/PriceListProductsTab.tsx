@@ -222,7 +222,7 @@ export function PriceListProductsTab({
         </div>
 
         <div className="mt-4 space-y-3 rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium text-cream-800">Pricing mode</label>
               <Select

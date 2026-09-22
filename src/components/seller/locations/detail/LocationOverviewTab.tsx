@@ -25,7 +25,7 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
   }
 
   return (
-    <div className="mt-6 grid grid-cols-2 gap-6">
+    <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
       <PerformanceCard title="Sales over time" subtitle="Weekly sales trend" bodyClassName="p-5">
         <TrendFrame
           emptyTitle="No sales over time yet"

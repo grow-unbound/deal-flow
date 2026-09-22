@@ -1,5 +1,9 @@
 import bundleAnalyzer from '@next/bundle-analyzer';
 import { withSentryConfig } from '@sentry/nextjs/config';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -9,6 +13,14 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ['*.localhost'],
+  // Turbopack otherwise infers the workspace root by walking up for the
+  // nearest lockfile, which picks the wrong directory when this project is
+  // checked out as a git worktree alongside a sibling checkout that also has
+  // a pnpm-lock.yaml — breaking internal module resolution (e.g. next/font).
+  // Pinning to this file's own directory makes it correct from any checkout.
+  turbopack: {
+    root: __dirname,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },

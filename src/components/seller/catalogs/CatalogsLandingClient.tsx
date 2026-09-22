@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot, type SellerMobileListItem } from '@/components/seller/mobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
@@ -80,6 +81,7 @@ function CatalogsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/campaigns');
+  const isMobile = useIsMobile();
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
   const [campaignFormOpen, setCampaignFormOpen] = useState(false);
@@ -195,7 +197,7 @@ function CatalogsLandingContent({
 
   const showRefreshingState = metricsQuery.isLoading && !metricsData && isLoading && !landingData;
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton ariaLabel="Loading campaigns" />
     ) : (
       <CatalogsLandingSkeleton />
