@@ -34,15 +34,15 @@ function renderCard(entries: InboxEntry[]) {
 }
 
 describe('InboxCollectionGroupCard — title/subtitle', () => {
-  it('puts the amount in the title and counts (not the amount) in the subtitle when mixed', () => {
+  it('uses a static title and puts the amount + counts in the subtitle when mixed', () => {
     renderCard([dueEntry('a', 'invoice_due', 90690), dueEntry('b', 'invoice_overdue', 25490)]);
-    expect(screen.getByText('₹1,16,180 upcoming dues or overdue')).toBeInTheDocument();
-    expect(screen.getByText('2 invoices · 1 overdue')).toBeInTheDocument();
+    expect(screen.getByText('Upcoming dues or overdue')).toBeInTheDocument();
+    expect(screen.getByText('2 invoices · ₹1,16,180 due · 1 overdue')).toBeInTheDocument();
   });
 
   it('says "overdue" only when every invoice in the group is overdue', () => {
     renderCard([dueEntry('a', 'invoice_overdue', 22000)]);
-    expect(screen.getByText('₹22,000 upcoming dues or overdue')).toBeInTheDocument();
-    expect(screen.getByText('1 invoice overdue')).toBeInTheDocument();
+    expect(screen.getByText('Upcoming dues or overdue')).toBeInTheDocument();
+    expect(screen.getByText('1 invoice · ₹22,000 overdue')).toBeInTheDocument();
   });
 });

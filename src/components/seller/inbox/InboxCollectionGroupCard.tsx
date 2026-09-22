@@ -6,6 +6,7 @@ import { Bell, ChevronDown, Loader2, Send, StickyNote } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useApplyGenericEntryAction, useSendCollectionReminder, type EntryHistoryEvent } from '@/hooks/useInboxEntries';
+import { buildDuesSummaryLine } from '@/lib/inbox/inbox-entry-copy';
 import { cn, formatDate } from '@/lib/utils';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
@@ -58,13 +59,9 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
     }
   }
 
-  const invoiceCount = summary?.entryIds.length ?? 0;
-  const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
-  const title = summary ? `${summary.totalAmountLabel} upcoming dues or overdue` : 'Dues';
+  const title = 'Upcoming dues or overdue';
   const subtitle = summary
-    ? invoiceCount > 0 && summary.overdueCount === invoiceCount
-      ? `${invoiceLabel} overdue`
-      : [invoiceLabel, summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null].filter(Boolean).join(' · ')
+    ? buildDuesSummaryLine(summary.totalAmount, summary.entryIds.length, summary.overdueCount)
     : '';
 
   return (

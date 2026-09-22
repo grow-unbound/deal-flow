@@ -11,6 +11,7 @@ vi.mock('@/hooks/useInboxEntries', () => ({
   useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEntryHistory: () => ({ data: { events: [] }, isLoading: false }),
   useEnquiryTriage: () => ({ data: undefined, isLoading: false, isError: false }),
+  useEntryDocuments: () => ({ data: { documents: [] }, isLoading: false }),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -93,7 +94,7 @@ describe('InboxDetailClient', () => {
     renderDetail();
     fireEvent.click(screen.getByText(/58,000/));
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /upcoming dues or overdue/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Upcoming dues or overdue/ }));
     expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
     expect(screen.getByText('INV-1042')).toBeInTheDocument();
@@ -118,6 +119,42 @@ describe('InboxDetailClient', () => {
     expect(screen.getByText('Sri Krishna Enterprises')).toBeInTheDocument();
     expect(screen.getByText('2 open issues')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /View Sri Krishna Enterprises/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a loading skeleton (not the fallback empty message) while entries are still loading', () => {
+    useInboxEntriesMock.mockReturnValue({ data: undefined, isLoading: true });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <InboxDetailClient buyerId="b1" />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
+    expect(screen.queryByText(/no longer in your active list/i)).not.toBeInTheDocument();
+  });
+
+  it('resolves a buyer-less entry by its own id (buyer_id is null before a buyer row exists)', () => {
+    const BUYERLESS_ENTRY = {
+      id: 'entry-no-buyer', entry_number: 3, tenant_id: 't1', buyer_id: null, buyer_name: 'New signup',
+      buyer_phone: '9990002222', location_id: null, entry_type: 'invoice_due', status: 'new',
+      source_channel: 'backend', source_entity_type: 'invoice', source_entity_id: 'inv-x',
+      title: 'New signup', summary: '₹5,000 due', amount: 5000, currency: 'INR',
+      priority_at: '2026-09-07T10:00:00Z', remind_at: null, created_at: '2026-09-07T10:00:00Z',
+      last_actor_id: null, last_action: null, last_action_at: null, external_sync_status: 'not_required',
+      metadata: {}, allowed_actions: ['send_reminder'], time_bucket: 'today', customer_entry_count: 1,
+    };
+    useInboxEntriesMock.mockReturnValue({ data: { entries: [BUYERLESS_ENTRY], nextCursor: null }, isLoading: false });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <InboxDetailClient buyerId="entry-no-buyer" />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText('New signup')).toBeInTheDocument();
+    expect(screen.queryByText(/no longer in your active list/i)).not.toBeInTheDocument();
+  });
+
+  it('hides the Show history CTA', () => {
+    renderDetail();
+    expect(screen.queryByRole('button', { name: /show history/i })).not.toBeInTheDocument();
   });
 
   it('shows credit-limit context and keeps the primary reminder CTA rightmost, after adjust-limit, on over-limit cards', () => {

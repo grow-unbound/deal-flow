@@ -58,7 +58,7 @@ function ageLabel(entry: InboxEntry): string | null {
 }
 
 /** "N invoices · ₹X due" — all-overdue drops the "due"/"overdue" split into one clear word. */
-function buildDuesSummaryLine(total: number, invoiceCount: number, overdueCount: number): string {
+export function buildDuesSummaryLine(total: number, invoiceCount: number, overdueCount: number): string {
   const totalLabel = formatNumberValue(total, 'CURRENCY_EXACT');
   const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
   if (invoiceCount > 0 && overdueCount === invoiceCount) {
