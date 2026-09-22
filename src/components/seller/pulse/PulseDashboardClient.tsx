@@ -1,0 +1,406 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, RefreshCcw } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
+import { PerformanceCard, RankedList } from '@/components/seller/detail';
+import { InsightStrip4 } from '@/components/seller/layout';
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { usePulseContribution, usePulseOpportunities, usePulseOpportunityBuyers } from '@/hooks/usePulse';
+import { cn, formatNumberValue } from '@/lib/utils';
+import type { PulseContributionCard, PulseOpportunityGroup, PulseOpportunityPreview } from '@/types/pulse';
+
+const PULSE_OPPORTUNITY_SCROLL_CARD_HEIGHT = 'h-[320px]';
+
+function formatPulseFreshness(iso: string | null | undefined) {
+  if (!iso) return null;
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time)) return null;
+  const deltaMs = Math.max(0, Date.now() - time);
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 1) return 'Updated just now';
+  if (minutes < 60) return `Updated ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Updated ${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `Updated ${days}d ago`;
+  return `Updated ${new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
+}
+
+function formatCardValue(card: PulseContributionCard) {
+  return card.value_kind === 'currency'
+    ? formatNumberValue(card.value, 'CURRENCY_THRESHOLD')
+    : formatNumberValue(card.value, 'COUNT');
+}
+
+function ScrollCardBody({ children }: { children: ReactNode }) {
+  const [scrollActive, setScrollActive] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current != null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        PULSE_OPPORTUNITY_SCROLL_CARD_HEIGHT,
+        'dashboard-vscroll overflow-y-auto',
+        scrollActive && 'dashboard-vscroll--active',
+      )}
+      onScroll={() => {
+        setScrollActive(true);
+        if (resetTimerRef.current != null) {
+          window.clearTimeout(resetTimerRef.current);
+        }
+        resetTimerRef.current = window.setTimeout(() => {
+          setScrollActive(false);
+          resetTimerRef.current = null;
+        }, 900);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PulseSectionShell({
+  title,
+  subtitle,
+  freshness,
+  isFetching,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  freshness?: string | null;
+  isFetching?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="font-display text-lg font-semibold text-cream-950">{title}</h2>
+          <p className="mt-1 max-w-[72ch] text-sm leading-5 text-cream-700">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-cream-600">
+          {isFetching ? <RefreshCcw size={13} className="animate-spin" aria-hidden="true" /> : null}
+          {freshness ? <span>{freshness}</span> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function PulseContributionSkeleton() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="min-h-[132px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 px-[18px] py-[16px]">
+          <div className="h-3 w-24 rounded bg-cream-200" />
+          <div className="mt-5 h-7 w-28 rounded bg-cream-200" />
+          <div className="mt-4 h-3 w-36 rounded bg-cream-200" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ContributionEmpty({ opportunity }: { opportunity?: PulseOpportunityGroup | null }) {
+  if (opportunity) {
+    return (
+      <div className="p-5">
+        <div className="rounded-[8px] border border-teal-200 bg-teal-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-teal-700">Best next opportunity</p>
+          <h3 className="mt-2 font-display text-xl font-semibold text-cream-950">
+            {opportunity.count} {opportunity.title.toLowerCase()}
+          </h3>
+          <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">{opportunity.description}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5">
+      <div className="rounded-[8px] border border-cream-200 bg-cream-50 p-5">
+        <h3 className="font-display text-lg font-semibold text-cream-950">Pulse will focus once Yukti captures demand</h3>
+        <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">
+          Contribution cards stay hidden until there is meaningful Yukti-attributed demand or invoice evidence.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ContributionSection() {
+  const query = usePulseContribution();
+  const freshness = formatPulseFreshness(query.data?.freshness_label);
+
+  return (
+    <PulseSectionShell
+      title="Business captured through Yukti"
+      subtitle="Channel-neutral contribution from submitted demand, invoicing, and repeat buyer behavior."
+      freshness={freshness}
+      isFetching={query.isFetching && !query.isLoading}
+    >
+      {query.isLoading ? <PulseContributionSkeleton /> : null}
+      {query.isError ? (
+        <div className="mt-4">
+          <ErrorState heading="Contribution could not load" description="Opportunities and the rest of Pulse remain available." />
+        </div>
+      ) : null}
+      {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) > 0 ? (
+        <InsightStrip4
+          tiles={(query.data?.cards ?? []).slice(0, 4).map((card) => ({
+            label: `${card.label} · ${card.time_basis}`,
+            value: formatCardValue(card),
+            sub: card.share_pct != null && card.share_pct > 0 ? `${card.evidence} · ${card.share_pct}% share` : card.evidence,
+          }))}
+        />
+      ) : null}
+      {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) === 0 ? (
+        <ContributionEmpty opportunity={query.data?.empty_opportunity} />
+      ) : null}
+    </PulseSectionShell>
+  );
+}
+
+export function PulseOpportunitiesSkeleton() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="min-h-[256px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 p-4">
+          <div className="h-3 w-20 rounded bg-cream-200" />
+          <div className="mt-4 h-6 w-44 rounded bg-cream-200" />
+          <div className="mt-3 h-3 w-full rounded bg-cream-200" />
+          <div className="mt-2 h-3 w-3/4 rounded bg-cream-200" />
+          <div className="mt-6 space-y-3">
+            <div className="h-9 rounded bg-cream-200" />
+            <div className="h-9 rounded bg-cream-200" />
+            <div className="h-9 rounded bg-cream-200" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function opportunityRows(previews: PulseOpportunityPreview[]) {
+  return previews.map((preview) => ({
+    id: preview.buyer_id || preview.name,
+    label: (
+      <Link href={preview.href} className="block truncate text-cream-900 no-underline hover:text-teal-700">
+        {preview.name}
+      </Link>
+    ),
+    meta: preview.supporting_text ?? undefined,
+    initials: preview.initials,
+  }));
+}
+
+function OpportunityCard({
+  group,
+  onShowAll,
+}: {
+  group: PulseOpportunityGroup;
+  onShowAll: (group: PulseOpportunityGroup) => void;
+}) {
+  return (
+    <PerformanceCard
+      title={group.title}
+      subtitle={group.description}
+      actions={(
+        <div className="text-right">
+          <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(group.count, 'COUNT')}</p>
+          <button
+            type="button"
+            className="mt-2 text-sm font-semibold text-teal-700 no-underline hover:text-teal-800"
+            onClick={() => onShowAll(group)}
+          >
+            Show all
+          </button>
+        </div>
+      )}
+      bodyClassName="p-0"
+      className="flex min-h-[320px] flex-col"
+    >
+      <ScrollCardBody>
+        <RankedList
+          items={opportunityRows(group.previews)}
+          emptyTitle="No preview customers"
+          emptyDescription="The group count is available; preview rows will appear when the source includes ranked buyers."
+          compact
+        />
+      </ScrollCardBody>
+    </PerformanceCard>
+  );
+}
+
+function OpportunityBuyerSheet({
+  group,
+  onOpenChange,
+}: {
+  group: PulseOpportunityGroup | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const query = usePulseOpportunityBuyers(group?.id ?? null, Boolean(group));
+  const rows = useMemo(
+    () => query.data?.pages.flatMap((page) => page.rows) ?? [],
+    [query.data],
+  );
+  const total = query.data?.pages[0]?.total ?? group?.count ?? 0;
+
+  return (
+    <Sheet open={Boolean(group)} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full max-w-[540px] p-0 sm:max-w-[540px]">
+        <SheetHeader>
+          <SheetTitle className="font-display text-xl font-semibold text-cream-950">{group?.title ?? 'Opportunity customers'}</SheetTitle>
+          {group?.description ? <p className="mt-1 text-base text-cream-700">{group.description}</p> : null}
+          <p className="mt-2 text-sm font-medium text-cream-600">{formatNumberValue(total, 'COUNT')} customers</p>
+        </SheetHeader>
+        <SheetBody className="px-0 py-0">
+          {query.isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="grid grid-cols-[auto_1fr] items-center gap-3 border-b border-cream-200 px-3 py-3 last:border-b-0">
+                  <div className="h-8 w-8 animate-pulse rounded-full bg-cream-100" />
+                  <div className="min-w-0 space-y-2">
+                    <div className="h-4 w-44 animate-pulse rounded bg-cream-100" />
+                    <div className="h-3 w-28 animate-pulse rounded bg-cream-100" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : query.isError ? (
+            <div className="p-5">
+              <ErrorState heading="Customers could not load" description="Close this panel and try again." />
+            </div>
+          ) : (
+            <>
+              <RankedList
+                items={opportunityRows(rows)}
+                emptyTitle="No customers found"
+                emptyDescription="No ranked customers are available for this opportunity right now."
+                compact
+              />
+              {query.hasNextPage ? (
+                <div className="border-t border-cream-200 p-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    disabled={query.isFetchingNextPage}
+                    onClick={() => query.fetchNextPage()}
+                  >
+                    {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function OpportunitiesSection() {
+  const query = usePulseOpportunities();
+  const freshness = formatPulseFreshness(query.data?.freshness_label);
+  const [selectedGroup, setSelectedGroup] = useState<PulseOpportunityGroup | null>(null);
+
+  return (
+    <PulseSectionShell
+      title="Opportunities"
+      subtitle="Computed customer groups worth acting on next. These are analytical views, not Inbox work queues."
+      freshness={freshness}
+      isFetching={query.isFetching && !query.isLoading}
+    >
+      {query.isLoading ? <PulseOpportunitiesSkeleton /> : null}
+      {query.isError ? (
+        <div className="mt-4">
+          <div className="flex min-h-[160px] items-center gap-3 rounded-[8px] border border-amber-200 bg-amber-50 p-5 text-amber-900">
+            <AlertCircle size={18} aria-hidden="true" />
+            <div>
+              <h3 className="font-display text-lg font-semibold">Opportunities could not load</h3>
+              <p className="mt-1 text-sm">Contribution remains available while this section recovers.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) > 0 ? (
+        <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
+          {query.data?.groups.map((group) => <OpportunityCard key={group.id} group={group} onShowAll={setSelectedGroup} />)}
+        </div>
+      ) : null}
+      {!query.isLoading && !query.isError && (query.data?.groups.length ?? 0) === 0 ? (
+        <div className="mt-4">
+          <div className="rounded-[8px] border border-cream-200 bg-cream-50 p-5">
+            <h3 className="font-display text-lg font-semibold text-cream-950">No qualifying opportunities right now</h3>
+            <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">
+              Pulse will show up to three customer groups when synced history or Yukti activity produces a useful next action.
+            </p>
+          </div>
+        </div>
+      ) : null}
+      <OpportunityBuyerSheet group={selectedGroup} onOpenChange={(open) => setSelectedGroup(open ? selectedGroup : null)} />
+    </PulseSectionShell>
+  );
+}
+
+export function PulseDashboardSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-[1920px] px-8 py-6">
+      <div className="mb-5">
+        <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
+        <div className="mt-3 h-10 w-40 animate-pulse rounded bg-cream-200" />
+        <div className="mt-3 h-5 w-[36rem] max-w-full animate-pulse rounded bg-cream-200" />
+      </div>
+      <section>
+        <div className="mb-2">
+          <div className="h-6 w-64 animate-pulse rounded bg-cream-200" />
+          <div className="mt-2 h-4 w-[34rem] max-w-full animate-pulse rounded bg-cream-200" />
+        </div>
+        <PulseContributionSkeleton />
+      </section>
+      <section className="mt-5">
+        <div className="mb-2">
+          <div className="h-6 w-40 animate-pulse rounded bg-cream-200" />
+          <div className="mt-2 h-4 w-[38rem] max-w-full animate-pulse rounded bg-cream-200" />
+        </div>
+        <PulseOpportunitiesSkeleton />
+      </section>
+    </div>
+  );
+}
+
+export function PulseDashboardClient() {
+  return (
+    <div className="mx-auto w-full max-w-[1920px] px-8 py-6">
+      <header className="mb-5">
+        <p className="eyebrow text-cream-600">Pulse</p>
+        <h1 className="font-display text-[var(--b-text-page-sm)] font-semibold leading-[0.96] text-cream-900 md:text-xl md:font-extrabold md:leading-[1]">
+          Pulse
+        </h1>
+        <p className="mt-2 max-w-[68ch] text-md leading-6 text-cream-700">
+          Emerging demand, business captured through Yukti, and where to act next.
+        </p>
+      </header>
+      <div className={cn('space-y-5')}>
+        <ContributionSection />
+        <OpportunitiesSection />
+      </div>
+    </div>
+  );
+}
