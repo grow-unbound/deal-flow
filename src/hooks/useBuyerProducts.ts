@@ -93,6 +93,7 @@ export function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | nu
 
 async function fetchJson<T>(url: string, init?: ApiFetchInit): Promise<T> {
   const response = await apiFetch(url, init);
+  if (response.status === 429) throw new Error("You're browsing very quickly. Please wait a moment and try again.");
   if (!response.ok) throw new Error(`Request failed: ${url}`);
   return response.json() as Promise<T>;
 }

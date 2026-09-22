@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
   // then per-(ip,slug) (catches hammering one slug specifically).
   const enumerationLimit = await consumeEnumerationRateLimit(ip);
   if (!enumerationLimit.ok) {
-    return tooManyRequestsResponse(enumerationLimit.retryAfterSec);
+    return tooManyRequestsResponse(enumerationLimit.retryAfterSec, 'api');
   }
   const limited = await consumePublicCatalogRateLimit(ip, slug, 'browse');
   if (!limited.ok) {
-    return tooManyRequestsResponse(limited.retryAfterSec);
+    return tooManyRequestsResponse(limited.retryAfterSec, 'api');
   }
 
   const branding = await getCachedTenantBrandingBySlug(slug);
