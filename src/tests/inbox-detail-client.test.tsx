@@ -93,7 +93,7 @@ describe('InboxDetailClient', () => {
     renderDetail();
     fireEvent.click(screen.getByText(/58,000/));
     expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Dues/ }));
+    fireEvent.click(screen.getByRole('button', { name: /upcoming dues or overdue/ }));
     expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
     expect(screen.getByText('INV-1042')).toBeInTheDocument();

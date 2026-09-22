@@ -47,4 +47,19 @@ describe('InboxHistorySheet', () => {
     renderSheet();
     expect(screen.getByText(/no activity yet/i)).toBeInTheDocument();
   });
+
+  it('filters out internal "generated" events (one per entry, no seller-facing value)', () => {
+    useEntryHistoryMock.mockReturnValue({
+      data: {
+        events: [
+          { id: 'ev1', entry_id: 'e1', entry_type: 'new_enquiry', action: 'generated', from_status: null, to_status: 'new', note: null, actor_id: null, created_at: '2026-09-08T08:25:36Z' },
+          { id: 'ev2', entry_id: 'e2', entry_type: 'invoice_overdue', action: 'generated', from_status: null, to_status: 'new', note: null, actor_id: null, created_at: '2026-09-08T08:25:36Z' },
+        ],
+      },
+      isLoading: false,
+    });
+    renderSheet();
+    expect(screen.queryByText(/generated/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/no activity yet/i)).toBeInTheDocument();
+  });
 });

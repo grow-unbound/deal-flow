@@ -59,15 +59,13 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
   }
 
   const invoiceCount = summary?.entryIds.length ?? 0;
+  const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
+  const title = summary ? `${summary.totalAmountLabel} upcoming dues or overdue` : 'Dues';
   const subtitle = summary
     ? invoiceCount > 0 && summary.overdueCount === invoiceCount
-      ? `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'} · ${summary.totalAmountLabel} overdue`
-      : [
-          `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`,
-          `${summary.totalAmountLabel} due`,
-          summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null,
-        ].filter(Boolean).join(' · ')
-    : 'Dues';
+      ? `${invoiceLabel} overdue`
+      : [invoiceLabel, summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null].filter(Boolean).join(' · ')
+    : '';
 
   return (
     <section id="inbox-dues-group" className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
@@ -77,8 +75,8 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
         className={cn('flex w-full items-start justify-between gap-4 px-6 py-5 text-left', expanded ? 'border-b border-cream-200' : undefined)}
       >
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">Dues</h3>
-          <p className="mt-1 text-sm text-cream-600">{subtitle}</p>
+          <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">{title}</h3>
+          {subtitle ? <p className="mt-1 text-sm text-cream-600">{subtitle}</p> : null}
         </div>
         <ChevronDown
           size={16}

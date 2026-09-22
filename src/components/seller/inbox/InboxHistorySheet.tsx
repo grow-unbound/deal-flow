@@ -20,7 +20,12 @@ export function InboxHistorySheet({ open, onOpenChange, buyerId, buyerName, loca
   const { data, isLoading } = useEntryHistory(open ? buyerId : null);
 
   const merged = useMemo<MergedEvent[]>(() => {
-    const real: MergedEvent[] = (data?.events ?? []).map((e) => ({ ...e, synced: true as const }));
+    // 'generated' is an internal bookkeeping event (logged once per entry when the
+    // backend auto-creates it) -- never something a seller acted on, so it adds pure
+    // noise here (one identical row per entry in the buyer's stack, same timestamp).
+    const real: MergedEvent[] = (data?.events ?? [])
+      .filter((e) => e.action !== 'generated')
+      .map((e) => ({ ...e, synced: true as const }));
     const relevantLocal = localEvents.filter((e) => real.every((r) => r.entry_id !== e.entry_id || r.action !== e.action));
     return [...real, ...relevantLocal].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
