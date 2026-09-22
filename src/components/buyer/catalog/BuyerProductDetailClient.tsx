@@ -30,7 +30,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const { data: meData } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
   const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
-  const priceReveal = isGuest ? guestPriceReveal(meData?.guest_pricing_mode) : 'amount';
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const {
     item,
@@ -39,7 +38,15 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     isError: productError,
     isRecosLoading,
   } = useBuyerProductDetail(tenantProductId);
+  // Prefer the product's own same-request-fresh catalog_pricing_mode over
+  // meData.guest_pricing_mode, which is a 15-min-stale reference query and
+  // can drift out of sync with the catalog's actual current pricing mode.
+  // Fall back to /me only before the product has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(item ? item.catalog_pricing_mode : meData?.guest_pricing_mode)
+    : 'amount';
   const [imgError, setImgError] = React.useState(false);
+  const [familyImgError, setFamilyImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
@@ -155,13 +162,16 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const productImage = item && !imgError && item.image_urls.length > 0
     ? (item.image_url_large ?? item.image_urls[0])
     : null;
-  const categoryImage = item && !productImage && !categoryImgError && item.category_image_url
+  const familyImage = item && !productImage && !familyImgError && item.family_image_url
+    ? item.family_image_url
+    : null;
+  const categoryImage = item && !productImage && !familyImage && !categoryImgError && item.category_image_url
     ? item.category_image_url
     : null;
-  const brandLogo = item && !productImage && !categoryImage && !brandImgError && item.brand_logo_url
+  const brandLogo = item && !productImage && !familyImage && !categoryImage && !brandImgError && item.brand_logo_url
     ? item.brand_logo_url
     : null;
-  const activeImage = productImage ?? categoryImage ?? brandLogo;
+  const activeImage = productImage ?? familyImage ?? categoryImage ?? brandLogo;
   const showStockOverlay = stockVisible && (item?.stock_status === 'limited' || item?.stock_status === 'out_of_stock');
   const categoryRecoTitle = item?.category_name
     ? `More in ${item.category_name}`
@@ -185,6 +195,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 sizes="(min-width: 768px) 42vw, 100vw"
                 onError={() => {
                   if (productImage) setImgError(true);
+                  else if (familyImage) setFamilyImgError(true);
                   else if (categoryImage) setCategoryImgError(true);
                   else setBrandImgError(true);
                 }}

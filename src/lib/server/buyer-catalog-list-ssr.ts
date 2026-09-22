@@ -9,6 +9,8 @@ import {
   resolveBuyerCatalogSummaries,
   resolveBuyerInventoryWarehouseIdFromCookies,
 } from '@/lib/server/buyer-product-data';
+import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
+import { loadLivePublicCatalog } from '@/lib/server/public-catalog';
 import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
 const PAGE_SIZE = 40;
@@ -54,7 +56,8 @@ export async function loadInitialCatalogListData(
     ]);
     if (!scope) return EMPTY_RESULT;
 
-    const [inventoryWarehouseId, campaignSummary, brands, categories] = await Promise.all([
+    const [publicCatalog, inventoryWarehouseId, campaignSummary, brands, categories] = await Promise.all([
+      loadLivePublicCatalog(db, tenantId),
       resolveBuyerInventoryWarehouseIdFromCookies(db, tenantId, selectedDelivery),
       mode === 'list'
         ? resolveBuyerCatalogSummaries(db, tenantId, buyerId)
@@ -69,22 +72,41 @@ export async function loadInitialCatalogListData(
       }),
     ]);
 
-    const catalogPage = await fetchBuyerCatalogPage({
-      db,
-      tenantId,
-      buyerId,
-      allowedTenantBrandIds: scope.allowedTenantBrandIds,
-      inventoryWarehouseId,
-      visibleCampaigns: campaignSummary.visibleCampaigns,
-      search: '',
-      categoryId: mode === 'category' ? id : '',
-      brandId: mode === 'brand' ? id : '',
-      tenantProductId: '',
-      requestedCampaignId: mode === 'list' ? id : '',
-      limit: PAGE_SIZE,
-      offset: 0,
-      guestPricing: null,
-    });
+    // Must mirror GET /api/buyer/catalog: group_variants catalogs list families
+    // (never a campaign), and the catalog's pricing mode applies to logged-in
+    // buyers too. Seeding a flat, priced page here made the first page differ
+    // from every later page (and leaked hidden prices).
+    const catalogPage = publicCatalog?.productDisplayMode === 'group_variants' && mode !== 'list'
+      ? await fetchBuyerFamilyCatalogPage({
+          db,
+          tenantId,
+          buyerId,
+          allowedTenantBrandIds: scope.allowedTenantBrandIds,
+          inventoryWarehouseId,
+          categoryId: mode === 'category' ? id : '',
+          brandId: mode === 'brand' ? id : '',
+          limit: PAGE_SIZE,
+          offset: 0,
+          guestPricing: null,
+          publicCatalog,
+        })
+      : await fetchBuyerCatalogPage({
+          db,
+          tenantId,
+          buyerId,
+          allowedTenantBrandIds: scope.allowedTenantBrandIds,
+          inventoryWarehouseId,
+          visibleCampaigns: campaignSummary.visibleCampaigns,
+          search: '',
+          categoryId: mode === 'category' ? id : '',
+          brandId: mode === 'brand' ? id : '',
+          tenantProductId: '',
+          requestedCampaignId: mode === 'list' ? id : '',
+          limit: PAGE_SIZE,
+          offset: 0,
+          guestPricing: null,
+          publicCatalog,
+        });
 
     return { catalogPage, brands, categories };
   } catch (error) {

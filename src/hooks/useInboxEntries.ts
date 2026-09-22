@@ -1,9 +1,10 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
+import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 
 export interface EntryHistoryEvent {
   id: string;
@@ -196,5 +197,38 @@ export function useInboxActiveCount() {
     },
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export function useEnquiryTriage(entryId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['inbox-entry-enquiry', entryId],
+    enabled,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/tenant/entries/${entryId}/enquiry`, { fresh: true });
+      if (!res.ok) throw new Error('Failed to load enquiry');
+      return (await res.json()) as EnquiryTriagePayload;
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export function useSubstituteEnquiryLine(entryId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ estimateId, lineId, tenantProductId }: { estimateId: string; lineId: string; tenantProductId: string }) => {
+      const res = await apiPatch(`/api/tenant/estimates/${estimateId}/items/${lineId}/substitute`, {
+        tenant_product_id: tenantProductId,
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? 'Failed to substitute product');
+      }
+      return (await res.json()) as { data: { ok: true } };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-entry-enquiry', entryId] });
+    },
   });
 }

@@ -87,6 +87,8 @@ interface SellerMobileListProps {
   sentinelRef?: RefObject<HTMLDivElement | null>;
   /** Per-row ref registrar for viewport-gated enrichment (e.g. lazy image/stock hydration). */
   registerItemRef?: (id: string) => (el: HTMLElement | null) => void;
+  /** `roomy` = borderless rows with inset rounded selection (Inbox). Only affects `forceVisible`. */
+  density?: 'default' | 'roomy';
 }
 
 const SPLIT_LIST_PRIMARY_CLASS = SELLER_SPLIT_LIST_PRIMARY_CLASS;
@@ -159,7 +161,7 @@ function SellerSplitListItemSkeleton({
   );
 }
 
-export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef, registerItemRef }: SellerMobileListProps) {
+export function SellerMobileList({ items, className, emptyState, forceVisible, sentinelIndex, sentinelRef, registerItemRef, density = 'default' }: SellerMobileListProps) {
   const listRootRef = useRef<HTMLDivElement>(null);
   const selectedId = items.find((item) => item.selected)?.id ?? null;
 
@@ -182,6 +184,29 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
 
   if (items.length === 0 && emptyState) {
     return <div className={forceVisible ? undefined : 'md:hidden'}>{emptyState}</div>;
+  }
+
+  if (forceVisible && density === 'roomy') {
+    return (
+      <div ref={listRootRef} className={cn('flex flex-col gap-1', className)}>
+        {items.map((item) => (
+          <Link
+            key={item.id}
+            href={item.href}
+            onClick={item.onClick}
+            data-split-list-id={item.id}
+            aria-current={item.selected ? 'page' : undefined}
+            ref={registerItemRef?.(item.id)}
+            className={cn(
+              'block rounded-[12px] px-3.5 py-4 text-left no-underline transition-colors',
+              item.selected ? 'bg-ember-50' : 'hover:bg-cream-100/70',
+            )}
+          >
+            <SellerSplitListItemContent item={item} />
+          </Link>
+        ))}
+      </div>
+    );
   }
 
   if (forceVisible) {

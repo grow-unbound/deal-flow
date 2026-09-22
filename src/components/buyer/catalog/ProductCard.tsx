@@ -98,6 +98,7 @@ export function ProductCard({
   const stockVisible = !isGuest && (meData?.stock_visibility?.enabled ?? false);
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
+  const [familyImgError, setFamilyImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
 
@@ -120,9 +121,10 @@ export function ProductCard({
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
   const productImgSmall = productImg ? (item.image_url_small ?? productImg) : null;
   const productImgMedium = productImg ? (item.image_url_medium ?? productImg) : null;
-  const categoryImg = !productImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
-  const brandImg = !productImg && !categoryImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
-  const activeImg = productImg ?? categoryImg ?? brandImg;
+  const familyImg = !productImg && !familyImgError && item.family_image_url ? item.family_image_url : null;
+  const categoryImg = !productImg && !familyImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
+  const brandImg = !productImg && !familyImg && !categoryImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const activeImg = productImg ?? familyImg ?? categoryImg ?? brandImg;
 
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
@@ -251,6 +253,16 @@ export function ProductCard({
                       unoptimized
                     />
                   </>
+                ) : familyImg ? (
+                  <Image
+                    src={familyImg}
+                    alt=""
+                    fill
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
+                    onError={() => setFamilyImgError(true)}
+                    unoptimized
+                  />
                 ) : categoryImg ? (
                   <Image
                     src={categoryImg}
@@ -322,18 +334,25 @@ export function ProductCard({
             </Pressable>
           </div>
         ) : isFamilyCard ? (
-          <span
-            className={cn(
-              BUYER_QUICK_ADD_IDLE_CLASS,
-              'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
-              isCompact
-                ? 'bottom-1.5 right-1.5 px-2 py-0.5'
-                : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
-            )}
-            style={{ fontSize: 'var(--b-text-eyebrow)' }}
-          >
-            OPTIONS
-          </span>
+          <Pressable asChild haptic>
+            <Link
+              href={productHref}
+              prefetch={false}
+              onPointerDown={prefetchProduct}
+              onClick={() => markBuyerNavigationForward()}
+              className={cn(
+                BUYER_QUICK_ADD_IDLE_CLASS,
+                'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
+                isCompact
+                  ? 'bottom-1.5 right-1.5 px-2 py-0.5'
+                  : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
+              )}
+              style={{ fontSize: 'var(--b-text-eyebrow)' }}
+              aria-label={`View options for ${item.display_name}`}
+            >
+              OPTIONS
+            </Link>
+          </Pressable>
         ) : (
           <Pressable asChild haptic>
             <button

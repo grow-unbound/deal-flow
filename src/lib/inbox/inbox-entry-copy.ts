@@ -14,7 +14,10 @@ export const ENTRY_TYPE_LABEL: Record<InboxEntryType, string> = {
 
 export function buildEntryAmountLabel(entry: InboxEntry): string | null {
   if (entry.amount == null) return null;
-  return formatNumberValue(entry.amount, entry.currency === 'INR' ? 'CURRENCY_EXACT' : 'COUNT');
+  // Every entry type we sync is INR; a few synthetic types (credit_limit_breach) don't
+  // carry a currency in metadata at all, so treat unset as INR rather than falling back
+  // to a bare, symbol-less number.
+  return formatNumberValue(entry.amount, !entry.currency || entry.currency === 'INR' ? 'CURRENCY_EXACT' : 'COUNT');
 }
 
 /** Type label + aging + count-formatted amount — never a currency symbol. */
@@ -54,21 +57,39 @@ function ageLabel(entry: InboxEntry): string | null {
   return dueDate ? `due ${dueDate}` : null;
 }
 
+/** "N invoices · ₹X due" — all-overdue drops the "due"/"overdue" split into one clear word. */
+export function buildDuesSummaryLine(total: number, invoiceCount: number, overdueCount: number): string {
+  const totalLabel = formatNumberValue(total, 'CURRENCY_EXACT');
+  const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
+  if (invoiceCount > 0 && overdueCount === invoiceCount) {
+    return `${invoiceLabel} · ${totalLabel} overdue`;
+  }
+  const parts = [invoiceLabel, `${totalLabel} due`];
+  if (overdueCount > 0) parts.push(`${overdueCount} overdue`);
+  return parts.join(' · ');
+}
+
+/** "₹X over your ₹Y limit" — names both numbers so it isn't read against the wrong total (Dues, outstanding). */
+export function buildCreditLimitSupportingLine(entry: InboxEntry): string | null {
+  const overLimit = numericMeta(entry, 'over_limit_amount') ?? entry.amount;
+  if (overLimit == null) return null;
+  const overLabel = formatNumberValue(overLimit, 'CURRENCY_EXACT');
+  const creditLimit = numericMeta(entry, 'credit_limit');
+  return creditLimit != null ? `${overLabel} over your ${formatNumberValue(creditLimit, 'CURRENCY_EXACT')} limit` : `${overLabel} over limit`;
+}
+
 export function buildListSupportingLine(entries: InboxEntry[]): string {
   if (entries.length === 0) return '';
   const collections = entries.filter((entry) => entry.entry_type === 'invoice_due' || entry.entry_type === 'invoice_overdue');
   if (collections.length > 0) {
     const total = collections.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
     const overdueCount = collections.filter((entry) => entry.entry_type === 'invoice_overdue').length;
-    const parts = [`${formatNumberValue(total, 'CURRENCY_EXACT')} dues`];
-    if (overdueCount > 0) parts.push(`${overdueCount} overdue`);
-    return parts.join(' · ');
+    return buildDuesSummaryLine(total, collections.length, overdueCount);
   }
 
   const primary = entries[0];
   if (primary.entry_type === 'credit_limit_breach') {
-    const amount = numericMeta(primary, 'over_limit_amount') ?? primary.amount;
-    return `${formatNumberValue(amount, 'CURRENCY_EXACT')} over limit`;
+    return buildCreditLimitSupportingLine(primary) ?? '';
   }
   if (primary.entry_type === 'business_approval') return 'New account';
   if (primary.entry_type === 'new_user_login') return 'New visitor';

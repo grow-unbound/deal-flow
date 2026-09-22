@@ -6,7 +6,8 @@ import { Bell, ChevronDown, Loader2, Send, StickyNote } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useApplyGenericEntryAction, useSendCollectionReminder, type EntryHistoryEvent } from '@/hooks/useInboxEntries';
-import { cn } from '@/lib/utils';
+import { buildDuesSummaryLine } from '@/lib/inbox/inbox-entry-copy';
+import { cn, formatDate } from '@/lib/utils';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
 import { InboxInlineNote } from './InboxInlineNote';
@@ -51,30 +52,28 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
         action: 'remind_later',
         remind_at: remindAt,
       })));
-      toast.success('Reminder set');
+      toast.success(`Snoozed until ${formatDate(remindAt)}`);
+      document.getElementById('inbox-dues-group')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not set reminder');
     }
   }
 
+  const title = 'Upcoming dues or overdue';
   const subtitle = summary
-    ? [
-        `${summary.totalAmountLabel} dues`,
-        summary.overdueCount > 0 ? `${summary.overdueCount} overdue` : null,
-        summary.dueCount > 0 ? `${summary.dueCount} due soon` : null,
-      ].filter(Boolean).join(' · ')
-    : 'Dues';
+    ? buildDuesSummaryLine(summary.totalAmount, summary.entryIds.length, summary.overdueCount)
+    : '';
 
   return (
-    <section className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+    <section id="inbox-dues-group" className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       <button
         type="button"
         onClick={onToggle}
-        className={cn('flex w-full items-start justify-between gap-4 px-5 py-4 text-left', expanded ? 'border-b border-cream-200' : undefined)}
+        className={cn('flex w-full items-start justify-between gap-4 px-6 py-5 text-left', expanded ? 'border-b border-cream-200' : undefined)}
       >
         <div className="min-w-0">
-          <h3 className="font-display text-md text-cream-900">Dues</h3>
-          <p className="mt-1 text-sm text-cream-600">{subtitle}</p>
+          <h3 className="text-lg font-semibold tracking-[-0.015em] text-cream-950">{title}</h3>
+          {subtitle ? <p className="mt-1 text-sm text-cream-600">{subtitle}</p> : null}
         </div>
         <ChevronDown
           size={16}
@@ -84,28 +83,27 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
       </button>
 
       {expanded ? (
-        <div className="space-y-4 px-5 py-4">
-          <div className="space-y-4">
+        <div className="space-y-6 px-6 py-6">
+          <div className="space-y-7">
             {rowsByAging.map((section) => (
-              <div key={section.key} className="space-y-2">
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <span aria-hidden />
-                  <p className="text-center text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">
-                    {section.label} ({section.count})
+              <div key={section.key} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-semibold uppercase tracking-[0.06em] text-cream-800">
+                    {section.label} <span className="font-medium text-cream-500">({section.count})</span>
                   </p>
-                  <p className="justify-self-end font-mono text-xs font-semibold tabular-nums text-cream-700">{section.totalAmountLabel}</p>
+                  <p className="font-mono text-base font-bold tabular-nums text-cream-950">{section.totalAmountLabel}</p>
                 </div>
                 <div className="divide-y divide-cream-200 rounded-[10px] border border-cream-200">
                   {section.rows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5 sm:grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_auto]">
+                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-x-3 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7.5rem]">
                       <Link
                         href={`/invoices/${row.invoiceId}`}
                         className="min-w-0 truncate font-mono text-sm font-semibold text-cream-950 underline-offset-4 hover:underline"
                       >
                         {row.invoiceNumber}
                       </Link>
-                      <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1">{row.dateLabel}</p>
-                      <p className="font-mono text-sm font-semibold tabular-nums text-cream-900">{row.amountLabel}</p>
+                      <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1 max-sm:row-start-2">{row.dateLabel}</p>
+                      <p className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900 max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1 max-sm:self-center">{row.amountLabel}</p>
                     </div>
                   ))}
                 </div>

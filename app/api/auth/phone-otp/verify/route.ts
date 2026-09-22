@@ -111,7 +111,9 @@ export async function POST(request: NextRequest) {
     const onCatalogHost = isCatalogRequest(request);
     if (onCatalogHost && returnTo) {
       const tenantScoped = dedupeBuyerAccountCandidates(filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo));
-      if (tenantScoped.length === 1 && tenantScoped[0]?.buyer_app_enabled === true) {
+      // A single tenant-scoped account is never a "pick one" situation — including a not-yet-approved
+      // one, which mintCandidateSession hands off to the tenant host's /onboarding or /pending.
+      if (tenantScoped.length === 1) {
         return buildMintedCandidateResponse(request, tenantScoped[0], returnTo, record.phone);
       }
 
@@ -225,11 +227,28 @@ async function mintCandidateSession(
   // re-OTPing, while every buyer_app_enabled-gated RLS policy still shuts them
   // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
   if (!buyerCandidate.buyer_app_enabled) {
+    // Pending buyers only make sense on their own tenant host (/api/buyer/me needs
+    // tenant context, which the catalog host doesn't have). When OTP was verified
+    // anywhere else, hand the session off to the tenant host and land on the
+    // intake/pending screen there — same as select-context does.
+    if (isCatalogRequest(request) || request.headers.get('x-verified-tenant-id') !== buyerCandidate.tenant_id) {
+      const pendingPath = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+      const destinationHost = tenantStorefrontHostForRequest(
+        request.headers.get('host') ?? '',
+        buyerCandidate.tenant_slug,
+      );
+      const protocol = destinationHost.includes('localhost') ? 'http' : 'https';
+      const handoffUrl = buildStorefrontHandoffUrl(
+        destinationHost,
+        hashedToken,
+        `${protocol}://${destinationHost}${pendingPath}`,
+      );
+      return { pending: false, handoffUrl };
+    }
+
     const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
-    const redirect = await resolvePendingBuyerRedirect(
-      buyerCandidate.buyer_id,
-      Boolean(request.headers.get('x-verified-tenant-id')),
-    );
+    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
     return { pending: false, session, redirect };
   }
 

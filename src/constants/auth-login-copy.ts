@@ -39,6 +39,17 @@ export const AUTH_LOGIN_COPY = {
         "If you're trying to order from a business you work with, ask them to add you as a buyer",
       ],
     },
+    // Catalog host, no return_to: we don't know which distributor this person is buying from, so we
+    // can't onboard them. Point them at the two ways forward instead of a dead end.
+    unregisteredCatalog: {
+      title: "We couldn't find a buyer account for this number",
+      lines: [
+        'Buying from a distributor? Open the catalog link they shared and log in from there. You can request access in a minute.',
+        'Distributor? Sign in to the seller app.',
+      ],
+      supportPrefix: 'Still stuck? WhatsApp us:',
+      sellerLogin: "I'm a distributor: go to seller login",
+    },
     sellerDisabled: {
       title: ({ sellerName }: { sellerName: string }) =>
         `Your account is not enabled by ${sellerName} for catalog access and ordering`,

@@ -26,6 +26,7 @@ import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { BuyerLocationDialog } from '@/components/buyer/layout/BuyerLocationDialog';
+import { CartTargetPriceInput } from '@/components/buyer/cart/CartTargetPriceInput';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
@@ -35,6 +36,14 @@ import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
 import type { BuyerCatalogItem } from '@/types/buyer';
+
+function hasInvalidTargetRange(cartItems: BuyerCartItem[]): boolean {
+  return cartItems.some((item) => (
+    item.buyer_target_unit_price_min != null
+    && item.buyer_target_unit_price_max != null
+    && item.buyer_target_unit_price_max < item.buyer_target_unit_price_min
+  ));
+}
 
 type CartLineItem = {
   tenant_product_id: string;
@@ -96,6 +105,7 @@ export default function CartPage() {
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
+  const tenantName = meData?.tenant.name?.trim() || 'Seller';
   const selectedDelivery = delivery?.selected ?? null;
   const deliveryHydrated = delivery?.hydrated ?? true;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
@@ -141,7 +151,12 @@ export default function CartPage() {
   );
 
   useEffect(() => {
-    if (!reconcileQuery.data) return;
+    // isPlaceholderData means this is the PREVIOUS queryKey's result (kept
+    // around by placeholderData for an instant paint) — it belongs to a
+    // different item set and must never be used to overwrite the cart, or
+    // adding/removing an item briefly flashes the old selection's images
+    // back in until the real fetch for the new item set lands.
+    if (!reconcileQuery.data || reconcileQuery.isPlaceholderData) return;
     const nextItems = reconcileQuery.data.items
       .filter((product) => hiddenPriceEnquiry || hasVisibleBuyerPrice(product.price))
       .map((product) => {
@@ -545,6 +560,10 @@ export default function CartPage() {
       setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
+    if (collectTargetRange && hasInvalidTargetRange(items)) {
+      setError('Fix the target price range on the highlighted item before sending.');
+      return;
+    }
     captureCartSubmitIntent('estimate');
     requestQuoteMutation.mutate();
   }
@@ -707,7 +726,7 @@ export default function CartPage() {
         </div>
         ) : (
           <div className="rounded-[12px] px-4 py-3" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
-            <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>Seller will respond with prices.</p>
+            <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>{tenantName} will respond with prices.</p>
             <p className="mt-1" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>No subtotal or total is calculated for enquiries.</p>
           </div>
         )}
@@ -928,6 +947,13 @@ function CartPageItem({
   hiddenPriceEnquiry?: boolean;
   collectTargetRange?: boolean;
 }) {
+  const [targetRangeTouched, setTargetRangeTouched] = useState(false);
+  const targetRangeInvalid = Boolean(
+    item.buyer_target_unit_price_min != null
+    && item.buyer_target_unit_price_max != null
+    && item.buyer_target_unit_price_max < item.buyer_target_unit_price_min,
+  );
+  const targetRangeError = targetRangeTouched && targetRangeInvalid ? 'Max price must be ≥ min price' : null;
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
   const showCampaignPrice = Boolean(
     item.has_campaign_price
@@ -991,7 +1017,16 @@ function CartPageItem({
                 {subline}
               </p>
             ) : null}
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button
+                onClick={() => onRemove(item.tenant_product_id)}
+                className="flex h-8 items-center gap-1"
+                style={{ color: 'var(--cream-500)', fontSize: 'var(--b-text-sub)' }}
+                aria-label="Remove item"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
               <div className="flex items-center overflow-hidden rounded-full" style={{ background: 'var(--teal-500)' }}>
                 <button
                   onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
@@ -1024,32 +1059,28 @@ function CartPageItem({
                   <Plus className="h-3 w-3" />
                 </button>
               </div>
-              {!hiddenPriceEnquiry ? (
+            </div>
+            {!hiddenPriceEnquiry ? (
+              <div className="mt-1 flex items-baseline justify-between gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
+                    {formatNumberValue(item.unit_price ?? 0, 'CURRENCY_EXACT')}
+                    {item.unit ? ` / ${item.unit}` : ''}
+                  </span>
+                  {showCampaignPrice ? (
+                    <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
+                      {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+                    </span>
+                  ) : null}
+                </div>
                 <span
                   className="tabular-nums font-semibold"
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
                 >
                   {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
                 </span>
-              ) : null}
-            </div>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
-              {hiddenPriceEnquiry ? (
-                <span className="font-medium" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-2)' }}>
-                  Price on enquiry
-                </span>
-              ) : (
-              <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                {formatNumberValue(item.unit_price ?? 0, 'CURRENCY_EXACT')}
-                {item.unit ? ` / ${item.unit}` : ''}
-              </span>
-              )}
-              {showCampaignPrice ? (
-                <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
-                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
-                </span>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             {stockBadgeVisible ? (
               <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
                 {stockBadgeLabel}
@@ -1057,41 +1088,25 @@ function CartPageItem({
             ) : null}
             {collectTargetRange ? (
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Min target</span>
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="decimal"
-                    value={item.buyer_target_unit_price_min ?? ''}
-                    onChange={(event) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_min', event.target.value)}
-                    className="h-9 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-2 text-sm outline-none focus:border-[var(--teal-500)]"
-                    placeholder="Min"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Max target</span>
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="decimal"
-                    value={item.buyer_target_unit_price_max ?? ''}
-                    onChange={(event) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_max', event.target.value)}
-                    className="h-9 w-full rounded-[8px] border border-[var(--border-1)] bg-white px-2 text-sm outline-none focus:border-[var(--teal-500)]"
-                    placeholder="Max"
-                  />
-                </label>
+                <CartTargetPriceInput
+                  label="Min Price"
+                  value={item.buyer_target_unit_price_min}
+                  placeholder="Min"
+                  onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_min', value)}
+                  onBlur={() => setTargetRangeTouched(true)}
+                  error={targetRangeError}
+                />
+                <CartTargetPriceInput
+                  label="Max Price"
+                  value={item.buyer_target_unit_price_max}
+                  placeholder="Max"
+                  onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_max', value)}
+                  onBlur={() => setTargetRangeTouched(true)}
+                  error={targetRangeError}
+                />
               </div>
             ) : null}
           </div>
-          <button
-            onClick={() => onRemove(item.tenant_product_id)}
-            className="mt-2 self-start"
-            style={{ color: 'var(--cream-400)' }}
-            aria-label="Remove item"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
     </>

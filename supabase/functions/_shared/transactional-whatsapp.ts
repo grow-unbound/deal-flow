@@ -173,7 +173,7 @@ export async function sendTransactionalAcknowledgement(
   const { data: record, error: recordError } = await admin
     .schema('app')
     .from(table)
-    .select(`id, tenant_id, buyer_id, location_id, total_amount, source, sent_at, ${numberField}`)
+    .select(`id, tenant_id, buyer_id, location_id, total_amount, item_count, source, sent_at, ${numberField}${input.kind === 'order' ? '' : ', price_visibility'}`)
     .eq('id', input.entityId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -183,13 +183,12 @@ export async function sendTransactionalAcknowledgement(
   if (record.sent_at) return;
   if (!record.location_id) return;
 
-  const [tenantResult, buyerResult, locationResult, warehouseResult, locationCountResult, itemCountResult] = await Promise.all([
+  const [tenantResult, buyerResult, locationResult, warehouseResult, locationCountResult] = await Promise.all([
     admin.schema('app').from('tenants').select('business_name, settings').eq('id', input.tenantId).single(),
     admin.schema('app').from('buyers').select('phone, contact_name, business_name').eq('id', input.buyerId).single(),
     admin.schema('app').from('locations').select('name, phone_number').eq('id', record.location_id).single(),
     admin.schema('app').from('warehouses').select('name, phone_number').eq('location_id', record.location_id).is('deleted_at', null).limit(1).maybeSingle(),
     admin.schema('app').from('locations').select('id', { count: 'exact', head: true }).eq('tenant_id', input.tenantId).is('deleted_at', null),
-    admin.schema('app').from(input.kind === 'order' ? 'order_items' : 'estimate_items').select('id', { count: 'exact', head: true }).eq(input.kind === 'order' ? 'order_id' : 'estimate_id', input.entityId).is('deleted_at', null),
   ]);
 
   if (!tenantResult.data || !buyerResult.data || !locationResult.data) return;
@@ -219,8 +218,10 @@ export async function sendTransactionalAcknowledgement(
   const hasMultipleLocations = (locationCountResult.count ?? 0) > 1;
   const buyerFacingSellerName = composeSellerDisplayName(sellerName, sellerLocation, hasMultipleLocations);
   const buyerName = buyerResult.data.contact_name ?? buyerResult.data.business_name;
-  const itemCount = itemCountResult.count ?? 0;
-  const totalAmount = Math.round(Number(record.total_amount ?? 0));
+  const itemCount = Number(record.item_count ?? 0);
+  const totalAmountText = record.price_visibility === 'hide_price'
+    ? 'To be confirmed'
+    : String(Math.round(Number(record.total_amount ?? 0)));
   const numberText = documentTextForOutcome(input.outcome, input.documentNumber ?? record[numberField] as string | null | undefined);
   const buyerDestination = formatWhatsappDestination(buyerPhone);
   const sellerDestination = formatWhatsappDestination(sellerPhone);
@@ -234,7 +235,7 @@ export async function sendTransactionalAcknowledgement(
           { text: buyerName, parameter_name: 'buyer_name' },
           { text: buyerPhone, parameter_name: 'buyer_phone_number' },
           { text: numberText, parameter_name: 'order_number' },
-          { text: String(totalAmount), parameter_name: 'total_amount' },
+          { text: totalAmountText, parameter_name: 'total_amount' },
           { text: String(itemCount), parameter_name: 'item_count' },
           { text: String(etaHours), parameter_name: 'eta' },
         ],
@@ -248,7 +249,7 @@ export async function sendTransactionalAcknowledgement(
           { text: buyerName, parameter_name: 'buyer_name' },
           { text: buyerPhone, parameter_name: 'buyer_phone_number' },
           { text: numberText, parameter_name: 'request_number' },
-          { text: String(totalAmount), parameter_name: 'total_amount' },
+          { text: totalAmountText, parameter_name: 'total_amount' },
           { text: String(itemCount), parameter_name: 'item_count' },
           { text: String(etaHours), parameter_name: 'eta' },
         ],
@@ -263,7 +264,7 @@ export async function sendTransactionalAcknowledgement(
           { text: buyerName, parameter_name: 'buyer_name' },
           { text: String(itemCount), parameter_name: 'item_count' },
           { text: numberText, parameter_name: 'order_number' },
-          { text: String(totalAmount), parameter_name: 'total_amount' },
+          { text: totalAmountText, parameter_name: 'total_amount' },
           { text: buyerFacingSellerName, parameter_name: 'seller_name' },
           { text: String(etaHours), parameter_name: 'eta' },
         ],
@@ -276,7 +277,7 @@ export async function sendTransactionalAcknowledgement(
           { text: buyerName, parameter_name: 'buyer_name' },
           { text: String(itemCount), parameter_name: 'item_count' },
           { text: numberText, parameter_name: 'estimate_number' },
-          { text: String(totalAmount), parameter_name: 'total_amount' },
+          { text: totalAmountText, parameter_name: 'total_amount' },
           { text: buyerFacingSellerName, parameter_name: 'seller_name' },
           { text: String(etaHours), parameter_name: 'eta' },
         ],

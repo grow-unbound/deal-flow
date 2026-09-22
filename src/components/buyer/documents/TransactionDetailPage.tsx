@@ -238,6 +238,8 @@ export function TransactionDetailDocumentBody({
   gstRate: number;
   respectBusinessPolicyTotals: boolean;
 }) {
+  const { data: meData } = useBuyerMe();
+  const tenantName = meData?.tenant.name?.trim() || 'Seller';
   const badge = getStatusBadge(doc.status);
   const totalUnits = doc.items.reduce((sum, item) => sum + item.qty, 0);
   const deliveryPlace = doc.placeOfSupply?.trim() ?? '';
@@ -285,7 +287,7 @@ export function TransactionDetailDocumentBody({
 
       {pricePending ? (
         <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
-          <p className="font-semibold text-[var(--cream-900)]">Seller will respond with prices.</p>
+          <p className="font-semibold text-[var(--cream-900)]">{tenantName} will respond with prices.</p>
           <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">No subtotal or total is calculated for this enquiry yet.</p>
         </div>
       ) : (

@@ -424,4 +424,118 @@ describe('buyer estimates route (POST)', () => {
     expect(estimateInsertPayloads).toHaveLength(0);
     expect(estimateItemInsertPayloads).toHaveLength(0);
   });
+
+  it('accepts a min-only target rate', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = true;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          { tenant_product_id: 'prod-1', qty: 2, buyer_target_unit_price_min: 450 },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(estimateItemInsertPayloads[0]).toEqual([
+      expect.objectContaining({
+        buyer_target_unit_price_min: 450,
+        buyer_target_unit_price_max: null,
+      }),
+    ]);
+  });
+
+  it('accepts a max-only target rate', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = true;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          { tenant_product_id: 'prod-1', qty: 2, buyer_target_unit_price_max: 500 },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(estimateItemInsertPayloads[0]).toEqual([
+      expect.objectContaining({
+        buyer_target_unit_price_min: null,
+        buyer_target_unit_price_max: 500,
+      }),
+    ]);
+  });
+
+  it('accepts a mixed cart where only some items have a target rate', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = true;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          { tenant_product_id: 'prod-1', qty: 2, buyer_target_unit_price_min: 450, buyer_target_unit_price_max: 500 },
+          { tenant_product_id: 'prod-2', qty: 1 },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(estimateItemInsertPayloads[0]).toEqual([
+      expect.objectContaining({
+        tenant_product_id: 'prod-1',
+        buyer_target_unit_price_min: 450,
+        buyer_target_unit_price_max: 500,
+      }),
+      expect.objectContaining({
+        tenant_product_id: 'prod-2',
+        buyer_target_unit_price_min: null,
+        buyer_target_unit_price_max: null,
+      }),
+    ]);
+  });
+
+  it('still rejects a target rate range where max is below min', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    catalogPricingMode = 'hide_price_collect_enquiry';
+    catalogCollectTargetUnitPriceRange = true;
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          { tenant_product_id: 'prod-1', qty: 2, buyer_target_unit_price_min: 500, buyer_target_unit_price_max: 450 },
+        ],
+        location_id: 'loc-1',
+      }),
+    }));
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/target rate range is invalid/i);
+    expect(estimateInsertPayloads).toHaveLength(0);
+  });
 });

@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { Bell, MoreHorizontal, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/utils';
 import { useApplyGenericEntryAction } from '@/hooks/useInboxEntries';
 import { shouldSkipConfirm } from '@/lib/inbox/inbox-confirm-prefs';
 import { InboxConfirmDialog } from './InboxConfirmDialog';
 import { InboxInlineNote } from './InboxInlineNote';
+import { InboxConvertEnquiryModal } from './InboxConvertEnquiryModal';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
@@ -63,6 +65,8 @@ const REMIND_OPTIONS = [
 ];
 
 const LEFT_ICON_ACTIONS = new Set(['add_note', 'remind_later']);
+/** Hidden until the flow exists. */
+const HIDDEN_ACTIONS = new Set(['contact_buyer']);
 const CARD_HEADER_ACTIONS = new Set(['view_buyer', 'view_account']);
 
 const ACTION_ICON: Record<string, typeof StickyNote> = {
@@ -77,7 +81,7 @@ function primaryActionsFor(entry: InboxEntry): string[] {
     case 'new_enquiry':
       return ['convert', 'reply_quote'];
     case 'new_order_confirmation':
-      return ['accept_order', 'contact_buyer'];
+      return ['accept_order'];
     case 'order_dispatch_needed':
       return ['mark_dispatched'];
     case 'invoice_due':
@@ -104,6 +108,7 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [remindPickerOpen, setRemindPickerOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
   const applyGenericAction = useApplyGenericEntryAction();
 
   function runLocalAction(action: string) {
@@ -113,6 +118,12 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
   async function runGenericAction(action: string, remindAt?: string) {
     try {
       await applyGenericAction.mutateAsync({ entryId: entry.id, action: action as 'remind_later' | 'dismiss' | 'reopen' | 'add_note', remind_at: remindAt });
+      if (action === 'remind_later' && remindAt) {
+        toast.success(`Snoozed until ${formatDate(remindAt)}`);
+        // The snooze pill sits at the top of this card -- bring it into view so the
+        // seller sees the state actually changed, not just a toast that fades.
+        document.getElementById(`inbox-entry-${entry.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update this item');
     }
@@ -131,6 +142,15 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
       void runGenericAction(action);
       return;
     }
+    if (action === 'convert' && entry.source_entity_type === 'estimate') {
+      setConvertOpen(true);
+      return;
+    }
+    if (action === 'reply_quote') {
+      // Stub: the reply/quote flow is designed separately. Must not resolve the entry.
+      toast.info('Reply / Quote is coming soon');
+      return;
+    }
     if (DESTRUCTIVE_ACTIONS[action] && !shouldSkipConfirm(tenantId, action)) {
       setPendingConfirm(action);
       return;
@@ -139,16 +159,19 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
   }
 
   const destructiveMeta = pendingConfirm ? DESTRUCTIVE_ACTIONS[pendingConfirm] : null;
-  const effectiveAllowedActions = entry.entry_type === 'credit_limit_breach'
+  const effectiveAllowedActions = (entry.entry_type === 'credit_limit_breach'
     ? Array.from(new Set(['send_reminder', ...entry.allowed_actions]))
-    : entry.allowed_actions;
+    : entry.allowed_actions).filter((action) => !HIDDEN_ACTIONS.has(action));
   const textActions = primaryActionsFor(entry).filter((action) => effectiveAllowedActions.includes(action) && action !== 'hold_new_orders').slice(0, 2);
   const destructiveTextActions = effectiveAllowedActions.filter((action) => DESTRUCTIVE_ACTIONS[action] && !textActions.includes(action));
   const rightActions = [...textActions, ...destructiveTextActions];
+  // Charcoal primary sits rightmost; secondary and destructive actions stack to its left.
+  const primaryAction = rightActions.find((action) => !DESTRUCTIVE_ACTIONS[action]) ?? null;
+  const orderedRightActions = [...rightActions.filter((action) => action !== primaryAction), ...(primaryAction ? [primaryAction] : [])];
   const iconActions = effectiveAllowedActions.filter((action) => LEFT_ICON_ACTIONS.has(action) && !rightActions.includes(action));
 
   return (
-    <div className="space-y-2 pt-2">
+    <div className="space-y-3 pt-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {iconActions.map((action) => {
@@ -167,13 +190,13 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
             );
           })}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {rightActions.map((action, index) => (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+          {orderedRightActions.map((action) => (
             <Button
               key={action}
               type="button"
-              size="sm"
-              variant={index === 0 && !DESTRUCTIVE_ACTIONS[action] ? 'primary' : 'outline'}
+              size="md"
+              variant={action === primaryAction ? 'primary' : 'outline'}
               onClick={() => handleActionClick(action)}
             >
               {ACTION_LABELS[action] ?? action}
@@ -211,6 +234,15 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
         open={noteOpen}
         onOpenChange={setNoteOpen}
       />
+
+      {entry.entry_type === 'new_enquiry' ? (
+        <InboxConvertEnquiryModal
+          entry={entry}
+          open={convertOpen}
+          onOpenChange={setConvertOpen}
+          onConverted={() => applyLocalAction(entry, 'convert', { nextStatus: 'resolved', nextSummary: 'Converted' })}
+        />
+      ) : null}
 
       {destructiveMeta ? (
         <InboxConfirmDialog

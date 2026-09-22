@@ -126,6 +126,13 @@ function VerifyOtpForm() {
           .forEach((k) => sessionStorage.removeItem(k));
       } catch { /* sessionStorage may be unavailable */ }
 
+      // Nothing left to navigate to without a session or explicit redirect — surface it rather
+      // than falling through to /dashboard, which just bounces an unauthenticated user to /login.
+      if (!data.redirect && !data.session?.access_token) {
+        setError('We could not sign you in. Please request a new OTP and try again.');
+        return;
+      }
+
       shouldResetLoading = false;
       const serverRedirect = data.redirect ?? '/dashboard';
       // Honor `next` only for buyers landing on /buy/home.

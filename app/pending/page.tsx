@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Store } from 'lucide-react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
@@ -68,6 +70,14 @@ export default function BuyerPendingPage() {
             They typically approve within 24 hours. We'll let you in as soon as that happens.
           </p>
         </div>
+
+        <Link
+          href={STOREFRONT.home}
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-ember-400 hover:bg-ember-500 text-cream-50 text-body-sm font-semibold transition-colors duration-base mb-3"
+        >
+          <Store className="h-4 w-4" />
+          Browse the public catalog
+        </Link>
 
         {sellerWhatsappNumber && (
           <button

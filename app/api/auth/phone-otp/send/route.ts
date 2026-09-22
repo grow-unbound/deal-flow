@@ -8,6 +8,8 @@ import { sendLoginOtpWhatsapp } from '@/lib/server/whatsapp';
 import { AUTH_LOGIN_COPY, buildRequestAccessMessage } from '@/constants/auth-login-copy';
 import { isCatalogRequest } from '@/lib/server/catalog-request';
 import { catalogLoginUrlForRequest, parseRequestHost } from '@/lib/storefront-host';
+import { tenantSlugFromReturnTo } from '@/lib/server/catalog-return-to';
+import { getTenantBrandingBySlug } from '@/lib/server/tenant-branding';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_SEND_COOLDOWN_MS = 45 * 1000; // 45 seconds between sends to the same phone
@@ -58,7 +60,7 @@ function toLoginOtpBuyerCandidate(candidate: BuyerLoginCandidate) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const payload = await request.json() as { phoneNumber?: string };
+    const payload = await request.json() as { phoneNumber?: string; return_to?: string };
     const raw: string = (payload?.phoneNumber ?? '').trim();
 
     if (!raw || !isValidIndianMobile(raw)) {
@@ -135,7 +137,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (allCandidates.length === 0 && hostTenantId) {
+    // Brand-new phone arriving with a storefront's return_to: they are a prospect of THAT distributor,
+    // not an unknown number — same outcome as signing up on the tenant host. Only when they have no
+    // account at that tenant yet; an existing (blocked) one falls through to the blocked messaging below.
+    let acquisitionTenantId: string | null = hostTenantId;
+    if (allCandidates.length === 0 && !acquisitionTenantId && onCatalogHost) {
+      const returnSlug = tenantSlugFromReturnTo(typeof payload?.return_to === 'string' ? payload.return_to : null);
+      // Assigned inside the async lookup closure above, which TS's control-flow analysis can't see.
+      const lookedUp = buyerCandidatesForMessages as Awaited<ReturnType<typeof findBuyerLoginCandidates>> | null;
+      const hasAccountAtReturnTenant = (lookedUp ?? []).some(
+        (candidate) => candidate.tenant_slug?.toLowerCase() === returnSlug,
+      );
+      if (returnSlug && !hasAccountAtReturnTenant) {
+        const tenant = await getTenantBrandingBySlug(returnSlug);
+        if (tenant?.tenantId && tenant.isLive) acquisitionTenantId = tenant.tenantId;
+      }
+    }
+
+    if (allCandidates.length === 0 && acquisitionTenantId) {
       const otp = String(crypto.randomInt(100000, 999999));
       const ref_id = await buyerOtpStore.insert({
         kind: 'pending',
@@ -145,7 +164,7 @@ export async function POST(request: NextRequest) {
         attempts: 0,
         candidates: [{
           kind: 'buyer',
-          tenant_id: hostTenantId,
+          tenant_id: acquisitionTenantId,
           tenant_name: '',
           tenant_slug: '',
           tenant_whatsapp_number: null,

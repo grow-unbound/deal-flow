@@ -523,6 +523,13 @@ export async function enrichBuyerProducts(
     const smallVariantUrl = r2Url(row.r2_small_key) ?? r2Url(row.r2_medium_key) ?? r2Url(row.r2_large_key);
     const mediumVariantUrl = r2Url(row.r2_medium_key) ?? r2Url(row.r2_large_key) ?? r2Url(row.r2_small_key);
     const largeVariantUrl = r2Url(row.r2_large_key) ?? r2Url(row.r2_medium_key) ?? r2Url(row.r2_small_key);
+    // Falls back to the SKU's parent product family's shared photo when this
+    // specific variant has no own image — common for families where only one
+    // representative photo is uploaded, not one per variant.
+    const familyImageUrl = r2Url(row.family_r2_small_key)
+      ?? r2Url(row.family_r2_medium_key)
+      ?? r2Url(row.family_r2_large_key)
+      ?? (row.family_image_urls?.length ? row.family_image_urls[0] : null);
 
     out.set(productId, {
       id: productId,
@@ -553,6 +560,7 @@ export async function enrichBuyerProducts(
       image_url_large: largeVariantUrl ?? fallbackImageUrl,
       brand_logo_url: row.brand_logo_url,
       category_image_url: r2Url(row.category_image_thumb_key ?? row.category_image_medium_key),
+      family_image_url: familyImageUrl,
       stock_status: !stockVisibilityEnabled ? 'available' : onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available',
       on_hand: onHand,
       is_featured: campaign?.is_featured ?? false,

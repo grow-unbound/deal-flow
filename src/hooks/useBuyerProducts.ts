@@ -345,7 +345,13 @@ export function useBuyerResolvedProducts(
       return response.json() as Promise<BuyerResolvedProductsResponse>;
     },
     // Cart/checkout price resolution — shortest tier, refetch on every remount.
+    // keepPreviousData renders the last-known resolved items instantly (cart
+    // opens with no blank/loading gap) while the revalidation above still
+    // runs in the background and patches in fresh price/stock the moment it
+    // lands — staleTime stays 0 so a distributor's price edit is never held
+    // back by a cache, only the paint is no longer blocked on the network.
     staleTime: 0,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
+    placeholderData: keepPreviousData,
   });
 }

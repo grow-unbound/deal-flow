@@ -309,7 +309,11 @@ async function handleCatalogHost(
 ): Promise<NextResponse> {
   const isCatalogEntryPath = pathname === '/' || pathname === '/login' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 
-  if (isPublicRoute(pathname) && !isCatalogEntryPath) {
+  // /api/auth is a public prefix, but the workspace finder routes are session-scoped:
+  // they read x-verified-user-id/role, which only exist once middleware has verified the session.
+  const isSessionScopedAuthApi = pathname === '/api/auth/workspaces' || pathname.startsWith('/api/auth/workspaces/');
+
+  if (isPublicRoute(pathname) && !isCatalogEntryPath && !isSessionScopedAuthApi) {
     return nextWithHeaders(request, requestHeaders);
   }
 
@@ -317,6 +321,9 @@ async function handleCatalogHost(
   const hostHeader = request.headers.get('host') ?? '';
 
   if (!auth.claims) {
+    if (isSessionScopedAuthApi) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     if (pathname === '/login') {
       return nextWithHeaders(request, requestHeaders);
     }

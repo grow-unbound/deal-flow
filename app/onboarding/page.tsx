@@ -32,7 +32,7 @@ function isGeneratedCustomerName(value: string, phone: string | null | undefined
  */
 export default function BuyerOnboardingPage() {
   const router = useRouter();
-  const { data: me, isLoading } = useBuyerMe();
+  const { data: me, isLoading, isError, refetch } = useBuyerMe();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -160,7 +160,7 @@ export default function BuyerOnboardingPage() {
   // Not pending (approved, or not a self-registration at all) or intake
   // already submitted — nothing to do here, follow the buyer to where it
   // actually belongs.
-  const shouldSkip = !isLoading && (!me || me.mode !== 'pending' || me.pending?.intake_submitted);
+  const shouldSkip = !isLoading && !(isError && !me) && (!me || me.mode !== 'pending' || me.pending?.intake_submitted);
   useEffect(() => {
     if (!shouldSkip) return;
     if (!me || me.mode !== 'pending') {
@@ -171,9 +171,20 @@ export default function BuyerOnboardingPage() {
   }, [shouldSkip, me, router]);
   if (shouldSkip) return null;
 
+  // A failed /api/buyer/me is not "not pending" — don't bounce a new buyer out of intake
+  // (and into the workspace finder) over a transient or context error. Offer a retry instead.
+  if (isError && !me) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-10 text-center">
+        <p className="mb-4 text-body-sm text-cream-700">We couldn't load your details. Please try again.</p>
+        <Button onClick={() => void refetch()}>Try again</Button>
+      </div>
+    );
+  }
+
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;
-  const isReturning = me?.pending?.is_returning_yukti_user ?? false;
+  const tenantName = me?.tenant?.name ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -240,12 +251,10 @@ export default function BuyerOnboardingPage() {
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">
-        {isReturning ? `You're new here at ${sellerName}` : "Looks like you're new on Yukti"}
+        {tenantName ? `Looks like you're new to ${tenantName}'s catalog` : "Looks like you're new to this catalog"}
       </h1>
       <p className="text-body-sm text-cream-600 mb-6">
-        {isReturning
-          ? `Share a few details so we can pass them on to ${sellerName}.`
-          : `We couldn't find your account — share your details so we can pass them on to ${sellerName}.`}
+        {`Share a few details and we'll pass them on to ${tenantName ? `the ${tenantName} team` : 'the seller'}.`}
       </p>
     </>
   );

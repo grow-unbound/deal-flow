@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import type { BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
+import { loadLivePublicCatalog, type PublicCatalogRecord } from '@/lib/server/public-catalog';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
@@ -138,6 +139,10 @@ export async function loadBuyerHomeReco(
     }
   }
 
+  // The catalog's pricing mode (e.g. hide_price_collect_enquiry) applies to
+  // logged-in buyers too; without it these rails render real prices.
+  const publicCatalog = await loadLivePublicCatalog(db, tenantId).catch(() => null);
+
   const [reorderPreviewMap, bestsellers] = await Promise.all([
     assembleBuyerCatalogItemsForProductIds(db, {
       tenantId,
@@ -148,8 +153,9 @@ export async function loadBuyerHomeReco(
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      publicCatalog,
     }),
-    loadBestsellers(db, tenantId, buyerId, allowedTenantBrandIds, recoRes),
+    loadBestsellers(db, tenantId, buyerId, allowedTenantBrandIds, recoRes, publicCatalog),
   ]);
 
   return {
@@ -166,6 +172,7 @@ async function loadBestsellers(
   buyerId: string,
   allowedTenantBrandIds: string[] | null,
   recoRes: { data: unknown; error: Error | null },
+  publicCatalog: PublicCatalogRecord | null,
 ): Promise<BuyerCatalogItem[]> {
   try {
     if (recoRes.error || !recoRes.data) return [];
@@ -182,6 +189,7 @@ async function loadBestsellers(
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      publicCatalog,
     });
 
     return bestsellerIds

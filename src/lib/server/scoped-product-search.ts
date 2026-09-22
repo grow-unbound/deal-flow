@@ -58,6 +58,10 @@ export interface ScopedProductSearchRow {
   brand_logo_url: string | null;
   category_image_thumb_key: string | null;
   category_image_medium_key: string | null;
+  family_image_urls: string[] | null;
+  family_r2_small_key: string | null;
+  family_r2_medium_key: string | null;
+  family_r2_large_key: string | null;
 }
 
 function normalizeUuidArray(values?: string[] | null): string[] | null {

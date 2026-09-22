@@ -765,4 +765,175 @@ describe('buyer phone otp routes', () => {
     expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
     expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2', true);
   });
+
+  it('hands a fresh self-registration verified on the catalog host off to the tenant /onboarding (no catalog-host session)', async () => {
+    // Phone already has a buyer at an unrelated tenant, but none at tenant-one (return_to).
+    findBuyerLoginCandidatesMock.mockResolvedValue([
+      { ...eligibleBuyerCandidate, tenant_id: 'tenant-2', tenant_slug: 'tenant-two', tenant_name: 'Tenant Two', buyer_id: 'buyer-2' },
+    ]);
+    acquireBuyerForStorefrontMock.mockResolvedValue({
+      ...eligibleBuyerCandidate,
+      buyer_id: 'acquired-3',
+      business_name: 'Customer 9876543210',
+      buyer_app_enabled: false,
+    });
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-new', buyerId: 'acquired-3' });
+    resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: 'https://tenant-one.useyukti.in/',
+      }),
+    }), {
+      nextUrl: new URL('http://catalog.useyukti.in/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session).toBeUndefined();
+    expect(body.redirect).toBeUndefined();
+    expect(body.handoff_url).toContain('tenant-one');
+    expect(body.handoff_url).toContain('token_hash=token-new');
+    expect(body.handoff_url).toContain('next=%2Fonboarding');
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('hands a single not-yet-approved account at the return_to tenant off to tenant /onboarding instead of a one-item picker', async () => {
+    const pendingSameTenant = {
+      ...eligibleBuyerCandidate,
+      buyer_id: 'buyer-pending',
+      business_name: 'Customer 9876543210',
+      buyer_app_enabled: false,
+    };
+    findBuyerLoginCandidatesMock.mockResolvedValue([pendingSameTenant]);
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-pending', buyerId: 'buyer-pending' });
+    resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
+
+    const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+    const sendResponse = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({ phoneNumber: '9876543210' }),
+    }) as any);
+    const sendBody = await sendResponse.json();
+
+    const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+    const storeModule = await import('@/lib/server/buyer-otp-store');
+    const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+      method: 'POST',
+      headers: { host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: sendBody.ref_id,
+        otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+        return_to: 'https://tenant-one.useyukti.in/',
+      }),
+    }), {
+      nextUrl: new URL('http://catalog.useyukti.in/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.contexts).toBeUndefined();
+    expect(body.handoff_url).toContain('tenant-one');
+    expect(body.handoff_url).toContain('token_hash=token-pending');
+    expect(body.handoff_url).toContain('next=%2Fonboarding');
+    expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
+  describe('brand-new phone on the catalog host', () => {
+    const catalogSend = async (body: Record<string, unknown>) => {
+      const sendRoute = await import('../../../app/api/auth/phone-otp/send/route');
+      const res = await sendRoute.POST(new Request('http://localhost/api/auth/phone-otp/send', {
+        method: 'POST',
+        headers: { host: 'catalog.useyukti.in' },
+        body: JSON.stringify({ phoneNumber: '9876543210', ...body }),
+      }) as any);
+      return res.json();
+    };
+
+    it('sends an OTP when return_to names a live storefront, so the user can onboard there', async () => {
+      const body = await catalogSend({ return_to: 'https://tenant-one.useyukti.in/' });
+
+      expect(body.registered).toBe(true);
+      expect(body.outcome).toBe('otp_sent');
+      expect(body.ref_id).toBeTruthy();
+      expect(sendLoginOtpWhatsappMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still returns unregistered (no OTP) when there is no return_to', async () => {
+      const body = await catalogSend({});
+
+      expect(body.registered).toBe(false);
+      expect(body.outcome).toBe('unregistered');
+      expect(sendLoginOtpWhatsappMock).not.toHaveBeenCalled();
+    });
+
+    it('still returns unregistered when return_to points at a storefront that is not live', async () => {
+      getTenantBrandingBySlugMock.mockResolvedValue({
+        tenantId: 'tenant-1', slug: 'tenant-one', businessName: 'Tenant One', tagline: null,
+        logoUrl: null, whatsappNumber: null, isLive: false,
+      });
+      const body = await catalogSend({ return_to: 'https://tenant-one.useyukti.in/' });
+
+      expect(body.outcome).toBe('unregistered');
+      expect(sendLoginOtpWhatsappMock).not.toHaveBeenCalled();
+    });
+
+    it('still returns unregistered when return_to does not resolve to any tenant', async () => {
+      getTenantBrandingBySlugMock.mockResolvedValue(null);
+      const body = await catalogSend({ return_to: 'https://nope.useyukti.in/' });
+
+      expect(body.outcome).toBe('unregistered');
+      expect(sendLoginOtpWhatsappMock).not.toHaveBeenCalled();
+    });
+
+    it('completes end to end: OTP verify hands the new phone off to the tenant /onboarding', async () => {
+      acquireBuyerForStorefrontMock.mockResolvedValue({
+        ...eligibleBuyerCandidate,
+        buyer_id: 'acquired-4',
+        business_name: 'Customer 9876543210',
+        buyer_app_enabled: false,
+      });
+      mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'token-e2e', buyerId: 'acquired-4' });
+      resolvePendingBuyerRedirectMock.mockResolvedValue('/onboarding');
+
+      const sendBody = await catalogSend({ return_to: 'https://tenant-one.useyukti.in/' });
+
+      const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
+      const storeModule = await import('@/lib/server/buyer-otp-store');
+      const pending = await storeModule.buyerOtpStore.get(sendBody.ref_id);
+      const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
+        method: 'POST',
+        headers: { host: 'catalog.useyukti.in' },
+        body: JSON.stringify({
+          ref_id: sendBody.ref_id,
+          otp: pending && pending.kind === 'pending' ? pending.otp : '000000',
+          return_to: 'https://tenant-one.useyukti.in/',
+        }),
+      }), { nextUrl: new URL('http://catalog.useyukti.in/api/auth/phone-otp/verify') });
+      const body = await (await verifyRoute.POST(verifyRequest as any)).json();
+
+      expect(body.handoff_url).toContain('token_hash=token-e2e');
+      expect(body.handoff_url).toContain('next=%2Fonboarding');
+      expect(acquireBuyerForStorefrontMock).toHaveBeenCalledWith('tenant-1', '9876543210');
+    });
+  });
 });
