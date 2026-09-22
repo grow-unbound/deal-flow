@@ -288,6 +288,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         subtotal,
         tax_amount,
         total_amount,
+        item_count: acceptedItems.length,
         notes: notes ?? null,
         placed_at,
         created_by: placed_by,

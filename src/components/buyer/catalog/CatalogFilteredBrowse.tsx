@@ -56,7 +56,6 @@ export function CatalogFilteredBrowse({
   const posthog = usePostHog();
   const { data: me } = useBuyerMe();
   const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
-  const priceReveal = isGuest ? guestPriceReveal(me?.guest_pricing_mode) : undefined;
   const { setCampaignId } = useCart();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
@@ -142,6 +141,14 @@ export function CatalogFilteredBrowse({
   });
 
   const firstPage = pages[0];
+  // Prefer the catalog list response's own (same-request-fresh) pricing_mode —
+  // it's read from the identical live catalog config that decides SKU-vs-family
+  // grouping server-side. me.guest_pricing_mode is a 15-min-stale reference
+  // query and would drift out of sync with grouping whenever a seller changes
+  // catalog settings; only fall back to it before the catalog list has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(firstPage ? firstPage.pricing_mode : me?.guest_pricing_mode)
+    : undefined;
   const campaignMessage = mode === 'list' ? (firstPage?.selected_campaign_message ?? null) : null;
   const campaignValidUntil = mode === 'list' ? (firstPage?.selected_campaign_valid_until ?? null) : null;
 

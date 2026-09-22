@@ -35,7 +35,13 @@ export function BuyerProductFamilyDetailClient({ productFamilyId }: BuyerProduct
   const { data: meData } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
   const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
-  const priceReveal = isGuest ? guestPriceReveal(meData?.guest_pricing_mode) : 'amount';
+  // Prefer the family's own same-request-fresh catalog_pricing_mode over
+  // meData.guest_pricing_mode, which is a 15-min-stale reference query and
+  // can drift out of sync with the catalog's actual current pricing mode.
+  // Fall back to /me only before the family has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(family ? family.catalog_pricing_mode : meData?.guest_pricing_mode)
+    : 'amount';
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const [selection, setSelection] = React.useState<Selection>({});
   const [imgError, setImgError] = React.useState(false);

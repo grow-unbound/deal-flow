@@ -59,7 +59,6 @@ export function CatalogDiscoveryLanding({
   const posthog = usePostHog();
   const { data: me } = useBuyerMe();
   const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
-  const priceReveal = isGuest ? guestPriceReveal(me?.guest_pricing_mode) : undefined;
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
@@ -113,6 +112,14 @@ export function CatalogDiscoveryLanding({
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
 
   const browsePages = browseQueryResult.data?.pages ?? [];
+  // Prefer the same-request-fresh pricing_mode carried on the catalog list
+  // responses (browse, then search) over me.guest_pricing_mode, which is a
+  // 15-min-stale reference query and drifts out of sync with the (always
+  // fresh) SKU-vs-family grouping decision whenever a seller edits catalog
+  // settings. Fall back to /me only before any catalog page has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(browsePages[0]?.pricing_mode ?? searchPages[0]?.pricing_mode ?? me?.guest_pricing_mode)
+    : undefined;
   const browseItems = React.useMemo(() => dedupeBuyerCatalogItems(browsePages.flatMap((page) => page.items ?? [])), [browsePages]);
   const browseHasMore = browsePages.at(-1)?.has_more ?? false;
   const browseLoading = isGuest && browseQueryResult.isLoading && browseItems.length === 0;

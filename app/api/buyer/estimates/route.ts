@@ -158,13 +158,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       if ((hasMin || hasMax) && !collectTargetRange) {
         return NextResponse.json({ success: false, error: 'Target price range is not enabled for this catalog' }, { status: 400 });
       }
-      if (hasMin || hasMax) {
-        if (typeof minTarget !== 'number' || typeof maxTarget !== 'number') {
-          return NextResponse.json({ success: false, error: 'Enter both min and max target rates' }, { status: 400 });
-        }
-        if (!Number.isFinite(minTarget) || !Number.isFinite(maxTarget) || minTarget < 0 || maxTarget < minTarget) {
-          return NextResponse.json({ success: false, error: 'Target rate range is invalid' }, { status: 400 });
-        }
+      if (hasMin && (typeof minTarget !== 'number' || !Number.isFinite(minTarget) || minTarget < 0)) {
+        return NextResponse.json({ success: false, error: 'Target rate range is invalid' }, { status: 400 });
+      }
+      if (hasMax && (typeof maxTarget !== 'number' || !Number.isFinite(maxTarget) || maxTarget < 0)) {
+        return NextResponse.json({ success: false, error: 'Target rate range is invalid' }, { status: 400 });
+      }
+      if (hasMin && hasMax && (maxTarget as number) < (minTarget as number)) {
+        return NextResponse.json({ success: false, error: 'Target rate range is invalid' }, { status: 400 });
       }
     }
 
@@ -310,6 +311,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         expires_at: expiresAt,
         subtotal,
         total_amount,
+        item_count: acceptedItems.length,
         cart_hash,
         notes: notes ?? null,
         campaign_id: resolvedCampaignId,

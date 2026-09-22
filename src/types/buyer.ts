@@ -36,6 +36,8 @@ export interface BuyerCatalogItem {
   image_url_large?: string | null;
   brand_logo_url?: string | null;
   category_image_url?: string | null;
+  /** The SKU's parent product family's shared photo — used when this variant has no own image. */
+  family_image_url?: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';
   on_hand: number;
   /** From campaign_items when product appears in a catalog. */

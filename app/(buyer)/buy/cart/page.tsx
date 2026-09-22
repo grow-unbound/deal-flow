@@ -37,6 +37,14 @@ import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location'
 import { computeBuyerCartTotals } from '@/lib/gst';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
+function hasInvalidTargetRange(cartItems: BuyerCartItem[]): boolean {
+  return cartItems.some((item) => (
+    item.buyer_target_unit_price_min != null
+    && item.buyer_target_unit_price_max != null
+    && item.buyer_target_unit_price_max < item.buyer_target_unit_price_min
+  ));
+}
+
 type CartLineItem = {
   tenant_product_id: string;
   qty: number;
@@ -143,7 +151,12 @@ export default function CartPage() {
   );
 
   useEffect(() => {
-    if (!reconcileQuery.data) return;
+    // isPlaceholderData means this is the PREVIOUS queryKey's result (kept
+    // around by placeholderData for an instant paint) — it belongs to a
+    // different item set and must never be used to overwrite the cart, or
+    // adding/removing an item briefly flashes the old selection's images
+    // back in until the real fetch for the new item set lands.
+    if (!reconcileQuery.data || reconcileQuery.isPlaceholderData) return;
     const nextItems = reconcileQuery.data.items
       .filter((product) => hiddenPriceEnquiry || hasVisibleBuyerPrice(product.price))
       .map((product) => {
@@ -547,6 +560,10 @@ export default function CartPage() {
       setError('Choose an outlet that can be routed to a warehouse.');
       return;
     }
+    if (collectTargetRange && hasInvalidTargetRange(items)) {
+      setError('Fix the target price range on the highlighted item before sending.');
+      return;
+    }
     captureCartSubmitIntent('estimate');
     requestQuoteMutation.mutate();
   }
@@ -930,6 +947,13 @@ function CartPageItem({
   hiddenPriceEnquiry?: boolean;
   collectTargetRange?: boolean;
 }) {
+  const [targetRangeTouched, setTargetRangeTouched] = useState(false);
+  const targetRangeInvalid = Boolean(
+    item.buyer_target_unit_price_min != null
+    && item.buyer_target_unit_price_max != null
+    && item.buyer_target_unit_price_max < item.buyer_target_unit_price_min,
+  );
+  const targetRangeError = targetRangeTouched && targetRangeInvalid ? 'Max price must be ≥ min price' : null;
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
   const showCampaignPrice = Boolean(
     item.has_campaign_price
@@ -1069,12 +1093,16 @@ function CartPageItem({
                   value={item.buyer_target_unit_price_min}
                   placeholder="Min"
                   onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_min', value)}
+                  onBlur={() => setTargetRangeTouched(true)}
+                  error={targetRangeError}
                 />
                 <CartTargetPriceInput
                   label="Max Price"
                   value={item.buyer_target_unit_price_max}
                   placeholder="Max"
                   onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_max', value)}
+                  onBlur={() => setTargetRangeTouched(true)}
+                  error={targetRangeError}
                 />
               </div>
             ) : null}

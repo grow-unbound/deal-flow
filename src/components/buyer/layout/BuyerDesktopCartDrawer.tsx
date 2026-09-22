@@ -310,7 +310,12 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   );
 
   useEffect(() => {
-    if (!reconcileQuery.data) return;
+    // isPlaceholderData means this is the PREVIOUS queryKey's result (kept
+    // around by placeholderData for an instant paint) — it belongs to a
+    // different item set and must never be used to overwrite the cart, or
+    // adding/removing an item briefly flashes the old selection's images
+    // back in until the real fetch for the new item set lands.
+    if (!reconcileQuery.data || reconcileQuery.isPlaceholderData) return;
     const nextItems = reconcileQuery.data.items.flatMap((product) => {
       if (!hiddenPriceEnquiry && !hasVisibleBuyerPrice(product.price)) return [];
       const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);

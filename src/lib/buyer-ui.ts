@@ -65,6 +65,7 @@ export const BUYER_TILE_HOVER_CLASS =
 
 type BuyerProductImageLike = {
   image_urls?: string[] | null;
+  family_image_url?: string | null;
   category_image_url?: string | null;
   brand_logo_url?: string | null;
 };
@@ -92,6 +93,9 @@ export function dedupeBuyerCatalogItems<T extends BuyerCatalogItemLike>(items: T
 
 export function getBuyerProductImageCandidates(input: BuyerProductImageLike): string[] {
   const productImage = input.image_urls?.find((url) => typeof url === 'string' && url.trim().length > 0)?.trim() ?? null;
+  const familyImage = typeof input.family_image_url === 'string' && input.family_image_url.trim().length > 0
+    ? input.family_image_url.trim()
+    : null;
   const categoryImage = typeof input.category_image_url === 'string' && input.category_image_url.trim().length > 0
     ? input.category_image_url.trim()
     : null;
@@ -99,7 +103,7 @@ export function getBuyerProductImageCandidates(input: BuyerProductImageLike): st
     ? input.brand_logo_url.trim()
     : null;
 
-  return [productImage, categoryImage, brandImage].filter((url, index, arr): url is string => Boolean(url) && arr.indexOf(url) === index);
+  return [productImage, familyImage, categoryImage, brandImage].filter((url, index, arr): url is string => Boolean(url) && arr.indexOf(url) === index);
 }
 
 export function getBuyerProductPrimaryImageUrl(input: BuyerProductImageLike): string | null {

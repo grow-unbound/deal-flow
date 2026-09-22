@@ -9,6 +9,8 @@ interface CartTargetPriceInputProps {
   placeholder: string;
   /** Emits the plain numeric string (no commas) or '' when cleared. */
   onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string | null;
 }
 
 /**
@@ -16,7 +18,7 @@ interface CartTargetPriceInputProps {
  * stores a number, so we keep a local formatted draft to avoid losing
  * in-progress input like "1,200." on every keystroke.
  */
-export function CartTargetPriceInput({ label, value, placeholder, onChange }: CartTargetPriceInputProps) {
+export function CartTargetPriceInput({ label, value, placeholder, onChange, onBlur, error }: CartTargetPriceInputProps) {
   const [draft, setDraft] = React.useState(() => formatNumberInput(value ?? null, 'CURRENCY_EXACT'));
 
   React.useEffect(() => {
@@ -30,7 +32,9 @@ export function CartTargetPriceInput({ label, value, placeholder, onChange }: Ca
   return (
     <label className="space-y-1">
       <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>{label}</span>
-      <div className="flex h-9 overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white focus-within:border-[var(--teal-500)]">
+      <div
+        className={`flex h-9 overflow-hidden rounded-[8px] border bg-white focus-within:border-[var(--teal-500)] ${error ? 'border-[var(--danger-500)]' : 'border-[var(--border-1)]'}`}
+      >
         <span className="flex h-full items-center border-r border-[var(--border-1)] bg-cream-100 px-2.5 text-sm font-semibold text-cream-700">₹</span>
         <input
           value={draft}
@@ -40,11 +44,15 @@ export function CartTargetPriceInput({ label, value, placeholder, onChange }: Ca
             const parsed = parseNumberInput(next, 'CURRENCY_EXACT');
             onChange(parsed == null ? '' : String(parsed));
           }}
+          onBlur={onBlur}
           inputMode="decimal"
           className="h-full min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
           placeholder={placeholder}
         />
       </div>
+      {error ? (
+        <span className="block text-[11px] font-medium text-[var(--danger-500)]">{error}</span>
+      ) : null}
     </label>
   );
 }
