@@ -10,6 +10,14 @@ vi.mock('posthog-js', () => ({
   },
 }));
 
+vi.mock('@/lib/buyer-analytics', () => ({
+  useBuyerAnalyticsProperties: () => () => ({}),
+}));
+
+vi.mock('@/lib/analytics-identity', () => ({
+  useBuyerAnalyticsIds: () => ({ tenant_id: 'tenant-1', buyer_id: 'buyer-1' }),
+}));
+
 const STORAGE_KEY = 'yukti_buyer_cart';
 
 function createStorage() {

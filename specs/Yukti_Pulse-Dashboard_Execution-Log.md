@@ -6,7 +6,7 @@
 
 **Created:** 22 September 2026
 
-**Overall status:** P01 complete with follow-up visual/data refinement; remaining units not started.
+**Overall status:** P01 complete with follow-up visual/data refinement; P2A/P2B complete; remaining units not started.
 
 ---
 
@@ -30,8 +30,8 @@
 | Unit | Product-spec scope | Depends on | Status | Evidence / latest entry |
 |---|---|---|---|---|
 | `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 18:52 IST — p01-opportunity-tile-refinement |
-| `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `not_started` | — |
-| `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `not_started` | — |
+| `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
+| `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
 | `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `not_started` | — |
 | `P5` | Phase 5: useful without adoption | P01 | `not_started` | — |
 | `P4` | Phase 4: adaptive maturity presentation | P01, P3, P5 | `not_started` | — |
@@ -456,3 +456,115 @@ Copy this section to the end of the file for every session.
 - Unit: `P2A`
 - Entry gate satisfied: yes, with verification caveat
 - Evidence / remaining requirement: P01 UI/data refinement is complete and focused tests pass. Before merge or before P2A work depends on this branch, rerun full `npx tsc --noEmit` in a non-hung environment and validate the pending migration against `yukti-dev` if live preview support text is required.
+
+---
+
+## 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation — P2A and P2B
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR not requested
+
+**Objective:** Implement Phase 2 buyer behavioral event/identity instrumentation and the minimal daily PostHog-to-local Pulse Demand Signals snapshot path, without adding a raw event warehouse or putting PostHog on the Pulse read path.
+
+### Completed
+
+- Added a shared buyer analytics envelope for storefront source/channel, tenant slug/id, buyer id when known, share/campaign attribution, UTM parameters, referrer class, surface, route, and PostHog distinct/session ids.
+- Added privacy-safe search query normalization/redaction for buyer catalog searches. Likely emails, phone numbers, GSTINs, address-like values, and too-short strings are not emitted as raw seller-facing query terms.
+- Extended current buyer-side captures rather than inventing parallel event names:
+  - `$pageview` on buyer routes now carries storefront context.
+  - `product_viewed` includes tenant product, brand/category ids, source/channel context, and campaign/share context.
+  - `catalog_item_added_to_cart` includes source/channel context and existing cart snapshot fields.
+  - `buyer_catalog_search_results_viewed` includes normalized query metadata, result count, result product ids/count, filters/scope, and redaction metadata.
+  - `buyer_cart_submit_clicked` and failure events include the same source/channel envelope.
+- Propagated browser PostHog distinct/session ids to buyer order/enquiry APIs with `X-POSTHOG-DISTINCT-ID` and `X-POSTHOG-SESSION-ID`.
+- Replaced duplicated server-side order/enquiry PostHog captures with `captureAuthoritativeBuyerDemand`, preserving non-blocking `flush()` behavior while adding document id/value/line product ids/source channel/buyer id/session correlation.
+- Added explicit `posthog.reset()` on manual sign-out so shared devices do not leak identity after logout while preserving anonymous-to-authenticated stitching before login.
+- Added a bounded Pulse Demand Signals snapshot helper backed by existing `app.metrics_landing_kpi_snapshot` under `page_key='pulse_demand_signals'`, `period_key='today'`; no new table or migration was introduced.
+- Added `/api/internal/pulse/demand-signals/extract` as a bearer-protected internal extraction endpoint. It batches tenants, computes a 7-day PostHog projection, and writes a tenant snapshot only after that tenant payload succeeds; failures leave prior snapshots readable.
+- Added `/api/tenant/pulse/demand-signals` as the seller read boundary. It reads only `app.get_landing_metrics_v4(page_key='pulse_demand_signals')`, never PostHog.
+
+### Files and database objects changed
+
+- `src/lib/buyer-analytics.ts`
+- `src/lib/server/buyer-posthog-events.ts`
+- `src/lib/server/pulse-demand-signals.ts`
+- `src/components/providers/PostHogRouteCapture.tsx`
+- `src/contexts/AuthContext.tsx`
+- `src/contexts/BuyerCartContext.tsx`
+- `src/hooks/useBuyerMe.ts`
+- `src/components/buyer/catalog/BuyerProductDetailClient.tsx`
+- `src/components/buyer/catalog/CatalogDiscoveryLanding.tsx`
+- `src/components/buyer/catalog/CatalogFilteredBrowse.tsx`
+- `src/components/buyer/search/BuyerSearchPageClient.tsx`
+- `app/(buyer)/buy/cart/page.tsx`
+- `app/api/buyer/estimates/route.ts`
+- `app/api/buyer/orders/route.ts`
+- `app/api/internal/pulse/demand-signals/extract/route.ts`
+- `app/api/tenant/pulse/demand-signals/route.ts`
+- `src/tests/buyer-analytics.test.ts`
+- `src/tests/pulse-demand-signals.test.ts`
+- `src/tests/buyer-cart-context.test.tsx`
+- `src/tests/buyer-orders-route.test.ts`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none. Existing snapshot table/RPC only: `app.metrics_landing_kpi_snapshot`, `app.get_landing_metrics_v4`, `app.get_tenant_products_summary`.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Type-check | `npx tsc --noEmit` | Passed. Completed silently in ~5s on the final run. |
+| Focused tests | `pnpm exec vitest run src/tests/buyer-analytics.test.ts src/tests/pulse-demand-signals.test.ts src/tests/buyer-cart-context.test.tsx src/tests/buyer-estimates-route.test.ts src/tests/buyer-orders-route.test.ts src/tests/pulse-api.test.ts --pool=threads` | Passed: 6 files, 29 tests. |
+| Static hygiene | `git diff --check` | Passed. |
+| Data reconciliation | Unit tests assert search PII redaction, storefront attribution envelope, PostHog correlation headers, authoritative demand capture shape, and landing-snapshot card parsing. | Passed. Missing assortment rows carry normalized terms only after privacy checks; server conversion events include document ids, values, line product ids, buyer id, and browser correlation ids. |
+| Security/scoping | Snapshot read endpoint uses `getVerifiedClaims`, seller-role guard, and server-side tenant id from JWT. Internal extractor requires `PULSE_DEMAND_SIGNALS_EXTRACT_SECRET` bearer token. Snapshot table read uses existing RLS-backed `get_landing_metrics_v4`; writes use service role only in the internal endpoint. | Passed by static review and focused tests for related Pulse API auth boundaries. No client-supplied tenant id is trusted for seller reads. No production command or mutation was run. |
+| UI/loading/visual states | No Pulse UI was added or changed in this unit; Demand Signals UI remains P3. Buyer event wiring preserves existing UI states and does not add route skeletons/pages. | Not applicable for visual parity. |
+| Aggregate/query plan | Verified local linked project metadata before every linked query: `supabase/.temp/project-ref = hcpzbnmumbykdqveyjhr`. `EXPLAIN (ANALYZE, BUFFERS)` direct snapshot lookup on `app.metrics_landing_kpi_snapshot` for tenant/page/scope/period. | Uses `metrics_landing_kpi_snapshot_active_uk`; execution 0.146 ms, shared hit=2, planning 1.406 ms. Meets aggregate-read budget. |
+| Aggregate/RPC wrapper | `EXPLAIN (ANALYZE, BUFFERS) SELECT app.get_landing_metrics_v4(... page_key='pulse_demand_signals', period='today' ...)` on yukti-dev with dummy tenant id. | Execution 133.995 ms, shared hit=708 read=1. Above strict aggregate target on first wrapper measurement but below widget endpoint budget; direct indexed lookup is 0.146 ms. Keep watching once a real pilot snapshot exists. |
+| Widget API/payload | `/api/tenant/pulse/demand-signals` is a separate widget boundary from contribution/opportunities and reads one compact JSON-array snapshot. `src/lib/server/pulse-demand-signals.ts` caps each row list at five display rows before writing. | Static/code verified; no dev server API timing captured in this session. Response shape tested via snapshot parser unit test. |
+| Cache/navigation | No Pulse client hook was added in P2B; P3 must attach this endpoint as its own TanStack query boundary. Current seller Pulse contribution/opportunity cache behavior is unchanged. Buyer event changes do not call `router.refresh()` or force full-page refetch. | Static verified. |
+| Failure isolation | Extractor updates each tenant independently; a tenant extraction failure pushes a failed result for that tenant and does not delete/update the prior snapshot. Pulse read endpoint never calls PostHog, so extractor or PostHog failures do not block existing P01 contribution/opportunities. | Static verified in endpoint/helper design; failure rows returned by internal extraction response. |
+| Web performance | No rendered Pulse UI or route bundle was changed. Snapshot read direct DB evidence is <1 ms; extractor is off the interactive path. Browser LCP/INP/CLS/FCP/TTFB not re-measured because this unit is data capture/read foundation only. | No field p75 available. |
+| CSP review | No new analytics origin was added. Existing PostHog host/proxy remains in use; the internal extractor calls the existing `https://us.posthog.com` server-side API. No `script-src`, `connect-src`, `img-src`, unsafe-inline, or eval changes. | Passed by static review. |
+
+### Findings
+
+- The old `specs/posthog-setup-report.md` is stale: it names older `/shop/*` routes and earlier event coverage. Current buyer routes are `/buy/*`, with existing captures across cart/catalog/search/order flows.
+- Anonymous buyer pageviews previously waited on auth state and relied on auth-derived tenant context. The new buyer envelope can derive the tenant slug from the storefront host and enrich with `/api/buyer/me` when available.
+- Search events previously emitted only query length/result count. P2A now emits privacy-safe normalized query data and result product ids/count needed for Missing Assortment extraction.
+- Existing `app.metrics_landing_kpi_snapshot` can represent the bounded ranked-list projection as cards with row arrays and metadata, so no new snapshot table was needed.
+- The direct snapshot lookup is extremely fast through the existing expression unique index. The `get_landing_metrics_v4` wrapper has measurable function overhead on the first sampled run; keep direct/index evidence in mind if P3 endpoint p95 needs tuning.
+
+### Decisions made
+
+- Reused current event names and added required properties instead of duplicating a new event namespace.
+- Kept PostHog historical/raw detail outside Yukti. Yukti stores only the latest bounded tenant projection in `metrics_landing_kpi_snapshot`.
+- Added no migration. The existing landing snapshot JSON-array contract is sufficient for the minimal projection.
+- Implemented stock mismatch as an empty snapshot bucket for now. Full current-inventory joining/scoring belongs with P3 validation or a later extractor refinement, not this foundation unit.
+- Kept `/api/tenant/buyer-app/posthog/*` untouched because retiring the archived Buyer App analytics page is explicitly after Phase 3 parity.
+
+### Deferred / explicitly out of scope
+
+- Demand Signals seller UI, hooks, skeletons, empty/error/stale states, and row actions remain P3.
+- Applying a real scheduled cron configuration was not done; the internal endpoint is ready for scheduling once secrets/deployment policy are confirmed.
+- Live PostHog extraction was not run because it requires server-side PostHog credentials and should be scheduled/internal. No real tenant snapshot was written during this session.
+- Browser Web Vital traces were not run because no visible Pulse UI changed.
+- Stronger conversion-gap and stock-mismatch scoring against confirmed demand/current inventory remains a P3/P2B refinement once pilot event volume exists.
+
+### Risks or blockers
+
+- P3 entry gate is not fully satisfied until at least one fresh pilot tenant snapshot exists in `app.metrics_landing_kpi_snapshot(page_key='pulse_demand_signals')`.
+- `get_landing_metrics_v4` wrapper measured 133.995 ms on a dummy cold-ish read, above the strict aggregate/RPC target; direct indexed lookup is 0.146 ms. If P3 widget endpoint p95 misses budget, use a narrow direct snapshot reader rather than the generic landing RPC.
+- The extractor endpoint needs `PULSE_DEMAND_SIGNALS_EXTRACT_SECRET`, `POSTHOG_PERSONAL_API_KEY`, and optionally `POSTHOG_PROJECT_ID` in the server environment before use.
+- Product interest extraction is thresholded (`unique_count >= 2`) and capped; low-volume tenants may legitimately get empty signal buckets.
+
+### Rollback notes
+
+- Revert this commit to remove the P2A event-envelope/correlation changes, `/api/internal/pulse/demand-signals/extract`, `/api/tenant/pulse/demand-signals`, and the new helpers/tests. No database rollback is required because no migration or remote write was performed.
+- If a tenant snapshot has been written by the extractor after deployment and must be hidden, soft-delete only the `app.metrics_landing_kpi_snapshot` rows with `page_key='pulse_demand_signals'`; do not delete raw PostHog data.
+
+### Recommended next unit
+
+- Unit: `P3`
+- Entry gate satisfied: no
+- Evidence / remaining requirement: P2A/P2B code contract is complete and tests/type-check pass, but P3 requires a fresh pilot snapshot. Run the internal extractor against WineYard/yukti-dev with configured PostHog credentials, confirm `page_key='pulse_demand_signals'` data exists and is fresh, then start P3 UI.

@@ -33,6 +33,7 @@ import {
   guestPriceReveal,
 } from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
+import { normalizeBuyerSearchQuery, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
@@ -54,6 +55,7 @@ export function CatalogFilteredBrowse({
   initialCategories,
 }: CatalogFilteredBrowseProps): React.ReactNode {
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const { data: me } = useBuyerMe();
   const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
   const { setCampaignId } = useCart();
@@ -204,16 +206,21 @@ export function CatalogFilteredBrowse({
     const key = `${mode}:${activeId}:${debouncedSearch}:${items.length}:${listQuery.isError ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
+    const normalized = normalizeBuyerSearchQuery(debouncedSearch);
     posthog.capture('buyer_catalog_search_results_viewed', {
+      ...buyerAnalytics('catalog_filtered_browse'),
       source_surface: 'catalog_filtered_browse',
       browse_mode: mode,
       entity_id: activeId,
+      ...normalized,
       query_length: debouncedSearch.length,
       result_count: items.length,
+      result_product_ids: items.slice(0, 20).map((item) => item.tenant_product_id),
+      result_product_count: items.length,
       has_more: hasMore,
       status: listQuery.isError ? 'error' : 'success',
     });
-  }, [activeId, debouncedSearch, hasMore, items.length, listQuery.isError, listQuery.isFetching, mode, posthog]);
+  }, [activeId, buyerAnalytics, debouncedSearch, hasMore, items, listQuery.isError, listQuery.isFetching, mode, posthog]);
 
   const selectedCategoryName = categories?.find((c) => c.id === activeId)?.name;
   const selectedBrandName = brands?.find((b) => b.id === activeId)?.name;

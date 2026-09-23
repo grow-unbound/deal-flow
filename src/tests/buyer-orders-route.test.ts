@@ -19,6 +19,10 @@ const orderSelectMock = {
   })),
 };
 
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+}));
+
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
 }));
@@ -34,6 +38,7 @@ vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
 
 vi.mock('@/lib/server/buyer-location-selection', () => ({
   getSelectedBuyerDeliveryFromRequest: vi.fn().mockReturnValue(null),
+  resolveTenantScopedLocationId: vi.fn().mockResolvedValue('loc-1'),
 }));
 
 vi.mock('@/lib/server/buyer-product-data', () => ({
@@ -64,6 +69,18 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn(() => ({
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === 'resolve_prices_batch') {
+          return {
+            data: [
+              { tenant_product_id: 'prod-1', unit_price: 500 },
+              { tenant_product_id: 'prod-2', unit_price: 1000 },
+            ],
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      }),
       from: vi.fn((table: string) => {
         if (table === 'orders') {
           return {

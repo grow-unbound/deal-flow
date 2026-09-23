@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
-import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
@@ -22,6 +21,7 @@ import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } fr
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 import { syncOrderEntrySafe } from '@/lib/server/inbox-entries';
+import { captureAuthoritativeBuyerDemand } from '@/lib/server/buyer-posthog-events';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -326,25 +326,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     // realtime channel notifies on), so don't hold the HTTP response hostage on
     // PostHog or the outbound WhatsApp API — that made the buyer's own response
     // arrive noticeably after the realtime "order created" toast for the same row.
-    try {
-      const ph = getPostHogClient();
-      ph.capture({
-        distinctId: buyer_id,
-        event: 'order_placed',
-        properties: {
-          tenant_id,
-          buyer_id,
-          order_id: typed.id,
-          order_number: typed.order_number,
-          item_count: acceptedItems.length,
-          total_amount,
-          source: 'buyer_app',
-        },
-      });
-      void ph.flush().catch(() => {});
-    } catch {
-      // non-blocking
-    }
+    captureAuthoritativeBuyerDemand({
+      request,
+      event: 'order_placed',
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      documentId: typed.id,
+      documentNumber: typed.order_number,
+      documentType: 'order',
+      totalAmount: total_amount,
+      itemCount: acceptedItems.length,
+      lineProductIds: acceptedItems.map((item) => item.tenant_product_id),
+      campaignId: resolvedCampaignId,
+    });
 
     const whatsappDispatched = !deferDocumentNumber && Boolean(typed.order_number);
     if (!deferDocumentNumber && typed.order_number) {

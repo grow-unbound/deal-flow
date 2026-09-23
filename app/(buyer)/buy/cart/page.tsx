@@ -35,6 +35,7 @@ import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice, isHiddenPriceEnqu
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
+import { postHogCorrelationHeaders, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 function hasInvalidTargetRange(cartItems: BuyerCartItem[]): boolean {
@@ -100,6 +101,7 @@ const STICKY_HEADER: React.CSSProperties = {
 export default function CartPage() {
   const router = useRouter();
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const { items, removeItem, updateQty, clearCart, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
@@ -280,6 +282,7 @@ export default function CartPage() {
 
   function captureCartSubmitIntent(documentType: 'order' | 'estimate'): void {
     posthog?.capture('buyer_cart_submit_clicked', {
+      ...buyerAnalytics('buyer_cart'),
       document_type: documentType,
       tenant_id: tenantId || null,
       buyer_id: meData?.buyer_id ?? null,
@@ -301,6 +304,7 @@ export default function CartPage() {
 
   function captureCartSubmitFailed(documentType: 'order' | 'estimate', message: string): void {
     posthog?.capture('buyer_cart_submit_failed', {
+      ...buyerAnalytics('buyer_cart'),
       document_type: documentType,
       tenant_id: tenantId || null,
       buyer_id: meData?.buyer_id ?? null,
@@ -338,6 +342,7 @@ export default function CartPage() {
       }
       const raw = await apiFetch('/api/buyer/orders', {
         method: 'POST',
+        headers: postHogCorrelationHeaders(posthog),
         body: JSON.stringify({
           items: buildLineItems(),
           location_id,
@@ -390,6 +395,7 @@ export default function CartPage() {
       }
       const raw = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
+        headers: postHogCorrelationHeaders(posthog),
         body: JSON.stringify({
           items: buildLineItems(),
           location_id,

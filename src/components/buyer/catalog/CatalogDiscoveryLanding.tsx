@@ -32,6 +32,7 @@ import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRI
 import { BUYER_REFERENCE_QUERY_GC_TIME, BUYER_REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import { cn } from '@/lib/utils';
+import { normalizeBuyerSearchQuery, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 async function fetchBuyerHomePromotions(): Promise<BuyerHomePromotionsResponse> {
   const response = await apiFetch('/api/buyer/home/promotions');
@@ -57,6 +58,7 @@ export function CatalogDiscoveryLanding({
   initialCategories?: BuyerCategory[];
 } = {}): React.ReactNode {
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const { data: me } = useBuyerMe();
   const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
   const { setRefreshFn } = useBuyerRealtimeContext();
@@ -180,14 +182,18 @@ export function CatalogDiscoveryLanding({
     const key = `${debouncedSearch}:${searchItems.length}:${searchError ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
+    const normalized = normalizeBuyerSearchQuery(debouncedSearch);
     posthog.capture('buyer_catalog_search_results_viewed', {
+      ...buyerAnalytics('catalog_landing'),
       source_surface: 'catalog_landing',
-      query_length: debouncedSearch.length,
+      ...normalized,
       result_count: searchItems.length,
+      result_product_ids: searchItems.slice(0, 20).map((item) => item.tenant_product_id),
+      result_product_count: searchItems.length,
       has_more: searchHasMore,
       status: searchError ? 'error' : 'success',
     });
-  }, [debouncedSearch, posthog, searchError, searchHasMore, searchItems.length, searchQueryResult.isFetching]);
+  }, [buyerAnalytics, debouncedSearch, posthog, searchError, searchHasMore, searchItems, searchQueryResult.isFetching]);
 
   return (
     <div className="flex flex-col pb-8">
