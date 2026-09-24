@@ -47,6 +47,7 @@ describe('Pulse demand signals snapshot contract', () => {
         },
         {
           id: 'conversion_gaps',
+          entity_count: 6,
           rows: [{ id: 'product-1', label: 'NVR', count: 12, unique_count: 4, source_channel: 'storefront' }],
         },
       ],
@@ -55,6 +56,11 @@ describe('Pulse demand signals snapshot contract', () => {
     expect(parsed.missing_assortment).toHaveLength(1);
     expect(parsed.conversion_gaps).toHaveLength(1);
     expect(parsed.stock_mismatch).toEqual([]);
+    expect(parsed.signal_counts).toEqual({
+      missing_assortment: 1,
+      conversion_gaps: 6,
+      stock_mismatch: 0,
+    });
     expect(parsed.funnel_counts).toEqual({
       searches: 9,
       zero_result_searches: 5,
@@ -139,7 +145,7 @@ describe('Pulse demand signals snapshot contract', () => {
     expect(body.query.kind).toBe('HogQLQuery');
     expect(body.query.query).toContain("properties.tenant_id = 'd601c35c-1a78-4506-a556-a82118d72893'");
     expect(body.query.query).toContain("timestamp >= toDateTime('2026-09-17T00:00:00.000Z')");
-    expect(body.query.query).toContain('LIMIT 5');
+    expect(body.query.query).toContain('LIMIT 25');
 
     fetchMock.mockRestore();
   });

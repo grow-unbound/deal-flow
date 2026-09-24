@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -111,6 +111,11 @@ const demandSignals: PulseDemandSignalsResponse = {
     product_views: 81,
     cart_adds: 0,
   },
+  signal_counts: {
+    missing_assortment: 0,
+    conversion_gaps: 6,
+    stock_mismatch: 0,
+  },
   missing_assortment: [],
   conversion_gaps: [
     {
@@ -120,6 +125,56 @@ const demandSignals: PulseDemandSignalsResponse = {
       product_name: '8-Ch NVR CP Plus',
       count: 11,
       unique_count: 10,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+    {
+      id: 'product-2',
+      tenant_product_id: 'product-2',
+      label: 'Second Product',
+      product_name: 'Second Product',
+      count: 6,
+      unique_count: 3,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+    {
+      id: 'product-3',
+      tenant_product_id: 'product-3',
+      label: 'Third Product',
+      product_name: 'Third Product',
+      count: 5,
+      unique_count: 3,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+    {
+      id: 'product-4',
+      tenant_product_id: 'product-4',
+      label: 'Fourth Product',
+      product_name: 'Fourth Product',
+      count: 4,
+      unique_count: 2,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+    {
+      id: 'product-5',
+      tenant_product_id: 'product-5',
+      label: 'Fifth Product',
+      product_name: 'Fifth Product',
+      count: 3,
+      unique_count: 2,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+    {
+      id: 'product-6',
+      tenant_product_id: 'product-6',
+      label: 'Hidden Product',
+      product_name: 'Hidden Product',
+      count: 2,
+      unique_count: 2,
       last_seen_at: new Date().toISOString(),
       source_channel: 'storefront',
     },
@@ -155,8 +210,9 @@ describe('PulseDashboardClient', () => {
     expect(await screen.findByText('Demand signals')).toBeInTheDocument();
     expect(await screen.findByText('8-Ch NVR CP Plus')).toBeInTheDocument();
     expect(await screen.findByText(/10 customers/)).toBeInTheDocument();
-    expect(await screen.findByText(/Last seen/)).toBeInTheDocument();
-    expect(await screen.findByText('views')).toBeInTheDocument();
+    expect((await screen.findAllByText(/Last seen/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('views')).length).toBe(5);
+    expect((await screen.findAllByText('Show all')).length).toBeGreaterThan(0);
     expect(await screen.findByText('No privacy-safe missing assortment yet')).toBeInTheDocument();
     expect(await screen.findByText('No stock mismatch detected')).toBeInTheDocument();
     expect(await screen.findByText('Customers with Yukti access · NOW')).toBeInTheDocument();
@@ -177,6 +233,25 @@ describe('PulseDashboardClient', () => {
     expect(screen.queryByText('Storefront')).not.toBeInTheDocument();
     expect(screen.queryByText(/intent events/)).not.toBeInTheDocument();
     expect(screen.queryByText(/visitors/)).not.toBeInTheDocument();
+  });
+
+  it('opens a Demand Signals slide-over from Show all', async () => {
+    apiFetchMock.mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      json: async () => pulseResponse(url),
+    }));
+
+    renderPulse();
+
+    expect(await screen.findByText('Fifth Product')).toBeInTheDocument();
+    expect(screen.queryByText('Hidden Product')).not.toBeInTheDocument();
+    const showAllButtons = await screen.findAllByText('Show all');
+    fireEvent.click(showAllButtons[showAllButtons.length - 1]);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findAllByText('Conversion gaps')).toHaveLength(2);
+    expect(await screen.findByText('6 signals')).toBeInTheDocument();
+    expect(await screen.findByText('Hidden Product')).toBeInTheDocument();
   });
 
   it('keeps opportunities visible when contribution fails', async () => {

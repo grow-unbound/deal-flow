@@ -788,3 +788,69 @@ Copy this section to the end of the file for every session.
 - Unit: `P5`
 - Entry gate satisfied: yes
 - Evidence / remaining requirement: P01 and P3 remain complete after polish.
+
+---
+
+## 2026-09-24 10:03 IST — p3-demand-signals-show-all — P3
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR not requested
+
+**Objective:** Add full-count display and Show all slide-overs to each Demand Signals widget, while keeping the basic widget capped to the top five rows with an internal scroll pattern like Opportunities.
+
+### Completed
+
+- Added `signal_counts` to the Demand Signals snapshot/response contract so widgets can show the full bounded snapshot count independently of the visible top-five rows.
+- Updated the extractor to preserve up to 25 ranked rows per populated demand-signal bucket in the local snapshot; widgets still render only the top five rows.
+- Added Demand Signals `Show all` buttons that open a right-side sheet using the same snapshot-backed rows, with no PostHog or raw-table read on the UI path.
+- Wrapped populated widget rows in the existing internal scroll body pattern.
+- Added tests proving the basic widget caps at five rows while the sheet exposes the sixth row.
+
+### Files and database objects changed
+
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/lib/server/pulse-demand-signals.ts`
+- `src/types/pulse.ts`
+- `src/tests/pulse-client.test.tsx`
+- `src/tests/pulse-demand-signals.test.ts`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none. Future extractor runs will write a larger but still bounded snapshot payload.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Focused tests | `pnpm exec vitest run src/tests/pulse-demand-signals.test.ts src/tests/pulse-client.test.tsx --pool=threads` | Passed: 2 files, 10 tests. |
+| Focused P3 suite | `pnpm exec vitest run src/tests/pulse-demand-signals.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx src/tests/auth/middleware.test.ts --pool=threads` | Passed: 4 files, 73 tests. |
+| Type-check | `npx tsc --noEmit` | Passed. |
+| Static hygiene | `git diff --check` | Passed. |
+| Query/API/performance | UI still reads only `/api/tenant/pulse/demand-signals`; extractor limits remain bounded at 25 rows per bucket. | No new interactive PostHog/raw-table path introduced. |
+
+### Findings
+
+- Existing snapshots still contain only the rows written by their extraction run. The Show all sheet is full relative to the bounded local snapshot; future extractor runs can now store up to 25 rows per bucket.
+
+### Decisions made
+
+- Did not add per-kind routes because the bounded snapshot remains compact and already provides the data needed for the sheet.
+- Kept empty widgets without Show all CTA because there is no full list to inspect.
+
+### Deferred / explicitly out of scope
+
+- No live extractor rerun was performed in this session.
+- No database migration or PostHog query shape beyond the bounded limit increase was introduced.
+
+### Risks or blockers
+
+- Current WineYard dev snapshot still needs a rerun to contain more than its already-written five conversion-gap rows.
+
+### Rollback notes
+
+- Revert this follow-up commit to remove the Demand Signals slide-over/count changes and restore the previous top-five-only widget behavior. No database rollback required.
+
+### Recommended next unit
+
+- Unit: `P5`
+- Entry gate satisfied: yes
+- Evidence / remaining requirement: P01 and P3 remain complete after the Show all follow-up.

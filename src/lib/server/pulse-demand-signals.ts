@@ -23,6 +23,11 @@ export type PulseDemandSignalsSnapshot = {
   missing_assortment: PulseDemandSignalRow[];
   conversion_gaps: PulseDemandSignalRow[];
   stock_mismatch: PulseDemandSignalRow[];
+  signal_counts: {
+    missing_assortment: number;
+    conversion_gaps: number;
+    stock_mismatch: number;
+  };
   funnel_counts: {
     searches: number;
     zero_result_searches: number;
@@ -46,6 +51,11 @@ const EMPTY_SIGNALS: PulseDemandSignalsSnapshot = {
   missing_assortment: [],
   conversion_gaps: [],
   stock_mismatch: [],
+  signal_counts: {
+    missing_assortment: 0,
+    conversion_gaps: 0,
+    stock_mismatch: 0,
+  },
   funnel_counts: {
     searches: 0,
     zero_result_searches: 0,
@@ -116,10 +126,20 @@ export function parsePulseDemandSignalsSnapshot(payload: unknown): PulseDemandSi
   const meta = (byId.get('missing_assortment')?.meta ?? {}) as Record<string, unknown>;
   const computedAt = toStringOrNull(source.computed_at);
   const sourceWatermark = toStringOrNull(source.source_watermark);
+  const countFor = (id: string): number => {
+    const card = byId.get(id);
+    const rows = rowsFor(id);
+    return toNumber(card?.entity_count ?? card?.value ?? rows.length);
+  };
   return {
     missing_assortment: rowsFor('missing_assortment'),
     conversion_gaps: rowsFor('conversion_gaps'),
     stock_mismatch: rowsFor('stock_mismatch'),
+    signal_counts: {
+      missing_assortment: countFor('missing_assortment'),
+      conversion_gaps: countFor('conversion_gaps'),
+      stock_mismatch: countFor('stock_mismatch'),
+    },
     funnel_counts: {
       searches: toNumber(meta.searches),
       zero_result_searches: toNumber(meta.zero_result_searches),
@@ -176,7 +196,7 @@ async function fetchMissingAssortment(params: { tenantId: string; windowStart: s
     GROUP BY normalized_query
     HAVING unique_count >= 2
     ORDER BY unique_count DESC, search_count DESC, last_seen_at DESC
-    LIMIT 5
+    LIMIT 25
   `;
   const raw = await posthogHogql<HogqlResponse>(query);
   return (raw.results ?? []).map((row) => ({
@@ -209,7 +229,7 @@ async function fetchProductInterest(params: { tenantId: string; windowStart: str
     GROUP BY tenant_product_id
     HAVING unique_count >= 2
     ORDER BY add_count DESC, view_count DESC, unique_count DESC, last_seen_at DESC
-    LIMIT 10
+    LIMIT 25
   `;
   const raw = await posthogHogql<HogqlResponse>(query);
   return (raw.results ?? []).map((row) => ({
@@ -228,7 +248,7 @@ async function enrichProductInterest(db: SupabaseClient, tenantId: string, rows:
     .schema('app')
     .rpc('get_tenant_products_summary', { p_tenant_id: tenantId, p_tenant_product_ids: ids });
   const byProduct = new Map((data ?? []).map((row: any) => [String(row.tenant_product_id), row]));
-  return rows.slice(0, 5).map((row) => {
+  return rows.map((row) => {
     const product = byProduct.get(row.tenant_product_id) as { product_name?: string | null } | undefined;
     return {
       id: row.tenant_product_id,
@@ -257,6 +277,11 @@ export async function buildPulseDemandSignalsSnapshot(db: SupabaseClient, tenant
     missing_assortment: missingAssortment,
     conversion_gaps: enrichedInterest,
     stock_mismatch: [],
+    signal_counts: {
+      missing_assortment: missingAssortment.length,
+      conversion_gaps: enrichedInterest.length,
+      stock_mismatch: 0,
+    },
     funnel_counts: {
       searches: missingAssortment.reduce((sum, row) => sum + row.count, 0),
       zero_result_searches: missingAssortment.reduce((sum, row) => sum + row.count, 0),

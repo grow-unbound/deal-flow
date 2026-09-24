@@ -77,6 +77,7 @@ export interface PulseDemandSignalsResponse {
   missing_assortment: PulseDemandSignalRow[];
   conversion_gaps: PulseDemandSignalRow[];
   stock_mismatch: PulseDemandSignalRow[];
+  signal_counts: Record<PulseDemandSignalKind, number>;
   funnel_counts: {
     searches: number;
     zero_result_searches: number;

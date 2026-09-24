@@ -263,10 +263,18 @@ function demandSignalRows(kind: PulseDemandSignalKind, rows: PulseDemandSignalRo
   });
 }
 
-function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
+function DemandSignalWidget({
+  kind,
+  onShowAll,
+}: {
+  kind: PulseDemandSignalKind;
+  onShowAll: (payload: { kind: PulseDemandSignalKind; rows: PulseDemandSignalRow[]; total: number }) => void;
+}) {
   const query = usePulseDemandSignal(kind);
   const copy = DEMAND_SIGNAL_COPY[kind];
   const rows = query.data?.[kind] ?? [];
+  const visibleRows = rows.slice(0, 5);
+  const total = query.data?.signal_counts[kind] ?? rows.length;
   const stale = Boolean(query.data?.stale);
   const actionHref = kind === 'missing_assortment' ? '/products' : '/products';
   const actionText = kind === 'missing_assortment'
@@ -283,8 +291,18 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
       subtitle={copy.description}
       actions={(
         <div className="text-right">
-          <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(rows.length, 'COUNT')}</p>
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-500">shown</p>
+          <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(total, 'COUNT')}</p>
+          {total > 0 ? (
+            <button
+              type="button"
+              className="mt-2 text-sm font-semibold text-teal-700 no-underline hover:text-teal-800"
+              onClick={() => onShowAll({ kind, rows, total })}
+            >
+              Show all
+            </button>
+          ) : (
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-500">signals</p>
+          )}
         </div>
       )}
       bodyClassName="p-0"
@@ -299,12 +317,14 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
           </div>
         </div>
       ) : rows.length > 0 ? (
-        <RankedList
-          items={demandSignalRows(kind, rows)}
-          emptyTitle={copy.emptyTitle}
-          emptyDescription={copy.emptyDescription}
-          compact
-        />
+        <ScrollCardBody>
+          <RankedList
+            items={demandSignalRows(kind, visibleRows)}
+            emptyTitle={copy.emptyTitle}
+            emptyDescription={copy.emptyDescription}
+            compact
+          />
+        </ScrollCardBody>
       ) : (
         <div className="flex min-h-[224px] flex-col justify-between p-5">
           <div>
@@ -327,9 +347,42 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
   );
 }
 
+function DemandSignalSheet({
+  signal,
+  onOpenChange,
+}: {
+  signal: { kind: PulseDemandSignalKind; rows: PulseDemandSignalRow[]; total: number } | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const copy = signal ? DEMAND_SIGNAL_COPY[signal.kind] : null;
+
+  return (
+    <Sheet open={Boolean(signal)} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full max-w-[540px] p-0 sm:max-w-[540px]">
+        <SheetHeader>
+          <SheetTitle className="font-display text-xl font-semibold text-cream-950">{copy?.title ?? 'Demand signals'}</SheetTitle>
+          {copy?.description ? <p className="mt-1 text-base text-cream-700">{copy.description}</p> : null}
+          <p className="mt-2 text-sm font-medium text-cream-600">{formatNumberValue(signal?.total ?? 0, 'COUNT')} signals</p>
+        </SheetHeader>
+        <SheetBody className="px-0 py-0">
+          {signal ? (
+            <RankedList
+              items={demandSignalRows(signal.kind, signal.rows)}
+              emptyTitle={copy?.emptyTitle ?? 'No signals found'}
+              emptyDescription={copy?.emptyDescription}
+              compact
+            />
+          ) : null}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function DemandSignalsSection() {
   const freshnessQuery = usePulseDemandSignal('conversion_gaps');
   const freshness = formatPulseFreshness(freshnessQuery.data?.source_watermark ?? freshnessQuery.data?.computed_at);
+  const [selectedSignal, setSelectedSignal] = useState<{ kind: PulseDemandSignalKind; rows: PulseDemandSignalRow[]; total: number } | null>(null);
 
   return (
     <PulseSectionShell
@@ -339,10 +392,11 @@ function DemandSignalsSection() {
       isFetching={freshnessQuery.isFetching && !freshnessQuery.isLoading}
     >
       <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <DemandSignalWidget kind="missing_assortment" />
-        <DemandSignalWidget kind="conversion_gaps" />
-        <DemandSignalWidget kind="stock_mismatch" />
+        <DemandSignalWidget kind="missing_assortment" onShowAll={setSelectedSignal} />
+        <DemandSignalWidget kind="conversion_gaps" onShowAll={setSelectedSignal} />
+        <DemandSignalWidget kind="stock_mismatch" onShowAll={setSelectedSignal} />
       </div>
+      <DemandSignalSheet signal={selectedSignal} onOpenChange={(open) => setSelectedSignal(open ? selectedSignal : null)} />
     </PulseSectionShell>
   );
 }
