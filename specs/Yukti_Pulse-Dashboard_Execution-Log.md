@@ -32,7 +32,7 @@
 | `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 18:52 IST — p01-opportunity-tile-refinement |
 | `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
 | `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
-| `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `complete` | 2026-09-24 09:22 IST — p3-demand-signals-ui |
+| `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `complete` | 2026-09-24 09:48 IST — p3-demand-signals-polish |
 | `P5` | Phase 5: useful without adoption | P01 | `not_started` | — |
 | `P4` | Phase 4: adaptive maturity presentation | P01, P3, P5 | `not_started` | — |
 | `P6` | Phase 6: declining-adoption recovery | P4 plus sufficient historical baseline | `not_started` | — |
@@ -723,3 +723,68 @@ Copy this section to the end of the file for every session.
 - Unit: `P5`
 - Entry gate satisfied: yes
 - Evidence / remaining requirement: P01 and P3 are complete. P5 can reuse existing aggregate-backed customer/opportunity data and should not start P4 until P5 stabilizes.
+
+---
+
+## 2026-09-24 09:48 IST — p3-demand-signals-polish — P3
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR not requested
+
+**Objective:** Apply post-P3 presentation feedback: move Demand Signals after Business captured through Yukti and Opportunities, remove duplicated widget freshness/source labels, and make conversion-gap row copy clearer.
+
+### Completed
+
+- Reordered `/pulse` sections to: Business captured through Yukti → Opportunities → Demand signals.
+- Updated route/client skeleton order to match the rendered section order.
+- Removed the repeated per-widget populated-state freshness strip; freshness remains at the Demand Signals section header.
+- Removed visible `Storefront` labels from Demand Signal widget headers and rows.
+- Changed row supporting copy from `intent events` / `visitors` to clearer `customers` and `Last seen ...` language.
+- Changed row trailing values to show the actual signal count with labels such as `views`, `searches`, or `interest`.
+- Clarified the Conversion gaps widget copy to say it shows the top 5 products buyers viewed or added to cart without matching demand.
+
+### Files and database objects changed
+
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/tests/pulse-client.test.tsx`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Focused client test | `pnpm exec vitest run src/tests/pulse-client.test.tsx --pool=threads` | Passed: 1 file, 5 tests. |
+| Focused P3 suite | `pnpm exec vitest run src/tests/pulse-demand-signals.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx src/tests/auth/middleware.test.ts --pool=threads` | Passed: 4 files, 72 tests. |
+| Type-check | `npx tsc --noEmit` | Passed. |
+| UI/loading/visual states | Static diff plus client tests assert section order and absence of visible `Storefront`, `intent events`, and `visitors` copy. | Passed. |
+| Query/API/performance | No read-path, endpoint, cache, or persistence changes. | Existing P3 evidence remains applicable. |
+
+### Findings
+
+- The card already had section-level freshness, so removing per-widget populated-state freshness reduces duplicate copy without hiding data freshness.
+
+### Decisions made
+
+- Kept the single compact snapshot API and independent widget query keys unchanged.
+- Kept `Storefront` out of row/header labels in the current UI polish; source channel remains in the underlying snapshot for future multi-channel display.
+
+### Deferred / explicitly out of scope
+
+- No extractor, database, or PostHog changes.
+- No browser/Web Vital rerun because this was copy/order-only and no read path changed.
+
+### Risks or blockers
+
+- None introduced. Existing P3 caveats about Missing assortment and Stock mismatch data availability still apply.
+
+### Rollback notes
+
+- Revert this polish commit to restore the original P3 section order and Demand Signal row labels. No database rollback required.
+
+### Recommended next unit
+
+- Unit: `P5`
+- Entry gate satisfied: yes
+- Evidence / remaining requirement: P01 and P3 remain complete after polish.

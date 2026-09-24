@@ -147,8 +147,16 @@ describe('PulseDashboardClient', () => {
     renderPulse();
 
     expect(screen.getByRole('heading', { name: 'Pulse' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual([
+      'Business captured through Yukti',
+      'Opportunities',
+      'Demand signals',
+    ]);
     expect(await screen.findByText('Demand signals')).toBeInTheDocument();
     expect(await screen.findByText('8-Ch NVR CP Plus')).toBeInTheDocument();
+    expect(await screen.findByText(/10 customers/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last seen/)).toBeInTheDocument();
+    expect(await screen.findByText('views')).toBeInTheDocument();
     expect(await screen.findByText('No privacy-safe missing assortment yet')).toBeInTheDocument();
     expect(await screen.findByText('No stock mismatch detected')).toBeInTheDocument();
     expect(await screen.findByText('Customers with Yukti access · NOW')).toBeInTheDocument();
@@ -166,6 +174,9 @@ describe('PulseDashboardClient', () => {
     expect(screen.queryByText('Location performance')).not.toBeInTheDocument();
     expect(screen.queryByText(/Buyer channels/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('Storefront')).not.toBeInTheDocument();
+    expect(screen.queryByText(/intent events/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/visitors/)).not.toBeInTheDocument();
   });
 
   it('keeps opportunities visible when contribution fails', async () => {

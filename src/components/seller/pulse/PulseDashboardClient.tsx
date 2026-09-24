@@ -32,18 +32,13 @@ function formatPulseFreshness(iso: string | null | undefined) {
 
 function formatLastSeen(iso: string | null | undefined) {
   const freshness = formatPulseFreshness(iso);
-  return freshness ? freshness.replace(/^Updated /, 'Seen ') : null;
+  return freshness ? freshness.replace(/^Updated /, 'Last seen ') : null;
 }
 
 function formatCardValue(card: PulseContributionCard) {
   return card.value_kind === 'currency'
     ? formatNumberValue(card.value, 'CURRENCY_THRESHOLD')
     : formatNumberValue(card.value, 'COUNT');
-}
-
-function sourceLabel(source: PulseDemandSignalRow['source_channel']) {
-  if (source === 'storefront') return 'Storefront';
-  return source;
 }
 
 function ScrollCardBody({ children }: { children: ReactNode }) {
@@ -225,7 +220,7 @@ const DEMAND_SIGNAL_COPY: Record<PulseDemandSignalKind, {
   },
   conversion_gaps: {
     title: 'Conversion gaps',
-    description: 'Products attracting meaningful interest without matching demand in the current window.',
+    description: 'Top 5 products buyers viewed or added to cart without matching demand in the current window.',
     emptyTitle: 'No meaningful conversion gaps detected',
     emptyDescription: 'Browsed products are either converting or have not crossed the minimum signal threshold yet.',
   },
@@ -240,16 +235,18 @@ const DEMAND_SIGNAL_COPY: Record<PulseDemandSignalKind, {
 function demandSignalRows(kind: PulseDemandSignalKind, rows: PulseDemandSignalRow[]) {
   return rows.map((row) => {
     const lastSeen = formatLastSeen(row.last_seen_at);
-    const source = sourceLabel(row.source_channel);
     const href = kind === 'missing_assortment'
       ? `/products?search=${encodeURIComponent(row.label)}`
       : row.tenant_product_id
         ? `/products/${row.tenant_product_id}`
         : '/products';
-    const primaryMetric = kind === 'missing_assortment'
-      ? `${formatNumberValue(row.count, 'COUNT')} searches`
-      : `${formatNumberValue(row.count, 'COUNT')} intent events`;
-    const secondaryMetric = `${formatNumberValue(row.unique_count, 'COUNT')} visitors`;
+    const trailingLabel = kind === 'missing_assortment'
+      ? 'searches'
+      : kind === 'conversion_gaps'
+        ? 'views'
+        : 'interest';
+    const customerLabel = row.unique_count === 1 ? 'customer' : 'customers';
+    const secondaryMetric = `${formatNumberValue(row.unique_count, 'COUNT')} ${customerLabel}`;
     const stock = kind === 'stock_mismatch' && row.stock_state ? ` · ${row.stock_state.replace(/_/g, ' ')}` : '';
 
     return {
@@ -259,12 +256,9 @@ function demandSignalRows(kind: PulseDemandSignalKind, rows: PulseDemandSignalRo
           <span className="block truncate">{row.product_name ?? row.label}</span>
         </Link>
       ),
-      meta: `${primaryMetric} · ${secondaryMetric}${stock}${lastSeen ? ` · ${lastSeen}` : ''}`,
-      value: (
-        <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800">
-          {source}
-        </span>
-      ),
+      meta: `${secondaryMetric}${stock}${lastSeen ? ` · ${lastSeen}` : ''}`,
+      value: formatNumberValue(row.count, 'COUNT'),
+      valueSupporting: trailingLabel,
     };
   });
 }
@@ -273,7 +267,6 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
   const query = usePulseDemandSignal(kind);
   const copy = DEMAND_SIGNAL_COPY[kind];
   const rows = query.data?.[kind] ?? [];
-  const freshness = formatPulseFreshness(query.data?.source_watermark ?? query.data?.computed_at);
   const stale = Boolean(query.data?.stale);
   const actionHref = kind === 'missing_assortment' ? '/products' : '/products';
   const actionText = kind === 'missing_assortment'
@@ -291,7 +284,7 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
       actions={(
         <div className="text-right">
           <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(rows.length, 'COUNT')}</p>
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-500">Storefront</p>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-500">shown</p>
         </div>
       )}
       bodyClassName="p-0"
@@ -306,19 +299,12 @@ function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
           </div>
         </div>
       ) : rows.length > 0 ? (
-        <>
-          <div className="border-b border-cream-200 px-4 py-3">
-            <p className={cn('text-xs font-medium', stale ? 'text-amber-700' : 'text-cream-600')}>
-              {stale ? 'Stale snapshot' : freshness ? `Demand signals ${freshness.toLowerCase()}` : 'Demand signals snapshot'}
-            </p>
-          </div>
-          <RankedList
-            items={demandSignalRows(kind, rows)}
-            emptyTitle={copy.emptyTitle}
-            emptyDescription={copy.emptyDescription}
-            compact
-          />
-        </>
+        <RankedList
+          items={demandSignalRows(kind, rows)}
+          emptyTitle={copy.emptyTitle}
+          emptyDescription={copy.emptyDescription}
+          compact
+        />
       ) : (
         <div className="flex min-h-[224px] flex-col justify-between p-5">
           <div>
@@ -555,13 +541,6 @@ export function PulseDashboardSkeleton() {
       </div>
       <section>
         <div className="mb-2">
-          <div className="h-6 w-44 animate-pulse rounded bg-cream-200" />
-          <div className="mt-2 h-4 w-[42rem] max-w-full animate-pulse rounded bg-cream-200" />
-        </div>
-        <PulseDemandSignalsSkeleton />
-      </section>
-      <section className="mt-5">
-        <div className="mb-2">
           <div className="h-6 w-64 animate-pulse rounded bg-cream-200" />
           <div className="mt-2 h-4 w-[34rem] max-w-full animate-pulse rounded bg-cream-200" />
         </div>
@@ -573,6 +552,13 @@ export function PulseDashboardSkeleton() {
           <div className="mt-2 h-4 w-[38rem] max-w-full animate-pulse rounded bg-cream-200" />
         </div>
         <PulseOpportunitiesSkeleton />
+      </section>
+      <section className="mt-5">
+        <div className="mb-2">
+          <div className="h-6 w-44 animate-pulse rounded bg-cream-200" />
+          <div className="mt-2 h-4 w-[42rem] max-w-full animate-pulse rounded bg-cream-200" />
+        </div>
+        <PulseDemandSignalsSkeleton />
       </section>
     </div>
   );
@@ -591,9 +577,9 @@ export function PulseDashboardClient() {
         </p>
       </header>
       <div className={cn('space-y-5')}>
-        <DemandSignalsSection />
         <ContributionSection />
         <OpportunitiesSection />
+        <DemandSignalsSection />
       </div>
     </div>
   );
