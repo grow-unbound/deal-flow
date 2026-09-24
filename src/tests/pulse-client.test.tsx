@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PulseDashboardClient } from '@/components/seller/pulse/PulseDashboardClient';
-import type { PulseContributionResponse, PulseOpportunitiesResponse } from '@/types/pulse';
+import type { PulseContributionResponse, PulseDemandSignalsResponse, PulseOpportunitiesResponse } from '@/types/pulse';
 
 const apiFetchMock = vi.fn();
 
@@ -96,6 +96,43 @@ const opportunities: PulseOpportunitiesResponse = {
   ],
 };
 
+const demandSignals: PulseDemandSignalsResponse = {
+  page_key: 'pulse_demand_signals',
+  computed_at: new Date().toISOString(),
+  source_watermark: new Date().toISOString(),
+  stale: false,
+  query_window: {
+    started_at: '2026-09-17T03:10:06.189Z',
+    ended_at: '2026-09-24T03:10:06.189Z',
+  },
+  funnel_counts: {
+    searches: 0,
+    zero_result_searches: 0,
+    product_views: 81,
+    cart_adds: 0,
+  },
+  missing_assortment: [],
+  conversion_gaps: [
+    {
+      id: 'product-1',
+      tenant_product_id: 'product-1',
+      label: '8-Ch NVR CP Plus',
+      product_name: '8-Ch NVR CP Plus',
+      count: 11,
+      unique_count: 10,
+      last_seen_at: new Date().toISOString(),
+      source_channel: 'storefront',
+    },
+  ],
+  stock_mismatch: [],
+};
+
+function pulseResponse(url: string, overrides?: { contribution?: unknown; opportunities?: unknown; demandSignals?: unknown }) {
+  if (url.includes('demand-signals')) return overrides?.demandSignals ?? demandSignals;
+  if (url.includes('opportunities')) return overrides?.opportunities ?? opportunities;
+  return overrides?.contribution ?? contribution;
+}
+
 describe('PulseDashboardClient', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
@@ -104,12 +141,16 @@ describe('PulseDashboardClient', () => {
   it('renders the P01 Pulse core without retired ERP dashboard widgets', async () => {
     apiFetchMock.mockImplementation((url: string) => Promise.resolve({
       ok: true,
-      json: async () => url.includes('opportunities') ? opportunities : contribution,
+      json: async () => pulseResponse(url),
     }));
 
     renderPulse();
 
     expect(screen.getByRole('heading', { name: 'Pulse' })).toBeInTheDocument();
+    expect(await screen.findByText('Demand signals')).toBeInTheDocument();
+    expect(await screen.findByText('8-Ch NVR CP Plus')).toBeInTheDocument();
+    expect(await screen.findByText('No privacy-safe missing assortment yet')).toBeInTheDocument();
+    expect(await screen.findByText('No stock mismatch detected')).toBeInTheDocument();
     expect(await screen.findByText('Customers with Yukti access · NOW')).toBeInTheDocument();
     expect(await screen.findByText(/Demand captured through Yukti/)).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
@@ -132,19 +173,37 @@ describe('PulseDashboardClient', () => {
       if (url.includes('contribution')) {
         return Promise.resolve({ ok: false, json: async () => ({ error: 'fail' }) });
       }
-      return Promise.resolve({ ok: true, json: async () => opportunities });
+      return Promise.resolve({ ok: true, json: async () => pulseResponse(url) });
     });
 
     renderPulse();
 
     expect(await screen.findByText('Contribution could not load')).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
+    expect(await screen.findByText('8-Ch NVR CP Plus')).toBeInTheDocument();
+  });
+
+  it('keeps the P01 core visible when demand signals fail', async () => {
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.includes('demand-signals')) {
+        return Promise.resolve({ ok: false, json: async () => ({ error: 'fail' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => pulseResponse(url) });
+    });
+
+    renderPulse();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Signal could not load')).toHaveLength(3);
+    });
+    expect(await screen.findByText(/Demand captured through Yukti/)).toBeInTheDocument();
+    expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
   });
 
   it('uses independent navigation-tier query keys and preserves successful content through sibling failure', async () => {
     apiFetchMock.mockImplementation((url: string) => Promise.resolve({
       ok: true,
-      json: async () => url.includes('opportunities') ? opportunities : { ...contribution, cards: [] },
+      json: async () => pulseResponse(url, { contribution: { ...contribution, cards: [] } }),
     }));
 
     renderPulse();
@@ -152,8 +211,29 @@ describe('PulseDashboardClient', () => {
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/pulse/contribution');
       expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/pulse/opportunities');
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/pulse/demand-signals');
     });
     expect(await screen.findByText('Pulse will focus once Yukti captures demand')).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
+  });
+
+  it('shows stale demand-signal copy for an old successful snapshot', async () => {
+    apiFetchMock.mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      json: async () => pulseResponse(url, {
+        demandSignals: {
+          ...demandSignals,
+          stale: true,
+          conversion_gaps: [],
+        },
+      }),
+    }));
+
+    renderPulse();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Last successful extraction is stale.')).toHaveLength(3);
+    });
+    expect(await screen.findByText('No meaningful conversion gaps detected')).toBeInTheDocument();
   });
 });

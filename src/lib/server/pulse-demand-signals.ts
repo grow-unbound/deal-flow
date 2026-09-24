@@ -81,6 +81,14 @@ function toStringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function isStaleSnapshot(sourceWatermark: string | null, computedAt: string | null): boolean {
+  const iso = sourceWatermark ?? computedAt;
+  if (!iso) return true;
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time)) return true;
+  return Date.now() - time > 36 * 60 * 60 * 1000;
+}
+
 function hogqlString(value: string): string {
   return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
@@ -106,6 +114,8 @@ export function parsePulseDemandSignalsSnapshot(payload: unknown): PulseDemandSi
     return Array.isArray(rows) ? rows as PulseDemandSignalRow[] : [];
   };
   const meta = (byId.get('missing_assortment')?.meta ?? {}) as Record<string, unknown>;
+  const computedAt = toStringOrNull(source.computed_at);
+  const sourceWatermark = toStringOrNull(source.source_watermark);
   return {
     missing_assortment: rowsFor('missing_assortment'),
     conversion_gaps: rowsFor('conversion_gaps'),
@@ -120,9 +130,9 @@ export function parsePulseDemandSignalsSnapshot(payload: unknown): PulseDemandSi
       started_at: toStringOrNull(meta.query_window_start) ?? '',
       ended_at: toStringOrNull(meta.query_window_end) ?? '',
     },
-    computed_at: toStringOrNull(source.computed_at),
-    source_watermark: toStringOrNull(source.source_watermark),
-    stale: true,
+    computed_at: computedAt,
+    source_watermark: sourceWatermark,
+    stale: isStaleSnapshot(sourceWatermark, computedAt),
   };
 }
 

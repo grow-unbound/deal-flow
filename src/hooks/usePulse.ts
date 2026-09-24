@@ -4,7 +4,14 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 
 import { apiFetch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { PulseContributionResponse, PulseOpportunityBuyerPage, PulseOpportunityGroup, PulseOpportunitiesResponse } from '@/types/pulse';
+import type {
+  PulseContributionResponse,
+  PulseDemandSignalKind,
+  PulseDemandSignalsResponse,
+  PulseOpportunityBuyerPage,
+  PulseOpportunityGroup,
+  PulseOpportunitiesResponse,
+} from '@/types/pulse';
 
 export function usePulseContribution() {
   return useQuery<PulseContributionResponse>({
@@ -27,6 +34,21 @@ export function usePulseOpportunities() {
       if (!response.ok) throw new Error('Failed to load Pulse opportunities');
       return response.json() as Promise<PulseOpportunitiesResponse>;
     },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+async function fetchPulseDemandSignals() {
+  const response = await apiFetch('/api/tenant/pulse/demand-signals');
+  if (!response.ok) throw new Error('Failed to load Pulse demand signals');
+  return response.json() as Promise<PulseDemandSignalsResponse>;
+}
+
+export function usePulseDemandSignal(kind: PulseDemandSignalKind) {
+  return useQuery<PulseDemandSignalsResponse>({
+    queryKey: ['pulse', 'demand-signals', kind],
+    queryFn: fetchPulseDemandSignals,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

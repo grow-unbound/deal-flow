@@ -6,7 +6,7 @@
 
 **Created:** 22 September 2026
 
-**Overall status:** P01 complete with follow-up visual/data refinement; P2A/P2B complete; remaining units not started.
+**Overall status:** P01 complete with follow-up visual/data refinement; P2A/P2B complete; P3 complete with lab/browser caveat; remaining units not started.
 
 ---
 
@@ -32,7 +32,7 @@
 | `P01` | Phases 0 + 1: retire old Pulse and ship reliable core | None | `complete` | 2026-09-22 18:52 IST — p01-opportunity-tile-refinement |
 | `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
 | `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
-| `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `not_started` | — |
+| `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `complete` | 2026-09-24 09:22 IST — p3-demand-signals-ui |
 | `P5` | Phase 5: useful without adoption | P01 | `not_started` | — |
 | `P4` | Phase 4: adaptive maturity presentation | P01, P3, P5 | `not_started` | — |
 | `P6` | Phase 6: declining-adoption recovery | P4 plus sufficient historical baseline | `not_started` | — |
@@ -634,3 +634,92 @@ Copy this section to the end of the file for every session.
 ### Rollback notes
 
 - Revert the middleware/query compatibility commits to restore the previous code state. To hide the dev snapshot only, soft-delete the single `app.metrics_landing_kpi_snapshot` row for `tenant_id='d601c35c-1a78-4506-a556-a82118d72893'`, `page_key='pulse_demand_signals'`, `period_start='2026-09-24'`; do not delete raw PostHog events.
+
+---
+
+## 2026-09-24 09:22 IST — p3-demand-signals-ui — P3
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR not requested
+
+**Objective:** Add the Phase 3 Demand Signals UI to `/pulse` using the local `pulse_demand_signals` snapshot read path, render empty buckets as first-class states, and retire the archived `/buyer-app` analytics page by redirecting it to `/pulse` while preserving `/buyer-app/access`.
+
+### Completed
+
+- Added UI-facing Demand Signal types and `usePulseDemandSignal(kind)` hooks with independent TanStack query keys, explicit navigation cache tiers, and no hydration-forced refetch.
+- Added a new **Demand signals** section above the P01 core on `/pulse`, with three equal-priority widgets: Missing assortment, Conversion gaps, and Stock mismatch.
+- Rendered conversion-gap rows from the WineYard snapshot shape with product links, intent counts, unique visitor counts, last-seen recency, and `Storefront` source chips.
+- Added stable loading, error, empty, stale, and populated footprints for each widget; empty Missing assortment and Stock mismatch states are truthful and action-oriented.
+- Updated route/client skeleton parity by adding the Demand Signals section to `PulseDashboardSkeleton`, which backs `app/(seller)/pulse/loading.tsx`.
+- Changed `app/(seller)/buyer-app/page.tsx` to authenticate sellers and then redirect to `/pulse`; `/buyer-app/access` remains in place.
+- Kept PostHog off the Pulse read path. No new migration, persistence, charting library, raw-table aggregation, or `router.refresh()` was introduced.
+
+### Files and database objects changed
+
+- `app/(seller)/buyer-app/page.tsx`
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/hooks/usePulse.ts`
+- `src/lib/server/pulse-demand-signals.ts`
+- `src/types/pulse.ts`
+- `src/tests/pulse-api.test.ts`
+- `src/tests/pulse-client.test.tsx`
+- `src/tests/pulse-demand-signals.test.ts`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none. Existing `app.metrics_landing_kpi_snapshot` and `app.get_landing_metrics_v4` only.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Type-check | `npx tsc --noEmit` | Passed. |
+| Focused tests | `pnpm exec vitest run src/tests/pulse-demand-signals.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx src/tests/auth/middleware.test.ts --pool=threads` | Passed: 4 files, 72 tests. |
+| Static hygiene | `git diff --check` | Passed. |
+| Production build | `npm run build` | Passed on second run. First run was interrupted after a long silent compile phase; second run compiled successfully in 2.5 min and generated all pages. `/pulse` built as dynamic, route size 244 B, first load JS 476 kB. |
+| Production server smoke | `npm run start -- -p 3007`; `curl -I -sS http://localhost:3007/pulse` | Server started in 1035 ms. `/pulse` returned expected `307` to `/login?next=%2Fpulse` because the route is auth-gated. CSP header remained present; no CSP source changes were made. |
+| Data source | Read-only `yukti-dev` snapshot metadata for tenant `d601c35c-1a78-4506-a556-a82118d72893` after verifying `supabase/.temp/project-ref = hcpzbnmumbykdqveyjhr`. | Existing snapshot row `c25989a8-a3a5-4f12-ad79-80c56302fb8f`, tenant `wineyard`, `period_start=2026-09-24`, `computed_at=2026-09-24T03:10:06.189+00:00`, `source_watermark=2026-09-24T03:10:06.189+00:00`, 3 cards, `kpis` payload about 2075 bytes. |
+| Aggregate/query plan | `EXPLAIN (ANALYZE, BUFFERS) SELECT app.get_landing_metrics_v4(... page_key='pulse_demand_signals', period_key='today' ...)` on `yukti-dev`. | Result node execution 9.227 ms, shared hit=710, planning 0.064 ms. Under aggregate/RPC read and widget endpoint budgets. |
+| Direct snapshot lookup | `EXPLAIN (ANALYZE, BUFFERS)` against `app.metrics_landing_kpi_snapshot` for tenant/page/scope/period. | Uses `metrics_landing_kpi_snapshot_active_uk`; execution 0.143 ms, shared hit=6, planning 1.048 ms. |
+| Widget API/payload | `/api/tenant/pulse/demand-signals` remains one compact snapshot API; the UI attaches three independent widget query keys for loading/error/cache state. | Snapshot payload is server-ranked/capped to the three card arrays and currently about 2 KB. Tests cover API response parsing and client isolation. |
+| Cache/navigation | Static review: Demand Signal widgets use `NAVIGATION_QUERY_STALE_TIME` / `NAVIGATION_QUERY_GC_TIME`, no `initialDataUpdatedAt: 0`, no full-page `router.refresh()`. | Passed static review and client tests. Warm authenticated browser navigation was not measured in this environment. |
+| UI/loading/visual states | Component tests cover populated conversion gaps with empty sibling buckets, all-empty stale copy, demand-signal query failure while P01 core remains visible, and redirect preservation. Skeleton updated through `PulseDashboardSkeleton` and route loading imports the same skeleton. | Passed focused tests. No authenticated browser screenshot captured. |
+| Web performance | Production build and server smoke captured; database read paths are within budget. | No field p75 available. Authenticated lab LCP/INP/CLS/FCP/TTFB traces were not captured because the smoke environment had no authenticated seller browser session. |
+| CSP review | Production `/pulse` redirect response included CSP. No analytics origin, SDK, `script-src`, `connect-src`, `img-src`, unsafe-inline, or eval changes were made. | Passed static/server-header review. |
+
+### Findings
+
+- The P3 gate is satisfied by the fresh WineYard `pulse_demand_signals` snapshot, but current pilot data only populates `conversion_gaps`; Missing assortment and Stock mismatch must remain empty-state capable.
+- Parser freshness previously marked every snapshot stale. P3 now computes staleness from `source_watermark`/`computed_at` with a 36-hour daily-extraction tolerance.
+- Three independent widget query keys currently call the same compact local snapshot endpoint. This preserves independent client loading/error/cache states without PostHog or raw aggregation, at the cost of duplicate tiny API reads.
+- The first `npm run build` stayed silent in the optimized build phase for several minutes and was interrupted; the second attempt completed successfully.
+
+### Decisions made
+
+- Placed Demand Signals above the P01 contribution/opportunity core so emerging demand is visible without implementing the later P4 maturity-adaptive model.
+- Kept Stock mismatch as a truthful empty widget because extractor-side current-inventory scoring remains deferred.
+- Redirected only `/buyer-app` to `/pulse`; `/buyer-app/access` stays available for access management.
+- Did not add kind-specific API routes in P3 because the existing bounded snapshot payload is compact and already the accepted P2B read contract.
+
+### Deferred / explicitly out of scope
+
+- P4 maturity-adaptive ordering/eligibility remains out of scope.
+- P5 useful-without-adoption opportunities remain out of scope.
+- Extractor refinement for raw funnel totals, Missing assortment after normalized search events are live, and Stock mismatch current-inventory scoring remains deferred.
+- Authenticated browser Web Vital traces and warm-return network evidence still need a browser session/harness.
+
+### Risks or blockers
+
+- Missing assortment will stay empty until released buyer instrumentation emits `normalized_query` / `query_redacted` and enough buyers produce privacy-safe zero-result search volume.
+- Stock mismatch will stay empty until extractor scoring joins product interest to current inventory/availability.
+- `/pulse` first-load JS is 476 kB in the production build; this session added no charting library, but the existing route bundle should still be watched in a browser trace before pilot default-on.
+
+### Rollback notes
+
+- Revert the P3 commit to remove the Demand Signals section/hook/types/tests, restore `/buyer-app` analytics rendering, and restore parser staleness behavior. No database rollback is required.
+- To hide the pilot dev snapshot only, soft-delete the existing `app.metrics_landing_kpi_snapshot` row for `tenant_id='d601c35c-1a78-4506-a556-a82118d72893'`, `page_key='pulse_demand_signals'`, `period_start='2026-09-24'`; do not delete PostHog data.
+
+### Recommended next unit
+
+- Unit: `P5`
+- Entry gate satisfied: yes
+- Evidence / remaining requirement: P01 and P3 are complete. P5 can reuse existing aggregate-backed customer/opportunity data and should not start P4 until P5 stabilizes.

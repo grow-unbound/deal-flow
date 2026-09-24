@@ -2,16 +2,16 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AlertCircle, RefreshCcw } from 'lucide-react';
+import { AlertCircle, ArrowRight, PackageSearch, RefreshCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PerformanceCard, RankedList } from '@/components/seller/detail';
 import { InsightStrip4 } from '@/components/seller/layout';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { usePulseContribution, usePulseOpportunities, usePulseOpportunityBuyers } from '@/hooks/usePulse';
+import { usePulseContribution, usePulseDemandSignal, usePulseOpportunities, usePulseOpportunityBuyers } from '@/hooks/usePulse';
 import { cn, formatNumberValue } from '@/lib/utils';
-import type { PulseContributionCard, PulseOpportunityGroup, PulseOpportunityPreview } from '@/types/pulse';
+import type { PulseContributionCard, PulseDemandSignalKind, PulseDemandSignalRow, PulseOpportunityGroup, PulseOpportunityPreview } from '@/types/pulse';
 
 const PULSE_OPPORTUNITY_SCROLL_CARD_HEIGHT = 'h-[320px]';
 
@@ -30,10 +30,20 @@ function formatPulseFreshness(iso: string | null | undefined) {
   return `Updated ${new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
 }
 
+function formatLastSeen(iso: string | null | undefined) {
+  const freshness = formatPulseFreshness(iso);
+  return freshness ? freshness.replace(/^Updated /, 'Seen ') : null;
+}
+
 function formatCardValue(card: PulseContributionCard) {
   return card.value_kind === 'currency'
     ? formatNumberValue(card.value, 'CURRENCY_THRESHOLD')
     : formatNumberValue(card.value, 'COUNT');
+}
+
+function sourceLabel(source: PulseDemandSignalRow['source_channel']) {
+  if (source === 'storefront') return 'Storefront';
+  return source;
 }
 
 function ScrollCardBody({ children }: { children: ReactNode }) {
@@ -171,6 +181,182 @@ function ContributionSection() {
       {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) === 0 ? (
         <ContributionEmpty opportunity={query.data?.empty_opportunity} />
       ) : null}
+    </PulseSectionShell>
+  );
+}
+
+function DemandSignalSkeleton() {
+  return (
+    <div className="min-h-[320px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 p-4">
+      <div className="h-3 w-24 rounded bg-cream-200" />
+      <div className="mt-4 h-6 w-44 rounded bg-cream-200" />
+      <div className="mt-3 h-3 w-full rounded bg-cream-200" />
+      <div className="mt-2 h-3 w-3/4 rounded bg-cream-200" />
+      <div className="mt-6 space-y-3">
+        <div className="h-12 rounded bg-cream-200" />
+        <div className="h-12 rounded bg-cream-200" />
+        <div className="h-12 rounded bg-cream-200" />
+      </div>
+    </div>
+  );
+}
+
+export function PulseDemandSignalsSkeleton() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <DemandSignalSkeleton />
+      <DemandSignalSkeleton />
+      <DemandSignalSkeleton />
+    </div>
+  );
+}
+
+const DEMAND_SIGNAL_COPY: Record<PulseDemandSignalKind, {
+  title: string;
+  description: string;
+  emptyTitle: string;
+  emptyDescription: string;
+}> = {
+  missing_assortment: {
+    title: 'Missing assortment',
+    description: 'Searches buyers made that the catalog did not satisfy.',
+    emptyTitle: 'No privacy-safe missing assortment yet',
+    emptyDescription: 'Signals will appear after enough buyers search for unavailable products without exposing one-person terms.',
+  },
+  conversion_gaps: {
+    title: 'Conversion gaps',
+    description: 'Products attracting meaningful interest without matching demand in the current window.',
+    emptyTitle: 'No meaningful conversion gaps detected',
+    emptyDescription: 'Browsed products are either converting or have not crossed the minimum signal threshold yet.',
+  },
+  stock_mismatch: {
+    title: 'Stock mismatch',
+    description: 'Products attracting interest while current availability may be blocking conversion.',
+    emptyTitle: 'No stock mismatch detected',
+    emptyDescription: 'Pulse will flag products here once current inventory and buyer interest both support the signal.',
+  },
+};
+
+function demandSignalRows(kind: PulseDemandSignalKind, rows: PulseDemandSignalRow[]) {
+  return rows.map((row) => {
+    const lastSeen = formatLastSeen(row.last_seen_at);
+    const source = sourceLabel(row.source_channel);
+    const href = kind === 'missing_assortment'
+      ? `/products?search=${encodeURIComponent(row.label)}`
+      : row.tenant_product_id
+        ? `/products/${row.tenant_product_id}`
+        : '/products';
+    const primaryMetric = kind === 'missing_assortment'
+      ? `${formatNumberValue(row.count, 'COUNT')} searches`
+      : `${formatNumberValue(row.count, 'COUNT')} intent events`;
+    const secondaryMetric = `${formatNumberValue(row.unique_count, 'COUNT')} visitors`;
+    const stock = kind === 'stock_mismatch' && row.stock_state ? ` · ${row.stock_state.replace(/_/g, ' ')}` : '';
+
+    return {
+      id: row.id,
+      label: (
+        <Link href={href} className="block min-w-0 text-cream-900 no-underline hover:text-teal-700">
+          <span className="block truncate">{row.product_name ?? row.label}</span>
+        </Link>
+      ),
+      meta: `${primaryMetric} · ${secondaryMetric}${stock}${lastSeen ? ` · ${lastSeen}` : ''}`,
+      value: (
+        <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800">
+          {source}
+        </span>
+      ),
+    };
+  });
+}
+
+function DemandSignalWidget({ kind }: { kind: PulseDemandSignalKind }) {
+  const query = usePulseDemandSignal(kind);
+  const copy = DEMAND_SIGNAL_COPY[kind];
+  const rows = query.data?.[kind] ?? [];
+  const freshness = formatPulseFreshness(query.data?.source_watermark ?? query.data?.computed_at);
+  const stale = Boolean(query.data?.stale);
+  const actionHref = kind === 'missing_assortment' ? '/products' : '/products';
+  const actionText = kind === 'missing_assortment'
+    ? 'Search products'
+    : kind === 'conversion_gaps'
+      ? 'Review products'
+      : 'Review inventory';
+
+  if (query.isLoading) return <DemandSignalSkeleton />;
+
+  return (
+    <PerformanceCard
+      title={copy.title}
+      subtitle={copy.description}
+      actions={(
+        <div className="text-right">
+          <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(rows.length, 'COUNT')}</p>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-500">Storefront</p>
+        </div>
+      )}
+      bodyClassName="p-0"
+      className="flex min-h-[320px] flex-col"
+    >
+      {query.isError ? (
+        <div className="flex min-h-[224px] items-center gap-3 p-5 text-amber-900">
+          <AlertCircle size={18} aria-hidden="true" />
+          <div>
+            <h3 className="font-display text-base font-semibold">Signal could not load</h3>
+            <p className="mt-1 text-sm text-amber-900/80">Other Pulse sections remain available.</p>
+          </div>
+        </div>
+      ) : rows.length > 0 ? (
+        <>
+          <div className="border-b border-cream-200 px-4 py-3">
+            <p className={cn('text-xs font-medium', stale ? 'text-amber-700' : 'text-cream-600')}>
+              {stale ? 'Stale snapshot' : freshness ? `Demand signals ${freshness.toLowerCase()}` : 'Demand signals snapshot'}
+            </p>
+          </div>
+          <RankedList
+            items={demandSignalRows(kind, rows)}
+            emptyTitle={copy.emptyTitle}
+            emptyDescription={copy.emptyDescription}
+            compact
+          />
+        </>
+      ) : (
+        <div className="flex min-h-[224px] flex-col justify-between p-5">
+          <div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cream-100 text-cream-700">
+              <PackageSearch size={18} aria-hidden="true" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold text-cream-950">{copy.emptyTitle}</h3>
+            <p className="mt-2 text-sm leading-5 text-cream-700">{copy.emptyDescription}</p>
+            {stale ? <p className="mt-3 text-sm font-medium text-amber-700">Last successful extraction is stale.</p> : null}
+          </div>
+          <Button asChild variant="secondary" size="sm" className="mt-5 w-fit">
+            <Link href={actionHref}>
+              {actionText}
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </PerformanceCard>
+  );
+}
+
+function DemandSignalsSection() {
+  const freshnessQuery = usePulseDemandSignal('conversion_gaps');
+  const freshness = formatPulseFreshness(freshnessQuery.data?.source_watermark ?? freshnessQuery.data?.computed_at);
+
+  return (
+    <PulseSectionShell
+      title="Demand signals"
+      subtitle="PostHog-derived storefront interest from the latest local snapshot. Each widget ranks at most five actionable rows."
+      freshness={freshness ? `Demand signals ${freshness.toLowerCase()}` : null}
+      isFetching={freshnessQuery.isFetching && !freshnessQuery.isLoading}
+    >
+      <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <DemandSignalWidget kind="missing_assortment" />
+        <DemandSignalWidget kind="conversion_gaps" />
+        <DemandSignalWidget kind="stock_mismatch" />
+      </div>
     </PulseSectionShell>
   );
 }
@@ -369,6 +555,13 @@ export function PulseDashboardSkeleton() {
       </div>
       <section>
         <div className="mb-2">
+          <div className="h-6 w-44 animate-pulse rounded bg-cream-200" />
+          <div className="mt-2 h-4 w-[42rem] max-w-full animate-pulse rounded bg-cream-200" />
+        </div>
+        <PulseDemandSignalsSkeleton />
+      </section>
+      <section className="mt-5">
+        <div className="mb-2">
           <div className="h-6 w-64 animate-pulse rounded bg-cream-200" />
           <div className="mt-2 h-4 w-[34rem] max-w-full animate-pulse rounded bg-cream-200" />
         </div>
@@ -398,6 +591,7 @@ export function PulseDashboardClient() {
         </p>
       </header>
       <div className={cn('space-y-5')}>
+        <DemandSignalsSection />
         <ContributionSection />
         <OpportunitiesSection />
       </div>

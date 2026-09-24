@@ -22,9 +22,13 @@ describe('Pulse demand signals snapshot contract', () => {
   beforeEach(() => {
     captureMock.mockClear();
     flushMock.mockClear();
+    vi.useRealTimers();
   });
 
   it('maps landing snapshot cards into the compact demand-signals response', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-22T03:00:00.000Z'));
+
     const parsed = parsePulseDemandSignalsSnapshot({
       computed_at: '2026-09-22T02:10:00.000Z',
       source_watermark: '2026-09-22T02:00:00.000Z',
@@ -57,7 +61,21 @@ describe('Pulse demand signals snapshot contract', () => {
       product_views: 30,
       cart_adds: 4,
     });
+    expect(parsed.stale).toBe(false);
     expect(demandSignalsResponseFromSnapshot({ cards: [] }).page_key).toBe('pulse_demand_signals');
+  });
+
+  it('marks old demand-signal snapshots stale', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T16:00:00.000Z'));
+
+    const parsed = parsePulseDemandSignalsSnapshot({
+      computed_at: '2026-09-22T02:10:00.000Z',
+      source_watermark: '2026-09-22T02:00:00.000Z',
+      cards: [],
+    });
+
+    expect(parsed.stale).toBe(true);
   });
 
   it('captures authoritative buyer demand with browser correlation ids', () => {
