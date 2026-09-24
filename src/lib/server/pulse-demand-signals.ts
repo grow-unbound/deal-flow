@@ -81,6 +81,10 @@ function toStringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function hogqlString(value: string): string {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
 function demandCard(id: string, rows: PulseDemandSignalRow[], meta: Record<string, unknown>) {
   return {
     id,
@@ -122,7 +126,7 @@ export function parsePulseDemandSignalsSnapshot(payload: unknown): PulseDemandSi
   };
 }
 
-async function posthogHogql<T extends HogqlResponse>(query: string, variables: Record<string, unknown>): Promise<T> {
+async function posthogHogql<T extends HogqlResponse>(query: string): Promise<T> {
   const apiKey = process.env.POSTHOG_PERSONAL_API_KEY;
   const projectId = process.env.POSTHOG_PROJECT_ID ?? '370765';
   if (!apiKey) throw new Error('posthog_personal_api_key_missing');
@@ -132,7 +136,7 @@ async function posthogHogql<T extends HogqlResponse>(query: string, variables: R
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query: { kind: 'HogQLQuery', query }, variables }),
+    body: JSON.stringify({ query: { kind: 'HogQLQuery', query } }),
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -142,6 +146,9 @@ async function posthogHogql<T extends HogqlResponse>(query: string, variables: R
 }
 
 async function fetchMissingAssortment(params: { tenantId: string; windowStart: string; windowEnd: string }) {
+  const tenantId = hogqlString(params.tenantId);
+  const windowStart = hogqlString(params.windowStart);
+  const windowEnd = hogqlString(params.windowEnd);
   const query = `
     SELECT
       properties.normalized_query AS normalized_query,
@@ -150,9 +157,9 @@ async function fetchMissingAssortment(params: { tenantId: string; windowStart: s
       max(timestamp) AS last_seen_at
     FROM events
     WHERE event = 'buyer_catalog_search_results_viewed'
-      AND properties.tenant_id = {tenant_id}
-      AND timestamp >= toDateTime({window_start})
-      AND timestamp < toDateTime({window_end})
+      AND properties.tenant_id = ${tenantId}
+      AND timestamp >= toDateTime(${windowStart})
+      AND timestamp < toDateTime(${windowEnd})
       AND toInt(properties.result_count) = 0
       AND properties.query_redacted != true
       AND properties.normalized_query IS NOT NULL
@@ -161,11 +168,7 @@ async function fetchMissingAssortment(params: { tenantId: string; windowStart: s
     ORDER BY unique_count DESC, search_count DESC, last_seen_at DESC
     LIMIT 5
   `;
-  const raw = await posthogHogql<HogqlResponse>(query, {
-    tenant_id: params.tenantId,
-    window_start: params.windowStart,
-    window_end: params.windowEnd,
-  });
+  const raw = await posthogHogql<HogqlResponse>(query);
   return (raw.results ?? []).map((row) => ({
     id: String(row[0]),
     label: String(row[0]),
@@ -177,6 +180,9 @@ async function fetchMissingAssortment(params: { tenantId: string; windowStart: s
 }
 
 async function fetchProductInterest(params: { tenantId: string; windowStart: string; windowEnd: string }) {
+  const tenantId = hogqlString(params.tenantId);
+  const windowStart = hogqlString(params.windowStart);
+  const windowEnd = hogqlString(params.windowEnd);
   const query = `
     SELECT
       properties.tenant_product_id AS tenant_product_id,
@@ -186,20 +192,16 @@ async function fetchProductInterest(params: { tenantId: string; windowStart: str
       max(timestamp) AS last_seen_at
     FROM events
     WHERE event IN ('product_viewed', 'catalog_item_added_to_cart')
-      AND properties.tenant_id = {tenant_id}
-      AND timestamp >= toDateTime({window_start})
-      AND timestamp < toDateTime({window_end})
+      AND properties.tenant_id = ${tenantId}
+      AND timestamp >= toDateTime(${windowStart})
+      AND timestamp < toDateTime(${windowEnd})
       AND properties.tenant_product_id IS NOT NULL
     GROUP BY tenant_product_id
     HAVING unique_count >= 2
     ORDER BY add_count DESC, view_count DESC, unique_count DESC, last_seen_at DESC
     LIMIT 10
   `;
-  const raw = await posthogHogql<HogqlResponse>(query, {
-    tenant_id: params.tenantId,
-    window_start: params.windowStart,
-    window_end: params.windowEnd,
-  });
+  const raw = await posthogHogql<HogqlResponse>(query);
   return (raw.results ?? []).map((row) => ({
     tenant_product_id: String(row[0]),
     view_count: toNumber(row[1]),

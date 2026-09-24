@@ -15,6 +15,10 @@ function authorized(request: NextRequest): boolean {
   return header === `Bearer ${secret}`;
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function POST(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,7 +32,11 @@ export async function POST(request: NextRequest) {
   const tenantIds: string[] = [];
 
   if (typeof body.tenant_id === 'string' && body.tenant_id.trim().length > 0) {
-    tenantIds.push(body.tenant_id.trim());
+    const tenantId = body.tenant_id.trim();
+    if (!isUuid(tenantId)) {
+      return NextResponse.json({ error: 'Invalid tenant_id' }, { status: 400 });
+    }
+    tenantIds.push(tenantId);
   } else {
     const { data, error } = await supabaseAdmin
       .schema('app')

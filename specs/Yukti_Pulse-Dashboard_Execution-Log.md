@@ -568,3 +568,69 @@ Copy this section to the end of the file for every session.
 - Unit: `P3`
 - Entry gate satisfied: no
 - Evidence / remaining requirement: P2A/P2B code contract is complete and tests/type-check pass, but P3 requires a fresh pilot snapshot. Run the internal extractor against WineYard/yukti-dev with configured PostHog credentials, confirm `page_key='pulse_demand_signals'` data exists and is fresh, then start P3 UI.
+
+---
+
+## 2026-09-24 08:45 IST — p2a-p2b-posthog-extract-validation — P2A and P2B
+
+**Status:** complete
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR not requested
+
+**Objective:** Validate the internal Pulse Demand Signals extractor against the configured PostHog project for tenant `d601c35c-1a78-4506-a556-a82118d72893`, review the resulting snapshot shape, and fix extractor access/query compatibility issues found during live dev validation.
+
+### Completed
+
+- Confirmed required local environment variables are present without printing secrets: `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `PULSE_DEMAND_SIGNALS_EXTRACT_SECRET`, `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_SERVICE_KEY`.
+- Fixed middleware access for `/api/internal/pulse/demand-signals/extract` so the route's own bearer-token authorization runs instead of the request being redirected to `/login`.
+- Fixed PostHog query request compatibility by sending only `{ query: { kind: 'HogQLQuery', query } }` to `/api/projects/:project/query/`; PostHog rejected the previous top-level `variables` field.
+- Added UUID validation for explicit `tenant_id` extraction requests before building tenant-scoped HogQL.
+- Ran the extractor locally for tenant `d601c35c-1a78-4506-a556-a82118d72893`; it wrote one fresh `app.metrics_landing_kpi_snapshot` row under `page_key='pulse_demand_signals'`.
+
+### Files and database objects changed
+
+- `middleware.ts`
+- `src/tests/auth/middleware.test.ts`
+- `app/api/internal/pulse/demand-signals/extract/route.ts`
+- `src/lib/server/pulse-demand-signals.ts`
+- `src/tests/pulse-demand-signals.test.ts`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none. Existing `app.metrics_landing_kpi_snapshot`, `app.get_landing_metrics_v4`, and `app.get_tenant_products_summary` were used.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Focused tests | `npx vitest run src/tests/pulse-demand-signals.test.ts src/tests/auth/middleware.test.ts` | Passed: 2 files, 57 tests. |
+| Type-check | `npx tsc --noEmit` | Passed. |
+| Extractor API | `POST /api/internal/pulse/demand-signals/extract` with bearer secret and `{"tenant_id":"d601c35c-1a78-4506-a556-a82118d72893"}` | `attempted: 1`, `updated: 1`, `failed: 0`. |
+| Snapshot row | Read `app.metrics_landing_kpi_snapshot` on yukti-dev for tenant/page/period. | Row id `c25989a8-a3a5-4f12-ad79-80c56302fb8f`, `period_start=2026-09-24`, `computed_at=2026-09-24T03:10:06.189+00:00`, three cards present. |
+| Seller read model | Called `app.get_landing_metrics_v4` for `page_key='pulse_demand_signals'`, `period_key='today'`, tenant scope. | Returned object with 3 cards from the precomputed snapshot path; no PostHog/raw aggregation on the seller read path. |
+| PostHog source sanity | 7-day raw aggregate for the same tenant/window. | `buyer_catalog_search_results_viewed`: 590 events / 37 unique; `product_viewed`: 316 events / 54 unique; `catalog_item_added_to_cart`: none in this window. |
+| Event property completeness | PostHog property-presence aggregate for the same tenant/window. | Search events have `result_count` on 590/590 but `normalized_query` and `query_redacted` on 0/590; product views have `tenant_product_id` on 316/316. |
+
+### Snapshot review
+
+- Structure is valid and P3-readable: `cards` is a JSON array with `missing_assortment`, `conversion_gaps`, and `stock_mismatch`; rows are bounded to five display rows where populated.
+- `conversion_gaps` is populated with five enriched product rows and product names from Supabase. Top rows include 2mp IP Bullet iLLUMAX STQC CP Plus, 8-Ch NVR CP Plus, 16-Ch NVR 1-SATA CP Plus, 4mp IP iLLUMAX Bullet STQC CP Plus, and 2mp IP iLLUMAX Dome STQC CP Plus.
+- `missing_assortment` is empty even though 174 zero-result searches exist, because current stored PostHog search events do not yet include the P2A `normalized_query` / `query_redacted` fields. This is expected before the P2A buyer instrumentation is released and exercised in production.
+- `stock_mismatch` remains empty by design from P2A/P2B; inventory/current-stock scoring remains deferred.
+- Funnel metadata currently reports `product_views=81`, `cart_adds=0`, and zero search counts in the snapshot. The product-view count is the extractor's thresholded/candidate set, not the raw 316 product-view events. P3 should label this carefully or refine the metric if a raw funnel total is required.
+
+### Findings and decisions
+
+- The PostHog key scope issue is resolved; the successful run proves the key can query PostHog.
+- PostHog API shape differs from the initial implementation assumption: top-level `variables` is rejected by the QueryRequest parser. The extractor now avoids that field and uses server-side UUID validation plus string escaping for the bounded tenant/window values.
+- The current snapshot is enough to unblock P3 layout/state work, but not enough to validate seller-facing missing-assortment copy because the production event stream has not yet seen the new normalized-query fields.
+- No production release or production mutation was performed. The only persistent remote write was the requested yukti-dev snapshot row.
+
+### Deferred / next unit guidance
+
+- Unit: `P3`
+- Entry gate satisfied: yes, with data-volume caveat.
+- P3 should treat missing-assortment and stock-mismatch empty states as first-class states. Do not assume all three buckets are populated.
+- After P2A instrumentation is released and buyers perform searches, rerun the extractor and re-check that `normalized_query`/`query_redacted` property presence rises above zero and missing-assortment can rank zero-result terms.
+
+### Rollback notes
+
+- Revert the middleware/query compatibility commits to restore the previous code state. To hide the dev snapshot only, soft-delete the single `app.metrics_landing_kpi_snapshot` row for `tenant_id='d601c35c-1a78-4506-a556-a82118d72893'`, `page_key='pulse_demand_signals'`, `period_start='2026-09-24'`; do not delete raw PostHog events.
