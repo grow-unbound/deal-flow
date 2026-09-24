@@ -95,6 +95,7 @@ const PUBLIC_PREFIXES = [
   '/manifest.webmanifest',
   '/buyer-sw.js',
   '/api/health',
+  '/api/internal/pulse/demand-signals/extract',
   '/api/public',
   '/api/verify-human',
   '/not-live',
