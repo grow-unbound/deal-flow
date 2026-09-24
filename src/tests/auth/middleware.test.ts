@@ -106,6 +106,15 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBeNull();
   });
 
+  it('lets the internal Pulse demand-signal extractor handle its own bearer auth', async () => {
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(new NextRequest('http://localhost/api/internal/pulse/demand-signals/extract'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+    expect(getClaimsMock).not.toHaveBeenCalled();
+  });
+
   it('redirects to /login when the session is missing', async () => {
     getClaimsMock.mockResolvedValue({
       data: null,

@@ -11,10 +11,12 @@ import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
 import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { normalizeBuyerSearchQuery, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 export function BuyerSearchPageClient() {
   const router = useRouter();
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const searchParams = useSearchParams();
   const scope = searchParams.get('scope') ?? 'catalog';
   const categoryId = searchParams.get('category_id') ?? '';
@@ -72,11 +74,15 @@ export function BuyerSearchPageClient() {
     const key = `${scope}:${debounced}:${shownItems.length}:${error ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
+    const normalized = normalizeBuyerSearchQuery(debounced);
     posthog.capture('buyer_catalog_search_results_viewed', {
+      ...buyerAnalytics('search_page'),
       source_surface: 'search_page',
       search_scope: scope,
-      query_length: debounced.length,
+      ...normalized,
       result_count: shownItems.length,
+      result_product_ids: shownItems.slice(0, 20).map((item) => item.tenant_product_id),
+      result_product_count: shownItems.length,
       has_more: catalogHasMore,
       status: error ? 'error' : 'success',
       has_category_filter: Boolean(categoryId),
@@ -85,6 +91,7 @@ export function BuyerSearchPageClient() {
     });
   }, [
     brandId,
+    buyerAnalytics,
     catalogHasMore,
     catalogId,
     categoryId,

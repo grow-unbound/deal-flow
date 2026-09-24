@@ -57,3 +57,38 @@ export interface PulseOpportunitiesResponse {
   freshness_label: string | null;
   groups: PulseOpportunityGroup[];
 }
+
+export type PulseDemandSignalKind = 'missing_assortment' | 'conversion_gaps' | 'stock_mismatch';
+
+export interface PulseDemandSignalRow {
+  id: string;
+  label: string;
+  count: number;
+  unique_count: number;
+  last_seen_at: string | null;
+  source_channel: 'storefront';
+  tenant_product_id?: string | null;
+  product_name?: string | null;
+  stock_state?: 'available' | 'limited' | 'out_of_stock' | null;
+}
+
+export interface PulseDemandSignalsResponse {
+  page_key: 'pulse_demand_signals';
+  missing_assortment: PulseDemandSignalRow[];
+  conversion_gaps: PulseDemandSignalRow[];
+  stock_mismatch: PulseDemandSignalRow[];
+  signal_counts: Record<PulseDemandSignalKind, number>;
+  funnel_counts: {
+    searches: number;
+    zero_result_searches: number;
+    product_views: number;
+    cart_adds: number;
+  };
+  query_window: {
+    started_at: string;
+    ended_at: string;
+  };
+  computed_at: string | null;
+  source_watermark: string | null;
+  stale: boolean;
+}

@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
-import { getPostHogClient } from '@/lib/posthog-server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { sendImmediateTransactionNotifications } from '@/lib/server/buyer-transaction-notify-immediate';
@@ -22,6 +21,7 @@ import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 import { syncEstimateEntrySafe } from '@/lib/server/inbox-entries';
 import { loadLivePublicCatalog } from '@/lib/server/public-catalog';
+import { captureAuthoritativeBuyerDemand } from '@/lib/server/buyer-posthog-events';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -358,26 +358,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     // on PostHog or the outbound WhatsApp API — that made the buyer's own
     // response arrive noticeably after the realtime "new estimate" toast for the
     // same row.
-    try {
-      const ph = getPostHogClient();
-      ph.capture({
-        distinctId: buyer_id,
-        event: 'inquiry_created',
-        properties: {
-          tenant_id: context.tenant_id,
-          buyer_id,
-          estimate_id: typed.id,
-          estimate_number: typed.estimate_number,
-          item_count: acceptedItems.length,
-          total_amount,
-          source: 'buyer_app',
-          estimate_type: hiddenPriceEnquiry ? 'without_price' : 'with_price',
-        },
-      });
-      void ph.flush().catch(() => {});
-    } catch {
-      // non-blocking
-    }
+    captureAuthoritativeBuyerDemand({
+      request,
+      event: 'inquiry_created',
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      documentId: typed.id,
+      documentNumber: typed.estimate_number,
+      documentType: 'estimate',
+      totalAmount: total_amount,
+      itemCount: acceptedItems.length,
+      lineProductIds: acceptedItems.map((item) => item.tenant_product_id),
+      campaignId: resolvedCampaignId,
+      estimateType: hiddenPriceEnquiry ? 'without_price' : 'with_price',
+    });
 
     const whatsappDispatched = !hiddenPriceEnquiry && !deferDocumentNumber && Boolean(typed.estimate_number);
     if (!deferDocumentNumber && typed.estimate_number && !hiddenPriceEnquiry) {

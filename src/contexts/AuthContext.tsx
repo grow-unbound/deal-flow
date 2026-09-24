@@ -424,6 +424,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     manualSignOutRef.current = true;
+    posthog.reset();
     const redirectTarget = await manualSignOutRedirectTarget();
     manualSignOutRedirectRef.current = redirectTarget;
     queryClient.clear();

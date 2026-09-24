@@ -3,9 +3,21 @@ import { NextRequest } from 'next/server';
 
 const getVerifiedClaimsMock = vi.fn();
 const rpcMock = vi.fn();
+const redirectMock = vi.fn((url: string) => {
+  throw Object.assign(new Error('NEXT_REDIRECT'), { digest: `NEXT_REDIRECT;replace;${url};307;` });
+});
+const requireSellerServerTenantIdMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
+}));
+
+vi.mock('next/navigation', () => ({
+  redirect: (...args: [string]) => redirectMock(...args),
+}));
+
+vi.mock('@/lib/server/seller-server-claims', () => ({
+  requireSellerServerTenantId: (...args: unknown[]) => requireSellerServerTenantIdMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -17,6 +29,9 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { GET as getContribution } from '../../app/api/tenant/pulse/contribution/route';
+import BuyerAppPage from '../../app/(seller)/buyer-app/page';
+import BuyerAppAccessPage from '../../app/(seller)/buyer-app/access/page';
+import { GET as getDemandSignals } from '../../app/api/tenant/pulse/demand-signals/route';
 import { GET as getOpportunities } from '../../app/api/tenant/pulse/opportunities/route';
 import { GET as getOpportunityBuyers } from '../../app/api/tenant/pulse/opportunities/[id]/buyers/route';
 
@@ -60,6 +75,7 @@ describe('Pulse API routes', () => {
       location_ids: ['loc-1'],
     });
     rpcMock.mockResolvedValue({ data: rpcPortfolio, error: null });
+    requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
   });
 
   it('loads contribution from the existing buyer-app v4 RPC with assistant location scope', async () => {
@@ -125,6 +141,54 @@ describe('Pulse API routes', () => {
     expect(response.headers.get('Server-Timing')).toContain('pulse_opportunities_api');
   });
 
+  it('loads demand signals from the local landing snapshot boundary', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: {
+        page_key: 'pulse_demand_signals',
+        computed_at: new Date().toISOString(),
+        source_watermark: new Date().toISOString(),
+        cards: [
+          {
+            id: 'missing_assortment',
+            rows: [],
+            meta: {
+              product_views: 81,
+              cart_adds: 0,
+              searches: 0,
+              zero_result_searches: 0,
+              query_window_start: '2026-09-17T03:10:06.189Z',
+              query_window_end: '2026-09-24T03:10:06.189Z',
+            },
+          },
+          {
+            id: 'conversion_gaps',
+            rows: [{ id: 'product-1', label: 'NVR', count: 12, unique_count: 4, source_channel: 'storefront' }],
+          },
+          { id: 'stock_mismatch', rows: [] },
+        ],
+      },
+      error: null,
+    });
+
+    const response = await getDemandSignals(new NextRequest('http://localhost/api/tenant/pulse/demand-signals'));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.page_key).toBe('pulse_demand_signals');
+    expect(body.conversion_gaps).toHaveLength(1);
+    expect(body.missing_assortment).toEqual([]);
+    expect(body.stock_mismatch).toEqual([]);
+    expect(body.stale).toBe(false);
+    expect(rpcMock).toHaveBeenCalledWith('get_landing_metrics_v4', expect.objectContaining({
+      p_tenant_id: 'tenant-1',
+      p_page_key: 'pulse_demand_signals',
+      p_period_key: 'today',
+      p_scope_kind: 'tenant',
+      p_scope_id: null,
+    }));
+    expect(response.headers.get('Server-Timing')).toContain('pulse_demand_signals_api');
+  });
+
   it('returns a paginated opportunity buyer resultset for the slide-over', async () => {
     const response = await getOpportunityBuyers(
       new NextRequest('http://localhost/api/tenant/pulse/opportunities/valuable_assisted_customers_without_access/buyers?limit=1'),
@@ -170,5 +234,16 @@ describe('Pulse API routes', () => {
 
     expect(response.status).toBe(403);
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('redirects the archived buyer-app analytics page to Pulse', async () => {
+    await expect(BuyerAppPage()).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(requireSellerServerTenantIdMock).toHaveBeenCalled();
+    expect(redirectMock).toHaveBeenCalledWith('/pulse');
+  });
+
+  it('preserves the buyer-app access management page', async () => {
+    expect(BuyerAppAccessPage).toBeTypeOf('function');
   });
 });

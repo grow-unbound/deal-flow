@@ -76,7 +76,7 @@ export interface BuyerMeData {
   };
 }
 
-export function useBuyerMe() {
+export function useBuyerMe(options: { enabled?: boolean } = {}) {
   return useQuery<BuyerMeData>({
     queryKey: ['buyer-me'],
     queryFn: async () => {
@@ -86,5 +86,6 @@ export function useBuyerMe() {
     },
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    enabled: options.enabled ?? true,
   });
 }

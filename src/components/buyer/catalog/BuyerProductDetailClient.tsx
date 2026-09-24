@@ -17,6 +17,7 @@ import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasBuyerCampaignPrice, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
+import { useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -26,6 +27,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const router = useRouter();
   const posthog = usePostHog();
   const analyticsIds = useBuyerAnalyticsIds();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const { data: meData } = useBuyerMe();
   const { openLogin } = useStorefrontLogin();
@@ -58,15 +60,18 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     if (!item || viewedKeyRef.current === item.tenant_product_id) return;
     viewedKeyRef.current = item.tenant_product_id;
     posthog?.capture('product_viewed', {
+      ...buyerAnalytics('product_detail'),
       ...analyticsIds,
       tenant_product_id: item.tenant_product_id,
+      brand_id: item.brand_id ?? null,
+      category_id: item.category_id ?? null,
       internal_sku: item.internal_sku ?? null,
       brand: item.brand_name ?? null,
       has_campaign_price: item.has_campaign_price === true,
       campaign_id: item.campaign_id ?? null,
       stock_status: item.stock_status ?? null,
     });
-  }, [item, posthog, analyticsIds]);
+  }, [item, posthog, analyticsIds, buyerAnalytics]);
 
   const cartLine = item ? cartItems.find((i) => i.tenant_product_id === item.tenant_product_id) : undefined;
 
@@ -108,6 +113,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     // two narrow recommendation-widget paths fired this event, so the main
     // add-to-cart flow (this one) was invisible to that dashboard card.
     posthog?.capture('reco_add_to_cart', {
+      ...buyerAnalytics('product_detail'),
       ...analyticsIds,
       widget: 'product_detail',
       product_id: item.tenant_product_id,
