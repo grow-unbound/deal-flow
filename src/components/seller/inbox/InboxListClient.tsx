@@ -7,10 +7,12 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
 import { CountChip } from '@/components/ui/badge';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
-import { useInboxEntries } from '@/hooks/useInboxEntries';
+import { useEnquiryTriageByIds, useInboxEntries } from '@/hooks/useInboxEntries';
 import { groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { TIME_BUCKET_LABEL, type InboxEntryType, type InboxGroupedBuyer } from '@/lib/inbox/inbox-types';
 import { buildListSupportingLine } from '@/lib/inbox/inbox-entry-copy';
+import { buildEnquiryPreviewLine, enquiryHasAtRiskLine } from '@/lib/inbox/inbox-list-entry-copy';
+import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 import { sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
 import { InboxEmptyState } from './InboxEmptyState';
 
@@ -42,14 +44,27 @@ function ChannelBadge({ channel }: { channel: InboxChannel }) {
   );
 }
 
-function buyerListItem(buyer: InboxGroupedBuyer, activeId: string | undefined): SellerMobileListItem {
+function buyerListItem(
+  buyer: InboxGroupedBuyer,
+  activeId: string | undefined,
+  enquiryByEntryId: Map<string, EnquiryTriagePayload>,
+): SellerMobileListItem {
+  // entries is ordered pinned-first, then newest -- entries[0] is what the row's
+  // summary should describe, same "primary entry" convention buildListSupportingLine
+  // already uses.
+  const primary = buyer.entries[0];
+  const enquiry = primary?.entry_type === 'new_enquiry' ? enquiryByEntryId.get(primary.id) : undefined;
+  const atRisk = enquiry ? enquiryHasAtRiskLine(enquiry.lines) : false;
+
   return {
     id: buyer.buyerKey,
     href: `/today/${buyer.buyerId ?? buyer.buyerKey}`,
     leading: <ChannelBadge channel={sourceChannelForEntries(buyer.entries)} />,
+    eyebrow: enquiry ? enquiry.estimateNumber : undefined,
     primary: buyer.buyerName,
-    supporting: buildListSupportingLine(buyer.entries),
+    supporting: enquiry ? buildEnquiryPreviewLine(enquiry.lines, enquiry.totalAmount) : buildListSupportingLine(buyer.entries),
     trailing: buyer.totalCount > 1 ? <CountChip>{buyer.totalCount}</CountChip> : undefined,
+    status: atRisk ? { label: 'At risk', tone: 'danger' } : undefined,
     badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
     onClick: () => {
@@ -87,6 +102,16 @@ export function InboxListClient() {
     () => groupEntriesByDateAndCustomer(data?.entries ?? []),
     [data?.entries],
   );
+
+  const primaryEnquiryEntryIds = useMemo(
+    () => sections
+      .flatMap((section) => section.buyers)
+      .map((buyer) => buyer.entries[0])
+      .filter((entry): entry is NonNullable<typeof entry> => entry?.entry_type === 'new_enquiry')
+      .map((entry) => entry.id),
+    [sections],
+  );
+  const enquiryByEntryId = useEnquiryTriageByIds(primaryEnquiryEntryIds);
 
   useEffect(() => {
     const query = window.matchMedia('(min-width: 768px)');
@@ -175,7 +200,7 @@ export function InboxListClient() {
               <SellerMobileList
                 forceVisible
                 density="roomy"
-                items={buyers.map((buyer) => buyerListItem(buyer, params.id))}
+                items={buyers.map((buyer) => buyerListItem(buyer, params.id, enquiryByEntryId))}
               />
             </div>
           ))

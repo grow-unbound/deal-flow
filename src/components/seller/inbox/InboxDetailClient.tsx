@@ -2,23 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useRouter } from 'next/navigation';
 import { Bot, ChevronLeft, ChevronRight, ExternalLink, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
 import { DetailActions, DetailHeader } from '@/components/seller/detail';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { ENTRY_TYPE_LABEL } from '@/lib/inbox/inbox-entry-copy';
 import { buildCollectionGroup, isCollectionEntry, sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
 import { InboxEntryCard } from './InboxEntryCard';
-import { InboxActionBar } from './InboxActionBar';
-import { InboxApprovalActionBar } from './InboxApprovalActionBar';
-import { InboxApprovalDocuments } from './InboxApprovalDocuments';
-import { InboxEnquiryPanel } from './InboxEnquiryPanel';
+import { InboxEntryListRow } from './InboxEntryListRow';
 import { InboxHistorySheet } from './InboxHistorySheet';
-import { InboxCollectionGroupCard } from './InboxCollectionGroupCard';
+import { DUES_TITLE, InboxCollectionGroupCard, duesSubtitle } from './InboxCollectionGroupCard';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
 const CHANNEL_ICON: Record<InboxChannel, typeof ShoppingBag> = {
@@ -99,6 +95,8 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const prevBuyerKey = currentIndex > 0 ? orderedBuyerKeys[currentIndex - 1] : null;
   const nextBuyerKey = currentIndex >= 0 && currentIndex < orderedBuyerKeys.length - 1 ? orderedBuyerKeys[currentIndex + 1] : null;
 
+  useMobileHeaderTitle(buyerEntries[0]?.buyer_name);
+
   if (isLoading) {
     return <InboxDetailSkeleton />;
   }
@@ -114,7 +112,6 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const collectionGroup = buildCollectionGroup(buyerEntries);
   const nonCollectionEntries = buyerEntries.filter((entry) => !isCollectionEntry(entry));
   const visibleGroupCount = (collectionGroup ? 1 : 0) + nonCollectionEntries.length;
-  const onlyGroupId = visibleGroupCount === 1 ? (collectionGroup?.id ?? nonCollectionEntries[0]?.id ?? null) : null;
   const openCount = buyerEntries.length;
 
   return (
@@ -210,60 +207,33 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
             ))}
           </div>
         ) : (
-          <Accordion
-            type="single"
-            collapsible
-            value={expandedId ?? onlyGroupId ?? undefined}
-            onValueChange={(value) => setExpandedId(value || null)}
-          >
+          <div className="space-y-3">
             {collectionGroup ? (
-              <AccordionItem value={collectionGroup.id}>
-                <AccordionTrigger aria-label="Dues">Dues</AccordionTrigger>
-                <AccordionContent>
-                  <InboxCollectionGroupCard
-                    group={collectionGroup}
-                    buyerId={buyerId}
-                    expanded
-                    historyEvents={history.data?.events}
-                    localEvents={localEvents}
-                    onToggle={() => {}}
-                  />
-                </AccordionContent>
-              </AccordionItem>
+              <section className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/today/${buyerId}/dues`)}
+                  className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold tracking-[-0.015em] text-cream-900">{DUES_TITLE}</h3>
+                    {duesSubtitle(collectionGroup) ? <p className="mt-1.5 text-sm text-cream-600">{duesSubtitle(collectionGroup)}</p> : null}
+                  </div>
+                  <ChevronRight size={16} className="mt-1 shrink-0 text-cream-500" aria-hidden />
+                </button>
+              </section>
             ) : null}
+            {/* Every other entry pushes to its own stacked full-screen route instead of
+                expanding in place -- InboxEntryDetailPage renders the same
+                InboxEntryDetailContent/InboxEntryFrame desktop uses inline. */}
             {nonCollectionEntries.map((entry) => (
-              <AccordionItem key={entry.id} value={entry.id}>
-                <AccordionTrigger aria-label={ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}>
-                  {ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}
-                </AccordionTrigger>
-                <AccordionContent>
-                  {entry.entry_type === 'business_approval' || entry.entry_type === 'new_user_login' ? (
-                    <>
-                      <InboxApprovalDocuments entryId={entry.id} />
-                      <InboxApprovalActionBar
-                        entry={entry}
-                        tenantId={tenantId}
-                        historyEvents={history.data?.events}
-                        localEvents={localEvents}
-                        applyLocalAction={applyLocalAction}
-                      />
-                    </>
-                  ) : (
-                    <>
-                    {entry.entry_type === 'new_enquiry' ? <InboxEnquiryPanel entryId={entry.id} /> : null}
-                    <InboxActionBar
-                      entry={entry}
-                      tenantId={tenantId}
-                      historyEvents={history.data?.events}
-                      localEvents={localEvents}
-                      applyLocalAction={applyLocalAction}
-                    />
-                    </>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
+              <InboxEntryListRow
+                key={entry.id}
+                entry={entry}
+                onOpen={() => router.push(`/today/${buyerId}/${entry.id}`)}
+              />
             ))}
-          </Accordion>
+          </div>
         )}
       </div>
 

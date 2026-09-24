@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Pressable } from '@/components/ui/pressable';
+import { useMobileHeaderTitleValue } from '@/components/layout/MobileHeaderTitle';
 import { MobileBackButton } from '@/components/seller/mobile/MobileBackButton';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
 import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
@@ -210,6 +211,7 @@ export function SellerMobileTopbar({
   const streamedFeatureAvailability = use(featureAvailabilityPromise);
   const tenantBranding = tenantBrandingOverride ?? streamedTenantBranding;
   const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
+  const headerTitleOverride = useMobileHeaderTitleValue();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
@@ -357,7 +359,7 @@ export function SellerMobileTopbar({
             className="min-w-0 flex-1 truncate text-center font-semibold capitalize leading-tight text-cream-900"
             style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)', letterSpacing: '-0.01em' }}
           >
-            {getRouteTitle(pathname)}
+            {headerTitleOverride ?? getRouteTitle(pathname)}
           </p>
           <span className="h-10 w-10 shrink-0" aria-hidden />
         </header>

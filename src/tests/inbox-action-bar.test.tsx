@@ -6,6 +6,9 @@ const mutateAsyncMock = vi.fn().mockResolvedValue({});
 vi.mock('@/hooks/useInboxEntries', () => ({
   useApplyGenericEntryAction: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
 }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 import { InboxActionBar } from '@/components/seller/inbox/InboxActionBar';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
@@ -34,6 +37,15 @@ describe('InboxActionBar', () => {
   beforeEach(() => {
     mutateAsyncMock.mockClear();
     window.localStorage?.clear?.();
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
   });
 
   it('renders only entry-specific text CTAs and keeps reject as an icon action', () => {

@@ -11,8 +11,9 @@ vi.mock('@/hooks/useInboxEntries', () => ({
   useEntryHistory: () => ({ data: { events: [] }, isLoading: false }),
   useEnquiryTriage: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
+const pushMock = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
   useParams: () => ({ buyerId: 'b1' }),
 }));
 
@@ -63,41 +64,30 @@ function renderDetail() {
 describe('InboxDetailClient on mobile', () => {
   beforeEach(() => {
     useInboxEntriesMock.mockReset();
+    pushMock.mockReset();
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false });
     setViewportWidth(375);
   });
 
-  it('renders items as accordion rows with per-item action CTAs when expanded', () => {
+  it('renders a non-collection entry as a tappable row that pushes to its own stacked screen', () => {
     renderDetail();
-    expect(screen.getByRole('button', { name: 'New order' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'New order' }));
-    expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
+    const row = screen.getByRole('button', { name: /New order/ });
+    expect(row).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(pushMock).toHaveBeenCalledWith('/today/b1/e1');
+    // Row navigates away instead of expanding inline -- no per-item action CTA here.
+    expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
   });
 
-  it('enforces single-expand accordion behavior: opening one row collapses the other', () => {
+  it('renders the grouped Dues as a card like the other rows, navigating to its own screen', () => {
     renderDetail();
-    const firstTrigger = screen.getByRole('button', { name: 'New order' });
-    const secondTrigger = screen.getByRole('button', { name: 'Dues' });
-
-    // Initially both rows are collapsed.
-    expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
+    const duesCard = screen.getByRole('button', { name: /Upcoming dues or overdue/ });
+    // Card, not an accordion: nothing expands inline, no invoice list or actions in the flow.
+    expect(duesCard).not.toHaveAttribute('aria-expanded');
     expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+    expect(screen.queryByText('INV-1042')).not.toBeInTheDocument();
 
-    // Expand the first row.
-    fireEvent.click(firstTrigger);
-    expect(firstTrigger).toHaveAttribute('aria-expanded', 'true');
-    expect(secondTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('button', { name: 'Accept order' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
-
-    // Expanding the second row must collapse the first (type="single" collapsible).
-    fireEvent.click(secondTrigger);
-    expect(firstTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(secondTrigger).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
-    expect(screen.getByText('INV-1042')).toBeInTheDocument();
+    fireEvent.click(duesCard);
+    expect(pushMock).toHaveBeenCalledWith('/today/b1/dues');
   });
 });

@@ -26,6 +26,24 @@ export interface EnquiryAlternate {
   buyerPrice: number | null;
 }
 
+/**
+ * `priced` — seller has a unit price and it's in stock.
+ * `priced_oos` — seller has a unit price, but the line is out of stock.
+ * `target_only` — no seller price yet, but the buyer gave a target range.
+ * `awaiting_quote` — no seller price, no buyer target either.
+ */
+export type EnquiryLinePriceState = 'priced' | 'target_only' | 'awaiting_quote' | 'priced_oos';
+
+export function deriveLinePriceState(line: {
+  unitPrice: number | null;
+  targetMin: number | null;
+  targetMax: number | null;
+  stockTone: EnquiryStockTone;
+}): EnquiryLinePriceState {
+  if (line.unitPrice != null) return line.stockTone === 'danger' ? 'priced_oos' : 'priced';
+  return line.targetMin != null || line.targetMax != null ? 'target_only' : 'awaiting_quote';
+}
+
 export interface EnquiryTriageLine {
   id: string;
   tenantProductId: string;
@@ -40,8 +58,15 @@ export interface EnquiryTriageLine {
   buyerNote: string | null;
   onHand: number;
   stock: EnquiryStockStatus;
+  /** What this buyer would actually pay for this product at this qty right now
+   * (app.resolve_price precedence) -- a reference for the seller to quote
+   * against, distinct from `unitPrice` (whatever price the seller has or
+   * hasn't already set on this enquiry line). Null when there's no buyer to
+   * resolve a price for (e.g. a guest-originated enquiry). */
+  resolvedPrice: number | null;
   velocity: EnquiryVelocity;
   alternates: EnquiryAlternate[];
+  priceState: EnquiryLinePriceState;
 }
 
 export interface EnquiryTriagePayload {

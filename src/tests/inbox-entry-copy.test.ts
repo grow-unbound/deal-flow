@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { buildCreditLimitSupportingLine, buildEntryAmountLabel, buildListSupportingLine } from '@/lib/inbox/inbox-entry-copy';
+import { buildCreditLimitSupportingLine, buildEntryAmountLabel, buildListSupportingLine, buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
+
+describe('buildTargetRangeLabel', () => {
+  it('renders a full range when both bounds are given', () => {
+    expect(buildTargetRangeLabel(1800, 2000)).toBe('₹1,800 – ₹2,000');
+  });
+
+  it('renders a single value when both bounds are equal', () => {
+    expect(buildTargetRangeLabel(1500, 1500)).toBe('₹1,500');
+  });
+
+  it('renders "Max X" when only the max is given -- not "– – X"', () => {
+    expect(buildTargetRangeLabel(null, 1500)).toBe('Max ₹1,500');
+  });
+
+  it('renders "Min X" when only the min is given -- not "X – –"', () => {
+    expect(buildTargetRangeLabel(5000, null)).toBe('Min ₹5,000');
+  });
+
+  it('renders null when neither bound is given', () => {
+    expect(buildTargetRangeLabel(null, null)).toBeNull();
+  });
+});
 
 function entry(overrides: Partial<InboxEntry>): InboxEntry {
   return {
