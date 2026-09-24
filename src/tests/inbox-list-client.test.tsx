@@ -6,9 +6,11 @@ const useInboxEntriesMock = vi.fn();
 const useParamsMock = vi.fn();
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
+const useEnquiryTriageByIdsMock = vi.fn(() => new Map());
 
 vi.mock('@/hooks/useInboxEntries', () => ({
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
+  useEnquiryTriageByIds: (...args: unknown[]) => useEnquiryTriageByIdsMock(...args),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -53,6 +55,8 @@ describe('InboxListClient', () => {
     useParamsMock.mockReturnValue({ id: 'b1' });
     pushMock.mockReset();
     replaceMock.mockReset();
+    useEnquiryTriageByIdsMock.mockReset();
+    useEnquiryTriageByIdsMock.mockReturnValue(new Map());
     window.localStorage?.clear?.();
     mockMedia(false);
   });
@@ -100,5 +104,32 @@ describe('InboxListClient', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
     expect(replaceMock).toHaveBeenCalledWith('/today/b1');
+  });
+
+  it('enriches an enquiry row with estimate number, item preview, and an at-risk badge', () => {
+    const enquiryEntry = {
+      id: 'e2', entry_number: 2, tenant_id: 't1', buyer_id: 'b2', buyer_name: 'Phani Krishna Yukti',
+      buyer_phone: null, location_id: null, entry_type: 'new_enquiry', status: 'new',
+      source_channel: 'storefront', source_entity_type: 'estimate', source_entity_id: 'est1',
+      title: 'Phani Krishna Yukti', summary: '₹0 · Open enquiry', amount: 0, currency: 'INR',
+      priority_at: '2026-09-22T10:00:00Z', remind_at: null, created_at: '2026-09-22T10:00:00Z',
+      last_actor_id: null, last_action: null, last_action_at: null, external_sync_status: 'not_required',
+      metadata: { estimate_number: 'EST-2026-0005' }, allowed_actions: ['reply_quote', 'convert'], time_bucket: 'today', customer_entry_count: 1,
+    };
+    useInboxEntriesMock.mockReturnValue({ data: { entries: [enquiryEntry], nextCursor: null }, isLoading: false, isError: false });
+    useEnquiryTriageByIdsMock.mockReturnValue(new Map([
+      ['e2', {
+        estimateId: 'est1', estimateNumber: 'EST-2026-0005', status: 'sent', hiddenPricing: false,
+        totalAmount: 13570, notes: null,
+        lines: [
+          { id: 'l1', tenantProductId: 'p1', name: 'Gate Valve 150mm', sku: 'SKU-1', brandName: null, qty: 1, unitPrice: null, targetMin: null, targetMax: null, buyerNote: null, onHand: 0, stock: { tone: 'danger', label: 'Out of stock', shortBy: 1 }, priceState: 'awaiting_quote', velocity: { unitsPerWeek: 0, daysCover: null, lastInvoiceAt: null }, alternates: [] },
+          { id: 'l2', tenantProductId: 'p2', name: 'Wing Nut 15mm', sku: 'SKU-2', brandName: null, qty: 1, unitPrice: null, targetMin: null, targetMax: null, buyerNote: null, onHand: 5, stock: { tone: 'ok', label: 'In stock', shortBy: 0 }, priceState: 'awaiting_quote', velocity: { unitsPerWeek: 0, daysCover: null, lastInvoiceAt: null }, alternates: [] },
+        ],
+      }],
+    ]));
+    renderWithClient(<InboxListClient />);
+    expect(screen.getByText('EST-2026-0005')).toBeInTheDocument();
+    expect(screen.getByText('₹13,570 · 2 items · Gate Valve 150mm +1 more')).toBeInTheDocument();
+    expect(screen.getByText('At risk')).toBeInTheDocument();
   });
 });

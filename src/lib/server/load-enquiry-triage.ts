@@ -1,5 +1,6 @@
 import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import {
+  deriveLinePriceState,
   deriveVelocity,
   enquiryStockStatus,
   pickAlternates,
@@ -180,12 +181,48 @@ export async function loadEnquiryTriage(
     }
   }
 
+  // Resolve what this buyer would actually pay for each line's OWN product at its
+  // requested qty (app.resolve_price precedence) -- a reference price the seller
+  // can quote against, distinct from `unitPrice` (whatever the seller has or
+  // hasn't already set on the enquiry line itself). Every line, not just short
+  // ones -- unlike the alternates resolution above, which only needs a price for
+  // lines that can't be covered as-is.
+  const linePriceMap = new Map<string, number>();
+  if (buyerId) {
+    const byQty = new Map<number, Set<string>>();
+    for (const item of items) {
+      const pid = asString(item.tenant_product_id);
+      if (!pid) continue;
+      const qty = Number(item.qty ?? 0);
+      const set = byQty.get(qty) ?? new Set<string>();
+      set.add(pid);
+      byQty.set(qty, set);
+    }
+    const responses = await Promise.all(
+      Array.from(byQty.entries()).map(async ([qty, ids]) => {
+        const { data, error } = await d.schema('app').rpc('resolve_prices_batch', {
+          p_tenant_product_ids: Array.from(ids),
+          p_buyer_id: buyerId,
+          p_qty: qty,
+        });
+        if (error) { console.error('[load-enquiry-triage] resolve_prices_batch (line)', error); return { qty, rows: [] as Array<{ tenant_product_id: string; unit_price: number }> }; }
+        return { qty, rows: (data ?? []) as Array<{ tenant_product_id: string; unit_price: number }> };
+      }),
+    );
+    for (const { qty, rows } of responses) {
+      for (const row of rows) linePriceMap.set(altPriceKey(row.tenant_product_id, qty), Number(row.unit_price ?? 0));
+    }
+  }
+
   const lines: EnquiryTriageLine[] = items.map((item) => {
     const pid = item.tenant_product_id as string;
     const product = productMap.get(pid);
     const qty = Number(item.qty ?? 0);
     const onHand = inventory.get(pid) ?? 0;
     const stock = enquiryStockStatus(qty, onHand);
+    const unitPrice = item.unit_price == null ? null : Number(item.unit_price);
+    const targetMin = item.buyer_target_unit_price_min == null ? null : Number(item.buyer_target_unit_price_min);
+    const targetMax = item.buyer_target_unit_price_max == null ? null : Number(item.buyer_target_unit_price_max);
     return {
       id: item.id as string,
       tenantProductId: pid,
@@ -193,12 +230,14 @@ export async function loadEnquiryTriage(
       sku: asString(product?.internal_sku) ?? '—',
       brandName: product ? brandOf(product) : null,
       qty,
-      unitPrice: item.unit_price == null ? null : Number(item.unit_price),
-      targetMin: item.buyer_target_unit_price_min == null ? null : Number(item.buyer_target_unit_price_min),
-      targetMax: item.buyer_target_unit_price_max == null ? null : Number(item.buyer_target_unit_price_max),
+      unitPrice,
+      targetMin,
+      targetMax,
       buyerNote: asString(item.buyer_note),
       onHand,
       stock,
+      resolvedPrice: linePriceMap.get(altPriceKey(pid, qty)) ?? null,
+      priceState: deriveLinePriceState({ unitPrice, targetMin, targetMax, stockTone: stock.tone }),
       velocity: deriveVelocity(snapshotMap.get(pid)),
       alternates: stock.tone !== 'ok'
         ? pickAlternates({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
@@ -212,6 +212,36 @@ export function useEnquiryTriage(entryId: string, enabled = true) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
+}
+
+/**
+ * Batch variant of `useEnquiryTriage` for the Today list row -- one row per
+ * buyer, so enriching a handful of rows (this list is bounded to "today's"
+ * open items, not a paginated catalog) with item count / at-risk needs the
+ * same triage payload each row's own detail screen will reuse. Shares the
+ * exact query key `useEnquiryTriage` uses, so opening a row afterwards is an
+ * instant cache hit, not a second fetch.
+ */
+export function useEnquiryTriageByIds(entryIds: string[]) {
+  const results = useQueries({
+    queries: entryIds.map((entryId) => ({
+      queryKey: ['inbox-entry-enquiry', entryId],
+      queryFn: async () => {
+        const res = await apiFetch(`/api/tenant/entries/${entryId}/enquiry`, { fresh: true });
+        if (!res.ok) throw new Error('Failed to load enquiry');
+        return (await res.json()) as EnquiryTriagePayload;
+      },
+      staleTime: NAVIGATION_QUERY_STALE_TIME,
+      gcTime: NAVIGATION_QUERY_GC_TIME,
+    })),
+  });
+
+  const byEntryId = new Map<string, EnquiryTriagePayload>();
+  entryIds.forEach((entryId, index) => {
+    const data = results[index]?.data;
+    if (data) byEntryId.set(entryId, data);
+  });
+  return byEntryId;
 }
 
 export function useSubstituteEnquiryLine(entryId: string) {
