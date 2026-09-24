@@ -9,6 +9,7 @@ import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { applyManualCohortMembersPlan, planManualCohortMembers } from '@/lib/server/cohort-manual-members';
 import {
   aggregateCampaignViewsByCampaign,
   computeCampaignViewMetrics,
@@ -556,10 +557,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         description: simpleParsed.data.description,
         allowed_tenant_brand_ids: simpleParsed.data.allowed_tenant_brand_ids,
         membership_mode: simpleParsed.data.membership_mode,
+        selected_buyer_ids: simpleParsed.data.selected_buyer_ids,
         rules: simpleParsed.data.rules,
       }
     : composerParsed!.data;
   const simpleMembershipMode = isSimpleForm ? payload.membership_mode : undefined;
+
+  // Plan the manual-membership change (and validate newly added buyers) before touching the
+  // cohort row, so a bad selection is rejected without a half-applied edit.
+  let manualMembersPlan: Awaited<ReturnType<typeof planManualCohortMembers>> | null = null;
+  if (isSimpleForm && simpleMembershipMode === 'manual') {
+    try {
+      manualMembersPlan = await planManualCohortMembers(
+        db,
+        claims.tenant_id,
+        id,
+        payload.selected_buyer_ids ?? [],
+      );
+    } catch (error) {
+      console.error('[PATCH /api/cohorts/[id]] member plan error:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ error: 'Failed to update selected buyers' }, { status: 500 });
+    }
+    if (manualMembersPlan.invalidBuyerIds.length > 0) {
+      return NextResponse.json({ error: 'One or more selected buyers are invalid.' }, { status: 422 });
+    }
+  }
 
   if (payload.name) {
     const { data: nameMatch } = await db
@@ -620,48 +642,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (refreshError) {
       console.error('[PATCH /api/cohorts/[id]] refresh error:', refreshError.message);
     }
-  } else if (isSimpleForm && simpleMembershipMode === 'manual') {
-    const memberIds = payload.selected_buyer_ids ?? [];
-    const nextSet = new Set<string>(memberIds);
-    const { data: activeRows } = await db
-      .schema('app')
-      .from('cohort_members_active')
-      .select('buyer_id')
-      .eq('cohort_id', id);
-    const currentlyActive = new Set<string>((activeRows ?? []).map((row: { buyer_id: string }) => row.buyer_id));
-
-    const toClose = [...currentlyActive].filter((buyerId) => !nextSet.has(buyerId));
-    const toAdd = memberIds.filter((buyerId: string) => !currentlyActive.has(buyerId));
-
-    if (toClose.length > 0) {
-      const { error: closeError } = await db
-        .schema('app')
-        .from('cohort_members')
-        .update({ valid_until: new Date().toISOString() })
-        .eq('cohort_id', id)
-        .in('buyer_id', toClose)
-        .is('valid_until', null);
-      if (closeError) {
-        return NextResponse.json({ error: 'Failed to update selected buyers' }, { status: 500 });
-      }
+  } else if (isSimpleForm && simpleMembershipMode === 'manual' && manualMembersPlan) {
+    try {
+      cohort.cached_member_count = await applyManualCohortMembersPlan(db, claims.tenant_id, id, manualMembersPlan);
+    } catch (error) {
+      console.error('[PATCH /api/cohorts/[id]] member sync error:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ error: 'Failed to save selected buyers' }, { status: 500 });
     }
-
-    if (toAdd.length > 0) {
-      const rows = toAdd.map((buyerId: string) => ({ cohort_id: id, buyer_id: buyerId }));
-      const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
-      if (membersError) {
-        return NextResponse.json({ error: 'Failed to save selected buyers' }, { status: 500 });
-      }
-    }
-
-    await db
-      .schema('app')
-      .from('cohorts')
-      .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .eq('tenant_id', claims.tenant_id);
-
-    cohort.cached_member_count = memberIds.length;
   }
 
   if (!isSimpleForm) {
