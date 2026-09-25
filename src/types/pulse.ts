@@ -56,7 +56,7 @@ export interface PulseOpportunityBuyerPage {
 }
 
 export interface PulseOpportunitiesResponse {
-  source: 'app.get_buyer_app_dashboard_v4';
+  source: 'app.get_buyer_app_dashboard_v4' | 'app.metrics_buyer_period_summary';
   computed_at: string | null;
   source_watermark: string | null;
   freshness_label: string | null;

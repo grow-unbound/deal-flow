@@ -8,6 +8,7 @@ import type {
   PulseOpportunityBuyerPage,
   PulseOpportunityGroup,
   PulseOpportunityPreview,
+  PulseOpportunitiesResponse,
 } from '@/types/pulse';
 
 export function emptyPulseContribution(): PulseContributionResponse {
@@ -30,6 +31,38 @@ export function emptyPulseOpportunities() {
     freshness_label: null,
     groups: [],
   };
+}
+
+const SUMMARY_OPPORTUNITY_SOURCE = 'app.metrics_buyer_period_summary' as const;
+const SUMMARY_OPPORTUNITY_CANDIDATE_LIMIT = 300;
+const SUMMARY_OPPORTUNITY_PAGE_LIMIT = 100;
+
+interface PeriodBuyerRow {
+  buyer_id: string;
+  invoice_value?: number | string | null;
+  invoice_count?: number | string | null;
+  app_demand_value?: number | string | null;
+  app_demand_count?: number | string | null;
+  period_end_exclusive?: string | null;
+  source_watermark?: string | null;
+  computed_at?: string | null;
+}
+
+interface BuyerNameRow {
+  id: string;
+  business_name?: string | null;
+}
+
+interface SummaryOpportunityRow {
+  buyer_id: string;
+  name: string;
+  invoice_value_qtd?: number | null;
+  invoice_count_qtd?: number | null;
+  prior_demand_value?: number | null;
+  last_demand_day?: string | null;
+  supporting_text?: string | null;
+  source_watermark?: string | null;
+  computed_at?: string | null;
 }
 
 function normalizePortfolio(raw: unknown): MetricsV2DashboardPortfolio | null {
@@ -123,6 +156,75 @@ function oldestTimestamp(...values: Array<string | null | undefined>) {
   return new Date(Math.min(...timestamps)).toISOString();
 }
 
+function numericValue(value: unknown) {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function quarterStartFor(date: Date) {
+  const istDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const quarterMonth = Math.floor(istDate.getMonth() / 3) * 3;
+  return new Date(Date.UTC(istDate.getFullYear(), quarterMonth, 1)).toISOString().slice(0, 10);
+}
+
+function previousQuarterStart(periodStart: string) {
+  const date = new Date(`${periodStart}T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() - 3);
+  return date.toISOString().slice(0, 10);
+}
+
+function pageSummaryRows(rows: SummaryOpportunityRow[], offset: number, limit: number) {
+  const pageRows = rows.slice(offset, offset + limit);
+  const nextOffset = offset + pageRows.length;
+  return {
+    pageRows,
+    nextCursor: nextOffset < rows.length ? String(nextOffset) : null,
+  };
+}
+
+function summaryPreviews(rows: SummaryOpportunityRow[]): PulseOpportunityPreview[] {
+  return rows.map((row) => ({
+    buyer_id: row.buyer_id,
+    name: row.name,
+    initials: initials(row.name),
+    invoice_value_qtd: row.invoice_value_qtd ?? null,
+    invoice_count_qtd: row.invoice_count_qtd ?? null,
+    prior_demand_value: row.prior_demand_value ?? null,
+    last_demand_day: row.last_demand_day ?? null,
+    supporting_text: row.supporting_text ?? (row.prior_demand_value != null
+      ? formatQuietSupport(row.prior_demand_value, row.last_demand_day ?? null)
+      : formatInvoiceSupport(row.invoice_value_qtd ?? null, row.invoice_count_qtd ?? null)),
+    href: `/customers/${row.buyer_id}`,
+  }));
+}
+
+function buildSummaryOpportunityGroup(
+  id: PulseOpportunityGroup['id'],
+  rows: SummaryOpportunityRow[],
+  timeBasis: string,
+): PulseOpportunityGroup | null {
+  const definition = opportunityDefinition(id);
+  if (!definition || rows.length === 0) return null;
+
+  const value = id === 'previously_submitted_app_demand_now_inactive'
+    ? rows.reduce((sum, row) => sum + numericValue(row.prior_demand_value), 0)
+    : rows.reduce((sum, row) => sum + numericValue(row.invoice_value_qtd), 0);
+
+  return {
+    id,
+    title: definition.title,
+    description: definition.description,
+    count: rows.length,
+    time_basis: timeBasis,
+    evidence: value > 0
+      ? `${formatCurrency(value)} ${id === 'previously_submitted_app_demand_now_inactive' ? 'prior Yukti demand' : 'qualifying assisted business'} · ${timeBasis}`
+      : `${id === 'previously_submitted_app_demand_now_inactive' ? 'Prior Yukti demand' : 'Qualifying assisted business'} · ${timeBasis}`,
+    action_label: definition.action_label,
+    action_href: definition.action_href,
+    previews: summaryPreviews(rows.slice(0, 5)),
+  };
+}
+
 export async function loadPulsePortfolio(claims: Pick<JWTClaims, 'tenant_id' | 'role' | 'location_ids'>) {
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) {
     return { portfolio: null, status: 403 as const, error: null };
@@ -153,6 +255,260 @@ export async function loadPulsePortfolio(claims: Pick<JWTClaims, 'tenant_id' | '
   }
 
   return { portfolio: normalizePortfolio(data), status: 200 as const, error: null };
+}
+
+async function loadActiveBuyerNames(
+  tenantId: string,
+  buyerIds: string[],
+  buyerAppEnabled: boolean,
+): Promise<{ rows: BuyerNameRow[] | null; error: unknown }> {
+  if (buyerIds.length === 0) return { rows: [], error: null };
+
+  const { data, error } = await (supabaseAdmin as any)
+    .schema('app')
+    .from('buyers')
+    .select('id,business_name')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .eq('buyer_app_enabled', buyerAppEnabled)
+    .is('deleted_at', null)
+    .in('id', buyerIds);
+
+  return { rows: Array.isArray(data) ? data as BuyerNameRow[] : null, error };
+}
+
+async function loadActivationSummaryRows(tenantId: string, periodStart: string) {
+  const { data, error } = await (supabaseAdmin as any)
+    .schema('app')
+    .from('metrics_buyer_period_summary')
+    .select('buyer_id,invoice_value,invoice_count,source_watermark,computed_at')
+    .eq('tenant_id', tenantId)
+    .eq('grain', 'quarter')
+    .eq('period_start', periodStart)
+    .is('deleted_at', null)
+    .gt('invoice_value', 0)
+    .order('invoice_value', { ascending: false })
+    .range(0, SUMMARY_OPPORTUNITY_CANDIDATE_LIMIT - 1);
+
+  if (error) return { rows: null, error };
+
+  const periodRows = Array.isArray(data) ? data as PeriodBuyerRow[] : [];
+  const { rows: buyers, error: buyerError } = await loadActiveBuyerNames(
+    tenantId,
+    periodRows.map((row) => row.buyer_id),
+    false,
+  );
+  if (buyerError) return { rows: null, error: buyerError };
+
+  const buyerNames = new Map((buyers ?? []).map((buyer) => [buyer.id, buyer.business_name || 'Customer']));
+  return {
+    rows: periodRows
+      .filter((row) => buyerNames.has(row.buyer_id))
+      .map((row) => ({
+        buyer_id: row.buyer_id,
+        name: buyerNames.get(row.buyer_id) ?? 'Customer',
+        invoice_value_qtd: numericValue(row.invoice_value),
+        invoice_count_qtd: numericValue(row.invoice_count),
+        source_watermark: row.source_watermark ?? null,
+        computed_at: row.computed_at ?? null,
+      })),
+    error: null,
+  };
+}
+
+async function loadQuietSummaryRows(tenantId: string, currentPeriodStart: string) {
+  const priorPeriodStart = previousQuarterStart(currentPeriodStart);
+  const { data, error } = await (supabaseAdmin as any)
+    .schema('app')
+    .from('metrics_buyer_period_summary')
+    .select('buyer_id,app_demand_value,app_demand_count,source_watermark,computed_at')
+    .eq('tenant_id', tenantId)
+    .eq('grain', 'quarter')
+    .eq('period_start', priorPeriodStart)
+    .is('deleted_at', null)
+    .gte('app_demand_count', 2)
+    .gt('app_demand_value', 0)
+    .order('app_demand_value', { ascending: false })
+    .range(0, SUMMARY_OPPORTUNITY_CANDIDATE_LIMIT - 1);
+
+  if (error) return { rows: null, error };
+
+  const priorRows = Array.isArray(data) ? data as PeriodBuyerRow[] : [];
+  const buyerIds = priorRows.map((row) => row.buyer_id);
+  const [
+    { rows: buyers, error: buyerError },
+    { data: currentRows, error: currentError },
+  ] = await Promise.all([
+    loadActiveBuyerNames(tenantId, buyerIds, true),
+    buyerIds.length > 0
+      ? (supabaseAdmin as any)
+        .schema('app')
+        .from('metrics_buyer_period_summary')
+        .select('buyer_id,app_demand_count')
+        .eq('tenant_id', tenantId)
+        .eq('grain', 'quarter')
+        .eq('period_start', currentPeriodStart)
+        .is('deleted_at', null)
+        .in('buyer_id', buyerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (buyerError) return { rows: null, error: buyerError };
+  if (currentError) return { rows: null, error: currentError };
+
+  const buyerNames = new Map((buyers ?? []).map((buyer) => [buyer.id, buyer.business_name || 'Customer']));
+  const currentDemandCounts = new Map(
+    (Array.isArray(currentRows) ? currentRows as PeriodBuyerRow[] : [])
+      .map((row) => [row.buyer_id, numericValue(row.app_demand_count)]),
+  );
+
+  return {
+    rows: priorRows
+      .filter((row) => buyerNames.has(row.buyer_id) && (currentDemandCounts.get(row.buyer_id) ?? 0) === 0)
+      .map((row) => ({
+        buyer_id: row.buyer_id,
+        name: buyerNames.get(row.buyer_id) ?? 'Customer',
+        prior_demand_value: numericValue(row.app_demand_value),
+        last_demand_day: null,
+        supporting_text: `${formatCurrency(numericValue(row.app_demand_value))} prior Yukti demand · Previous quarter`,
+        source_watermark: row.source_watermark ?? null,
+        computed_at: row.computed_at ?? null,
+      })),
+    error: null,
+  };
+}
+
+export async function loadPulseOpportunities(claims: Pick<JWTClaims, 'tenant_id' | 'role' | 'location_ids'>) {
+  if (!claims.tenant_id || !claims.role?.startsWith('seller_')) {
+    return { response: null, status: 403 as const, error: null };
+  }
+  if (!supabaseAdmin) {
+    return { response: null, status: 500 as const, error: new Error('Server configuration error') };
+  }
+
+  const locationScope = getSellerLocationScope({
+    role: claims.role ?? null,
+    location_ids: claims.location_ids ?? null,
+  });
+
+  if (locationScope.mode === 'none') {
+    return { response: emptyPulseOpportunities(), status: 200 as const, error: null };
+  }
+
+  if (locationScope.mode === 'subset') {
+    return { response: emptyPulseOpportunities(), status: 200 as const, error: null };
+  }
+
+  const currentPeriodStart = quarterStartFor(new Date());
+  const [activation, quiet] = await Promise.all([
+    loadActivationSummaryRows(claims.tenant_id, currentPeriodStart),
+    loadQuietSummaryRows(claims.tenant_id, currentPeriodStart),
+  ]);
+
+  if (activation.error || quiet.error) {
+    return { response: null, status: 500 as const, error: activation.error ?? quiet.error };
+  }
+
+  const activationRows = activation.rows ?? [];
+  const quietRows = quiet.rows ?? [];
+  const groups = [
+    buildSummaryOpportunityGroup('valuable_assisted_customers_without_access', activationRows, 'NOW + QTD'),
+    buildSummaryOpportunityGroup('previously_submitted_app_demand_now_inactive', quietRows, 'Previous quarter -> QTD'),
+  ].filter((group): group is PulseOpportunityGroup => Boolean(group));
+  const sourceWatermark = oldestTimestamp(
+    ...activationRows.map((row) => row.source_watermark),
+    ...quietRows.map((row) => row.source_watermark),
+  );
+  const computedAt = oldestTimestamp(
+    ...activationRows.map((row) => row.computed_at),
+    ...quietRows.map((row) => row.computed_at),
+  );
+
+  return {
+    response: {
+      source: SUMMARY_OPPORTUNITY_SOURCE,
+      computed_at: computedAt,
+      source_watermark: sourceWatermark,
+      freshness_label: sourceWatermark ?? computedAt,
+      groups,
+    } satisfies PulseOpportunitiesResponse,
+    status: 200 as const,
+    error: null,
+  };
+}
+
+export async function loadPulseOpportunityBuyerPage(
+  claims: Pick<JWTClaims, 'tenant_id' | 'role' | 'location_ids'>,
+  id: PulseOpportunityGroup['id'],
+  offset: number,
+  limit: number,
+) {
+  if (!claims.tenant_id || !claims.role?.startsWith('seller_')) {
+    return { page: null, status: 403 as const, error: null };
+  }
+  if (!supabaseAdmin) {
+    return { page: null, status: 500 as const, error: new Error('Server configuration error') };
+  }
+
+  const locationScope = getSellerLocationScope({
+    role: claims.role ?? null,
+    location_ids: claims.location_ids ?? null,
+  });
+
+  if (locationScope.mode === 'none') {
+    return {
+      page: portfolioToPulseOpportunityBuyerPage(null, id, offset, limit),
+      status: 200 as const,
+      error: null,
+    };
+  }
+
+  if (locationScope.mode === 'subset') {
+    return {
+      page: portfolioToPulseOpportunityBuyerPage(null, id, offset, limit),
+      status: 200 as const,
+      error: null,
+    };
+  }
+
+  const definition = opportunityDefinition(id);
+  if (!definition) {
+    return { page: null, status: 404 as const, error: null };
+  }
+
+  const currentPeriodStart = quarterStartFor(new Date());
+  const result = id === 'valuable_assisted_customers_without_access'
+    ? await loadActivationSummaryRows(claims.tenant_id, currentPeriodStart)
+    : id === 'previously_submitted_app_demand_now_inactive'
+      ? await loadQuietSummaryRows(claims.tenant_id, currentPeriodStart)
+      : { rows: [], error: null };
+
+  if (result.error) {
+    return { page: null, status: 500 as const, error: result.error };
+  }
+
+  const rows = result.rows ?? [];
+  const timeBasis = id === 'previously_submitted_app_demand_now_inactive' ? 'Previous quarter -> QTD' : 'NOW + QTD';
+  const group = buildSummaryOpportunityGroup(id, rows, timeBasis);
+  const { pageRows, nextCursor } = pageSummaryRows(rows, offset, Math.min(limit, SUMMARY_OPPORTUNITY_PAGE_LIMIT));
+  return {
+    page: {
+      group: {
+        id,
+        title: definition.title,
+        description: definition.description,
+        count: rows.length,
+        evidence: group?.evidence ?? '',
+        action_label: definition.action_label,
+        action_href: definition.action_href,
+      },
+      rows: summaryPreviews(pageRows),
+      nextCursor,
+      total: rows.length,
+    } satisfies PulseOpportunityBuyerPage,
+    status: 200 as const,
+    error: null,
+  };
 }
 
 export function portfolioToPulseContribution(portfolio: MetricsV2DashboardPortfolio | null): PulseContributionResponse {
