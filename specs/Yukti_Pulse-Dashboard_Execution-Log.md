@@ -6,7 +6,7 @@
 
 **Created:** 22 September 2026
 
-**Overall status:** P01 complete with follow-up visual/data refinement; P2A/P2B complete; P3 complete with lab/browser caveat; remaining units not started.
+**Overall status:** P01 complete with follow-up visual/data refinement; P2A/P2B complete; P3 complete with lab/browser caveat; P5 functional slice implemented but still in progress on the Section 2.8 opportunity-read performance gate.
 
 ---
 
@@ -33,7 +33,7 @@
 | `P2A` | Phase 2: event/identity audit and instrumentation | None; contract must be frozen before P2B | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
 | `P2B` | Phase 2: daily extraction and minimal snapshot | P2A | `complete` | 2026-09-23 07:10 IST — p2a-p2b-behavioral-foundation |
 | `P3` | Phase 3: Demand Signals UI | P2B with fresh pilot snapshot | `complete` | 2026-09-24 09:48 IST — p3-demand-signals-polish |
-| `P5` | Phase 5: useful without adoption | P01 | `not_started` | — |
+| `P5` | Phase 5: useful without adoption | P01 | `in_progress` | 2026-09-25 11:37 IST — p5-useful-without-adoption |
 | `P4` | Phase 4: adaptive maturity presentation | P01, P3, P5 | `not_started` | — |
 | `P6` | Phase 6: declining-adoption recovery | P4 plus sufficient historical baseline | `not_started` | — |
 
@@ -854,3 +854,85 @@ Copy this section to the end of the file for every session.
 - Unit: `P5`
 - Entry gate satisfied: yes
 - Evidence / remaining requirement: P01 and P3 remain complete after the Show all follow-up.
+
+---
+
+## 2026-09-25 11:37 IST — p5-useful-without-adoption — P5
+
+**Status:** in_progress
+
+**Branch / commit / PR:** `feat/pulse-revised` / commit pending at log-write time / PR explicitly not requested
+
+**Objective:** Implement the Phase 5 useful-without-adoption presentation slice by making synced customer-history opportunities evidence-backed and actionable, without starting P4 maturity adaptation or adding persistence.
+
+### Completed
+
+- Added opportunity evidence and action metadata to the Pulse opportunity contract so each visible customer opportunity names the business basis and links to an existing action surface.
+- Prioritized the two Phase 5 eligible insights inside the existing Opportunities section: `Activate valuable customers` and `High-value customers going quiet`.
+- Kept the read path on existing `app.get_buyer_app_dashboard_v4` portfolio data; no new table, migration, raw event store, PostHog read, charting dependency, or `router.refresh()` was introduced.
+- Rendered qualifying assisted-business evidence and an access-management action for the activation insight.
+- Rendered prior Yukti-demand value and last-demand evidence for the quiet-customer insight when the existing action rows provide `value` and `last_demand_day`.
+- Kept existing independent section/query boundaries: Contribution, Opportunities, each Demand Signal query key, and opportunity buyer slide-over pagination remain separate.
+- Added focused tests for the P5 evidence/action contract and retained exclusion of `app_demand_needing_operational_action`.
+
+### Files and database objects changed
+
+- `src/types/pulse.ts`
+- `src/lib/server/pulse-core.ts`
+- `src/components/seller/pulse/PulseDashboardClient.tsx`
+- `src/tests/pulse-core.test.ts`
+- `src/tests/pulse-client.test.tsx`
+- `specs/Yukti_Pulse-Dashboard_Execution-Log.md`
+- Database objects changed: none.
+
+### Verification and evidence
+
+| Check | Command/evidence | Result |
+|---|---|---|
+| Type-check | `npx tsc --noEmit` | Passed. |
+| Focused tests | `pnpm exec vitest run src/tests/pulse-core.test.ts src/tests/pulse-api.test.ts src/tests/pulse-client.test.tsx --pool=threads` | Passed: 3 files, 18 tests. The run printed a non-blocking pnpm registry metadata fetch warning before executing tests. |
+| Static hygiene | `git diff --check` | Passed. |
+| Production build | `npm run build` | Passed. `/pulse` route remains dynamic, route size `244 B`, first load JS `476 kB`. |
+| Data reconciliation | Unit tests assert activation evidence from `valuable_assisted_customers_without_access`, quiet-customer evidence from `previously_submitted_app_demand_now_inactive`, preserved customer links, and exclusion of Inbox-owned `app_demand_needing_operational_action`. | Passed. |
+| Security/scoping | No client-supplied tenant id added. Opportunities still load through the existing seller-authenticated `/api/tenant/pulse/opportunities` boundary and `loadPulsePortfolio`, preserving seller role checks and existing assistant location-scope behavior in `app.get_buyer_app_dashboard_v4`. | Passed by static review and existing API tests. No production command or mutation. |
+| UI/loading/visual states | Opportunity cards now show evidence plus one existing-surface action link. Skeleton structure and route `loading.tsx` are unchanged; card min-height remains stable and rows still use the existing internal scroll body. Client tests cover populated, failure-isolation, stale Demand Signal, and slide-over states. | Passed focused tests. |
+| Aggregate/query plan | Verified linked project ref before linked reads: `hcpzbnmumbykdqveyjhr`. `EXPLAIN (ANALYZE, BUFFERS) SELECT app.get_buyer_app_dashboard_v4('d601c35c-1a78-4506-a556-a82118d72893'::uuid, 'seller_admin', NULL::uuid[])` on `yukti-dev`. | Sample 1 execution `932.692 ms`, shared hit `45803`; sample 2 execution `1505.895 ms`, shared hit `45803`. This fails the Section 2.8 individual widget endpoint target `<300 ms` and aggregate/RPC target `<100 ms`. |
+| Widget API/payload | Read-only payload metadata for the same existing RPC: `length(body::text)=20263`, `action_count=5`, `source_watermark=2026-09-20T05:44:01.391173+00:00`. | Payload remains bounded and unchanged in shape, but backing RPC duration is not release-ready. |
+| Cache/navigation | `usePulseOpportunities` remains `['pulse','opportunities']` with `NAVIGATION_QUERY_STALE_TIME` / `NAVIGATION_QUERY_GC_TIME`; slide-over uses `useInfiniteQuery` with `placeholderData: keepPreviousData`; no full-page invalidation or hydration-forced refetch was added. | Static review passed. Authenticated warm-return browser trace not captured. |
+| Web performance | Production build succeeded; `/pulse` bundle unchanged at `244 B` route / `476 kB` first load JS. | No field p75 available. Authenticated lab LCP/INP/CLS/FCP/TTFB not captured in this session. |
+| CSP review | No analytics, PostHog, CSP header, `script-src`, `connect-src`, `img-src`, unsafe-inline, or eval changes. | Not applicable. |
+
+### Findings
+
+- Functional P5 presentation can reuse the existing Buyer App v4 action lists, but the current broad portfolio RPC is too slow in live `yukti-dev` samples to satisfy the Pulse release gate.
+- The existing local RPC payload can provide the Phase 5 quiet-customer evidence (`value`, `last_demand_day`) when present, so no new persistence is needed for the UI contract.
+- Because the existing RPC preserves seller-assistant location scoping, replacing it with a narrower direct app-layer summary read should be done carefully in a follow-up, with explicit assistant-scope reconciliation.
+
+### Decisions made
+
+- Marked P5 `in_progress`, not `complete`, because Section 2.8 performance evidence failed even though functional tests and build passed.
+- Did not introduce a new aggregate/snapshot table or migration in this unit.
+- Did not start P4 maturity-adaptive ordering; section order remains Business captured through Yukti → Opportunities → Demand signals.
+- Did not surface generic top-customer lists, raw sales totals, outstanding/overdue duplication, Inbox queues, reorder predictions, or cross-sell recommendations.
+
+### Deferred / explicitly out of scope
+
+- Narrow opportunity read-model optimization for P5 remains required before completion. Preferred next investigation: derive activation and quiet-customer rows from existing indexed summaries while preserving seller-assistant location scoping, or add the smallest approved aggregate/RPC if existing summaries cannot meet the budget.
+- Browser-authenticated warm navigation and Web Vital traces remain uncaptured.
+- P4 and P6 remain out of scope.
+
+### Risks or blockers
+
+- P5 cannot be called complete until `/api/tenant/pulse/opportunities` or an equivalent narrower opportunity boundary meets the `<300 ms` widget endpoint budget and preferably the `<100 ms` aggregate-read budget on representative data.
+- Current `get_buyer_app_dashboard_v4` samples are significantly slower than the earlier P01 warm sample, so relying on this broad RPC for Pulse opportunities is the main blocker.
+- If a narrower direct summary read is implemented, assistant location scoping must not regress.
+
+### Rollback notes
+
+- Revert this P5 commit to remove the opportunity evidence/action fields and restore the prior opportunity ordering/copy. No database rollback required.
+
+### Recommended next unit
+
+- Unit: `P5` continuation, not `P4`
+- Entry gate satisfied: no
+- Evidence / remaining requirement: Keep P4 blocked until P5 has a performant opportunity read path. The next session should optimize or replace the current opportunity read boundary using existing summaries/RPCs, then rerun focused tests, type-check, production build, query plans, payload/timing evidence, and warm navigation checks.

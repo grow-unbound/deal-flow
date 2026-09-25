@@ -63,6 +63,9 @@ const opportunities: PulseOpportunitiesResponse = {
       description: 'High-value customers still order manually and do not have Yukti access enabled.',
       count: 12,
       time_basis: 'NOW + QTD',
+      evidence: '₹4,10,000 qualifying assisted business · NOW + QTD',
+      action_label: 'Open access management',
+      action_href: '/buyer-app/access',
       previews: [
         {
           buyer_id: 'buyer-1',
@@ -76,11 +79,35 @@ const opportunities: PulseOpportunitiesResponse = {
       ],
     },
     {
+      id: 'previously_submitted_app_demand_now_inactive',
+      title: 'High-value customers going quiet',
+      description: 'Customers previously submitted Yukti demand but have become inactive against their own recent history.',
+      count: 4,
+      time_basis: 'NOW + 90D',
+      evidence: '₹1,75,000 prior Yukti demand · NOW + 90D',
+      action_label: 'Review customers',
+      action_href: '/customers',
+      previews: [
+        {
+          buyer_id: 'buyer-3',
+          name: 'Quiet Retail',
+          initials: 'QR',
+          prior_demand_value: 175000,
+          last_demand_day: '2026-08-10',
+          supporting_text: '₹1,75,000 prior Yukti demand · Last demand 10 Aug',
+          href: '/customers/buyer-3',
+        },
+      ],
+    },
+    {
       id: 'access_enabled_but_never_used',
       title: 'Convert interested customers',
       description: 'Customers have access enabled but still do business outside Yukti.',
       count: 7,
       time_basis: 'NOW',
+      evidence: '₹3,20,000 business outside Yukti · NOW',
+      action_label: 'Review customer access',
+      action_href: '/buyer-app/access',
       previews: [
         {
           buyer_id: 'buyer-2',
@@ -218,11 +245,14 @@ describe('PulseDashboardClient', () => {
     expect(await screen.findByText('Customers with Yukti access · NOW')).toBeInTheDocument();
     expect(await screen.findByText(/Demand captured through Yukti/)).toBeInTheDocument();
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
+    expect(await screen.findByText('₹4,10,000 qualifying assisted business · NOW + QTD')).toBeInTheDocument();
+    expect(await screen.findByText('Open access management')).toBeInTheDocument();
+    expect(await screen.findByText('High-value customers going quiet')).toBeInTheDocument();
+    expect(await screen.findByText('₹1,75,000 prior Yukti demand · Last demand 10 Aug')).toBeInTheDocument();
     expect(await screen.findByText('Convert interested customers')).toBeInTheDocument();
     expect(await screen.findByText('₹3,20,000 · 6 invoices')).toBeInTheDocument();
-    expect(screen.queryByText(/NOW \+ QTD|NOW \+ 90D/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/assisted business/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Open access management/i)).not.toBeInTheDocument();
+    expect(await screen.findByText('₹1,75,000 prior Yukti demand · NOW + 90D')).toBeInTheDocument();
+    expect(screen.queryByText(/Open access management/i)).toBeInTheDocument();
 
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
     expect(screen.queryByText('Customer activity')).not.toBeInTheDocument();

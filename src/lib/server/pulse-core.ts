@@ -86,6 +86,25 @@ function formatInvoiceSupport(value: number | null, count: number | null) {
   return `${value != null && value > 0 ? `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}` : '₹0'} · ${invoiceCount} ${invoiceWord}`;
 }
 
+function formatCurrency(value: number) {
+  return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}`;
+}
+
+function formatDateLabel(value: unknown) {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+
+function formatQuietSupport(value: number | null, lastDemandDay: string | null) {
+  const parts = [
+    value != null && value > 0 ? `${formatCurrency(value)} prior Yukti demand` : null,
+    lastDemandDay ? `Last demand ${formatDateLabel(lastDemandDay) ?? lastDemandDay}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 function initials(name: string) {
   return name
     .split(' ')
@@ -280,19 +299,30 @@ export function landingMetricsToPulseContribution(metrics: SellerDashboardMetric
   };
 }
 
-function previewRows(item: MetricsV2PortfolioItem | null, limit = 5): PulseOpportunityPreview[] {
+function previewRows(
+  item: MetricsV2PortfolioItem | null,
+  id?: PulseOpportunityGroup['id'],
+  limit = 5,
+): PulseOpportunityPreview[] {
   return rowsFromItem(item).slice(0, limit).map((row) => {
     const name = String(row.name ?? row.business_name ?? 'Customer');
     const buyerId = String(row.buyer_id ?? row.id ?? '');
     const invoiceValue = rowNumber(row, ['invoice_value_qtd', 'business_outside_yukti_90d', 'assisted_invoice_value_90d', 'invoice_value_90d']);
     const invoiceCount = rowNumber(row, ['invoice_count_qtd', 'invoice_count_90d']);
+    const priorDemandValue = rowNumber(row, ['prior_demand_value', 'app_demand_value', 'value']);
+    const lastDemandDay = typeof row.last_demand_day === 'string' ? row.last_demand_day : null;
+    const isQuietCustomer = id === 'previously_submitted_app_demand_now_inactive';
     return {
       buyer_id: buyerId,
       name,
       initials: initials(name),
       invoice_value_qtd: invoiceValue,
       invoice_count_qtd: invoiceCount,
-      supporting_text: formatInvoiceSupport(invoiceValue, invoiceCount),
+      last_demand_day: lastDemandDay,
+      prior_demand_value: priorDemandValue,
+      supporting_text: isQuietCustomer
+        ? formatQuietSupport(priorDemandValue, lastDemandDay)
+        : formatInvoiceSupport(invoiceValue, invoiceCount),
       href: buyerId ? `/customers/${buyerId}` : '/customers',
     };
   });
@@ -302,31 +332,64 @@ const PULSE_OPPORTUNITY_DEFINITIONS: Array<{
   id: PulseOpportunityGroup['id'];
   title: string;
   description: string;
+  action_label: string;
+  action_href: string;
 }> = [
   {
     id: 'valuable_assisted_customers_without_access',
     title: 'Activate valuable customers',
     description: 'High-value customers still order manually and do not have Yukti access enabled.',
+    action_label: 'Open access management',
+    action_href: '/buyer-app/access',
+  },
+  {
+    id: 'previously_submitted_app_demand_now_inactive',
+    title: 'High-value customers going quiet',
+    description: 'Customers previously submitted Yukti demand but have become inactive against their own recent history.',
+    action_label: 'Review customers',
+    action_href: '/customers',
   },
   {
     id: 'access_enabled_but_never_used',
     title: 'Convert interested customers',
     description: 'Customers have access enabled but still do business outside Yukti.',
+    action_label: 'Review customer access',
+    action_href: '/buyer-app/access',
   },
   {
     id: 'used_app_but_no_demand',
     title: 'Follow up with browsing customers without demand',
     description: 'Customers used Yukti, yet their recent business still sits outside Yukti demand.',
-  },
-  {
-    id: 'previously_submitted_app_demand_now_inactive',
-    title: 'Reactivate customers going quiet',
-    description: 'Customers previously submitted Yukti demand but have gone inactive.',
+    action_label: 'Review customers',
+    action_href: '/customers',
   },
 ];
 
 function opportunityDefinition(id: PulseOpportunityGroup['id']) {
   return PULSE_OPPORTUNITY_DEFINITIONS.find((definition) => definition.id === id) ?? null;
+}
+
+function sumRows(item: MetricsV2PortfolioItem | null, keys: string[]) {
+  return rowsFromItem(item).reduce((sum, row) => sum + (rowNumber(row, keys) ?? 0), 0);
+}
+
+function opportunityEvidence(item: MetricsV2PortfolioItem, id: PulseOpportunityGroup['id']) {
+  const count = itemCount(item);
+  const rowCount = rowsFromItem(item).length;
+  const prefix = rowCount > 0 && count > rowCount ? 'At least ' : '';
+
+  if (id === 'valuable_assisted_customers_without_access') {
+    const value = sumRows(item, ['invoice_value_qtd', 'assisted_invoice_value_90d', 'invoice_value_90d']);
+    return value > 0 ? `${prefix}${formatCurrency(value)} qualifying assisted business · ${item.time_basis}` : `Qualifying assisted business · ${item.time_basis}`;
+  }
+
+  if (id === 'previously_submitted_app_demand_now_inactive') {
+    const value = sumRows(item, ['prior_demand_value', 'app_demand_value', 'value']);
+    return value > 0 ? `${prefix}${formatCurrency(value)} prior Yukti demand · ${item.time_basis}` : `Prior Yukti demand · ${item.time_basis}`;
+  }
+
+  const value = sumRows(item, ['invoice_value_qtd', 'business_outside_yukti_90d', 'invoice_value_90d']);
+  return value > 0 ? `${prefix}${formatCurrency(value)} business outside Yukti · ${item.time_basis}` : `Customer posture · ${item.time_basis}`;
 }
 
 export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortfolio | null) {
@@ -342,7 +405,10 @@ export function portfolioToPulseOpportunities(portfolio: MetricsV2DashboardPortf
         description: definition.description,
         count: itemCount(item),
         time_basis: item.time_basis,
-        previews: previewRows(item, 5),
+        evidence: opportunityEvidence(item, definition.id),
+        action_label: definition.action_label,
+        action_href: definition.action_href,
+        previews: previewRows(item, definition.id, 5),
       };
     })
     .filter((group): group is PulseOpportunityGroup => Boolean(group))
@@ -371,6 +437,9 @@ export function portfolioToPulseOpportunityBuyerPage(
         title: definition?.title ?? 'Opportunity',
         description: definition?.description ?? '',
         count: 0,
+        evidence: '',
+        action_label: definition?.action_label ?? 'Review customers',
+        action_href: definition?.action_href ?? '/customers',
       },
       rows: [],
       nextCursor: null,
@@ -379,7 +448,7 @@ export function portfolioToPulseOpportunityBuyerPage(
   }
 
   const item = findPortfolioItem(portfolio, 'actions', id);
-  const rows = previewRows(item, Number.MAX_SAFE_INTEGER);
+  const rows = previewRows(item, id, Number.MAX_SAFE_INTEGER);
   const pageRows = rows.slice(offset, offset + limit);
   const total = itemCount(item) || rows.length;
   const nextOffset = offset + pageRows.length;
@@ -390,6 +459,9 @@ export function portfolioToPulseOpportunityBuyerPage(
       title: definition.title,
       description: definition.description,
       count: total,
+      evidence: item ? opportunityEvidence(item, id) : '',
+      action_label: definition.action_label,
+      action_href: definition.action_href,
     },
     rows: pageRows,
     nextCursor: nextOffset < Math.min(total, rows.length) ? String(nextOffset) : null,
