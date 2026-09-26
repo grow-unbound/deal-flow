@@ -24,6 +24,15 @@ vi.mock('@/lib/server/scoped-product-search', () => ({
   searchScopedProducts: vi.fn(),
 }));
 
+vi.mock('@/lib/server/public-catalog', () => ({
+  TENANT_PRODUCT_PUBLIC_SELECT: 'id, internal_sku, name_override',
+  getCachedGuestPricingContext: vi.fn(),
+  resolveGuestPricingContext: vi.fn(),
+  loadLivePublicCatalog: vi.fn(),
+  loadAssignedPriceListPrices: vi.fn(async () => new Map()),
+  guestUnitPrice: vi.fn(() => null),
+}));
+
 vi.mock('@/lib/r2-url', () => ({
   r2Url: vi.fn(() => null),
 }));
@@ -32,7 +41,9 @@ vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: { schema: vi.fn(() => ({ rpc: vi.fn(), from: vi.fn() })) },
 }));
 
-import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
+import { enrichBuyerProducts, resolveBuyerProductScopeContext } from '@/lib/server/buyer-product-data';
+import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { loadLivePublicCatalog, resolveGuestPricingContext } from '@/lib/server/public-catalog';
 import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 describe('buyer product enrichment', () => {
@@ -116,5 +127,104 @@ describe('buyer product enrichment', () => {
     expect(result.get('product-1')?.display_name).toBe('Widget');
     expect(result.get('product-1')?.price).toBe(100);
     expect(searchScopedProducts).not.toHaveBeenCalled();
+  });
+});
+
+describe('buyer product scope context', () => {
+  it('downgrades pending buyer sessions to public guest catalog scope', async () => {
+    const publicCatalog = {
+      id: 'catalog-1',
+      tenantId: 'tenant-1',
+      includeAll: true,
+      pricingMode: 'base_selling_rate' as const,
+      priceListId: null,
+      accessMode: 'public_link' as const,
+      collectTargetUnitPriceRange: false,
+      productDisplayMode: 'sku_list' as const,
+      liveAt: '2026-09-25T00:00:00.000Z',
+    };
+    const guestPricing = {
+      mode: 'base_selling_rate' as const,
+      priceListId: null,
+      excludedProductIds: [],
+    };
+
+    vi.mocked(loadLivePublicCatalog).mockResolvedValue(publicCatalog);
+    vi.mocked(resolveGuestPricingContext).mockResolvedValue(guestPricing);
+    vi.mocked(resolveBuyerAllowedTenantBrandIds).mockResolvedValue(['brand-private']);
+
+    const context = await resolveBuyerProductScopeContext({} as any, {
+      headers: new Headers(),
+      cookies: { get: () => undefined },
+    } as any, {
+      context: {
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-pending',
+        role: 'buyer_pending',
+        mode: 'buyer',
+      },
+      buyer: {
+        id: 'buyer-pending',
+        tenant_id: 'tenant-1',
+        business_name: 'Pending Buyer',
+        contact_name: null,
+        credit_limit: null,
+        phone: '9999999999',
+        gstin: null,
+        buyer_app_enabled: false,
+      },
+      tenant: null,
+      greeting_name: null,
+    });
+
+    expect(context.buyerId).toBeNull();
+    expect(context.allowedTenantBrandIds).toBeNull();
+    expect(context.guestPricing).toEqual(guestPricing);
+    expect(context.publicCatalog).toEqual(publicCatalog);
+    expect(resolveBuyerAllowedTenantBrandIds).not.toHaveBeenCalled();
+  });
+
+  it('does not expose public catalog context to pending buyers for approved-only catalogs', async () => {
+    vi.mocked(loadLivePublicCatalog).mockResolvedValue({
+      id: 'catalog-1',
+      tenantId: 'tenant-1',
+      includeAll: true,
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+      accessMode: 'approved_buyers_only',
+      collectTargetUnitPriceRange: false,
+      productDisplayMode: 'sku_list',
+      liveAt: '2026-09-25T00:00:00.000Z',
+    });
+    vi.mocked(resolveGuestPricingContext).mockClear();
+
+    const context = await resolveBuyerProductScopeContext({} as any, {
+      headers: new Headers(),
+      cookies: { get: () => undefined },
+    } as any, {
+      context: {
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-pending',
+        role: 'buyer_pending',
+        mode: 'buyer',
+      },
+      buyer: {
+        id: 'buyer-pending',
+        tenant_id: 'tenant-1',
+        business_name: 'Pending Buyer',
+        contact_name: null,
+        credit_limit: null,
+        phone: '9999999999',
+        gstin: null,
+        buyer_app_enabled: false,
+      },
+      tenant: null,
+      greeting_name: null,
+    });
+
+    expect(context.buyerId).toBeNull();
+    expect(context.guestPricing).toBeNull();
+    expect(context.publicCatalog).toBeNull();
+    expect(resolveGuestPricingContext).not.toHaveBeenCalled();
   });
 });

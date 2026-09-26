@@ -176,15 +176,12 @@ export async function middleware(request: NextRequest) {
   const sampleRate = parseSampleRate(process.env.MIDDLEWARE_CPU_SAMPLE_RATE);
   if (sampleRate === 0 || Math.random() >= sampleRate) return handleRequest(request);
 
-  const cpuStart = process.cpuUsage();
   const wallStart = performance.now();
   const response = await handleRequest(request);
-  const cpu = process.cpuUsage(cpuStart);
   console.log(JSON.stringify({
     evt: 'mw_cpu_sample',
     cls: classifyMiddlewareRequest(request.nextUrl.pathname, request.headers),
-    cpu_us: cpu.user + cpu.system,
-    wall_ms: Math.round(performance.now() - wallStart),
+    duration_ms: Math.round(performance.now() - wallStart),
     status: response.status,
     has_session_cookie: hasSupabaseAuthCookie(request.cookies.getAll()),
   }));
@@ -427,6 +424,7 @@ async function handleTenantHost(
     && storefront
     && sessionTenantId === storefront.tenantId,
   );
+  const pendingBuyerMatchesHost = Boolean(role === 'buyer_pending' && buyerMatchesHost);
 
   if (pathname === '/login' && buyerMatchesHost) {
     return redirectPreservingPath(request, request.headers.get('host') ?? '', '/', 307);
@@ -438,6 +436,24 @@ async function handleTenantHost(
         status: 404,
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
       });
+    }
+    return redirectToCatalogLogin(request);
+  }
+
+  if (
+    live
+    && storefront?.accessMode === 'approved_buyers_only'
+    && (!buyerMatchesHost || pendingBuyerMatchesHost)
+    && (guestApi || guestPage)
+  ) {
+    if (guestApi) {
+      return new NextResponse(JSON.stringify({ error: pendingBuyerMatchesHost ? 'Approval required' : 'Login required' }), {
+        status: pendingBuyerMatchesHost ? 403 : 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
+      });
+    }
+    if (pendingBuyerMatchesHost) {
+      return redirectPreservingPath(request, request.headers.get('host') ?? '', '/pending', 307);
     }
     return redirectToCatalogLogin(request);
   }
@@ -576,7 +592,10 @@ async function readSession(request: NextRequest): Promise<SessionRead> {
     },
   );
 
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims().catch(() => ({
+    data: null,
+    error: { message: 'Auth session invalid' },
+  }));
   if (claimsError || !claimsData?.claims) {
     return { claims: null, refreshedAuthCookies };
   }
@@ -614,6 +633,14 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   return NextResponse.redirect(loginUrl);
 }
 
+function absoluteRequestUrlFromHostHeader(request: NextRequest): string {
+  const hostHeader = request.headers.get('host') ?? request.nextUrl.host;
+  const [hostnameOnly] = hostHeader.split(':');
+  const isLocal = hostnameOnly === 'localhost' || hostnameOnly.endsWith('.localhost');
+  const protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
+  return `${protocol}//${hostHeader}${request.nextUrl.pathname}${request.nextUrl.search}`;
+}
+
 function redirectToCatalogLogin(
   request: NextRequest,
   options: { includeReturnTo?: boolean } = {},
@@ -624,7 +651,7 @@ function redirectToCatalogLogin(
   const protocol = isLocal ? (request.nextUrl.protocol === 'https:' ? 'https:' : 'http:') : 'https:';
   const url = new URL(`${protocol}//${portFromHost ? `${hostnameOnly}:${portFromHost}` : hostnameOnly}/login`);
   if (options.includeReturnTo !== false) {
-    url.searchParams.set('return_to', request.url);
+    url.searchParams.set('return_to', absoluteRequestUrlFromHostHeader(request));
   }
   return NextResponse.redirect(url);
 }

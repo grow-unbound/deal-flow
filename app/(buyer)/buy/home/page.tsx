@@ -23,6 +23,7 @@ async function loadInitialCatalogData(): Promise<CatalogInitialData> {
   if (!supabaseAdmin) return {};
   const claims = await getBuyerServerClaims();
   if (!claims.tenant_id || !claims.buyer_id) return {};
+  if (claims.role === 'buyer_pending') return {};
   const db = supabaseAdmin;
   const tenantId = claims.tenant_id;
   const buyerId = claims.buyer_id;

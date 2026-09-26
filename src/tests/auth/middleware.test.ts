@@ -93,6 +93,7 @@ describe('middleware auth redirects', () => {
       slug: 'wineyard',
       catalogId: 'cat-1',
       liveAt: '2026-09-01T00:00:00.000Z',
+      accessMode: 'public_link',
       pricingMode: 'base_selling_rate',
       priceListId: null,
     });
@@ -469,6 +470,75 @@ describe('middleware auth redirects', () => {
     );
   });
 
+  it('uses the Host header, not request.url, for localhost tenant return_to', async () => {
+    hasAuthCookieMock.mockReturnValue(false);
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(
+      new NextRequest('http://localhost:3000/', {
+        headers: { host: 'wineyard.localhost:3000' },
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      'http://catalog.localhost:3000/login?return_to=http%3A%2F%2Fwineyard.localhost%3A3000%2F',
+    );
+  });
+
+  it('keeps pending buyers on the pending screen for approved-only storefront pages', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_pending', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://wineyard.useyukti.in/pending');
+  });
+
+  it('blocks pending buyer catalog APIs for approved-only storefronts', async () => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_pending', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest('/api/buyer/catalog'));
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    await expect(response.json()).resolves.toEqual({ error: 'Approval required' });
+  });
+
   it('redirects anonymous unpublished tenant pages to catalog login, not tenant-local login', async () => {
     resolveStorefrontMock.mockResolvedValue({
       tenantId: 'tenant-x',
@@ -611,6 +681,100 @@ describe('middleware auth redirects', () => {
     expect(consumeRateLimitMock).toHaveBeenCalledWith('203.0.113.1~dev', 'wineyard', 'search');
   });
 
+  it('lets anonymous visitors browse a live public-link catalog', async () => {
+    hasAuthCookieMock.mockReturnValue(false);
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'public_link',
+      pricingMode: 'hidden_until_login',
+      priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+
+    const page = await middleware(tenantRequest('/product/abc', 'wineyard.useyukti.in'));
+    expect(page.status).toBe(200);
+    expect(page.headers.get('location')).toBeNull();
+
+    const api = await middleware(tenantRequest('/api/buyer/catalog', 'wineyard.useyukti.in'));
+    expect(api.status).toBe(200);
+    expect(api.headers.get('location')).toBeNull();
+  });
+
+  it('redirects anonymous approved-only catalog page requests to catalog login with return_to', async () => {
+    hasAuthCookieMock.mockReturnValue(false);
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+
+    const home = await middleware(tenantRequest('/', 'wineyard.useyukti.in'));
+    expect(home.status).toBe(307);
+    expect(home.headers.get('location')).toBe(
+      'https://catalog.useyukti.in/login?return_to=https%3A%2F%2Fwineyard.useyukti.in%2F',
+    );
+
+    const product = await middleware(tenantRequest('/product/abc', 'wineyard.useyukti.in'));
+    expect(product.status).toBe(307);
+    expect(product.headers.get('location')).toBe(
+      'https://catalog.useyukti.in/login?return_to=https%3A%2F%2Fwineyard.useyukti.in%2Fproduct%2Fabc',
+    );
+  });
+
+  it('returns no-store 401 JSON for anonymous approved-only catalog API requests', async () => {
+    hasAuthCookieMock.mockReturnValue(false);
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+
+    const response = await middleware(tenantRequest('/api/buyer/catalog', 'wineyard.useyukti.in'));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({ error: 'Login required' });
+    expect(consumeRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a matching buyer session through an approved-only catalog', async () => {
+    hasAuthCookieMock.mockReturnValue(true);
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_admin', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy',
+      slug: 'wineyard',
+      catalogId: 'cat-1',
+      liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only',
+      pricingMode: 'base_selling_rate',
+      priceListId: null,
+    });
+    const { middleware } = await import('../../../middleware');
+
+    const page = await middleware(tenantRequest('/', 'wineyard.useyukti.in'));
+    expect(page.status).toBe(200);
+    expect(page.headers.get('x-middleware-rewrite')).toContain('/buy/home');
+
+    const api = await middleware(tenantRequest('/api/buyer/catalog', 'wineyard.useyukti.in'));
+    expect(api.status).toBe(200);
+    expect(api.headers.get('location')).toBeNull();
+  });
+
   it('does NOT spend the database limiter on cheap/cacheable guest reads (limit by cost, not count)', async () => {
     consumeRateLimitMock.mockResolvedValue({ ok: false, retryAfterSec: 30 });
     getClaimsMock.mockResolvedValue({ data: null, error: { message: 'missing' } });
@@ -704,8 +868,7 @@ describe('middleware auth redirects', () => {
         expect(lines).toHaveLength(1);
         const record = JSON.parse(lines[0]);
         expect(record).toMatchObject({ evt: 'mw_cpu_sample', cls: 'page', has_session_cookie: false });
-        expect(typeof record.cpu_us).toBe('number');
-        expect(typeof record.wall_ms).toBe('number');
+        expect(typeof record.duration_ms).toBe('number');
         expect(lines[0]).not.toContain('secret.example');
         expect(lines[0]).not.toContain('return_to');
       } finally {

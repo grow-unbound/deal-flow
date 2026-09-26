@@ -66,6 +66,7 @@ describe('onboarding catalog preview', () => {
     expect(screen.getByText('Brands')).toBeInTheDocument();
     expect(screen.getByText('Categories')).toBeInTheDocument();
     expect(screen.getByText('All products')).toBeInTheDocument();
+    expect(screen.getByText(/Preview shows a representative sample/i)).toBeInTheDocument();
     expect(screen.queryByText(/items/i)).not.toBeInTheDocument();
     expect(screen.getByText('Orders')).toBeInTheDocument();
   });

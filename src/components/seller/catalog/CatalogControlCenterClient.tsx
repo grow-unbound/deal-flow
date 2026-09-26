@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, Copy, Edit3, Eye, Image, Package, Save, Settings2 } from 'lucide-react';
+import { AlertCircle, Copy, Edit3, Image, Package, Save, UploadCloud, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { StatusPill } from '@/components/ui/status-pill';
 import { OnboardingPreviewFrame } from '@/components/seller/onboarding/OnboardingPreviewFrame';
@@ -28,6 +29,7 @@ import type { TenantSettingsApiPayload } from '@/types/tenant-settings';
 interface CatalogSetupState {
   productCount: number;
   catalogUpdatedAt: string | null;
+  liveAt: string | null;
   productReadiness: {
     activeProductCount: number;
     anomalyCount: number;
@@ -45,6 +47,8 @@ interface CatalogSetupState {
   slug: string;
   storefrontHost: string;
   businessName: string;
+  tagline: string | null;
+  logoUrl: string | null;
   live: boolean;
   pricingMode: CatalogPricingMode | null;
   priceListId: string | null;
@@ -55,7 +59,7 @@ interface CatalogSetupState {
   settings: TenantSettingsApiPayload;
 }
 
-type EditSection = 'access' | 'pricing' | 'display' | null;
+type EditSection = 'access' | 'tagline' | 'pricing' | 'display' | null;
 
 export function CatalogControlCenterClient(): ReactNode {
   const { currentTenant } = useTenant();
@@ -63,12 +67,13 @@ export function CatalogControlCenterClient(): ReactNode {
   const [pricingMode, setPricingMode] = useState<CatalogPricingMode | ''>('');
   const [priceListId, setPriceListId] = useState('');
   const [accessMode, setAccessMode] = useState<CatalogAccessMode>('public_link');
+  const [taglineDraft, setTaglineDraft] = useState('');
   const [collectTarget, setCollectTarget] = useState(false);
   const [productDisplayMode, setProductDisplayMode] = useState<CatalogProductDisplayMode>('sku_list');
   const [assignedByList, setAssignedByList] = useState<Record<string, AssignedPriceMap>>({});
   const [editing, setEditing] = useState<EditSection>(null);
-  const [showReconfigure, setShowReconfigure] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [hasSavedUnpublishedChanges, setHasSavedUnpublishedChanges] = useState(false);
 
   const load = useCallback(async (assignedListId?: string) => {
     const params = new URLSearchParams();
@@ -83,6 +88,7 @@ export function CatalogControlCenterClient(): ReactNode {
     setPricingMode(data.pricingMode ?? '');
     setPriceListId(data.priceListId ?? '');
     setAccessMode(data.accessMode);
+    setTaglineDraft(data.tagline ?? '');
     setCollectTarget(data.collectTargetUnitPriceRange);
     setProductDisplayMode(data.productDisplayMode);
     if (assignedListId) {
@@ -112,21 +118,25 @@ export function CatalogControlCenterClient(): ReactNode {
   const canSave = Boolean(pricingMode) && (pricingMode !== 'assigned_price_list' || Boolean(priceListId));
   const href = currentTenant?.storefront_url ?? (state?.storefrontHost ? `https://${state.storefrontHost}` : '');
 
-  async function save(publish = false) {
-    if (!canSave) {
+  async function save(publish = false, options: { includeSettings?: boolean } = {}) {
+    if (!canSave && !options.includeSettings) {
       toast.error('Choose how prices work before saving');
       return;
     }
     setSaving(true);
     try {
-      const res = await apiPatch('/api/tenant/catalog/setup', {
-        pricing_mode: pricingMode,
-        price_list_id: pricingMode === 'assigned_price_list' ? priceListId : null,
-        access_mode: accessMode,
-        collect_target_unit_price_range: pricingMode === 'hide_price_collect_enquiry' ? collectTarget : false,
-        product_display_mode: productDisplayMode,
-        publish,
-      });
+      const payload: Record<string, unknown> = { publish };
+      if (canSave) {
+        payload.pricing_mode = pricingMode;
+        payload.price_list_id = pricingMode === 'assigned_price_list' ? priceListId : null;
+        payload.access_mode = accessMode;
+        payload.collect_target_unit_price_range = pricingMode === 'hide_price_collect_enquiry' ? collectTarget : false;
+        payload.product_display_mode = productDisplayMode;
+      }
+      if (options.includeSettings) {
+        payload.settings = { business: { tagline: taglineDraft } };
+      }
+      const res = await apiPatch('/api/tenant/catalog/setup', payload);
       const json = (await res.json().catch(() => ({}))) as { error?: string; state?: CatalogSetupState };
       if (!res.ok) {
         toast.error(json.error ?? 'Could not save catalog');
@@ -137,15 +147,31 @@ export function CatalogControlCenterClient(): ReactNode {
         setPricingMode(json.state.pricingMode ?? '');
         setPriceListId(json.state.priceListId ?? '');
         setAccessMode(json.state.accessMode);
+        setTaglineDraft(json.state.tagline ?? '');
         setCollectTarget(json.state.collectTargetUnitPriceRange);
         setProductDisplayMode(json.state.productDisplayMode);
+        setHasSavedUnpublishedChanges(publish ? false : json.state.live);
       }
       setEditing(null);
-      setShowReconfigure(false);
       toast.success(publish ? 'Catalog published' : 'Catalog settings saved');
     } finally {
       setSaving(false);
     }
+  }
+
+  function resetDraftFromState() {
+    if (!state) return;
+    setPricingMode(state.pricingMode ?? '');
+    setPriceListId(state.priceListId ?? '');
+    setAccessMode(state.accessMode);
+    setTaglineDraft(state.tagline ?? '');
+    setCollectTarget(state.collectTargetUnitPriceRange);
+    setProductDisplayMode(state.productDisplayMode);
+  }
+
+  function cancelEdit() {
+    resetDraftFromState();
+    setEditing(null);
   }
 
   async function copyLink() {
@@ -173,6 +199,7 @@ export function CatalogControlCenterClient(): ReactNode {
 
   const pricingLabel = pricingSummaryLabel(pricingMode, state.priceLists, priceListId);
   const lastUpdated = formatCatalogDate(state.catalogUpdatedAt);
+  const publishDisabled = saving || !canSave || (state.live && !hasSavedUnpublishedChanges);
   const hasOperationalIssues = state.productReadiness.anomalyCount > 0 || state.productReadiness.missingProductImageCount > 0;
 
   return (
@@ -182,16 +209,17 @@ export function CatalogControlCenterClient(): ReactNode {
         title="Catalog"
         subtitle="Control what buyers see, whether prices are shown, and how enquiries are collected."
         action={(
-          <>
-            <Button type="button" variant="secondary" disabled={!canSave || saving} onClick={() => void save(false)}>
-              <Save className="h-4 w-4" />
-              Save settings
-            </Button>
-            <Button type="button" disabled={!canSave || saving} onClick={() => void save(true)}>
-              <Eye className="h-4 w-4" />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {state.live && hasSavedUnpublishedChanges ? (
+              <span className="rounded-full border border-ember-100 bg-ember-50 px-2 py-0.5 text-caption font-medium text-ember-700">
+                Saved changes unpublished
+              </span>
+            ) : null}
+            <Button type="button" variant="accent" disabled={publishDisabled} onClick={() => void save(true)}>
+              <UploadCloud className="h-4 w-4" />
               {state.live ? 'Update live catalog' : 'Publish catalog'}
             </Button>
-          </>
+          </div>
         )}
       />
 
@@ -250,106 +278,82 @@ export function CatalogControlCenterClient(): ReactNode {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,38rem)_minmax(0,1fr)]">
-        <div className="space-y-5">
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,38rem)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-5">
           <section className="rounded-[8px] border border-cream-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-h4 font-semibold text-cream-950">Setup summary</h2>
-                <p className="mt-1 text-body-sm text-cream-600">Last updated {lastUpdated}</p>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setShowReconfigure((open) => !open);
-                  setEditing(null);
-                }}
-              >
-                <Settings2 className="h-4 w-4" />
-                Reconfigure catalog
-              </Button>
+            <div>
+              <h2 className="text-h4 font-semibold text-cream-950">Setup summary</h2>
+              <p className="mt-1 text-body-sm text-cream-600">Last updated {lastUpdated}</p>
             </div>
 
             <div className="mt-4 divide-y divide-cream-200 rounded-[8px] border border-cream-200">
-              <SummaryRow label="Access" value={accessMode === 'public_link' ? 'Public link' : 'Approved buyers only'} onEdit={() => setEditing('access')} />
-              <SummaryRow label="Pricing" value={pricingLabel} onEdit={() => setEditing('pricing')} />
-              <SummaryRow label="Target rate" value={pricingMode === 'hide_price_collect_enquiry' && collectTarget ? 'On' : 'Off'} onEdit={() => setEditing('pricing')} />
-              <SummaryRow label="Product display" value={productDisplayMode === 'group_variants' ? 'Grouped variants' : 'SKU list'} onEdit={() => setEditing('display')} />
+              <SummaryRow
+                label="Access"
+                value={accessMode === 'public_link' ? 'Public link' : 'Approved buyers only'}
+                editing={editing === 'access'}
+                canSave={canSave}
+                saving={saving}
+                onEdit={() => setEditing('access')}
+                onCancel={cancelEdit}
+                onSave={() => void save(false)}
+              >
+                {renderAccessEditor(accessMode, setAccessMode)}
+              </SummaryRow>
+              <SummaryRow
+                label="Tagline"
+                value={taglineDraft || 'Not set'}
+                editing={editing === 'tagline'}
+                canSave
+                saving={saving}
+                onEdit={() => setEditing('tagline')}
+                onCancel={cancelEdit}
+                onSave={() => void save(false, { includeSettings: true })}
+              >
+                <TaglineEditor value={taglineDraft} onChange={setTaglineDraft} />
+              </SummaryRow>
+              <SummaryRow
+                label="Pricing"
+                value={pricingLabel}
+                editing={editing === 'pricing'}
+                canSave={canSave}
+                saving={saving}
+                onEdit={() => setEditing('pricing')}
+                onCancel={cancelEdit}
+                onSave={() => void save(false)}
+              >
+                {renderPricingEditor({
+                  pricingMode,
+                  priceListId,
+                  state,
+                  assignedByList,
+                  collectTarget,
+                  setPricingMode,
+                  setPriceListId,
+                  setCollectTarget,
+                  load,
+                })}
+              </SummaryRow>
+              <SummaryRow
+                label="Product display"
+                value={productDisplayMode === 'group_variants' ? 'Grouped variants' : 'SKU list'}
+                editing={editing === 'display'}
+                canSave={canSave}
+                saving={saving}
+                onEdit={() => setEditing('display')}
+                onCancel={cancelEdit}
+                onSave={() => void save(false)}
+              >
+                {renderDisplayEditor(productDisplayMode, setProductDisplayMode)}
+              </SummaryRow>
             </div>
           </section>
-
-          {editing === 'access' ? (
-            <EditableSection title="Who can browse your catalog?" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-              {renderAccessEditor(accessMode, setAccessMode)}
-            </EditableSection>
-          ) : null}
-
-          {editing === 'pricing' ? (
-            <EditableSection title="How buyers buy" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-              {renderPricingEditor({
-                pricingMode,
-                priceListId,
-                state,
-                assignedByList,
-                collectTarget,
-                setPricingMode,
-                setPriceListId,
-                setCollectTarget,
-                load,
-              })}
-            </EditableSection>
-          ) : null}
-
-          {editing === 'display' ? (
-            <EditableSection title="How products appear" onCancel={() => setEditing(null)} onSave={() => void save(false)} saving={saving} canSave={canSave}>
-              {renderDisplayEditor(productDisplayMode, setProductDisplayMode)}
-            </EditableSection>
-          ) : null}
-
-          {showReconfigure ? (
-            <section className="rounded-[8px] border border-teal-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-h4 font-semibold text-cream-950">Reconfigure catalog</h2>
-                  <p className="mt-1 text-body-sm text-cream-600">Adjust the live buyer-facing behavior and preview the impact beside it.</p>
-                </div>
-                <Button type="button" variant="ghost" onClick={() => setShowReconfigure(false)}>Close</Button>
-              </div>
-              <div className="mt-5 space-y-5">
-                <div>
-                  <h3 className="text-body font-semibold text-cream-950">Access</h3>
-                  <div className="mt-3">{renderAccessEditor(accessMode, setAccessMode)}</div>
-                </div>
-                <div>
-                  <h3 className="text-body font-semibold text-cream-950">Buying mode</h3>
-                  <div className="mt-3">
-                    {renderPricingEditor({
-                      pricingMode,
-                      priceListId,
-                      state,
-                      assignedByList,
-                      collectTarget,
-                      setPricingMode,
-                      setPriceListId,
-                      setCollectTarget,
-                      load,
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-body font-semibold text-cream-950">Product display</h3>
-                  <div className="mt-3">{renderDisplayEditor(productDisplayMode, setProductDisplayMode)}</div>
-                </div>
-              </div>
-            </section>
-          ) : null}
         </div>
 
-        <div className="min-h-[680px]">
+        <div className="min-h-[680px] min-w-0">
           <OnboardingPreviewFrame
             slug={state.slug}
             businessName={state.businessName}
+            logoUrl={state.logoUrl}
             items={previewItems}
             brands={state.brands}
             categories={state.categories}
@@ -364,50 +368,71 @@ export function CatalogControlCenterClient(): ReactNode {
   );
 }
 
-function SummaryRow({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
+function SummaryRow({
+  label,
+  value,
+  editing,
+  canSave,
+  saving,
+  onEdit,
+  onCancel,
+  onSave,
+  children,
+}: {
+  label: string;
+  value: string;
+  editing: boolean;
+  canSave: boolean;
+  saving: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
-      <div>
-        <p className="text-body-sm text-cream-600">{label}</p>
-        <p className="mt-0.5 text-body font-semibold text-cream-950">{value}</p>
+    <div className={`min-w-0 px-4 py-3 ${editing ? 'bg-cream-50/60' : ''}`}>
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <p className="text-body-sm text-cream-600">{label}</p>
+          <p className="mt-0.5 break-words text-body font-semibold text-cream-950">{value}</p>
+        </div>
+        {editing ? (
+          <div className="flex shrink-0 gap-2 self-start sm:self-auto">
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button type="button" size="sm" disabled={!canSave || saving} onClick={onSave}>
+              <Save className="h-4 w-4" />
+              Save
+            </Button>
+          </div>
+        ) : (
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 self-start sm:self-auto" aria-label={`Edit ${label}`} onClick={onEdit}>
+            <Edit3 className="h-4 w-4" />
+            Edit
+          </Button>
+        )}
       </div>
-      <Button type="button" variant="ghost" size="sm" aria-label={`Edit ${label}`} onClick={onEdit}>
-        <Edit3 className="h-4 w-4" />
-        Edit
-      </Button>
+      {editing ? <div className="mt-4">{children}</div> : null}
     </div>
   );
 }
 
-function EditableSection({
-  title,
-  children,
-  onCancel,
-  onSave,
-  saving,
-  canSave,
-}: {
-  title: string;
-  children: ReactNode;
-  onCancel: () => void;
-  onSave: () => void;
-  saving: boolean;
-  canSave: boolean;
-}) {
+function TaglineEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    <section className="rounded-[8px] border border-teal-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-h4 font-semibold text-cream-950">{title}</h2>
-        <div className="flex gap-2">
-          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-          <Button type="button" disabled={!canSave || saving} onClick={onSave}>
-            <Save className="h-4 w-4" />
-            Save
-          </Button>
-        </div>
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
+    <div className="space-y-2">
+      <Label htmlFor="catalog-tagline">Tagline</Label>
+      <Textarea
+        id="catalog-tagline"
+        value={value}
+        maxLength={120}
+        rows={3}
+        placeholder="Short buyer-facing line for your storefront"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <p className="text-caption text-cream-500">{value.length}/120 characters</p>
+    </div>
   );
 }
 
@@ -460,9 +485,26 @@ function renderPricingEditor({
         <CatalogOption value="base_selling_rate" title="Show prices" active={pricingMode === 'base_selling_rate'}>
           Buyers see rates while browsing.
         </CatalogOption>
-        <CatalogOption value="hide_price_collect_enquiry" title="Hide prices and collect enquiries" active={pricingMode === 'hide_price_collect_enquiry'}>
-          Buyers choose products and quantities. Your team responds with prices.
-        </CatalogOption>
+        <div className={`rounded-[8px] border ${pricingMode === 'hide_price_collect_enquiry' ? 'border-teal-500 bg-cream-50 ring-2 ring-teal-500/15' : 'border-cream-300 bg-white'}`}>
+          <Label className="flex cursor-pointer gap-3 p-4">
+            <RadioGroupItem value="hide_price_collect_enquiry" className="mt-1" />
+            <span>
+              <span className="block font-semibold text-cream-950">Hide prices and collect enquiries</span>
+              <span className="mt-0.5 block text-body-sm text-cream-600">Buyers choose products and quantities. Your team responds with prices.</span>
+            </span>
+          </Label>
+          {pricingMode === 'hide_price_collect_enquiry' ? (
+            <div className="px-4 pb-4 pl-11">
+              <label className="flex items-start gap-3 rounded-[8px] border border-cream-200 bg-cream-50 p-4">
+                <Checkbox checked={collectTarget} onCheckedChange={(checked) => setCollectTarget(checked === true)} className="mt-1" />
+                <span>
+                  <span className="block font-semibold text-cream-950">Ask for target unit price range</span>
+                  <span className="mt-0.5 block text-body-sm text-cream-600">Buyers can share the per-unit rate they are hoping for.</span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+        </div>
         <CatalogOption value="hidden_until_login" title="Login to see pricing" active={pricingMode === 'hidden_until_login'}>
           Guests browse first, then approved buyers log in to see prices.
         </CatalogOption>
@@ -492,15 +534,6 @@ function renderPricingEditor({
           ) : null}
         </label>
       </RadioGroup>
-      {pricingMode === 'hide_price_collect_enquiry' ? (
-        <label className="mt-4 flex items-start gap-3 rounded-[8px] border border-cream-200 bg-cream-50 p-4">
-          <Checkbox checked={collectTarget} onCheckedChange={(checked) => setCollectTarget(checked === true)} className="mt-1" />
-          <span>
-            <span className="block font-semibold text-cream-950">Ask for target unit price range</span>
-            <span className="mt-0.5 block text-body-sm text-cream-600">Buyers can share the per-unit rate they are hoping for.</span>
-          </span>
-        </label>
-      ) : null}
     </>
   );
 }

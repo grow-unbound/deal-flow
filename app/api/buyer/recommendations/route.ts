@@ -4,7 +4,7 @@ import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assem
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
-import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
+import { getCachedGuestPricingContext, loadLivePublicCatalog } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
 
@@ -25,15 +25,28 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
   }
 
   const tenantId = profile.context.tenant_id!;
-  const buyerId = profile.buyer?.id ?? null;
-  const isGuest = profile.context.mode === 'guest';
+  const pendingBuyerCatalogSession =
+    profile.context.mode !== 'preview'
+    && (profile.context.role === 'buyer_pending' || profile.buyer?.buyer_app_enabled === false);
+  const buyerId = pendingBuyerCatalogSession ? null : (profile.buyer?.id ?? null);
+  const isGuestLikePublicBrowse = profile.context.mode === 'guest' || pendingBuyerCatalogSession;
 
   try {
+    if (pendingBuyerCatalogSession) {
+      const publicCatalog = await loadLivePublicCatalog(supabaseAdmin, tenantId);
+      if (publicCatalog?.accessMode !== 'public_link') {
+        return NextResponse.json({ error: 'Approval required' }, {
+          status: 403,
+          headers: { 'Cache-Control': 'private, no-store' },
+        });
+      }
+    }
+
     const [allowedTenantBrandIds, guestPricing] = await Promise.all([
       // null (not []) for guest/no-cohort — an empty array means "allow zero
       // brands" to enrichBuyerProducts and would zero out every result.
       buyerId ? resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId) : Promise.resolve(null),
-      isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
+      isGuestLikePublicBrowse ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
     ]);
 
     // Only same_category is ever rendered on the PDP (co_order/"Frequently Bought

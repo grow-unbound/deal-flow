@@ -221,7 +221,8 @@ export async function saveCatalogSetupState(
     catalogPatch.collect_target_unit_price_range = patch.collect_target_unit_price_range;
   }
   if (patch.product_display_mode !== undefined) catalogPatch.product_display_mode = patch.product_display_mode;
-  if (publishing) catalogPatch.live_at = new Date().toISOString();
+  const catalogUpdatedAt = new Date().toISOString();
+  if (publishing) catalogPatch.live_at = catalogUpdatedAt;
 
   if (slug) {
     const { error: tenantUpdateError } = await db
@@ -236,7 +237,7 @@ export async function saveCatalogSetupState(
     const { error: catalogUpdateError } = await db
       .schema('app')
       .from('catalogs')
-      .update({ ...catalogPatch, updated_at: new Date().toISOString(), updated_by: actorId })
+      .update({ ...catalogPatch, updated_at: catalogUpdatedAt, updated_by: actorId })
       .eq('id', currentRes.data.id);
     if (catalogUpdateError) throw new Error(catalogUpdateError.message);
     revalidatePublicCatalogCache(tenantId);

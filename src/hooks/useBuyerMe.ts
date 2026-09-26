@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
-import type { CatalogPricingMode } from '@/lib/server/public-catalog';
+import type { CatalogAccessMode, CatalogPricingMode } from '@/lib/server/public-catalog';
 
 export interface BuyerMeData {
   mode: 'buyer' | 'preview' | 'guest' | 'pending';
@@ -58,6 +58,8 @@ export interface BuyerMeData {
   buyer_catalog?: {
     id: string | null;
     pricing_mode: CatalogPricingMode | null;
+    access_mode: CatalogAccessMode | null;
+    public_browse_allowed: boolean;
     collect_target_unit_price_range: boolean;
   };
   whatsapp_consent_required: boolean;

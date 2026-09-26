@@ -38,6 +38,7 @@ export default function BuyerPendingPage() {
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;
   const isDeclined = me?.pending?.onboarding_status === 'declined';
+  const publicBrowseAllowed = me?.buyer_catalog?.public_browse_allowed === true;
 
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
@@ -49,6 +50,7 @@ export default function BuyerPendingPage() {
       <DeclinedContactScreen
         sellerName={sellerName}
         sellerWhatsappNumber={sellerWhatsappNumber}
+        publicBrowseAllowed={publicBrowseAllowed}
         onLogout={handleLogout}
       />
     );
@@ -71,13 +73,15 @@ export default function BuyerPendingPage() {
           </p>
         </div>
 
-        <Link
-          href={STOREFRONT.home}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-ember-400 hover:bg-ember-500 text-cream-50 text-body-sm font-semibold transition-colors duration-base mb-3"
-        >
-          <Store className="h-4 w-4" />
-          Browse the public catalog
-        </Link>
+        {publicBrowseAllowed ? (
+          <Link
+            href={STOREFRONT.home}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-ember-400 hover:bg-ember-500 text-cream-50 text-body-sm font-semibold transition-colors duration-base mb-3"
+          >
+            <Store className="h-4 w-4" />
+            Browse the public catalog
+          </Link>
+        ) : null}
 
         {sellerWhatsappNumber && (
           <button

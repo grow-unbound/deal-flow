@@ -46,6 +46,7 @@ export async function loadInitialCatalogListData(
   try {
     const claims = await getBuyerServerClaims();
     if (!claims.tenant_id || !claims.buyer_id) return EMPTY_RESULT;
+    if (claims.role === 'buyer_pending') return EMPTY_RESULT;
     const db = supabaseAdmin;
     const tenantId = claims.tenant_id;
     const buyerId = claims.buyer_id;

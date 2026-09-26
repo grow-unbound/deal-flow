@@ -64,6 +64,8 @@ interface BuyerMeResponse {
   buyer_catalog?: {
     id: string | null;
     pricing_mode: CatalogPricingMode | null;
+    access_mode: 'public_link' | 'approved_buyers_only' | null;
+    public_browse_allowed: boolean;
     collect_target_unit_price_range: boolean;
   };
   // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
@@ -188,6 +190,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const buyerCatalog = {
       id: liveCatalog?.id ?? null,
       pricing_mode: liveCatalog?.pricingMode ?? null,
+      access_mode: liveCatalog?.accessMode ?? null,
+      public_browse_allowed: liveCatalog?.accessMode === 'public_link',
       collect_target_unit_price_range: liveCatalog?.collectTargetUnitPriceRange ?? false,
     };
     const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;

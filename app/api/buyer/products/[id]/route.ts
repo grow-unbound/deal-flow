@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
-import { resolveBuyerProductScopeContext } from '@/lib/server/buyer-product-data';
+import { isCatalogApprovalRequiredForProfile, resolveBuyerProductScopeContext } from '@/lib/server/buyer-product-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -35,6 +35,12 @@ export async function GET(
 
   try {
     const context = await resolveBuyerProductScopeContext(supabaseAdmin as any, request, profile);
+    if (isCatalogApprovalRequiredForProfile(profile, context.publicCatalog)) {
+      return NextResponse.json({ error: 'Approval required' }, {
+        status: 403,
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
+    }
 
     const enriched = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       tenantId: context.tenantId,

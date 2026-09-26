@@ -5,6 +5,7 @@ export interface StorefrontTenantRecord {
   slug: string;
   catalogId: string | null;
   liveAt: string | null;
+  accessMode: 'public_link' | 'approved_buyers_only';
   pricingMode: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | null;
   priceListId: string | null;
 }
@@ -40,7 +41,7 @@ export async function resolveStorefrontTenantBySlug(slug: string): Promise<Store
   const { data, error } = await supabaseAdmin
     .schema('app')
     .from('catalogs')
-    .select('id, live_at, pricing_mode, price_list_id, tenant:tenants!inner(id, slug)')
+    .select('id, live_at, access_mode, pricing_mode, price_list_id, tenant:tenants!inner(id, slug)')
     .eq('kind', 'public')
     .is('deleted_at', null)
     .eq('tenant.slug', slug)
@@ -59,6 +60,7 @@ export async function resolveStorefrontTenantBySlug(slug: string): Promise<Store
         slug: tenant.slug,
         catalogId: (data?.id as string | undefined) ?? null,
         liveAt: (data?.live_at as string | null | undefined) ?? null,
+        accessMode: ((data?.access_mode as StorefrontTenantRecord['accessMode'] | null | undefined) ?? 'public_link'),
         pricingMode: (data?.pricing_mode as StorefrontTenantRecord['pricingMode'] | undefined) ?? null,
         priceListId: (data?.price_list_id as string | null | undefined) ?? null,
       }

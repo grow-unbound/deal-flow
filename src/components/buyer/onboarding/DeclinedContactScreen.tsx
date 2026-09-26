@@ -1,11 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
+import { STOREFRONT } from '@/lib/storefront-paths';
 
 interface DeclinedContactScreenProps {
   sellerName: string;
   sellerWhatsappNumber: string | null;
+  publicBrowseAllowed: boolean;
   onLogout: () => void;
 }
 
@@ -16,7 +19,7 @@ interface DeclinedContactScreenProps {
  * "in progress" framing, and deliberately no appeal CTA (locked decisions:
  * no in-app appeal flow for a decline).
  */
-export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, onLogout }: DeclinedContactScreenProps) {
+export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, publicBrowseAllowed, onLogout }: DeclinedContactScreenProps) {
   return (
     <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white border border-cream-300 rounded-xl shadow-md p-8">
@@ -30,9 +33,20 @@ export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, onLogo
             {sellerName} has declined your access request.
           </p>
           <p className="text-body-sm text-cream-700/90">
-            You can still browse the catalog at base pricing. For questions about this decision, contact {sellerName} directly.
+            {publicBrowseAllowed
+              ? 'You can still browse the public catalog. For questions about this decision, contact the seller directly.'
+              : `For questions about this decision, contact ${sellerName} directly.`}
           </p>
         </div>
+
+        {publicBrowseAllowed ? (
+          <Link
+            href={STOREFRONT.home}
+            className="mb-3 inline-flex w-full items-center justify-center rounded-md bg-ember-400 px-4 py-2.5 text-body-sm font-semibold text-cream-50 transition-colors duration-base hover:bg-ember-500"
+          >
+            Browse the public catalog
+          </Link>
+        ) : null}
 
         {sellerWhatsappNumber && (
           <button

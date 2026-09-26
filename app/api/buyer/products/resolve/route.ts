@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
-import { enrichBuyerProducts, resolveBuyerProductScopeContext, resolveVisibleCampaignMap } from '@/lib/server/buyer-product-data';
+import { enrichBuyerProducts, isCatalogApprovalRequiredForProfile, resolveBuyerProductScopeContext, resolveVisibleCampaignMap } from '@/lib/server/buyer-product-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerResolvedProductsResponse } from '@/types/buyer';
 
@@ -28,6 +28,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const context = await resolveBuyerProductScopeContext(supabaseAdmin as any, request, profile);
+    if (isCatalogApprovalRequiredForProfile(profile, context.publicCatalog)) {
+      return NextResponse.json({ error: 'Approval required' }, {
+        status: 403,
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
+    }
     const orderedIds = rows.map((row) => row.tenant_product_id);
     const qtyByProductId = new Map(
       rows.map((row) => [row.tenant_product_id, Math.max(1, Number(row.qty ?? 1))]),
