@@ -41,6 +41,7 @@ export async function GET(
         p_tenant_id: claims.tenant_id,
         p_buyer_id: buyerId,
         p_limit: parsed.data.limit,
+        p_actor_user_id: claims.sub,
       });
 
     if (error) {
