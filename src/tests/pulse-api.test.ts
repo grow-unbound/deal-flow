@@ -8,6 +8,7 @@ const redirectMock = vi.fn((url: string) => {
   throw Object.assign(new Error('NEXT_REDIRECT'), { digest: `NEXT_REDIRECT;replace;${url};307;` });
 });
 const requireSellerServerTenantIdMock = vi.fn();
+const getSellerServerClaimsMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -19,6 +20,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/server/seller-server-claims', () => ({
   requireSellerServerTenantId: (...args: unknown[]) => requireSellerServerTenantIdMock(...args),
+  getSellerServerClaims: (...args: unknown[]) => getSellerServerClaimsMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -73,9 +75,10 @@ describe('Pulse API routes', () => {
     vi.clearAllMocks();
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
-      role: 'seller_assistant',
-      location_ids: ['loc-1'],
+      role: 'seller_admin',
+      location_ids: null,
     });
+    getSellerServerClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_admin', location_ids: null });
     rpcMock.mockResolvedValue({ data: rpcPortfolio, error: null });
     fromMock.mockImplementation((table: string) => {
       const filters = new Map<string, unknown>();
@@ -117,21 +120,6 @@ describe('Pulse API routes', () => {
       return builder;
     });
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
-  });
-
-  it('loads contribution from the existing buyer-app v4 RPC with assistant location scope', async () => {
-    const response = await getContribution(new NextRequest('http://localhost/api/tenant/pulse/contribution'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.cards[0].id).toBe('demand_captured');
-    expect(rpcMock).toHaveBeenCalledWith('get_buyer_app_dashboard_v4', {
-      p_tenant_id: 'tenant-1',
-      p_role: 'seller_assistant',
-      p_location_ids: ['loc-1'],
-    });
-    expect(response.headers.get('Cache-Control')).toContain('private');
-    expect(response.headers.get('Server-Timing')).toContain('pulse_contribution_api');
   });
 
   it('loads seller-admin contribution from landing metrics instead of the heavier portfolio RPC', async () => {
@@ -213,16 +201,6 @@ describe('Pulse API routes', () => {
     expect(fromMock).toHaveBeenCalledWith('buyers');
   });
 
-  it('omits location-scoped assistant opportunities when no scoped summary read exists', async () => {
-    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.groups).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalledWith('get_buyer_app_dashboard_v4', expect.anything());
-    expect(fromMock).not.toHaveBeenCalled();
-  });
-
   it('loads demand signals from the local landing snapshot boundary', async () => {
     rpcMock.mockResolvedValueOnce({
       data: {
@@ -296,21 +274,6 @@ describe('Pulse API routes', () => {
     expect(response.headers.get('Server-Timing')).toContain('pulse_opportunity_buyers_api');
   });
 
-  it('does not query the database for an unassigned seller assistant', async () => {
-    getVerifiedClaimsMock.mockResolvedValue({
-      tenant_id: 'tenant-1',
-      role: 'seller_assistant',
-      location_ids: [],
-    });
-
-    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.groups).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalled();
-  });
-
   it('rejects non-seller roles before the RPC', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
@@ -324,11 +287,17 @@ describe('Pulse API routes', () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('redirects the archived buyer-app analytics page to Pulse', async () => {
+  it('redirects the archived buyer-app analytics page to Pulse for admins', async () => {
     await expect(BuyerAppPage()).rejects.toThrow('NEXT_REDIRECT');
 
     expect(requireSellerServerTenantIdMock).toHaveBeenCalled();
     expect(redirectMock).toHaveBeenCalledWith('/pulse');
+  });
+
+  it('sends assistants from the archived buyer-app page to Today, not Pulse', async () => {
+    getSellerServerClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_assistant', location_ids: ['loc-1'] });
+    await expect(BuyerAppPage()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirectMock).toHaveBeenCalledWith('/today');
   });
 
   it('preserves the buyer-app access management page', async () => {

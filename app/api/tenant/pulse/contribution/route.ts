@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { canAccessPulse, pulseForbiddenResponse } from '@/lib/server/pulse-access';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming } from '@/lib/server/bounded-get';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import { createTimer } from '@/lib/server-timing';
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const claims = await getVerifiedClaims(request);
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccessPulse(claims.role)) return pulseForbiddenResponse();
 
   const locationScope = getSellerLocationScope({
     role: claims.role ?? null,

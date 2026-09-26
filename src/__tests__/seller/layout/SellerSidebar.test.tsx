@@ -182,7 +182,7 @@ describe('SellerSidebar', () => {
     expect(paths).not.toContain('/settings/integrations');
     expect(paths).not.toContain('/settings/billing');
     expect(paths).not.toContain('/estimates');
-    expect(paths).toContain('/pulse');
+    expect(paths).not.toContain('/pulse');
     expect(paths).toContain('/sales/invoices');
   });
 
@@ -195,10 +195,11 @@ describe('SellerSidebar', () => {
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
     expect(screen.queryByText('MARKET')).not.toBeInTheDocument();
     expect(screen.queryByText('SETUP')).not.toBeInTheDocument();
-    const orderedItems = ['Today', 'Pulse', 'Sales', 'Customers', 'Products'];
+    const orderedItems = ['Today', 'Sales', 'Customers', 'Products'];
     orderedItems.forEach((label) => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     });
+    expect(screen.queryByRole('link', { name: 'Pulse' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Brands' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
