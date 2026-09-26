@@ -4,6 +4,7 @@ import type { BuyerHomePromotionsResponse } from '@/lib/buyer-home-types';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { loadBuyerHomePromotions } from '@/lib/server/buyer-home-promotions';
 import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { isPendingBuyerCatalogSession } from '@/lib/server/buyer-pending-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
@@ -17,6 +18,12 @@ export async function GET(
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
+    // Buyer-scoped promotions are never exposed to a pending / access-disabled session.
+    if (isPendingBuyerCatalogSession(profile)) {
+      const pendingPayload: BuyerHomePromotionsResponse = { latest_promotions_preview: [] };
+      return NextResponse.json(pendingPayload, { headers: { 'Cache-Control': 'private, no-store' } });
     }
 
     if (!profile.buyer?.id) {

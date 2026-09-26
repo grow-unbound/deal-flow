@@ -4,6 +4,7 @@ import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assem
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
+import { guardPendingBuyerCatalogAccess } from '@/lib/server/buyer-pending-guard';
 import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -26,7 +27,9 @@ export async function GET(
 
   const { id: categoryId } = await params;
   const tenantId = profile.context.tenant_id!;
-  const buyerId = profile.buyer?.id ?? null;
+  const gate = await guardPendingBuyerCatalogAccess(supabaseAdmin as any, profile);
+  if (gate.blocked) return gate.blocked as NextResponse<{ error: string }>;
+  const buyerId = gate.pending ? null : (profile.buyer?.id ?? null);
   const isGuest = profile.context.mode === 'guest';
 
   try {
@@ -47,7 +50,9 @@ export async function GET(
 
     const [allowedTenantBrandIds, guestPricing] = await Promise.all([
       buyerId ? resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId) : Promise.resolve(null),
-      isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
+      gate.pending
+        ? Promise.resolve(gate.guestPricing)
+        : isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
     ]);
 
     const enriched = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
