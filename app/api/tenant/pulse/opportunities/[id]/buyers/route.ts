@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseBoundedLimit, parseRowsOffset } from '@/lib/server/bounded-get';
-import { loadPulsePortfolio, portfolioToPulseOpportunityBuyerPage } from '@/lib/server/pulse-core';
+import { loadPulseOpportunityBuyerPage } from '@/lib/server/pulse-core';
 import { createTimer } from '@/lib/server-timing';
 import type { PulseOpportunityBuyerPage, PulseOpportunityGroup } from '@/types/pulse';
 
@@ -36,16 +36,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const limit = parseBoundedLimit(searchParams.get('limit'), 20, 50);
   const offset = parseRowsOffset(searchParams.get('cursor'), 5_000);
 
-  const { portfolio, status, error } = await loadPulsePortfolio(claims);
+  const { page, status, error } = await loadPulseOpportunityBuyerPage(claims, id, offset, limit);
   if (status === 403) return timedJson({ error: 'Forbidden' }, { status: 403 });
   if (status === 500) {
     console.error('[GET /api/tenant/pulse/opportunities/[id]/buyers] failed', error);
     return timedJson({ error: 'Failed to load Pulse opportunity buyers' }, { status: 500 });
   }
+  if (!page) return timedJson({ error: 'Failed to load Pulse opportunity buyers' }, { status: 500 });
 
-  if (!portfolio) {
-    return timedJson(portfolioToPulseOpportunityBuyerPage(null, id, offset, limit));
-  }
-
-  return timedJson(portfolioToPulseOpportunityBuyerPage(portfolio, id, offset, limit));
+  return timedJson(page);
 }

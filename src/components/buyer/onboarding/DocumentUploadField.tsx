@@ -4,13 +4,11 @@ import { useRef, useState } from 'react';
 import { Loader2, CheckCircle2, RotateCcw, Upload } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api-fetch';
-import { R2_UPLOAD_CACHE_CONTROL } from '@/lib/r2-cache-control';
 
 /**
  * Single onboarding-document upload control (shop image / GST certificate)
- * for /onboarding's business block. Uses Task 7's presign/confirm routes:
- * presign -> PUT bytes directly to the returned upload_url -> confirm ->
- * bubble the resulting document id up to the parent's documentIds state.
+ * for /onboarding's business block. The file is posted to a same-origin API
+ * route, which writes to R2 and returns the resulting buyer_documents id.
  *
  * Inline idle/uploading/done/error state machine — no upload library needed.
  */
@@ -29,7 +27,26 @@ export interface DocumentUploadFieldProps {
   onChange: (documentId: string | null) => void;
 }
 
-const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,application/pdf';
+const ACCEPTED_TYPES: Record<DocumentUploadFieldProps['docType'], string> = {
+  shop_image: 'image/jpeg,image/png,image/webp',
+  gst_certificate: 'application/pdf,image/jpeg,image/png',
+};
+const SHOP_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const GST_CERTIFICATE_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAX_SHOP_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_GST_CERTIFICATE_BYTES = 10 * 1024 * 1024;
+
+function validateDocumentFile(file: File, docType: DocumentUploadFieldProps['docType']): string | null {
+  if (docType === 'shop_image') {
+    if (!SHOP_IMAGE_TYPES.has(file.type)) return 'Shop image must be a JPG, PNG, or WebP file.';
+    if (file.size > MAX_SHOP_IMAGE_BYTES) return 'Shop image must be under 8 MB.';
+    return null;
+  }
+
+  if (!GST_CERTIFICATE_TYPES.has(file.type)) return 'GST certificate must be a PDF, JPG, or PNG file.';
+  if (file.size > MAX_GST_CERTIFICATE_BYTES) return 'GST certificate must be under 10 MB.';
+  return null;
+}
 
 export function DocumentUploadField({
   id,
@@ -52,53 +69,32 @@ export function DocumentUploadField({
     setState('uploading');
     setError('');
     try {
-      const presignRes = await apiFetch('/api/buyer/documents/presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope,
-          gstin: scope === 'business' ? gstin : undefined,
-          doc_type: docType,
-          content_type: file.type,
-        }),
-      });
-      const presignData = await presignRes.json().catch(() => ({}));
-      if (!presignRes.ok || !presignData.upload_url || !presignData.key) {
-        setError(presignData?.error ?? 'Could not start the upload. Please try again.');
+      const validationError = validateDocumentFile(file, docType);
+      if (validationError) {
+        setError(validationError);
         setState('error');
         return;
       }
 
-      const putRes = await fetch(presignData.upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type, 'Cache-Control': R2_UPLOAD_CACHE_CONTROL },
-      });
-      if (!putRes.ok) {
-        setError('Upload failed. Please try again.');
-        setState('error');
-        return;
-      }
+      const form = new FormData();
+      form.append('scope', scope);
+      form.append('doc_type', docType);
+      form.append('file', file);
+      if (scope === 'business' && gstin) form.append('gstin', gstin);
 
-      const confirmRes = await apiFetch('/api/buyer/documents/confirm', {
+      const uploadRes = await apiFetch('/api/buyer/documents/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: presignData.key,
-          doc_type: docType,
-          subject_scope: scope,
-          gstin: scope === 'business' ? gstin : undefined,
-        }),
+        body: form,
       });
-      const confirmData = await confirmRes.json().catch(() => ({}));
-      if (!confirmRes.ok || !confirmData.id) {
-        setError(confirmData?.error ?? 'Could not confirm the upload. Please try again.');
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok || !uploadData.id) {
+        setError(uploadData?.error ?? 'Upload failed. Please try again.');
         setState('error');
         return;
       }
 
       setState('done');
-      onChange(confirmData.id as string);
+      onChange(uploadData.id as string);
     } catch {
       setError('Network error. Please try again.');
       setState('error');
@@ -137,7 +133,7 @@ export function DocumentUploadField({
         ref={inputRef}
         id={id}
         type="file"
-        accept={ACCEPTED_TYPES}
+        accept={ACCEPTED_TYPES[docType]}
         onChange={handleFileSelect}
         disabled={disabled || state === 'uploading'}
         className="hidden"

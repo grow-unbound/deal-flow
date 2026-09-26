@@ -444,7 +444,12 @@ function OpportunityCard({
   return (
     <PerformanceCard
       title={group.title}
-      subtitle={group.description}
+      subtitle={(
+        <span className="block">
+          <span className="block">{group.description}</span>
+          {group.evidence ? <span className="mt-1 block font-medium text-cream-800">{group.evidence}</span> : null}
+        </span>
+      )}
       actions={(
         <div className="text-right">
           <p className="font-display text-lg leading-none text-cream-950">{formatNumberValue(group.count, 'COUNT')}</p>
@@ -468,6 +473,14 @@ function OpportunityCard({
           compact
         />
       </ScrollCardBody>
+      <div className="border-t border-cream-200 px-5 py-3">
+        <Button asChild variant="secondary" size="sm" className="w-fit">
+          <Link href={group.action_href}>
+            {group.action_label}
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </Button>
+      </div>
     </PerformanceCard>
   );
 }
@@ -492,7 +505,16 @@ function OpportunityBuyerSheet({
         <SheetHeader>
           <SheetTitle className="font-display text-xl font-semibold text-cream-950">{group?.title ?? 'Opportunity customers'}</SheetTitle>
           {group?.description ? <p className="mt-1 text-base text-cream-700">{group.description}</p> : null}
+          {group?.evidence ? <p className="mt-2 text-sm font-semibold text-cream-800">{group.evidence}</p> : null}
           <p className="mt-2 text-sm font-medium text-cream-600">{formatNumberValue(total, 'COUNT')} customers</p>
+          {group ? (
+            <Button asChild variant="secondary" size="sm" className="mt-4 w-fit">
+              <Link href={group.action_href}>
+                {group.action_label}
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </Button>
+          ) : null}
         </SheetHeader>
         <SheetBody className="px-0 py-0">
           {query.isLoading ? (

@@ -11,6 +11,7 @@ vi.mock('@/lib/server/buyer-access', () => ({
 
 vi.mock('@/lib/server/buyer-product-data', () => ({
   resolveBuyerProductScopeContext: (...args: unknown[]) => resolveBuyerProductScopeContextMock(...args),
+  isCatalogApprovalRequiredForProfile: () => false,
 }));
 
 vi.mock('@/lib/server/buyer-assemble-catalog-items', () => ({

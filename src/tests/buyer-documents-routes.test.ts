@@ -6,6 +6,7 @@ const buyerDocumentObjectExistsMock = vi.fn();
 const getUserMock = vi.fn();
 const getUserByIdMock = vi.fn();
 const copyObjectMock = vi.fn();
+const putObjectBlobMock = vi.fn();
 
 const dbState = {
   buyerDocuments: [] as Array<Record<string, unknown>>,
@@ -83,6 +84,7 @@ vi.mock('@/lib/server/buyer-document-presign', async () => {
 
 vi.mock('@/lib/r2', () => ({
   copyObject: (...args: unknown[]) => copyObjectMock(...args),
+  putObjectBlob: (...args: unknown[]) => putObjectBlobMock(...args),
 }));
 
 vi.mock('@supabase/ssr', () => ({
@@ -133,10 +135,82 @@ describe('buyer document routes', () => {
     getUserMock.mockReset();
     getUserByIdMock.mockReset();
     copyObjectMock.mockReset();
+    putObjectBlobMock.mockReset();
     dbState.buyerDocuments = [];
     dbState.buyers = [];
     dbState.nextId = 1;
     dbState.rpcResult = { found: false, tenant_name: null, document_ids: [] };
+  });
+
+  describe('POST /api/buyer/documents/upload', () => {
+    it('uploads a GSTIN-scoped shop image to the business document path and records the row', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
+      putObjectBlobMock.mockResolvedValue(undefined);
+
+      const form = new FormData();
+      form.append('scope', 'business');
+      form.append('gstin', '29AAVIC9992H1Z0');
+      form.append('doc_type', 'shop_image');
+      form.append('file', new File(['image'], 'shop.png', { type: 'image/png' }));
+
+      const { POST } = await import('../../app/api/buyer/documents/upload/route');
+      const response = await POST({ formData: async () => form } as any);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.id).toBe('doc-1');
+      expect(putObjectBlobMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^businesses\/[a-f0-9]{64}\/docs\/shop_image\//),
+        expect.any(Uint8Array),
+        'image/png',
+      );
+      expect(dbState.buyerDocuments[0]).toMatchObject({
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        gstin: '29AAVIC9992H1Z0',
+        doc_type: 'shop_image',
+        subject_scope: 'business',
+      });
+    });
+
+    it('uploads a GST-less shop image to the buyer-owned personal path', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
+      putObjectBlobMock.mockResolvedValue(undefined);
+
+      const form = new FormData();
+      form.append('scope', 'personal');
+      form.append('doc_type', 'shop_image');
+      form.append('file', new File(['image'], 'shop.png', { type: 'image/png' }));
+
+      const { POST } = await import('../../app/api/buyer/documents/upload/route');
+      const response = await POST({ formData: async () => form } as any);
+
+      expect(response.status).toBe(200);
+      expect(putObjectBlobMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^buyers\/buyer-1\/personal\/shop_image\//),
+        expect.any(Uint8Array),
+        'image/png',
+      );
+      expect(dbState.buyerDocuments[0]).toMatchObject({
+        gstin: null,
+        subject_scope: 'personal',
+      });
+    });
+
+    it('rejects GST certificate uploads without business scope and GSTIN', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(pendingProfile());
+
+      const form = new FormData();
+      form.append('scope', 'personal');
+      form.append('doc_type', 'gst_certificate');
+      form.append('file', new File(['pdf'], 'gst.pdf', { type: 'application/pdf' }));
+
+      const { POST } = await import('../../app/api/buyer/documents/upload/route');
+      const response = await POST({ formData: async () => form } as any);
+
+      expect(response.status).toBe(422);
+      expect(putObjectBlobMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/buyer/documents/presign', () => {

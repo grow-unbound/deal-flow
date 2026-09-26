@@ -149,12 +149,17 @@ function LoginForm() {
   useEffect(() => {
     if (isCatalogHost || typeof window === 'undefined') return;
     let cancelled = false;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (buyerRoleFromAccessToken(data.session?.access_token)) {
-        setResolution({ kind: 'buyer_moved', catalogUrl: buyerLoginUrl });
-      }
-    });
+    void supabase.auth.getSession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (buyerRoleFromAccessToken(data.session?.access_token)) {
+          setResolution({ kind: 'buyer_moved', catalogUrl: buyerLoginUrl });
+        }
+      })
+      .catch(() => {
+        // Stale local Supabase cookies can fail refresh during login render.
+        // The page should still behave as a normal unauthenticated entrypoint.
+      });
     return () => {
       cancelled = true;
     };

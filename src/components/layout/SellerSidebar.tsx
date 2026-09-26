@@ -84,7 +84,6 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: 'Catalog', href: SELLER_ROUTES.market.catalogs, icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Campaigns', href: '/campaigns', icon: CampaignsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
-      { label: 'Announcements', href: SELLER_ROUTES.market.announcements, icon: AnnouncementsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
       { label: 'Pricing', href: SELLER_ROUTES.market.pricing, icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
       { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
       { label: 'Recommendations', href: SELLER_ROUTES.market.recommendations, icon: RecommendationsIcon, roles: [ROLES.SELLER_ADMIN] },

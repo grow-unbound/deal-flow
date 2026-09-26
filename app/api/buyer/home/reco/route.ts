@@ -4,6 +4,7 @@ import type { BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { loadBuyerHomeReco, loadGuestHomeReco } from '@/lib/server/buyer-home-reco';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
+import { loadLivePublicCatalog } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
@@ -17,6 +18,21 @@ export async function GET(
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
+    const pendingBuyerCatalogSession =
+      profile.context.mode !== 'preview'
+      && (profile.context.role === 'buyer_pending' || profile.buyer?.buyer_app_enabled === false);
+    if (pendingBuyerCatalogSession) {
+      const publicCatalog = await loadLivePublicCatalog(supabaseAdmin, profile.context.tenant_id);
+      if (publicCatalog?.accessMode !== 'public_link') {
+        return NextResponse.json({ error: 'Approval required' }, {
+          status: 403,
+          headers: { 'Cache-Control': 'private, no-store' },
+        });
+      }
+      const payload = await loadGuestHomeReco(supabaseAdmin, profile.context.tenant_id);
+      return NextResponse.json(payload, { headers: BUYER_CACHE_PRICED });
     }
 
     if (!profile.buyer?.id) {

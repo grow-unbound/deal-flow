@@ -8,7 +8,7 @@ import {
   type CatalogProductDisplayMode,
 } from '@/lib/server/public-catalog';
 import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
-import { r2Url } from '@/lib/r2-url';
+import { firstStoredImageUrl, r2Url } from '@/lib/r2-url';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import type { ImportAnomaly } from '@/lib/onboarding/types';
 
@@ -76,6 +76,7 @@ type ProductRow = {
 export interface OnboardingPreviewPayload {
   productCount: number;
   catalogUpdatedAt: string | null;
+  liveAt: string | null;
   productReadiness: {
     activeProductCount: number;
     anomalyCount: number;
@@ -87,6 +88,8 @@ export interface OnboardingPreviewPayload {
   anomalies: ImportAnomaly[];
   slug: string;
   businessName: string;
+  tagline: string | null;
+  logoUrl: string | null;
   live: boolean;
   pricingMode: CatalogPricingMode | null;
   priceListId: string | null;
@@ -110,7 +113,7 @@ export async function loadOnboardingPreview(
   productDisplayModeOverride?: CatalogProductDisplayMode | null,
 ): Promise<OnboardingPreviewPayload> {
   const [{ data: tenant }, { data: catalog }, { count }, { data: priceListRows }] = await Promise.all([
-    db.schema('app').from('tenants').select('slug, business_name').eq('id', tenantId).maybeSingle(),
+    db.schema('app').from('tenants').select('slug, business_name, tagline, logo_url, settings').eq('id', tenantId).maybeSingle(),
     db.schema('app').from('catalogs').select('live_at, updated_at, pricing_mode, price_list_id, access_mode, collect_target_unit_price_range, product_display_mode').eq('tenant_id', tenantId).eq('kind', 'public').is('deleted_at', null).maybeSingle(),
     db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true).is('deleted_at', null),
     db.schema('app').from('price_lists').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null).limit(200),
@@ -125,6 +128,27 @@ export async function loadOnboardingPreview(
     collect_target_unit_price_range?: boolean | null;
     product_display_mode?: CatalogProductDisplayMode | null;
   } | null;
+  const tenantRecord = tenant as {
+    slug?: string | null;
+    business_name?: string | null;
+    tagline?: string | null;
+    logo_url?: string | null;
+    settings?: Record<string, unknown> | null;
+  } | null;
+  const tenantSettings = tenantRecord?.settings ?? null;
+  const businessSettings = (tenantSettings?.business ?? {}) as Record<string, unknown>;
+  const settingsLogoUrl = typeof businessSettings.logo_url === 'string' && businessSettings.logo_url.trim()
+    ? firstStoredImageUrl([businessSettings.logo_url.trim()])
+    : null;
+  const tenantColumnLogo = firstStoredImageUrl(
+    typeof tenantRecord?.logo_url === 'string' ? [tenantRecord.logo_url] : [],
+  );
+  const settingsTagline = typeof businessSettings.tagline === 'string' && businessSettings.tagline.trim()
+    ? businessSettings.tagline.trim()
+    : null;
+  const tenantTagline = typeof tenantRecord?.tagline === 'string' && tenantRecord.tagline.trim()
+    ? tenantRecord.tagline.trim()
+    : null;
   const effectiveDisplayMode = productDisplayModeOverride
     ?? catalogRecord?.product_display_mode
     ?? 'sku_list';
@@ -379,6 +403,7 @@ export async function loadOnboardingPreview(
   return {
     productCount: count ?? rows.length,
     catalogUpdatedAt: catalogRecord?.updated_at ?? null,
+    liveAt: catalogRecord?.live_at ?? null,
     productReadiness: {
       activeProductCount: count ?? rows.length,
       anomalyCount: anomalies.length,
@@ -388,8 +413,10 @@ export async function loadOnboardingPreview(
     brands,
     categories,
     anomalies,
-    slug: (tenant?.slug as string | undefined) ?? '',
-    businessName: (tenant?.business_name as string | undefined) ?? '',
+    slug: tenantRecord?.slug ?? '',
+    businessName: tenantRecord?.business_name ?? '',
+    tagline: tenantTagline ?? settingsTagline,
+    logoUrl: tenantColumnLogo ?? settingsLogoUrl,
     live: Boolean(catalogRecord?.live_at),
     pricingMode: catalogRecord?.pricing_mode ?? null,
     priceListId: catalogRecord?.price_list_id ?? null,

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const getVerifiedClaimsMock = vi.fn();
 const rpcMock = vi.fn();
+const fromMock = vi.fn();
 const redirectMock = vi.fn((url: string) => {
   throw Object.assign(new Error('NEXT_REDIRECT'), { digest: `NEXT_REDIRECT;replace;${url};307;` });
 });
@@ -24,6 +25,7 @@ vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn(() => ({
       rpc: (...args: unknown[]) => rpcMock(...args),
+      from: (...args: unknown[]) => fromMock(...args),
     })),
   },
 }));
@@ -75,6 +77,45 @@ describe('Pulse API routes', () => {
       location_ids: ['loc-1'],
     });
     rpcMock.mockResolvedValue({ data: rpcPortfolio, error: null });
+    fromMock.mockImplementation((table: string) => {
+      const filters = new Map<string, unknown>();
+      const builder: any = {
+        select: vi.fn(() => builder),
+        eq: vi.fn((key: string, value: unknown) => {
+          filters.set(key, value);
+          return builder;
+        }),
+        is: vi.fn(() => builder),
+        gt: vi.fn(() => builder),
+        gte: vi.fn(() => builder),
+        order: vi.fn(() => builder),
+        range: vi.fn(() => {
+          if (table === 'metrics_buyer_period_summary' && filters.get('period_start') === '2026-07-01') {
+            return Promise.resolve({
+              data: [{ buyer_id: 'buyer-1', invoice_value: 150000, invoice_count: 3, source_watermark: '2026-09-22T03:45:00.000Z', computed_at: '2026-09-22T04:00:00.000Z' }],
+              error: null,
+            });
+          }
+          if (table === 'metrics_buyer_period_summary' && filters.get('period_start') === '2026-04-01') {
+            return Promise.resolve({
+              data: [{ buyer_id: 'buyer-quiet', app_demand_value: 90000, app_demand_count: 2, period_end_exclusive: '2026-07-01', source_watermark: '2026-09-21T03:45:00.000Z', computed_at: '2026-09-21T04:00:00.000Z' }],
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: [], error: null });
+        }),
+        in: vi.fn(() => {
+          if (table === 'buyers' && filters.get('buyer_app_enabled') === false) {
+            return Promise.resolve({ data: [{ id: 'buyer-1', business_name: 'Alpha Retail' }], error: null });
+          }
+          if (table === 'buyers' && filters.get('buyer_app_enabled') === true) {
+            return Promise.resolve({ data: [{ id: 'buyer-quiet', business_name: 'Quiet Retail' }], error: null });
+          }
+          return Promise.resolve({ data: [], error: null });
+        }),
+      };
+      return builder;
+    });
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
   });
 
@@ -133,12 +174,53 @@ describe('Pulse API routes', () => {
   });
 
   it('returns opportunities through an independently callable boundary', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      location_ids: null,
+    });
+
     const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.groups[0].id).toBe('valuable_assisted_customers_without_access');
     expect(response.headers.get('Server-Timing')).toContain('pulse_opportunities_api');
+  });
+
+  it('loads seller-admin opportunities from bounded summary tables instead of the broad portfolio RPC', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      location_ids: null,
+    });
+
+    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.source).toBe('app.metrics_buyer_period_summary');
+    expect(body.groups.map((group: { id: string }) => group.id)).toEqual([
+      'valuable_assisted_customers_without_access',
+      'previously_submitted_app_demand_now_inactive',
+    ]);
+    expect(body.groups[0].previews[0]).toEqual(expect.objectContaining({
+      buyer_id: 'buyer-1',
+      supporting_text: '₹1,50,000 · 3 invoices',
+    }));
+    expect(rpcMock).not.toHaveBeenCalledWith('get_buyer_app_dashboard_v4', expect.anything());
+    expect(fromMock).toHaveBeenCalledWith('metrics_buyer_period_summary');
+    expect(fromMock).toHaveBeenCalledWith('buyers');
+  });
+
+  it('omits location-scoped assistant opportunities when no scoped summary read exists', async () => {
+    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.groups).toEqual([]);
+    expect(rpcMock).not.toHaveBeenCalledWith('get_buyer_app_dashboard_v4', expect.anything());
+    expect(fromMock).not.toHaveBeenCalled();
   });
 
   it('loads demand signals from the local landing snapshot boundary', async () => {
@@ -190,6 +272,12 @@ describe('Pulse API routes', () => {
   });
 
   it('returns a paginated opportunity buyer resultset for the slide-over', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      location_ids: null,
+    });
+
     const response = await getOpportunityBuyers(
       new NextRequest('http://localhost/api/tenant/pulse/opportunities/valuable_assisted_customers_without_access/buyers?limit=1'),
       { params: Promise.resolve({ id: 'valuable_assisted_customers_without_access' }) },

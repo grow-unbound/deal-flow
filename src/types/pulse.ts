@@ -26,6 +26,8 @@ export interface PulseOpportunityPreview {
   initials: string;
   invoice_value_qtd?: number | null;
   invoice_count_qtd?: number | null;
+  last_demand_day?: string | null;
+  prior_demand_value?: number | null;
   supporting_text?: string | null;
   href: string;
 }
@@ -40,18 +42,21 @@ export interface PulseOpportunityGroup {
   description: string;
   count: number;
   time_basis: string;
+  evidence: string;
+  action_label: string;
+  action_href: string;
   previews: PulseOpportunityPreview[];
 }
 
 export interface PulseOpportunityBuyerPage {
-  group: Pick<PulseOpportunityGroup, 'id' | 'title' | 'description' | 'count'>;
+  group: Pick<PulseOpportunityGroup, 'id' | 'title' | 'description' | 'count' | 'evidence' | 'action_label' | 'action_href'>;
   rows: PulseOpportunityPreview[];
   nextCursor: string | null;
   total: number;
 }
 
 export interface PulseOpportunitiesResponse {
-  source: 'app.get_buyer_app_dashboard_v4';
+  source: 'app.get_buyer_app_dashboard_v4' | 'app.metrics_buyer_period_summary';
   computed_at: string | null;
   source_watermark: string | null;
   freshness_label: string | null;

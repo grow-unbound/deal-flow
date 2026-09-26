@@ -6,6 +6,7 @@ import {
   fetchBuyerCategories,
   fetchCachedBuyerCategories,
   fetchCachedGuestCategories,
+  isCatalogApprovalRequiredForProfile,
   resolveBuyerProductScopeContext,
 } from '@/lib/server/buyer-product-data';
 import type { BuyerCategoriesResponse } from '@/types/buyer';
@@ -18,6 +19,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const context = await resolveBuyerProductScopeContext(supabaseAdmin as any, req, profile);
+    if (isCatalogApprovalRequiredForProfile(profile, context.publicCatalog)) {
+      return NextResponse.json({ error: 'Approval required' }, {
+        status: 403,
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
+    }
     const requestedCampaignId = req.nextUrl.searchParams.get('campaign_id')?.trim() ?? '';
     const shareToken = req.nextUrl.searchParams.get('share_token')?.trim() ?? '';
     const isDefaultBrowse = !requestedCampaignId && !shareToken;
@@ -29,11 +36,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           requestedCampaignId,
           shareToken,
         })
-      : profile.context.mode === 'guest'
+      : context.guestPricing
         ? await fetchCachedGuestCategories(context.tenantId)
         : await fetchCachedBuyerCategories(context.tenantId, context.allowedTenantBrandIds);
 
-    const cacheHeaders = profile.context.mode === 'guest' ? BUYER_CACHE_CATALOG : BUYER_CACHE_PRICED;
+    const cacheHeaders = context.guestPricing ? BUYER_CACHE_CATALOG : BUYER_CACHE_PRICED;
     return NextResponse.json({ categories } satisfies BuyerCategoriesResponse, { headers: cacheHeaders });
   } catch (err) {
     console.error('[GET /api/buyer/categories]', err);

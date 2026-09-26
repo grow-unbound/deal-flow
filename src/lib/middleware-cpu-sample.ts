@@ -1,11 +1,10 @@
 /**
  * Opt-in, low-rate CPU sampling for middleware (MIDDLEWARE_CPU_SAMPLE_RATE, default off).
  *
- * Vercel's Hobby plan gives no per-route CPU breakdown, so this logs one JSON line per sampled
- * request (`evt: 'mw_cpu_sample'`) with a coarse path class, CPU microseconds and wall time. It logs
- * no ids, no query strings and no cookies. `process.cpuUsage()` is process-wide, so on a Fluid
- * instance serving concurrent requests it can over-attribute; treat it as an upper bound per class
- * and aggregate many samples rather than reading single lines.
+ * Vercel's Hobby plan gives no per-route runtime breakdown, so this logs one JSON line per sampled
+ * request (`evt: 'mw_cpu_sample'`) with a coarse path class and wall-clock duration. It logs no ids,
+ * no query strings and no cookies. Middleware runs in the Edge runtime, so keep this free of Node.js
+ * APIs such as `process.cpuUsage()`.
  */
 export type MiddlewarePathClass =
   | 'guest_api'

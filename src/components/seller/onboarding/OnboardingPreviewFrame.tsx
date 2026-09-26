@@ -52,8 +52,8 @@ export function OnboardingPreviewFrame({
   const enquiryMode = pricingMode === 'hide_price_collect_enquiry';
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-cream-300 bg-white shadow-sm">
-      <div className="flex shrink-0 items-center gap-2 border-b border-cream-200 bg-cream-100 px-3 py-2">
+    <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border border-cream-300 bg-white shadow-sm">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-cream-200 bg-cream-100 px-3 py-2">
         <div className="flex items-center gap-1.5 pr-1">
           <span className="h-3 w-3 rounded-full bg-danger-500" aria-hidden />
           <span className="h-3 w-3 rounded-full bg-warning-500" aria-hidden />
@@ -105,6 +105,9 @@ export function OnboardingPreviewFrame({
                 </p>
               ) : null}
             </div>
+            <p className="mb-4 rounded-[8px] border border-cream-200 bg-cream-50 px-3 py-2 text-body-sm text-cream-600">
+              Preview shows a representative sample of products, brands, and categories. Buyers can browse the full catalog from the live storefront.
+            </p>
             {brands.length > 0 ? (
               <section>
                 <BuyerSectionRow title="Brands" className="px-1 pb-3" />
@@ -194,24 +197,24 @@ function PreviewDesktopHeader({
 }): React.ReactNode {
   return (
     <header className="sticky top-0 z-[15] hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
-      <div className="flex min-h-[64px] w-full items-center gap-4 px-5 py-2.5">
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+      <div className="flex min-h-[64px] w-full min-w-0 items-center gap-3 px-4 py-2.5 lg:gap-4 lg:px-5">
+        <div className="flex min-w-0 max-w-[45%] shrink items-center gap-1.5 lg:max-w-none lg:shrink-0">
           {logoUrl ? (
             <Image
               src={logoUrl}
               alt={businessName}
               width={64}
               height={52}
-              className="h-[3.25rem] w-auto max-w-16 object-contain object-left"
+              className="h-10 w-auto max-w-12 object-contain object-left lg:h-[3.25rem] lg:max-w-16"
               unoptimized
             />
           ) : (
-            <span className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
+            <span className="truncate text-[length:var(--b-text-label)] font-semibold text-cream-950">
               {businessName}
             </span>
           )}
           <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
-          <span className="inline-flex items-center gap-2 rounded-[12px] px-2 py-1.5 text-cream-800">
+          <span className="inline-flex min-w-0 items-center gap-2 rounded-[12px] px-2 py-1.5 text-cream-800">
             <Store className="h-4 w-4" />
             <span className="flex flex-col leading-none">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">Store</span>
@@ -221,19 +224,19 @@ function PreviewDesktopHeader({
           </span>
         </div>
 
-        <div className="flex min-w-[200px] flex-1 justify-center">
+        <div className="flex min-w-0 flex-1 justify-center">
           <div className="relative w-full min-w-0 max-w-[760px]">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-500" />
-            <div className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--cream-50)] pl-11 pr-20 text-[length:var(--b-text-sub)] leading-[2.75rem] text-cream-500">
+            <div className="h-11 w-full truncate rounded-[12px] border border-cream-300 bg-[var(--cream-50)] pl-11 pr-3 text-[length:var(--b-text-sub)] leading-[2.75rem] text-cream-500 xl:pr-20">
               Search products, SKU, brand…
             </div>
-            <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+            <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 xl:inline-flex">
               Ctrl/Cmd+K
             </span>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="hidden shrink-0 items-center gap-1.5 lg:flex">
           <span className="inline-flex h-10 items-center gap-2 rounded-[12px] px-3 text-[length:var(--b-text-body)] font-medium text-cream-800">
             <ReceiptText className="h-5 w-5" />
             Orders

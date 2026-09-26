@@ -113,6 +113,20 @@ const portfolio: MetricsV2DashboardPortfolio = {
       },
     },
     {
+      id: 'previously_submitted_app_demand_now_inactive',
+      label: 'Previously submitted app demand, now inactive',
+      time_basis: 'NOW + 90D',
+      feasibility: 'READY',
+      available: true,
+      count: 4,
+      unit: 'count',
+      meta: {
+        rows: [
+          { buyer_id: 'buyer-9', name: 'Quiet Retail', last_demand_day: '2026-08-10', value: 175000 },
+        ],
+      },
+    },
+    {
       id: 'used_app_but_no_demand',
       label: 'Used the app but submitted no demand',
       time_basis: 'NOW + 90D',
@@ -193,22 +207,26 @@ describe('Pulse core mapping', () => {
       supporting_text: '₹4,10,000 · 8 invoices',
     }));
     expect(response.groups[1]).toEqual(expect.objectContaining({
-      id: 'access_enabled_but_never_used',
-      description: 'Customers have access enabled but still do business outside Yukti.',
+      id: 'previously_submitted_app_demand_now_inactive',
+      title: 'High-value customers going quiet',
+      evidence: 'At least ₹1,75,000 prior Yukti demand · NOW + 90D',
+      action_href: '/customers',
     }));
     expect(response.groups[1].previews[0]).toEqual(expect.objectContaining({
+      prior_demand_value: 175000,
+      last_demand_day: '2026-08-10',
+      supporting_text: '₹1,75,000 prior Yukti demand · Last demand 10 Aug',
+    }));
+    expect(response.groups[2]).toEqual(expect.objectContaining({
+      id: 'access_enabled_but_never_used',
+      description: 'Customers have access enabled but still do business outside Yukti.',
+      evidence: 'At least ₹3,20,000 business outside Yukti · NOW',
+      action_href: '/buyer-app/access',
+    }));
+    expect(response.groups[2].previews[0]).toEqual(expect.objectContaining({
       invoice_value_qtd: 320000,
       invoice_count_qtd: 6,
       supporting_text: '₹3,20,000 · 6 invoices',
-    }));
-    expect(response.groups[2]).toEqual(expect.objectContaining({
-      id: 'used_app_but_no_demand',
-      title: 'Follow up with browsing customers without demand',
-    }));
-    expect(response.groups[2].previews[0]).toEqual(expect.objectContaining({
-      invoice_value_qtd: 220000,
-      invoice_count_qtd: 4,
-      supporting_text: '₹2,20,000 · 4 invoices',
     }));
     expect(JSON.stringify(response)).not.toContain('app_demand_needing_operational_action');
     expect(JSON.stringify(response)).not.toContain('Should Not Render');

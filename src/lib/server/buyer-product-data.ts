@@ -20,6 +20,7 @@ import type {
 } from '@/types/buyer';
 import {
   getCachedGuestPricingContext,
+  resolveGuestPricingContext,
   guestUnitPrice,
   loadLivePublicCatalog,
   loadAssignedPriceListPrices,
@@ -915,6 +916,18 @@ export function fetchCachedBuyerBrands(
   )();
 }
 
+function isPendingBuyerCatalogSession(profile: BuyerAccessProfile): boolean {
+  return profile.context.mode !== 'preview'
+    && (profile.context.role === 'buyer_pending' || profile.buyer?.buyer_app_enabled === false);
+}
+
+export function isCatalogApprovalRequiredForProfile(
+  profile: BuyerAccessProfile,
+  publicCatalog: PublicCatalogRecord | null,
+): boolean {
+  return isPendingBuyerCatalogSession(profile) && !publicCatalog;
+}
+
 export async function resolveBuyerCatalogContext(
   db: SupabaseClient,
   request: NextRequest,
@@ -930,11 +943,15 @@ export async function resolveBuyerCatalogContext(
   publicCatalog: PublicCatalogRecord | null;
 }> {
   const tenantId = profile.context.tenant_id!;
-  const buyerId = profile.buyer?.id ?? null;
-  const isGuest = profile.context.mode === 'guest';
+  const pendingBuyerCatalogSession = isPendingBuyerCatalogSession(profile);
+  const buyerId = pendingBuyerCatalogSession ? null : (profile.buyer?.id ?? null);
+  const isGuestLikePublicBrowse = profile.context.mode === 'guest' || pendingBuyerCatalogSession;
+  const publicCatalog = await loadLivePublicCatalog(db, tenantId);
+  const publicBrowseAllowed = !pendingBuyerCatalogSession || publicCatalog?.accessMode === 'public_link';
+  const effectivePublicCatalog = publicBrowseAllowed ? publicCatalog : null;
   const [scopeContext, catalogSummary] = await Promise.all([
-    resolveBuyerProductScopeContext(db, request, profile),
-    isGuest
+    resolveBuyerProductScopeContext(db, request, profile, effectivePublicCatalog),
+    isGuestLikePublicBrowse
       ? Promise.resolve({ visibleCampaigns: [] as BuyerVisibleCatalog[], catalogs: [] as BuyerCatalogSummary[] })
       : resolveBuyerCatalogSummaries(db, tenantId, buyerId),
   ]);
@@ -948,7 +965,7 @@ export async function resolveBuyerCatalogContext(
     catalogs: catalogSummary.catalogs,
     // Already resolved inside resolveBuyerProductScopeContext — don't fetch twice.
     guestPricing: scopeContext.guestPricing,
-    publicCatalog: scopeContext.publicCatalog,
+    publicCatalog: effectivePublicCatalog,
   };
 }
 
@@ -956,6 +973,7 @@ export async function resolveBuyerProductScopeContext(
   db: SupabaseClient,
   request: NextRequest,
   profile: BuyerAccessProfile,
+  preloadedPublicCatalog?: PublicCatalogRecord | null,
 ): Promise<{
   tenantId: string;
   buyerId: string | null;
@@ -965,13 +983,24 @@ export async function resolveBuyerProductScopeContext(
   publicCatalog: PublicCatalogRecord | null;
 }> {
   const tenantId = profile.context.tenant_id!;
-  const buyerId = profile.buyer?.id ?? null;
-  const isGuest = profile.context.mode === 'guest';
-  const [inventoryWarehouseId, allowedTenantBrandIds, publicCatalog, guestPricing] = await Promise.all([
+  const pendingBuyerCatalogSession = isPendingBuyerCatalogSession(profile);
+  const buyerId = pendingBuyerCatalogSession ? null : (profile.buyer?.id ?? null);
+  const isGuestLikePublicBrowse = profile.context.mode === 'guest' || pendingBuyerCatalogSession;
+  const publicCatalog = preloadedPublicCatalog === undefined
+    ? await loadLivePublicCatalog(db, tenantId)
+    : preloadedPublicCatalog;
+  const publicBrowseAllowed = !pendingBuyerCatalogSession || publicCatalog?.accessMode === 'public_link';
+  const effectivePublicCatalog = publicBrowseAllowed ? publicCatalog : null;
+  const [inventoryWarehouseId, allowedTenantBrandIds, guestPricing] = await Promise.all([
     resolveBuyerInventoryWarehouseId(db, request, profile),
     buyerId ? resolveBuyerAllowedTenantBrandIds(db as any, tenantId, buyerId) : Promise.resolve(null),
-    loadLivePublicCatalog(db, tenantId),
-    isGuest ? getCachedGuestPricingContext(tenantId) : Promise.resolve(null),
+    isGuestLikePublicBrowse && effectivePublicCatalog
+      ? (
+          profile.context.mode === 'guest'
+            ? getCachedGuestPricingContext(tenantId)
+            : resolveGuestPricingContext(db, tenantId)
+        )
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -980,6 +1009,6 @@ export async function resolveBuyerProductScopeContext(
     inventoryWarehouseId,
     allowedTenantBrandIds,
     guestPricing,
-    publicCatalog,
+    publicCatalog: effectivePublicCatalog,
   };
 }
