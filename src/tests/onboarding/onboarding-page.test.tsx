@@ -153,22 +153,13 @@ describe('/onboarding page', () => {
     expect((screen.getByLabelText('Full name') as HTMLInputElement).value).toBe('');
   });
 
-  it('runs the document upload state machine (presign -> PUT -> confirm) and requires shop image before submit', async () => {
-    const originalFetch = global.fetch;
-    const putMock = vi.fn().mockResolvedValue({ ok: true });
-    // @ts-expect-error test override
-    global.fetch = putMock;
-
-    apiFetchMock.mockImplementation((url: string) => {
+  it('runs the document upload state machine and requires shop image before submit', async () => {
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/api/buyer/onboarding/existing-profiles') {
         return Promise.resolve(jsonResponse({ profiles: [] }));
       }
-      if (url === '/api/buyer/documents/presign') {
-        return Promise.resolve(
-          jsonResponse({ key: 'buyers/b1/personal/shop_image/uuid-1', upload_url: 'https://r2.example/put' }),
-        );
-      }
-      if (url === '/api/buyer/documents/confirm') {
+      if (url === '/api/buyer/documents/upload') {
+        expect(init?.body).toBeInstanceOf(FormData);
         return Promise.resolve(jsonResponse({ id: 'doc-1' }));
       }
       return Promise.resolve(jsonResponse({}));
@@ -187,24 +178,15 @@ describe('/onboarding page', () => {
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/buyer/documents/presign',
-        expect.objectContaining({ method: 'POST' }),
+        '/api/buyer/documents/upload',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.any(FormData),
+        }),
       );
     });
-    expect(putMock).toHaveBeenCalledWith(
-      'https://r2.example/put',
-      expect.objectContaining({
-        method: 'PUT',
-        headers: expect.objectContaining({
-          'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=300, must-revalidate',
-        }),
-      }),
-    );
     await waitFor(() => {
       expect(screen.getByText('shop.png')).toBeInTheDocument();
     });
-
-    global.fetch = originalFetch;
   });
 });

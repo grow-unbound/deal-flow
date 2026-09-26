@@ -376,7 +376,8 @@ export default function BuyerOnboardingPage() {
             label="Shop image"
             required
             docType="shop_image"
-            scope="personal"
+            scope={gstin.trim() ? 'business' : 'personal'}
+            gstin={gstin.trim() || undefined}
             disabled={submitting}
             documentId={shopImageDocId}
             onChange={setShopImageDocId}
