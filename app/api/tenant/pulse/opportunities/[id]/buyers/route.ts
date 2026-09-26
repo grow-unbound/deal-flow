@@ -11,9 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const OPPORTUNITY_IDS = new Set<PulseOpportunityGroup['id']>([
   'valuable_assisted_customers_without_access',
-  'access_enabled_but_never_used',
-  'used_app_but_no_demand',
-  'previously_submitted_app_demand_now_inactive',
+  'dormant_customers_90d',
 ]);
 
 function parseOpportunityId(value: string): PulseOpportunityGroup['id'] | null {

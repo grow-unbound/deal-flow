@@ -11,13 +11,12 @@ export interface PulseContributionCard {
 }
 
 export interface PulseContributionResponse {
-  source: 'app.get_landing_metrics_v4' | 'app.get_buyer_app_dashboard_v4';
+  source: 'app.get_landing_metrics_v4';
   computed_at: string | null;
   source_watermark: string | null;
   freshness_label: string | null;
   primary_demand_kind: 'orders' | 'estimates' | 'none';
   cards: PulseContributionCard[];
-  empty_opportunity?: PulseOpportunityGroup | null;
 }
 
 export interface PulseOpportunityPreview {
@@ -26,8 +25,10 @@ export interface PulseOpportunityPreview {
   initials: string;
   invoice_value_qtd?: number | null;
   invoice_count_qtd?: number | null;
-  last_demand_day?: string | null;
-  prior_demand_value?: number | null;
+  /** Dormancy opportunity: last invoice day (YYYY-MM-DD, IST), whole days since, and trailing-12-month value. */
+  last_invoice_date?: string | null;
+  days_since_last_invoice?: number | null;
+  value_12m?: number | null;
   supporting_text?: string | null;
   href: string;
 }
@@ -35,9 +36,7 @@ export interface PulseOpportunityPreview {
 export interface PulseOpportunityGroup {
   id:
     | 'valuable_assisted_customers_without_access'
-    | 'access_enabled_but_never_used'
-    | 'used_app_but_no_demand'
-    | 'previously_submitted_app_demand_now_inactive';
+    | 'dormant_customers_90d';
   title: string;
   description: string;
   count: number;
@@ -56,7 +55,7 @@ export interface PulseOpportunityBuyerPage {
 }
 
 export interface PulseOpportunitiesResponse {
-  source: 'app.get_buyer_app_dashboard_v4' | 'app.metrics_buyer_period_summary';
+  source: 'app.metrics_buyer_period_summary';
   computed_at: string | null;
   source_watermark: string | null;
   freshness_label: string | null;
