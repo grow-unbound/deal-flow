@@ -61,7 +61,7 @@ export function OnboardingReviewPanel({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4">
         <div className="hidden lg:block">
-          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.4fr)] gap-3 border-b border-cream-200 px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">
+          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.4fr)] gap-3 border-b border-cream-200 px-2 pb-2 text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">
             <span>Product name</span>
             <span>Issue</span>
             <span>Field</span>

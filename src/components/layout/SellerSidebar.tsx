@@ -306,7 +306,7 @@ export function SellerSidebar({
 
 // ─── Icon functions ────────────────────────────────────────────────────────────
 
-function TodayIcon({ size = 16, className = '' }) {
+export function TodayIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <circle cx="12" cy="12" r="9" />
@@ -314,7 +314,7 @@ function TodayIcon({ size = 16, className = '' }) {
     </svg>
   );
 }
-function DashboardIcon({ size = 16, className = '' }) {
+export function DashboardIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="3" y="3" width="7" height="7" rx="1" />

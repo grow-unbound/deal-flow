@@ -123,7 +123,7 @@ export function ModalConfirmSalesOrder({
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
                   </div>
                   <p className="text-right text-base tabular-nums text-cream-700">{line.qty}</p>
-                  <p className={`text-right text-base tabular-nums ${isShort ? 'font-medium text-amber-700' : 'text-cream-700'}`}>
+                  <p className={`text-right text-base tabular-nums ${isShort ? 'font-medium text-warning-700' : 'text-cream-700'}`}>
                     {line.on_hand}
                   </p>
                   <div className="flex justify-end">

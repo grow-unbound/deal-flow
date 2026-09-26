@@ -39,7 +39,7 @@ export function ProductPickerRow({
 }) {
   if (readOnly) {
     return (
-      <div className="flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-[10px]">
+      <div className="flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-2.5">
         <ProductRowContent product={product} />
         <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
           Matches
@@ -53,7 +53,7 @@ export function ProductPickerRow({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors',
+        'flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-2.5 text-left transition-colors',
         selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
       )}
     >

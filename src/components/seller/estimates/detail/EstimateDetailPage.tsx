@@ -381,16 +381,16 @@ export function EstimateDetailPage({ id }: { id: string }) {
               onToggleInternal={noop}
             />
             {targetRateLines.length > 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
-                <p className="text-sm font-semibold text-amber-900">Buyer target rates</p>
+              <div className="rounded-lg border border-warning-50 bg-warning-50/70 p-4">
+                <p className="text-sm font-semibold text-warning-700">Buyer target rates</p>
                 <div className="mt-2 space-y-2">
                   {targetRateLines.map((line) => (
                     <div key={line.id} className="flex items-start justify-between gap-3 text-sm">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-amber-950">{line.product_name}</p>
-                        <p className="text-amber-800">{line.sku}</p>
+                        <p className="truncate font-medium text-warning-700">{line.product_name}</p>
+                        <p className="text-warning-700">{line.sku}</p>
                       </div>
-                      <p className="shrink-0 font-mono font-semibold text-amber-950">
+                      <p className="shrink-0 font-mono font-semibold text-warning-700">
                         {formatNumberValue(line.buyer_target_unit_price_min ?? 0, 'CURRENCY_EXACT')} - {formatNumberValue(line.buyer_target_unit_price_max ?? 0, 'CURRENCY_EXACT')}
                       </p>
                     </div>

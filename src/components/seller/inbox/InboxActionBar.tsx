@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useRouter } from 'next/navigation';
 import { Bell, MoreHorizontal, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -8,8 +10,9 @@ import { formatDate } from '@/lib/utils';
 import { useApplyGenericEntryAction } from '@/hooks/useInboxEntries';
 import { shouldSkipConfirm } from '@/lib/inbox/inbox-confirm-prefs';
 import { InboxConfirmDialog } from './InboxConfirmDialog';
-import { InboxInlineNote } from './InboxInlineNote';
+import { InboxNoteHost, InboxRemindSheet, REMIND_OPTIONS } from './InboxActionSheets';
 import { InboxConvertEnquiryModal } from './InboxConvertEnquiryModal';
+import { InboxReplyQuoteSheet } from './InboxReplyQuoteSheet';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
@@ -58,12 +61,6 @@ export const DESTRUCTIVE_ACTIONS: Record<string, { title: string; description: (
   },
 };
 
-const REMIND_OPTIONS = [
-  { label: 'Tomorrow', days: 1 },
-  { label: '3 days', days: 3 },
-  { label: '1 week', days: 7 },
-];
-
 const LEFT_ICON_ACTIONS = new Set(['add_note', 'remind_later']);
 /** Hidden until the flow exists. */
 const HIDDEN_ACTIONS = new Set(['contact_buyer']);
@@ -105,10 +102,13 @@ interface InboxActionBarProps {
 }
 
 export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, applyLocalAction }: InboxActionBarProps) {
+  const router = useRouter();
   const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const [remindPickerOpen, setRemindPickerOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const isDesktop = useIsDesktop();
   const applyGenericAction = useApplyGenericEntryAction();
 
   function runLocalAction(action: string) {
@@ -147,8 +147,14 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
       return;
     }
     if (action === 'reply_quote') {
-      // Stub: the reply/quote flow is designed separately. Must not resolve the entry.
-      toast.info('Reply / Quote is coming soon');
+      // The quote editor is too content-rich for a phone-width dialog (image,
+      // sku, stock, resolved price, two inputs per line, add-item search,
+      // totals, notes) -- mobile gets its own full screen instead.
+      if (isDesktop) {
+        setQuoteOpen(true);
+      } else if (entry.buyer_id) {
+        router.push(`/today/${entry.buyer_id}/${entry.id}/quote`);
+      }
       return;
     }
     if (DESTRUCTIVE_ACTIONS[action] && !shouldSkipConfirm(tenantId, action)) {
@@ -205,7 +211,15 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
         </div>
       </div>
 
-      {remindPickerOpen ? (
+      {!isDesktop ? (
+        <InboxRemindSheet
+          open={remindPickerOpen}
+          onOpenChange={setRemindPickerOpen}
+          onPick={(days) => void runGenericAction('remind_later', new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString())}
+        />
+      ) : null}
+
+      {isDesktop && remindPickerOpen ? (
         <div className="flex w-full flex-wrap items-center gap-2 pt-1">
           <p className="w-full text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Remind later</p>
           {REMIND_OPTIONS.map((opt) => (
@@ -226,7 +240,7 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
         </div>
       ) : null}
 
-      <InboxInlineNote
+      <InboxNoteHost
         entryIds={[entry.id]}
         primaryEntryId={entry.id}
         historyEvents={historyEvents}
@@ -236,12 +250,15 @@ export function InboxActionBar({ entry, tenantId, historyEvents, localEvents, ap
       />
 
       {entry.entry_type === 'new_enquiry' ? (
-        <InboxConvertEnquiryModal
-          entry={entry}
-          open={convertOpen}
-          onOpenChange={setConvertOpen}
-          onConverted={() => applyLocalAction(entry, 'convert', { nextStatus: 'resolved', nextSummary: 'Converted' })}
-        />
+        <>
+          <InboxConvertEnquiryModal
+            entry={entry}
+            open={convertOpen}
+            onOpenChange={setConvertOpen}
+            onConverted={() => applyLocalAction(entry, 'convert', { nextStatus: 'resolved', nextSummary: 'Converted' })}
+          />
+          <InboxReplyQuoteSheet entry={entry} open={quoteOpen} onOpenChange={setQuoteOpen} />
+        </>
       ) : null}
 
       {destructiveMeta ? (

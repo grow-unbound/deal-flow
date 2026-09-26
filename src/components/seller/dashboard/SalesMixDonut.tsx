@@ -3,9 +3,10 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
 import { CardEmptyState } from '@/components/seller/detail';
+import { CHART_CATEGORICAL_PALETTE } from '@/lib/theme/chart-colors';
 import { formatNumberValue } from '@/lib/utils';
 
-const PALETTE = ['#204A41', '#B7703D', '#A59984', '#C07A43', '#6E8F87', '#8C6B4F', '#4C7A6E', '#D9A066'];
+const PALETTE = CHART_CATEGORICAL_PALETTE;
 
 export interface SalesMixDonutItem {
   id: string;

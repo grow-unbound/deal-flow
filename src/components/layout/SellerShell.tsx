@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
+import { MobileHeaderTitleProvider } from './MobileHeaderTitle';
 import { SellerMobileBottomTabs, SellerMobileTopbar } from './SellerMobileChrome';
 import { SellerSidebarSkeleton, SellerGlobalHeaderSkeleton } from './SellerShellSkeletons';
 import { resolveSellerSidebarLayout } from './seller-sidebar-layout';
@@ -113,6 +114,7 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
 
   return (
     <SellerRealtimeProvider>
+      <MobileHeaderTitleProvider>
       <div
         data-app="seller"
         className="min-h-screen bg-[var(--bg-surface)]"
@@ -155,6 +157,7 @@ export function SellerShell({ children, featureAvailabilityPromise, tenantBrandi
         </main>
         <SellerMobileBottomTabs />
       </div>
+      </MobileHeaderTitleProvider>
     </SellerRealtimeProvider>
   );
 }

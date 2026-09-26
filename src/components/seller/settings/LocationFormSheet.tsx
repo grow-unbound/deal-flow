@@ -138,7 +138,7 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-white px-3 py-[10px] text-left transition-colors hover:bg-cream-50"
+        className="flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-white px-3 py-2.5 text-left transition-colors hover:bg-cream-50"
       >
         <div className="flex min-w-0 items-center gap-3">
           <MapPin size={14} className="shrink-0 text-teal-600" />
@@ -197,7 +197,7 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
                     type="button"
                     disabled={fetchingIndex !== null}
                     onClick={() => void handleSelect(s, i)}
-                    className="flex w-full items-start gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors hover:bg-cream-100 disabled:opacity-60"
+                    className="flex w-full items-start gap-3 rounded-[8px] px-3 py-2.5 text-left transition-colors hover:bg-cream-100 disabled:opacity-60"
                   >
                     <MapPin size={14} className="mt-0.5 shrink-0 text-cream-500" />
                     <p className="text-sm text-cream-900">
@@ -659,7 +659,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                                 type="button"
                                 onClick={() => upsertSelectedUser(member, !selected)}
                                 className={[
-                                  'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                  'flex w-full items-center justify-between rounded-[8px] px-3 py-2.5 text-left transition-colors',
                                   selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
                                 ].join(' ')}
                               >
@@ -729,7 +729,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
               />
 
               {form.formState.errors.root ? (
-                <p className="text-body-sm text-danger-600">{form.formState.errors.root.message}</p>
+                <p className="text-body-sm text-danger-500">{form.formState.errors.root.message}</p>
               ) : null}
             </FormOverlayBody>
 

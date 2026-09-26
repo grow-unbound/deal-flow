@@ -108,6 +108,21 @@ export function buildDocumentDateLabel(entry: InboxEntry): string | null {
   return createdAt ? `Created ${createdAt}` : null;
 }
 
+/**
+ * "₹1,800 – ₹2,000" when both bounds are given, "Max ₹1,500" / "Min ₹5,000"
+ * when the buyer only gave one side, exact value when min === max. Null when
+ * neither bound exists. A naive `${money(min)} – ${money(max)}` renders
+ * "– – ₹1,500" or "₹5,000 – –" whenever only one bound is set -- this covers
+ * that case explicitly instead of leaning on formatNumberValue's null output.
+ */
+export function buildTargetRangeLabel(min: number | null, max: number | null): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null) {
+    return min === max ? formatNumberValue(min, 'CURRENCY_EXACT') : `${formatNumberValue(min, 'CURRENCY_EXACT')} – ${formatNumberValue(max, 'CURRENCY_EXACT')}`;
+  }
+  return max != null ? `Max ${formatNumberValue(max, 'CURRENCY_EXACT')}` : `Min ${formatNumberValue(min!, 'CURRENCY_EXACT')}`;
+}
+
 export function getInitials(name: string): string {
   return (
     name

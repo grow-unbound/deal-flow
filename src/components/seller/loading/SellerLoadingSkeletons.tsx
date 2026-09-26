@@ -206,15 +206,15 @@ export function SellerEntityDetailSkeleton({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-2 md:gap-3 md:grid-cols-4">
         {Array.from({ length: kpiCount }).map((_, index) => (
           <PulseCard key={index} className={kpiCardClassName} />
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto md:flex-wrap">
         {Array.from({ length: tabCount }).map((_, index) => (
-          <PulseLine key={index} className={cn(tabWidth, 'h-9 rounded-full')} />
+          <PulseLine key={index} className={cn(tabWidth, 'h-9 shrink-0 rounded-full')} />
         ))}
       </div>
 

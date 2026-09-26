@@ -79,7 +79,7 @@ export function BroadcastTemplatePickerOverlay({
         onClick={() => setPickerOpen(true)}
         className={cn(
           'flex w-full items-center justify-between rounded-[8px] border border-cream-300 bg-white px-3 py-[10px] text-left transition-colors hover:bg-cream-50',
-          error ? 'border-danger-300 bg-danger-50/40' : '',
+          error ? 'border-danger-50 bg-danger-50/40' : '',
         )}
       >
         <div className="flex min-w-0 items-center gap-3">

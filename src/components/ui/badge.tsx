@@ -70,4 +70,19 @@ function Badge({ className, variant, icon = false, ...props }: BadgeProps) {
   );
 }
 
-export { Badge, badgeVariants };
+/** Plain numeral count chip (unread/item counts, e.g. "6", "13") — shares Badge's
+ * --ctl-badge-* sizing so it shrinks under the seller-desktop density tier, but
+ * has no uppercase/mono/glyph treatment since it's a number, not a status label. */
+function CountChip({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center justify-center rounded-pill border border-cream-300 bg-cream-100 px-[var(--ctl-badge-px)] py-[var(--ctl-badge-py)] text-[length:var(--ctl-badge-text)] font-medium tabular-nums text-cream-700',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Badge, badgeVariants, CountChip };

@@ -48,6 +48,15 @@ describe('InboxApprovalActionBar', () => {
   beforeEach(() => {
     applyGenericMutateAsyncMock.mockClear();
     applyApprovalMutateAsyncMock.mockClear();
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
   });
 
   it('renders Approve / Request more info / Decline for a fresh business_approval entry', () => {

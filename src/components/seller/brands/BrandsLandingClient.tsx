@@ -21,6 +21,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
@@ -146,6 +147,7 @@ function BrandLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.products.brands);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const period: SellerLandingPeriod = 'month';
   const horizonLabel = 'This Month';
@@ -241,14 +243,14 @@ function BrandLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading brands"
         showLeading
         eyebrowWidth="w-16"
         titleWidth="w-44"
         subtitleWidth="w-52"
-        showHeader={false}
+        showTransactionTabs
       />
     ) : (
       <BrandsLandingSkeleton />

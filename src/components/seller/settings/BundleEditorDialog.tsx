@@ -246,7 +246,7 @@ export function BundleEditorDialog({
                     <button
                       type="button"
                       onClick={() => removeSlot(idx)}
-                      className="shrink-0 p-1 text-cream-400 transition-colors hover:text-red-500"
+                      className="shrink-0 p-1 text-cream-400 transition-colors hover:text-danger-500"
                       aria-label="Remove slot"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

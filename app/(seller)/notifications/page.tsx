@@ -56,11 +56,11 @@ function NotificationRow({ n }: { n: AppNotification }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="default" className="text-[10px]">{label}</Badge>
+          <Badge variant="default" className="text-xs">{label}</Badge>
         </div>
         <p className="mt-1 text-sm font-medium leading-snug text-cream-900">{n.title}</p>
         <p className="mt-0.5 text-xs text-cream-600">{n.body}</p>
-        <p className="mt-1 font-mono text-[11px] tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
+        <p className="mt-1 font-mono text-xs tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
       </div>
       {isUnread && (
         <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-ember-500" aria-label="Unread" />
@@ -96,13 +96,13 @@ export default function NotificationsPage() {
         <div className="space-y-6">
           {today.length > 0 && (
             <section className="space-y-2">
-              <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
+              <p className="px-1 text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
               {today.map((n) => <NotificationRow key={n.id} n={n} />)}
             </section>
           )}
           {earlier.length > 0 && (
             <section className="space-y-2">
-              <p className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-500">Earlier</p>
+              <p className="px-1 text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Earlier</p>
               {earlier.map((n) => <NotificationRow key={n.id} n={n} />)}
             </section>
           )}

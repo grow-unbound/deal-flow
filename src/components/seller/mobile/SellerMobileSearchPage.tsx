@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Clock, Search } from 'lucide-react';
+import { Clock, Search } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-fetch';
 import { withSellerLandingSearch } from '@/lib/seller-search-navigation';
+import { MobileBackButton } from './MobileBackButton';
 
 interface SearchItem {
   id: string;
@@ -117,14 +118,7 @@ export function SellerMobileSearchPage() {
   return (
     <div className="min-h-[calc(100dvh-56px)] bg-cream-50 md:hidden">
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-cream-300 bg-cream-50/95 px-3 py-2 backdrop-blur-md">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-cream-300 bg-white text-cream-900"
-          aria-label="Back"
-        >
-          <ArrowLeft size={18} />
-        </button>
+        <MobileBackButton onClick={() => router.back()} />
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-600" />
           <input
@@ -145,7 +139,7 @@ export function SellerMobileSearchPage() {
 
         {!hasQuery && recent.length > 0 ? (
           <section>
-            <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-500">
+            <div className="mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-[0.1em] text-cream-500">
               <Clock size={12} />
               Recent
             </div>
@@ -185,7 +179,7 @@ export function SellerMobileSearchPage() {
           <div className="space-y-4">
             {groups.map((group) => (
               <section key={group.entity_type}>
-                <div className="mb-2 flex items-center justify-between px-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-500">
+                <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-[0.1em] text-cream-500">
                   <span>{ENTITY_LABEL[group.entity_type] ?? group.entity_type}</span>
                   <span className="font-mono">{group.items.length}</span>
                 </div>

@@ -1,4 +1,9 @@
 import type { ReactNode } from 'react';
+import {
+  CHART_CATEGORICAL_PALETTE,
+  CHART_DISTRIBUTION_PALETTE_WARM,
+  CHART_FUNNEL_PALETTE,
+} from '@/lib/theme/chart-colors';
 import { cn } from '@/lib/utils';
 import { CardEmptyState } from './CardEmptyState';
 
@@ -61,11 +66,11 @@ export function DistributionList({
 
   const palette =
     mode === 'mix'
-      ? ['#204A41', '#B7703D', '#A59984', '#C07A43', '#6E8F87']
-      : ['#346A5C', '#7EA89A', '#D9C6B4', '#C26E3A', '#E7D8CB'];
+      ? CHART_CATEGORICAL_PALETTE.slice(0, 5)
+      : CHART_DISTRIBUTION_PALETTE_WARM;
 
   if (mode === 'funnel') {
-    const funnelPalette = ['#204A41', '#3B6659', '#57816F', '#7EA89A', '#A8C7BC'];
+    const funnelPalette = CHART_FUNNEL_PALETTE;
     return (
       <div className={cn(compact ? 'p-4' : 'p-5', className)}>
         <div className="flex flex-col gap-2.5">

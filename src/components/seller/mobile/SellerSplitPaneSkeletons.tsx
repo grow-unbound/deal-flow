@@ -32,11 +32,11 @@ export function SellerSplitPaneHeaderSkeleton({
   );
 }
 
-export function SellerSplitPaneTransactionTabsSkeleton() {
+export function SellerSplitPaneTransactionTabsSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="mb-0 flex rounded-[10px] bg-cream-200 p-[3px] md:hidden" aria-hidden>
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="flex h-8 flex-1 animate-pulse rounded-lg bg-cream-100" />
+    <div className="mb-0 mt-4 flex items-center gap-3 border-b border-cream-300 pb-2.5" aria-hidden>
+      {Array.from({ length: count }).map((_, index) => (
+        <PulseLine key={index} className={cn('h-4', index === 0 ? 'w-16' : 'w-14')} />
       ))}
     </div>
   );

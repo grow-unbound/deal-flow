@@ -24,7 +24,7 @@ function BuyerResultsSkeleton() {
   return (
     <div className="space-y-1">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="rounded-[8px] px-3 py-[10px]">
+        <div key={index} className="rounded-[8px] px-3 py-2.5">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 animate-pulse rounded-[10px] bg-cream-100" />
             <div className="min-w-0 flex-1 space-y-2">
@@ -204,7 +204,7 @@ export function SellerBuyerPickerOverlay({
           ) : buyerPickerQuery.isFetching && buyerPickerRows.length === 0 ? (
             <BuyerResultsSkeleton />
           ) : buyerPickerQuery.isError ? (
-            <div className="px-4 py-12 text-center text-base text-danger-600">We couldn&apos;t load buyers right now.</div>
+            <div className="px-4 py-12 text-center text-base text-danger-500">We couldn&apos;t load buyers right now.</div>
           ) : buyerPickerRows.length === 0 ? (
             <div className="px-4 py-12 text-center text-base text-cream-700">No buyers match the current search and filters.</div>
           ) : (

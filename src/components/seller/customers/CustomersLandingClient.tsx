@@ -27,6 +27,7 @@ import { CUSTOMERS_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-la
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useCustomersLandingInfinite,
@@ -186,6 +187,7 @@ function CustomersLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/customers');
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -327,7 +329,7 @@ function CustomersLandingContent({
   const headerCard = selectedCard ?? cards[0] ?? null;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton ariaLabel="Loading customers" />
     ) : (
       <CustomersLandingSkeleton />

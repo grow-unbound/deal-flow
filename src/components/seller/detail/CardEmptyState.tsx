@@ -19,9 +19,9 @@ export function CardEmptyState({
 }: CardEmptyStateProps) {
   const toneClass =
     tone === 'error'
-      ? 'border-danger-200 bg-danger-50 text-danger-700'
+      ? 'border-danger-50 bg-danger-50 text-danger-700'
       : tone === 'unavailable'
-        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        ? 'border-warning-50 bg-warning-50 text-warning-700'
         : 'border-cream-200 bg-cream-50 text-cream-700';
 
   return (

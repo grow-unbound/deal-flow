@@ -1092,7 +1092,7 @@ export function CatalogSetupClient(): React.ReactNode {
                 </div>
               ) : null}
               <div className="mt-4 overflow-hidden rounded-lg border border-cream-200">
-                <div className="grid grid-cols-[minmax(0,1.1fr)_1.25rem_minmax(0,1fr)_6.75rem_auto] items-center gap-2 bg-cream-100 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">
+                <div className="grid grid-cols-[minmax(0,1.1fr)_1.25rem_minmax(0,1fr)_6.75rem_auto] items-center gap-2 bg-cream-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">
                   <span>Your file</span>
                   <span />
                   <span>Yukti field</span>
@@ -1133,7 +1133,7 @@ export function CatalogSetupClient(): React.ReactNode {
                                 value={field}
                                 trailing={
                                   mappedElsewhere ? (
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cream-500">
+                                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">
                                       Mapped
                                     </span>
                                   ) : undefined
@@ -1254,7 +1254,7 @@ export function CatalogSetupClient(): React.ReactNode {
                 <p className="mt-1 text-body-sm text-cream-600">Shown in the catalog title and buyer app home.</p>
               </div>
               <div className="mt-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">Who can browse your catalog?</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">Who can browse your catalog?</p>
                 <RadioGroup
                   className="mt-3 space-y-2"
                   value={accessMode}
@@ -1287,7 +1287,7 @@ export function CatalogSetupClient(): React.ReactNode {
                 </RadioGroup>
               </div>
               <div className="mt-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">How buyers buy</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">How buyers buy</p>
                 <RadioGroup
                   className="mt-3 space-y-2"
                   value={pricingMode || undefined}
@@ -1403,7 +1403,7 @@ export function CatalogSetupClient(): React.ReactNode {
                 </RadioGroup>
               </div>
               <div className="mt-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-600">How products appear</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">How products appear</p>
                 <RadioGroup
                   className="mt-3 space-y-2"
                   value={productDisplayMode}

@@ -10,9 +10,9 @@ export function UsageWarningBanner({ warnings }: { warnings: BillingWarning[] })
   return (
     <Alert variant="warning" className="flex gap-3 border-warning-500/40 bg-warning-50">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-700" />
-      <AlertDescription className="text-body-sm text-warning-900">
+      <AlertDescription className="text-body-sm text-warning-700">
         <span className="font-semibold">Approaching plan limits</span>
-        <ul className="mt-2 list-inside list-disc space-y-1 text-warning-800">
+        <ul className="mt-2 list-inside list-disc space-y-1 text-warning-700">
           {warnings.map((w) => (
             <li key={w.key}>{w.message}</li>
           ))}

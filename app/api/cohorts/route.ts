@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema, CustomerGroupFormPayloadSchema } from '@/lib/zod';
 import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { applyManualCohortMembersPlan, planManualCohortMembers } from '@/lib/server/cohort-manual-members';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
@@ -466,6 +467,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A cohort with this name already exists.' }, { status: 409 });
   }
 
+  // Validate the selected buyers belong to this tenant before creating anything, so a bad
+  // selection can't leave an empty cohort behind.
+  let manualMembersPlan: Awaited<ReturnType<typeof planManualCohortMembers>> | null = null;
+  if (isSimpleForm && membershipMode === 'manual') {
+    try {
+      manualMembersPlan = await planManualCohortMembers(db, claims.tenant_id, null, simpleParsed.data.selected_buyer_ids);
+    } catch (error) {
+      console.error('[POST /api/cohorts] member plan error:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ error: 'Failed to validate selected buyers' }, { status: 500 });
+    }
+    if (manualMembersPlan.invalidBuyerIds.length > 0) {
+      return NextResponse.json({ error: 'One or more selected buyers are invalid.' }, { status: 422 });
+    }
+  }
+
   const { data: cohort, error: insertError } = await db
     .schema('app')
     .from('cohorts')
@@ -533,25 +549,13 @@ export async function POST(request: NextRequest) {
         .eq('cohort_id', cohort.id);
       cachedMemberCount = count ?? 0;
     }
-  } else {
-    const memberIds = simpleParsed.data.selected_buyer_ids;
-    cachedMemberCount = memberIds.length;
-
-    if (memberIds.length > 0) {
-      const rows = memberIds.map((buyerId) => ({ cohort_id: cohort.id, buyer_id: buyerId }));
-      const { error: membersError } = await db.schema('app').from('cohort_members').insert(rows);
-      if (membersError) {
-        console.error('[POST /api/cohorts] member insert error:', membersError.message);
-        return NextResponse.json({ error: 'Cohort created but failed to save selected buyers' }, { status: 500 });
-      }
+  } else if (manualMembersPlan) {
+    try {
+      cachedMemberCount = await applyManualCohortMembersPlan(db, claims.tenant_id, cohort.id, manualMembersPlan);
+    } catch (error) {
+      console.error('[POST /api/cohorts] member insert error:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ error: 'Cohort created but failed to save selected buyers' }, { status: 500 });
     }
-
-    await db
-      .schema('app')
-      .from('cohorts')
-      .update({ cached_member_count: cachedMemberCount })
-      .eq('id', cohort.id)
-      .eq('tenant_id', claims.tenant_id);
   }
 
   getPostHogClient()?.capture({

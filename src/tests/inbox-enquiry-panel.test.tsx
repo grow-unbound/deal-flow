@@ -17,7 +17,7 @@ vi.mock('@/hooks/useInboxEntries', () => ({
         {
           id: 'l1', tenantProductId: 'p1', name: 'CAT6 Cable', sku: 'SKU-1', brandName: 'Brand A',
           qty: 10, unitPrice: 500, targetMin: null, targetMax: null, buyerNote: 'urgent for install',
-          onHand: 2, stock: { tone: 'danger', label: 'Out of stock', shortBy: 10 },
+          onHand: 2, stock: { tone: 'danger', label: 'Out of stock', shortBy: 10 }, priceState: 'priced_oos',
           velocity: { unitsPerWeek: 3, daysCover: 12, lastInvoiceAt: null },
           alternates: [
             {
@@ -35,6 +35,12 @@ vi.mock('@/hooks/useInboxEntries', () => ({
   useSubstituteEnquiryLine: () => ({ mutateAsync: substituteMutateAsync, isPending: false }),
 }));
 
+vi.mock('@/hooks/useEstimates', () => ({
+  useEstimateComposer: () => ({
+    data: { items: [{ id: 'l1', image_url: null }], subtotal: 5000, tax_amount: 900, total_amount: 5900, seller_note: 'Ships Friday' },
+  }),
+}));
+
 import { InboxEnquiryPanel } from '@/components/seller/inbox/InboxEnquiryPanel';
 
 function renderPanel() {
@@ -47,6 +53,16 @@ function renderPanel() {
 }
 
 describe('InboxEnquiryPanel', () => {
+  it('shows read-only buyer quantity, the seller draft quote, totals and the seller note', () => {
+    renderPanel();
+    expect(screen.getByText('Buyer quantity')).toBeInTheDocument();
+    expect(screen.getByText('Your quote')).toBeInTheDocument();
+    expect(screen.getByText('₹500')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByText('₹5,900')).toBeInTheDocument();
+    expect(screen.getByText('Ships Friday')).toBeInTheDocument();
+  });
+
   it('drops the estimate-number/total header row and the estimate-level buyer note', () => {
     renderPanel();
     expect(screen.queryByText('EST-016127')).not.toBeInTheDocument();

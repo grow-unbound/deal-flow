@@ -411,7 +411,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={!deactivateMember || removeMutation.isPending}
-              className="bg-danger-500 text-cream-50 hover:bg-danger-600"
+              className="bg-danger-500 text-cream-50 hover:bg-danger-500"
               onClick={(event) => {
                 event.preventDefault();
                 if (deactivateMember) {

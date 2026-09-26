@@ -233,7 +233,7 @@ export function RecommendationsSettingsClient({
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={!deactivateTarget || deactivating}
-              className="bg-danger-500 text-cream-50 hover:bg-danger-600"
+              className="bg-danger-500 text-cream-50 hover:bg-danger-500"
               onClick={(event) => {
                 event.preventDefault();
                 if (deactivateTarget) {

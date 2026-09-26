@@ -1,9 +1,12 @@
+import { PageWrap } from '@/components/seller/layout/PageWrap';
+import { SellerMobileListSkeleton } from '@/components/seller/mobile/SellerMobileList';
+
 export default function TodayLoading() {
   return (
-    <div className="flex h-full flex-col gap-3 p-4" aria-hidden>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-16 animate-pulse rounded-[12px] bg-cream-100" />
-      ))}
-    </div>
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto" role="status" aria-label="Loading today">
+        <SellerMobileListSkeleton count={6} forceVisible showLeading />
+      </div>
+    </PageWrap>
   );
 }

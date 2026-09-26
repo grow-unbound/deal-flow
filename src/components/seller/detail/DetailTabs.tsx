@@ -56,7 +56,7 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
 
   return (
     <div
-      className="mx-0 mt-4 flex rounded-[10px] bg-cream-200 p-[3px] md:mt-6 md:rounded-none md:border-b md:border-cream-300 md:bg-transparent md:p-0"
+      className="mx-0 mt-4 flex items-center gap-3 overflow-x-auto border-b border-cream-300 md:mt-6"
       role="tablist"
       aria-orientation="horizontal"
     >
@@ -82,8 +82,8 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
               onChange?.(tab.id);
             }}
             className={cn(
-              'inline-flex flex-1 items-center justify-center rounded-lg border-b-0 border-transparent px-2 py-1.5 text-[var(--b-text-sub)] font-medium text-cream-700 transition-colors hover:text-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-300/70 md:flex-none md:rounded-none md:border-b-2 md:px-5 md:py-3.5 md:text-base',
-              isActive && 'bg-white text-teal-500 shadow-[0_1px_2px_rgba(31,58,52,0.06)] md:border-ember-500 md:bg-transparent md:text-cream-950 md:shadow-none'
+              'inline-flex shrink-0 items-center justify-center whitespace-nowrap border-b-2 border-transparent px-1 py-2.5 text-body-sm font-medium text-cream-700 transition-all duration-fast ease-standard hover:text-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2',
+              isActive && 'border-ember-400 text-cream-900 font-semibold'
             )}
           >
             <span>{tab.label}</span>

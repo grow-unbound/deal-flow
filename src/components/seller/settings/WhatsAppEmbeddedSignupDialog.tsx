@@ -240,8 +240,8 @@ export function WhatsAppEmbeddedSignupDialog({
         <DialogBody className="space-y-4">
           {step === 'warning' && (
             <div className="space-y-4">
-              <div className="flex gap-3 rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
-                <AlertTriangle className="h-5 w-5 shrink-0 text-warning-600" />
+              <div className="flex gap-3 rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-700">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-warning-500" />
                 <div className="space-y-2">
                   <p className="font-semibold text-warning-950">Before you connect, please know:</p>
                   <ul className="list-disc space-y-1.5 pl-4">

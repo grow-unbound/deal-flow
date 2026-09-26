@@ -17,9 +17,10 @@ import {
   type InsightTile,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
-import { SellerMobileTransactionTabs, SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { SellerSalesWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -123,6 +124,7 @@ function SalesOrdersLandingContent({
   const captureCta = useSellerCtaCapture();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.sales.orders);
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search')?.trim() || undefined;
   const clientInitialPeriod = searchParams.get('period') ? parseSellerLandingPeriod(searchParams.get('period')) : initialPeriod;
@@ -227,8 +229,8 @@ function SalesOrdersLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading sales orders" showHeader={false} showTransactionTabs variant="transaction" />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading sales orders" showTransactionTabs variant="transaction" />
     ) : (
       <SalesOrdersLandingSkeleton />
     );
@@ -292,8 +294,7 @@ function SalesOrdersLandingContent({
             compact={isPaneOpen}
           />
           <SellerSalesWorkspaceTabs />
-          <SellerMobileTransactionTabs active="orders" />
-
+  
           {isPaneOpen ? null : (
             <InsightStrip4
               tiles={kpiOptions.map((option): InsightTile => ({

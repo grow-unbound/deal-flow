@@ -128,7 +128,7 @@ export function CategorySlotPicker({
           role="listbox"
           className="inline-search-overlay absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-[12px] border border-cream-300 bg-white shadow-[0_18px_40px_rgba(34,52,43,0.12)]"
         >
-          <div className="border-b border-cream-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">
+          <div className="border-b border-cream-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
             Matching categories
           </div>
           <div

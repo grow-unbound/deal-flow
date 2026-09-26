@@ -197,7 +197,7 @@ function Step1Upload({ onFileSelected, brandSlugToId, brandsLoaded }: Step1Props
       />
 
       {parseError && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-danger-500 bg-danger-50 border border-danger-50 rounded-lg px-3 py-2">
           <AlertCircle size={16} className="shrink-0" />
           {parseError}
         </div>
@@ -266,7 +266,7 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
         <span className="text-cream-700 font-medium">{parsedRows.length} rows found</span>
         <span className="text-teal-600 font-medium">{validCount} valid</span>
         {invalidCount > 0 && (
-          <span className="text-red-600 font-medium">{invalidCount} with errors</span>
+          <span className="text-danger-500 font-medium">{invalidCount} with errors</span>
         )}
       </div>
 
@@ -291,7 +291,7 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
               <TableRow
                 key={row.rowIndex}
                 className={cn(
-                  row.isValid ? 'bg-cream-50' : 'bg-red-50 border-l-2 border-red-500'
+                  row.isValid ? 'bg-cream-50' : 'bg-danger-50 border-l-2 border-danger-500'
                 )}
               >
                 <TableCell className="text-base text-cream-500">{row.rowIndex}</TableCell>
@@ -315,7 +315,7 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
                     </span>
                   ) : (
                     <span
-                      className="inline-flex items-center gap-1 text-sm text-red-600 font-medium cursor-help"
+                      className="inline-flex items-center gap-1 text-sm text-danger-500 font-medium cursor-help"
                       title={(row.errors ?? []).join('\n')}
                     >
                       <AlertCircle size={12} />
@@ -336,7 +336,7 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
           {parsedRows
             .filter((r) => !r.isValid)
             .map((row) => (
-              <div key={row.rowIndex} className="flex gap-2 text-xs text-red-600">
+              <div key={row.rowIndex} className="flex gap-2 text-xs text-danger-500">
                 <span className="font-mono shrink-0">Row {row.rowIndex}:</span>
                 <span>{(row.errors ?? []).join('; ')}</span>
               </div>
@@ -404,15 +404,15 @@ function Step3Result({ result, onReset }: Step3Props) {
       </div>
 
       {skippedWithErrors.length > 0 && (
-        <div className="border border-red-200 rounded-lg overflow-hidden">
-          <div className="bg-red-50 px-4 py-2 text-sm font-medium text-red-700">
+        <div className="border border-danger-50 rounded-lg overflow-hidden">
+          <div className="bg-danger-50 px-4 py-2 text-sm font-medium text-danger-700">
             Skipped rows
           </div>
           <div className="divide-y divide-cream-100 max-h-48 overflow-y-auto">
             {skippedWithErrors.map((r, idx) => (
               <div key={idx} className="flex items-center gap-3 px-4 py-2 text-sm">
                 <span className="font-mono text-cream-700 shrink-0">{r.sku}</span>
-                <span className="text-red-600 text-xs">{r.error ?? 'Skipped'}</span>
+                <span className="text-danger-500 text-xs">{r.error ?? 'Skipped'}</span>
               </div>
             ))}
           </div>

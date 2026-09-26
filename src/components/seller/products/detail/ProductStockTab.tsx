@@ -123,7 +123,7 @@ export function ProductStockTab({ productId }: ProductStockTabProps) {
                       <span className="inline-flex flex-wrap items-center gap-2">
                         {row.name}
                         {row.isDefault ? (
-                          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-teal-700">
+                          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.08em] text-teal-700">
                             Default
                           </span>
                         ) : null}

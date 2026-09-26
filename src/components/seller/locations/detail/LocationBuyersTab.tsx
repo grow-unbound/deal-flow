@@ -40,7 +40,7 @@ function BuyerAppAvatar({ name, enabled }: { name: string; enabled: boolean }) {
     <div
       title={label}
       aria-label={label}
-      className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border border-dashed border-cream-400 bg-cream-100 text-[13px] font-display font-medium uppercase leading-none text-cream-500"
+      className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border border-dashed border-cream-400 bg-cream-100 text-sm font-display font-medium uppercase leading-none text-cream-500"
     >
       {getInitials(name)}
     </div>

@@ -1,71 +1,20 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEnquiryTriage, useSubstituteEnquiryLine } from '@/hooks/useInboxEntries';
-import type { EnquiryTriageLine, EnquiryVelocity } from '@/lib/inbox/enquiry-triage';
+import { useEstimateComposer } from '@/hooks/useEstimates';
+import type { EnquiryTriageLine } from '@/lib/inbox/enquiry-triage';
+import { buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
 import { cn, formatNumberValue } from '@/lib/utils';
+import { StockCell, VelocityCell, velocityLabel } from './EnquiryLineDisplay';
 
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_3.5rem_7.5rem] items-start gap-x-4 sm:grid-cols-[minmax(0,1fr)_3.5rem_8.5rem_6.5rem_6.5rem]';
 const HEAD_CLASS = 'text-xs font-medium uppercase tracking-[0.08em] text-cream-500';
 
 function money(value: number) {
   return formatNumberValue(value, 'CURRENCY_EXACT');
-}
-
-function velocityLabel(v: EnquiryVelocity): string {
-  if (v.unitsPerWeek <= 0) return 'No recent sales';
-  return `~${v.unitsPerWeek}/wk`;
-}
-
-function priceCell(line: EnquiryTriageLine, hidden: boolean) {
-  if (hidden) {
-    if (line.targetMin == null || line.targetMax == null) {
-      return <span className="text-cream-500">No target</span>;
-    }
-    const range = line.targetMin === line.targetMax ? money(line.targetMin) : `${money(line.targetMin)} – ${money(line.targetMax)}`;
-    return (
-      <span className="flex flex-col items-end">
-        <span className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Buyer target</span>
-        <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">{range}</span>
-      </span>
-    );
-  }
-  return line.unitPrice != null
-    ? <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">{money(line.unitPrice)}</span>
-    : <span className="text-cream-500">—</span>;
-}
-
-function StockCell({ line }: { line: EnquiryTriageLine }) {
-  const { tone, label } = line.stock;
-  return (
-    <span className="flex flex-col items-end">
-      <span
-        className={cn(
-          'text-sm font-semibold',
-          tone === 'danger' && 'text-danger-700',
-          tone === 'warning' && 'text-amber-800',
-          tone === 'ok' && 'text-cream-700',
-        )}
-      >
-        {tone === 'danger' || tone === 'warning' ? '▲ ' : null}
-        {label}
-      </span>
-      <span className="font-mono text-xs tabular-nums text-cream-500">{line.onHand} on hand</span>
-    </span>
-  );
-}
-
-function VelocityCell({ velocity }: { velocity: EnquiryVelocity }) {
-  return (
-    <span className="flex flex-col items-end">
-      <span className="font-mono text-sm tabular-nums text-cream-800">{velocityLabel(velocity)}</span>
-      {velocity.daysCover != null ? (
-        <span className="font-mono text-xs tabular-nums text-cream-500">{Math.round(velocity.daysCover)}d cover</span>
-      ) : null}
-    </span>
-  );
 }
 
 function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine; estimateId: string; entryId: string }) {
@@ -133,51 +82,82 @@ function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine
   );
 }
 
-function LineRow({ line, hidden, estimateId, entryId }: { line: EnquiryTriageLine; hidden: boolean; estimateId: string; entryId: string }) {
-  const [open, setOpen] = useState(false);
+function ReadOnlyLineCard({ line, imageUrl, estimateId, entryId }: { line: EnquiryTriageLine; imageUrl: string | null; estimateId: string; entryId: string }) {
+  const [altsOpen, setAltsOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const short = line.stock.tone !== 'ok';
+  const targetLabel = buildTargetRangeLabel(line.targetMin, line.targetMax);
   const altLabel = line.alternates.length > 0
     ? `${line.alternates.length} alternative${line.alternates.length === 1 ? '' : 's'}`
     : 'No alternatives';
 
   return (
-    <div>
-      <div
-        className={cn(
-          ROW_GRID,
-          'px-4 py-3.5',
-          line.stock.tone === 'danger' && 'doc-line-stock-danger',
-          line.stock.tone === 'warning' && 'doc-line-stock-warning',
-        )}
-      >
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
-          <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
-            {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
-          </p>
-          {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
-          {short ? (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950"
-            >
-              {altLabel}
-              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
-            </button>
-          ) : null}
-          <div className="mt-1.5 flex gap-4 sm:hidden">
-            <StockCell line={line} />
-            <VelocityCell velocity={line.velocity} />
+    <div className="overflow-hidden rounded-[14px] border border-cream-200">
+      <div className={cn('px-4 py-4', line.stock.tone === 'danger' && 'doc-line-stock-danger', line.stock.tone === 'warning' && 'doc-line-stock-warning')}>
+        <div className="flex items-start gap-3">
+          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100">
+            {imageUrl && !imgError ? (
+              <Image src={imageUrl} alt="" fill className="object-cover" sizes="56px" unoptimized onError={() => setImgError(true)} />
+            ) : (
+              <Package className="h-5 w-5 text-cream-400" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
+            <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+              {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
+            </p>
+            {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
           </div>
         </div>
-        <span className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</span>
-        <span className="text-right">{priceCell(line, hidden)}</span>
-        <span className="hidden text-right sm:block"><StockCell line={line} /></span>
-        <span className="hidden text-right sm:block"><VelocityCell velocity={line.velocity} /></span>
+
+        {/* Mobile: 2 cols x 3 rows (target|resolved, qty|quote, stock|sales) so "Your quote"
+            sits under "Resolved price". Desktop: 3 cols -- line 1 target/resolved/quote,
+            line 2 stock/sales/qty. */}
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+          <div className="order-1">
+            <p className={HEAD_CLASS}>Buyer target</p>
+            <p className="mt-0.5 font-mono text-sm text-cream-700">{targetLabel ?? 'None given'}</p>
+          </div>
+          <div className="order-2">
+            <p className={HEAD_CLASS}>Resolved price</p>
+            <p className="mt-0.5 font-mono text-sm text-cream-700">{line.resolvedPrice != null ? money(line.resolvedPrice) : '—'}</p>
+          </div>
+          <div className="order-4 sm:order-3">
+            <p className={HEAD_CLASS}>Your quote</p>
+            {line.unitPrice != null && line.unitPrice > 0 ? (
+              <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-cream-900">{money(line.unitPrice)}</p>
+            ) : (
+              <p className="mt-0.5 text-sm text-cream-500">Not quoted yet</p>
+            )}
+          </div>
+          <div className="order-5 sm:order-4">
+            <p className={HEAD_CLASS}>Stock</p>
+            <StockCell stock={line.stock} onHand={line.onHand} align="start" />
+          </div>
+          <div className="order-6 sm:order-5">
+            <p className={HEAD_CLASS}>Recent sales</p>
+            <VelocityCell velocity={line.velocity} align="start" />
+          </div>
+          <div className="order-3 sm:order-6">
+            <p className={HEAD_CLASS}>Buyer quantity</p>
+            <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</p>
+          </div>
+        </div>
+
+        {short ? (
+          <button
+            type="button"
+            onClick={() => setAltsOpen((v) => !v)}
+            aria-expanded={altsOpen}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950"
+          >
+            {altLabel}
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', altsOpen && 'rotate-180')} aria-hidden />
+          </button>
+        ) : null}
       </div>
-      {short && open ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
+      {short && altsOpen ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
     </div>
   );
 }
@@ -185,9 +165,8 @@ function LineRow({ line, hidden, estimateId, entryId }: { line: EnquiryTriageLin
 export function InboxEnquirySkeleton() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading enquiry">
-      <div className="h-4 w-56 animate-pulse rounded-full bg-cream-200" />
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-[52px] animate-pulse rounded-[10px] bg-cream-100" />
+        <div key={i} className="h-28 animate-pulse rounded-[14px] bg-cream-100" />
       ))}
     </div>
   );
@@ -195,29 +174,55 @@ export function InboxEnquirySkeleton() {
 
 export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
   const { data, isLoading, isError } = useEnquiryTriage(entryId);
+  const composer = useEstimateComposer(data?.estimateId ?? null).data;
 
   if (isLoading) return <InboxEnquirySkeleton />;
   if (isError || !data) {
     return <p className="text-sm text-cream-600">Couldn&apos;t load enquiry items.</p>;
   }
 
+  const imageById = new Map((composer?.items ?? []).map((item) => [item.id, item.image_url ?? null]));
+  const hasTotals = composer?.total_amount != null;
+
   return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-[12px] border border-cream-200">
-        <div className={cn(ROW_GRID, 'border-b border-cream-200 bg-cream-50 px-4 py-2.5')}>
-          <span className={HEAD_CLASS}>Item</span>
-          <span className={cn(HEAD_CLASS, 'text-right')}>Qty</span>
-          <span className={cn(HEAD_CLASS, 'text-right')}>{data.hiddenPricing ? 'Target' : 'Price'}</span>
-          <span className={cn(HEAD_CLASS, 'hidden text-right sm:block')}>Stock</span>
-          <span className={cn(HEAD_CLASS, 'hidden text-right sm:block')}>Velocity</span>
-        </div>
-        <div className="divide-y divide-cream-200">
-          {data.lines.map((line) => (
-            <LineRow key={line.id} line={line} hidden={data.hiddenPricing} estimateId={data.estimateId} entryId={entryId} />
-          ))}
-        </div>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {data.lines.map((line) => (
+          <ReadOnlyLineCard
+            key={line.id}
+            line={line}
+            imageUrl={imageById.get(line.id) ?? null}
+            estimateId={data.estimateId}
+            entryId={entryId}
+          />
+        ))}
       </div>
 
+      {hasTotals ? (
+        <div className="rounded-[14px] border border-cream-300 bg-cream-50 px-4 py-4">
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-cream-700">Subtotal</span>
+              <span className="font-mono text-cream-900">{money(Number(composer?.subtotal ?? 0))}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-cream-700">GST</span>
+              <span className="font-mono text-cream-900">{money(Number(composer?.tax_amount ?? 0))}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-cream-200 pt-2 text-base">
+              <span className="font-medium text-cream-900">Total</span>
+              <span className="font-mono font-semibold text-cream-950">{money(Number(composer?.total_amount ?? 0))}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {composer?.seller_note ? (
+        <div className="rounded-[14px] border border-cream-200 px-4 py-3">
+          <p className={HEAD_CLASS}>Your note to the buyer</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-cream-800">{composer.seller_note}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

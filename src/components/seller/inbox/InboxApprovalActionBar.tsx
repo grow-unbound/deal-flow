@@ -30,7 +30,7 @@ import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import { missingFieldKeysForEntryType, MISSING_FIELD_LABELS } from '@/lib/inbox/missing-field-labels';
 import { GENERIC_ACTIONS, ACTION_LABELS } from './InboxActionBar';
-import { InboxInlineNote } from './InboxInlineNote';
+import { InboxNoteHost } from './InboxActionSheets';
 import type { InboxEntry, InboxEntryStatus } from '@/lib/inbox/inbox-types';
 
 const APPROVAL_ACTIONS = new Set(['approve', 'request_more_info', 'decline']);
@@ -318,7 +318,7 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
         </div>
       </div>
 
-      <InboxInlineNote
+      <InboxNoteHost
         entryIds={[entry.id]}
         primaryEntryId={entry.id}
         historyEvents={historyEvents}

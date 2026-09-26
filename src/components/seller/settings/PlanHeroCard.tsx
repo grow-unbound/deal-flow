@@ -54,7 +54,7 @@ function Meter({
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-white/20">
         <div
-          className={cn('h-full rounded-full transition-all', warn ? 'bg-amber-300' : 'bg-white/60')}
+          className={cn('h-full rounded-full transition-all', warn ? 'bg-warning-500' : 'bg-white/60')}
           style={{ width: `${pct}%` }}
         />
       </div>
