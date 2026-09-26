@@ -69,6 +69,7 @@ media/
 
 Specs files
 specs/
+docs/
 CLAUDE_OUTPUTS/
 WineYard/
 .worktrees/
