@@ -15,25 +15,24 @@ import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import {
   useBuyerBrands,
   useBuyerCatalogSearchInfinite,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { apiFetch } from '@/lib/api-fetch';
 import {
   BUYER_LOOKBOOK_ASPECT_CLASS,
   BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS,
 } from '@/lib/buyer-lookbook';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
-import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO, BUYER_PRODUCT_GRID_CLASS, BUYER_TILE_FRAME_CLASS, BUYER_TWO_LINE_TITLE_CLASS, dedupeBuyerCatalogItems, guestPriceReveal } from '@/lib/buyer-ui';
 import { BUYER_REFERENCE_QUERY_GC_TIME, BUYER_REFERENCE_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerBrand, BuyerCatalogItem, BuyerCategory } from '@/types/buyer';
 import { cn } from '@/lib/utils';
-
-function formatProductCount(count: number): string {
-  return `${count} product${count === 1 ? '' : 's'}`;
-}
+import { normalizeBuyerSearchQuery, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 async function fetchBuyerHomePromotions(): Promise<BuyerHomePromotionsResponse> {
   const response = await apiFetch('/api/buyer/home/promotions');
@@ -59,6 +58,9 @@ export function CatalogDiscoveryLanding({
   initialCategories?: BuyerCategory[];
 } = {}): React.ReactNode {
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
+  const { data: me } = useBuyerMe();
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
@@ -75,6 +77,7 @@ export function CatalogDiscoveryLanding({
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
     initialData: initialPromotions,
+    enabled: !isGuest,
   });
   const {
     data: recoData,
@@ -102,12 +105,28 @@ export function CatalogDiscoveryLanding({
   } = useBuyerCategories(initialCategories);
 
   const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
+  const browseQueryResult = useBuyerCatalogSearchInfinite('', {}, isGuest, { allowEmpty: true });
   const searchPages = searchQueryResult.data?.pages ?? [];
-  const searchItems = React.useMemo(() => searchPages.flatMap((page) => page.items ?? []), [searchPages]);
+  const searchItems = React.useMemo(() => dedupeBuyerCatalogItems(searchPages.flatMap((page) => page.items ?? [])), [searchPages]);
   const searchHasMore = searchPages.at(-1)?.has_more ?? false;
   const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
   const searchError = searchQueryResult.isError;
   const searchLoadingMore = searchQueryResult.isFetchingNextPage;
+
+  const browsePages = browseQueryResult.data?.pages ?? [];
+  // Prefer the same-request-fresh pricing_mode carried on the catalog list
+  // responses (browse, then search) over me.guest_pricing_mode, which is a
+  // 15-min-stale reference query and drifts out of sync with the (always
+  // fresh) SKU-vs-family grouping decision whenever a seller edits catalog
+  // settings. Fall back to /me only before any catalog page has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(browsePages[0]?.pricing_mode ?? searchPages[0]?.pricing_mode ?? me?.guest_pricing_mode)
+    : undefined;
+  const browseItems = React.useMemo(() => dedupeBuyerCatalogItems(browsePages.flatMap((page) => page.items ?? [])), [browsePages]);
+  const browseHasMore = browsePages.at(-1)?.has_more ?? false;
+  const browseLoading = isGuest && browseQueryResult.isLoading && browseItems.length === 0;
+  const browseError = isGuest && browseQueryResult.isError;
+  const browseLoadingMore = browseQueryResult.isFetchingNextPage;
 
   const promotions = promotionsData?.latest_promotions_preview ?? [];
   const orderAgainItems = recoData?.order_again_preview ?? [];
@@ -120,9 +139,11 @@ export function CatalogDiscoveryLanding({
   const showBrandsSkeleton = brandsLoading && brandsData === undefined;
   const showCategoriesSkeleton = categoriesLoading && categoriesData === undefined;
   const isSearching = debouncedSearch.length > 0;
-  const allSectionsFailed =
-    promotionsError && recoError && brandsError && categoriesError
-    && !showPromotionsSkeleton && !showRecoSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton;
+  const allSectionsFailed = isGuest
+    ? recoError && brandsError && categoriesError && browseError
+      && !showRecoSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton && !browseLoading
+    : promotionsError && recoError && brandsError && categoriesError
+      && !showPromotionsSkeleton && !showRecoSkeleton && !showBrandsSkeleton && !showCategoriesSkeleton;
 
   const searchSentinelIndex = getSentinelInsertIndex(searchItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef: searchSentinelRef } = useInfiniteScroll({
@@ -130,37 +151,49 @@ export function CatalogDiscoveryLanding({
     isLoading: searchLoadingMore,
     onLoadMore: () => { void searchQueryResult.fetchNextPage(); },
   });
+  const browseSentinelIndex = getSentinelInsertIndex(browseItems.length, BUYER_INFINITE_SCROLL_RATIO);
+  const { sentinelRef: browseSentinelRef } = useInfiniteScroll({
+    hasMore: browseHasMore,
+    isLoading: browseLoadingMore,
+    onLoadMore: () => { void browseQueryResult.fetchNextPage(); },
+  });
 
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 280);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const browseRefetch = browseQueryResult.refetch;
   React.useEffect(() => {
     setRefreshFn(async () => {
       await Promise.all([
-        refetchPromotions(),
+        isGuest ? Promise.resolve() : refetchPromotions(),
         refetchReco(),
         refetchBrands(),
         refetchCategories(),
+        isGuest ? browseRefetch() : Promise.resolve(),
       ]);
     });
     return () => setRefreshFn(null);
-  }, [refetchBrands, refetchCategories, refetchPromotions, refetchReco, setRefreshFn]);
+  }, [browseRefetch, isGuest, refetchBrands, refetchCategories, refetchPromotions, refetchReco, setRefreshFn]);
 
   React.useEffect(() => {
     if (!posthog || debouncedSearch.length === 0 || searchQueryResult.isFetching) return;
     const key = `${debouncedSearch}:${searchItems.length}:${searchError ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
+    const normalized = normalizeBuyerSearchQuery(debouncedSearch);
     posthog.capture('buyer_catalog_search_results_viewed', {
+      ...buyerAnalytics('catalog_landing'),
       source_surface: 'catalog_landing',
-      query_length: debouncedSearch.length,
+      ...normalized,
       result_count: searchItems.length,
+      result_product_ids: searchItems.slice(0, 20).map((item) => item.tenant_product_id),
+      result_product_count: searchItems.length,
       has_more: searchHasMore,
       status: searchError ? 'error' : 'success',
     });
-  }, [debouncedSearch, posthog, searchError, searchHasMore, searchItems.length, searchQueryResult.isFetching]);
+  }, [buyerAnalytics, debouncedSearch, posthog, searchError, searchHasMore, searchItems, searchQueryResult.isFetching]);
 
   return (
     <div className="flex flex-col pb-8">
@@ -177,6 +210,7 @@ export function CatalogDiscoveryLanding({
             loadingMore={searchLoadingMore}
             sentinelIndex={searchSentinelIndex}
             sentinelRef={searchSentinelRef}
+            priceReveal={priceReveal}
           />
         ) : allSectionsFailed ? (
           <p className="px-1 pt-4 text-center text-sm text-[var(--danger-500)]">
@@ -184,7 +218,7 @@ export function CatalogDiscoveryLanding({
           </p>
         ) : (
           <>
-            {showPromotionsSkeleton || promotions.length > 0 ? (
+            {!isGuest && (showPromotionsSkeleton || promotions.length > 0) ? (
               <section className="pt-8 lg:pt-10">
                 <BuyerSectionRow title="Campaigns" className="px-1 pb-3" />
                 {showPromotionsSkeleton ? (
@@ -197,7 +231,7 @@ export function CatalogDiscoveryLanding({
                         id={promotion.id}
                         name={promotion.name}
                         productCount={promotion.product_count}
-                        href={`/buy/home/list/${promotion.id}`}
+                        href={STOREFRONT.list(promotion.id)}
                         validUntil={promotion.valid_until}
                         heroImageUrl={promotion.hero_image_url}
                         hueIndex={index}
@@ -209,10 +243,10 @@ export function CatalogDiscoveryLanding({
               </section>
             ) : null}
 
-            {showRecoSkeleton || orderAgainItems.length > 0 ? (
+            {!isGuest && (showRecoSkeleton || orderAgainItems.length > 0) ? (
               <section className="pt-14">
                 <BuyerSectionRow title="Order Again" className="px-1 pb-3" />
-                <BuyerHorizontalScroll className="gap-2.5 px-1">
+                <BuyerHorizontalScroll className="gap-3.5 px-1">
                   {showRecoSkeleton ? (
                     <ProductRailSkeleton />
                   ) : (
@@ -232,7 +266,7 @@ export function CatalogDiscoveryLanding({
             {showRecoSkeleton || bestsellers.length > 0 ? (
               <section className="pt-12">
                 <BuyerSectionRow title="Bestsellers" className="px-1 pb-3" />
-                <BuyerHorizontalScroll className="gap-2.5 px-1">
+                <BuyerHorizontalScroll className="gap-3.5 px-1">
                   {showRecoSkeleton ? (
                     <ProductRailSkeleton />
                   ) : (
@@ -242,6 +276,7 @@ export function CatalogDiscoveryLanding({
                         item={item}
                         variant="compact"
                         className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0`}
+                        priceReveal={priceReveal}
                       />
                     ))
                   )}
@@ -255,11 +290,11 @@ export function CatalogDiscoveryLanding({
                 {showBrandsSkeleton ? (
                   <BrandScrollSkeleton />
                 ) : (
-                  <BuyerHorizontalScroll className="items-stretch gap-2 px-1">
+                  <BuyerHorizontalScroll className="items-stretch gap-3 px-1">
                     {brands.slice(0, 24).map((brand) => (
                       <DiscoveryThumbTile
                         key={brand.id}
-                        href={`/buy/home/brand/${brand.id}`}
+                        href={STOREFRONT.brand(brand.id)}
                         label={brand.name}
                         imageUrl={brand.logo_url}
                         entityKind="brand"
@@ -273,16 +308,30 @@ export function CatalogDiscoveryLanding({
             ) : null}
 
             {showCategoriesSkeleton || categories.length > 0 ? (
-              <section className="pt-12 pb-4">
+              <section className={cn('pt-12', isGuest ? '' : 'pb-4')}>
                 <BuyerSectionRow title="Categories" className="px-1 pb-3" />
                 {showCategoriesSkeleton ? (
-                  <CategoryGridSkeleton />
+                  isGuest ? <CategoryScrollSkeleton /> : <CategoryGridSkeleton />
+                ) : isGuest ? (
+                  <BuyerHorizontalScroll className="items-stretch gap-3 px-1">
+                    {categories.map((category) => (
+                      <DiscoveryThumbTile
+                        key={category.id}
+                        href={STOREFRONT.category(category.id)}
+                        label={category.name}
+                        imageUrl={category.image_url}
+                        entityKind="category"
+                        className="w-[160px] shrink-0 sm:w-[180px]"
+                        onNavigate={() => markBuyerNavigationForward()}
+                      />
+                    ))}
+                  </BuyerHorizontalScroll>
                 ) : (
                   <div className={BUYER_PRODUCT_GRID_CLASS}>
                     {categories.map((category) => (
                       <DiscoveryThumbTile
                         key={category.id}
-                        href={`/buy/home/category/${category.id}`}
+                        href={STOREFRONT.category(category.id)}
                         label={category.name}
                         imageUrl={category.image_url}
                         entityKind="category"
@@ -290,6 +339,24 @@ export function CatalogDiscoveryLanding({
                       />
                     ))}
                   </div>
+                )}
+              </section>
+            ) : null}
+
+            {isGuest && !isSearching ? (
+              <section className="pt-12 pb-4">
+                <BuyerSectionRow title="Products" className="px-1 pb-3" />
+                {browseError ? (
+                  <CatalogSearchErrorState onRetry={() => { void browseQueryResult.refetch(); }} />
+                ) : (
+                  <ProductGrid
+                    items={browseItems}
+                    loading={browseLoading}
+                    loadingMore={browseLoadingMore}
+                    sentinelIndex={browseSentinelIndex}
+                    sentinelRef={browseSentinelRef}
+                    priceReveal={priceReveal}
+                  />
                 )}
               </section>
             ) : null}
@@ -309,6 +376,7 @@ function CatalogSearchResults({
   loadingMore = false,
   sentinelIndex = -1,
   sentinelRef,
+  priceReveal,
 }: {
   loading: boolean;
   error: boolean;
@@ -318,6 +386,7 @@ function CatalogSearchResults({
   loadingMore?: boolean;
   sentinelIndex?: number;
   sentinelRef?: React.RefObject<HTMLDivElement | null>;
+  priceReveal?: ReturnType<typeof guestPriceReveal>;
 }): React.ReactNode {
   if (loading) {
     return (
@@ -342,7 +411,7 @@ function CatalogSearchResults({
   }
   return (
     <section className="pt-3 pb-4">
-      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} />
+      <ProductGrid items={items} loadingMore={loadingMore} sentinelIndex={sentinelIndex} sentinelRef={sentinelRef} priceReveal={priceReveal} />
     </section>
   );
 }
@@ -351,7 +420,7 @@ function CampaignTilesSkeleton() {
   return (
     <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading campaigns">
       {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-cream-50', BUYER_CARD_RADIUS_CLASS)}>
+        <div key={index} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)]', BUYER_CARD_RADIUS_CLASS)}>
           <div className={cn('w-full animate-pulse bg-cream-100', BUYER_LOOKBOOK_ASPECT_CLASS)} />
           <div className="space-y-2 bg-white px-5 py-4">
             {/* min-h-[2.4em] is relative to font-size -- must match CatalogLookbookCard's
@@ -369,9 +438,9 @@ function CampaignTilesSkeleton() {
 
 function ProductRailSkeleton() {
   return (
-    <BuyerHorizontalScroll className="gap-2.5 px-1" role="status" aria-label="Loading recommendations">
+    <BuyerHorizontalScroll className="gap-3.5 px-1" role="status" aria-label="Loading recommendations">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-cream-50 ${BUYER_CARD_RADIUS_CLASS}`}>
+        <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`}>
           <div className="aspect-square animate-pulse bg-cream-100" />
           <div className="px-2 pb-2 pt-1.5">
             {/* fontSize must match ProductCard's compact-variant title (var(--b-text-label))
@@ -388,7 +457,7 @@ function ProductRailSkeleton() {
 
 function BrandScrollSkeleton() {
   return (
-    <div className="flex gap-2 overflow-hidden px-1" role="status" aria-label="Loading brands">
+    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading brands">
       {Array.from({ length: 5 }).map((_, index) => (
         <div
           key={index}
@@ -399,6 +468,22 @@ function BrandScrollSkeleton() {
               a single fixed h-4 bar under-reserves height whenever a name wraps to 2 lines. */}
           <div
             className={cn('mt-1.5 w-3/4 animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)}
+            style={{ fontSize: 'var(--b-text-body)' }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CategoryScrollSkeleton() {
+  return (
+    <div className="flex gap-3 overflow-hidden px-1" role="status" aria-label="Loading categories">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className="flex w-[160px] shrink-0 flex-col sm:w-[180px]">
+          <div className="aspect-square w-full animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+          <div
+            className={cn('mt-2.5 w-3/4 animate-pulse rounded bg-cream-200', BUYER_TWO_LINE_TITLE_CLASS)}
             style={{ fontSize: 'var(--b-text-body)' }}
           />
         </div>

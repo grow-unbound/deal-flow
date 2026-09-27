@@ -1,6 +1,6 @@
-// List rendering now lives in ./layout.tsx (EntitySplitShell) so it stays
-// mounted across /invoices <-> /invoices/[id]. This page only exists so
-// `/invoices` itself is a routable segment.
+import { redirect } from 'next/navigation';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
+
 export default function InvoicesPage() {
-  return null;
+  redirect(SELLER_ROUTES.sales.invoices);
 }

@@ -12,17 +12,21 @@ export interface BuyerDocumentLineItem {
   unit: string | null;
   image_url: string | null;
   qty: number;
-  unit_price: number;
+  unit_price: number | null;
   tax_rate: number | null;
-  line_total: number;
+  line_total: number | null;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 }
 
 interface RawDocumentLineItem {
   tenant_product_id: string;
   qty: number | string;
-  unit_price: number | string;
+  unit_price: number | string | null;
   tax_rate: number | string | null;
-  line_total: number | string;
+  line_total: number | string | null;
+  buyer_target_unit_price_min?: number | string | null;
+  buyer_target_unit_price_max?: number | string | null;
   deleted_at?: string | null;
 }
 
@@ -55,10 +59,17 @@ export async function loadBuyerDocumentLineItems(
         ? 'order_id'
         : 'invoice_id';
 
+  // buyer_target_* columns exist only on estimate_items (hidden-price enquiries);
+  // selecting them from order_items/invoice_items fails with "column does not exist".
+  const itemColumns =
+    parentTable === 'estimates'
+      ? 'tenant_product_id, qty, unit_price, tax_rate, line_total, buyer_target_unit_price_min, buyer_target_unit_price_max, deleted_at'
+      : 'tenant_product_id, qty, unit_price, tax_rate, line_total, deleted_at';
+
   const { data: itemRows, error: itemError } = await d
     .schema('app')
     .from(childTable)
-    .select('tenant_product_id, qty, unit_price, tax_rate, line_total, deleted_at')
+    .select(itemColumns)
     .eq(parentIdColumn, parentId)
     .is('deleted_at', null);
 
@@ -121,9 +132,11 @@ export async function loadBuyerDocumentLineItems(
       unit: tenantProduct?.default_uom ?? null,
       image_url: firstStoredImageUrl(tenantProduct?.image_urls) ?? firstStoredImageUrl(masterProduct?.image_urls),
       qty: Number(row.qty ?? 0),
-      unit_price: Number(row.unit_price ?? 0),
+      unit_price: row.unit_price == null ? null : Number(row.unit_price),
       tax_rate: row.tax_rate != null ? Number(row.tax_rate) : null,
-      line_total: Number(row.line_total ?? 0),
+      line_total: row.line_total == null ? null : Number(row.line_total),
+      buyer_target_unit_price_min: row.buyer_target_unit_price_min == null ? null : Number(row.buyer_target_unit_price_min),
+      buyer_target_unit_price_max: row.buyer_target_unit_price_max == null ? null : Number(row.buyer_target_unit_price_max),
     };
   });
 }

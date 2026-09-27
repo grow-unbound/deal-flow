@@ -18,9 +18,12 @@ import {
   BUYER_TWO_LINE_TITLE_CLASS,
   getBuyerProductPrimaryImageUrl,
   hasBuyerCampaignPrice,
+  isHiddenPriceEnquiryMode,
 } from '@/lib/buyer-ui';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
@@ -33,12 +36,16 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
+export type ProductCardPriceReveal = 'hidden_bar' | 'login_cta' | 'amount';
+
 interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
   showPromotionBadge?: boolean;
   /** Smaller tile for secondary surfaces (e.g. cart gap carousel). */
   variant?: 'default' | 'compact';
+  /** Onboarding preview only — overrides guest price rendering. */
+  priceReveal?: ProductCardPriceReveal;
 }
 
 function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
@@ -75,6 +82,7 @@ export function ProductCard({
   className,
   showPromotionBadge = true,
   variant = 'default',
+  priceReveal,
 }: ProductCardProps): React.ReactNode {
   const isCompact = variant === 'compact';
   const posthog = usePostHog();
@@ -85,46 +93,62 @@ export function ProductCard({
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const { items, addItem, updateQty } = useCart();
   const { data: meData } = useBuyerMe();
-  const stockVisible = meData?.stock_visibility?.enabled ?? false;
+  const { openLogin } = useStorefrontLogin();
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
+  const stockVisible = !isGuest && (meData?.stock_visibility?.enabled ?? false);
   const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
+  const [familyImgError, setFamilyImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
 
-  const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
+  const isFamilyCard = item.item_type === 'family';
+  const cartItem = isFamilyCard ? undefined : items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
-  const productHref = `/buy/product/${item.tenant_product_id}`;
-  const showCampaignPrice = hasBuyerCampaignPrice(item);
+  const familyId = item.product_family_id ?? item.id;
+  const productHref = isFamilyCard ? STOREFRONT.family(familyId) : STOREFRONT.product(item.tenant_product_id);
+  const unitPrice = item.price;
+  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode) || priceReveal === 'hidden_bar';
+  const showCampaignPrice = !isGuest && unitPrice != null && hasBuyerCampaignPrice(item);
   const discountPct = showCampaignPrice && item.resolved_price
-    ? Math.round((1 - item.price / item.resolved_price) * 100)
+    ? Math.round((1 - unitPrice / item.resolved_price) * 100)
     : 0;
   const prefetchProduct = prefetchOnPress(productHref, () => {
+    if (isFamilyCard) return;
     prefetchBuyerProductDetail(queryClient, item.tenant_product_id, stockSignature);
   });
 
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
   const productImgSmall = productImg ? (item.image_url_small ?? productImg) : null;
   const productImgMedium = productImg ? (item.image_url_medium ?? productImg) : null;
-  const categoryImg = !productImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
-  const brandImg = !productImg && !categoryImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
-  const activeImg = productImg ?? categoryImg ?? brandImg;
+  const familyImg = !productImg && !familyImgError && item.family_image_url ? item.family_image_url : null;
+  const categoryImg = !productImg && !familyImg && !categoryImgError && item.category_image_url ? item.category_image_url : null;
+  const brandImg = !productImg && !familyImg && !categoryImg && !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const activeImg = productImg ?? familyImg ?? categoryImg ?? brandImg;
 
   function handleQuickAdd(e: React.MouseEvent): void {
     e.preventDefault();
     e.stopPropagation();
+    if (isGuest) {
+      openLogin();
+      return;
+    }
+    if (!hiddenPriceEnquiry && unitPrice == null) return;
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
       image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
-      unit_price: item.price,
+      unit_price: hiddenPriceEnquiry ? null : (unitPrice ?? 0),
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
-      line_total: item.price,
+      line_total: hiddenPriceEnquiry ? 0 : (unitPrice ?? 0),
+      cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+      collect_target_unit_price_range: item.collect_target_unit_price_range === true,
       tenant_category_id: item.category_id ?? undefined,
       stock_status: item.stock_status,
       on_hand: item.on_hand,
@@ -166,7 +190,7 @@ export function ProductCard({
         BUYER_CARD_RADIUS_CLASS,
         BUYER_TILE_FRAME_CLASS,
         BUYER_TILE_HOVER_CLASS,
-        'relative flex h-full flex-col transition-colors',
+        'group relative flex h-full flex-col transition-[background-color,border-color,box-shadow] duration-200 ease-standard',
         className,
       )}
     >
@@ -179,6 +203,7 @@ export function ProductCard({
         <Pressable asChild haptic>
           <Link
             href={productHref}
+            prefetch={false}
             onClick={() => markBuyerNavigationForward()}
             onPointerDown={prefetchProduct}
             onTouchStart={prefetchProduct}
@@ -202,7 +227,7 @@ export function ProductCard({
                     src={productImgSmall ?? productImg}
                     alt=""
                     fill
-                    className="object-contain p-1.5"
+                    className="object-contain p-1.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]"
                     sizes={`${BUYER_CARD_COMPACT_IMAGE_PX}px`}
                     onError={() => setProductImgError(true)}
                     unoptimized
@@ -213,7 +238,7 @@ export function ProductCard({
                       src={productImgSmall ?? productImg}
                       alt=""
                       fill
-                      className="object-contain p-2.5 sm:p-3 md:hidden"
+                      className="object-contain p-2.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045] sm:p-3 md:hidden"
                       sizes={BUYER_CARD_IMAGE_SIZES}
                       onError={() => setProductImgError(true)}
                       unoptimized
@@ -222,18 +247,28 @@ export function ProductCard({
                       src={productImgMedium ?? productImg}
                       alt=""
                       fill
-                      className="hidden object-contain p-2.5 sm:p-3 md:block"
+                      className="hidden object-contain p-2.5 transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045] sm:p-3 md:block"
                       sizes={BUYER_CARD_IMAGE_SIZES}
                       onError={() => setProductImgError(true)}
                       unoptimized
                     />
                   </>
+                ) : familyImg ? (
+                  <Image
+                    src={familyImg}
+                    alt=""
+                    fill
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
+                    onError={() => setFamilyImgError(true)}
+                    unoptimized
+                  />
                 ) : categoryImg ? (
                   <Image
                     src={categoryImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
                     sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
                     onError={() => setCategoryImgError(true)}
                     unoptimized
@@ -243,7 +278,7 @@ export function ProductCard({
                     src={brandImg}
                     alt=""
                     fill
-                    className={cn('object-contain', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
+                    className={cn('object-contain transition-transform duration-200 ease-standard [@media(hover:hover)]:group-hover:scale-[1.045]', isCompact ? 'p-1.5' : 'p-2.5 sm:p-3')}
                     sizes={isCompact ? `${BUYER_CARD_COMPACT_IMAGE_PX}px` : BUYER_CARD_IMAGE_SIZES}
                     onError={() => setBrandImgError(true)}
                     unoptimized
@@ -298,6 +333,26 @@ export function ProductCard({
               </button>
             </Pressable>
           </div>
+        ) : isFamilyCard ? (
+          <Pressable asChild haptic>
+            <Link
+              href={productHref}
+              prefetch={false}
+              onPointerDown={prefetchProduct}
+              onClick={() => markBuyerNavigationForward()}
+              className={cn(
+                BUYER_QUICK_ADD_IDLE_CLASS,
+                'absolute z-[2] flex items-center justify-center rounded-full font-semibold',
+                isCompact
+                  ? 'bottom-1.5 right-1.5 px-2 py-0.5'
+                  : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
+              )}
+              style={{ fontSize: 'var(--b-text-eyebrow)' }}
+              aria-label={`View options for ${item.display_name}`}
+            >
+              OPTIONS
+            </Link>
+          </Pressable>
         ) : (
           <Pressable asChild haptic>
             <button
@@ -311,10 +366,10 @@ export function ProductCard({
                   : 'bottom-1.5 right-1.5 px-2.5 py-1 sm:bottom-2 sm:right-2',
               )}
               style={{ fontSize: 'var(--b-text-eyebrow)' }}
-              aria-label="Add to cart"
+              aria-label={hiddenPriceEnquiry ? 'Add to enquiry' : 'Add to cart'}
             >
               <Plus className="h-3 w-3" />
-              ADD
+              {hiddenPriceEnquiry ? 'ENQUIRE' : 'ADD'}
             </button>
           </Pressable>
         )}
@@ -323,6 +378,7 @@ export function ProductCard({
       <Pressable asChild haptic>
         <Link
           href={productHref}
+          prefetch={false}
           onClick={() => markBuyerNavigationForward()}
           onPointerDown={prefetchProduct}
           onTouchStart={prefetchProduct}
@@ -345,37 +401,84 @@ export function ProductCard({
             >
               {item.display_name}
             </p>
-            {!isCompact ? (
+            {!isCompact && !isFamilyCard ? (
               <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {item.internal_sku}
               </p>
+            ) : !isCompact && isFamilyCard && item.child_sku_count ? (
+              <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+                {item.child_sku_count} options
+              </p>
             ) : null}
-            <div className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5', isCompact ? 'mt-1' : 'mt-2')}>
-              <span
-                className="font-medium tabular-nums text-[var(--fg-1)]"
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
-                  fontVariantNumeric: 'tabular-nums',
-                  fontWeight: 500,
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-              </span>
-              {showCampaignPrice ? (
-                <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
-                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
-                </span>
-              ) : null}
-              {showCampaignPrice && discountPct > 0 ? (
-                <span
-                  className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
-                  style={{ fontSize: 'var(--b-text-eyebrow)' }}
-                >
-                  -{discountPct}%
-                </span>
-              ) : null}
+            <div className={cn('self-start', isCompact ? 'mt-1' : 'mt-2')}>
+                {hiddenPriceEnquiry ? (
+                  <span
+                    className="inline-flex min-h-[1.25rem] items-center rounded-md bg-cream-100 px-2 py-0.5 font-medium text-cream-700"
+                    style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                  >
+                    Enquire for price
+                  </span>
+                ) : !priceReveal && unitPrice == null ? (
+                  <span
+                    className="inline-block min-h-[1em] min-w-[4.5rem] rounded-md bg-cream-300"
+                    aria-label="Price hidden"
+                  />
+                ) : priceReveal === 'login_cta' ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      'inline-flex w-fit shrink-0 cursor-pointer items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-3 py-1 font-medium text-cream-600',
+                      'transition-colors duration-fast',
+                      '[@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-[var(--bg-surface)] [@media(hover:hover)]:hover:text-cream-800',
+                    )}
+                    style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openLogin();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openLogin();
+                    }}
+                  >
+                    Login for Price
+                  </span>
+                ) : unitPrice == null ? (
+                  <span
+                    className="inline-block h-5 w-[6.25rem] rounded-md bg-cream-300"
+                    aria-label="Price loading"
+                  />
+                ) : (
+                  <span
+                    className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-medium tabular-nums text-[var(--fg-1)]"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: isCompact ? 'var(--b-text-sub)' : 'clamp(var(--b-text-body), 1.9vw, var(--b-text-price))',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontWeight: 500,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {item.price_summary?.display === 'from' ? 'From ' : null}{formatNumberValue(unitPrice, 'CURRENCY_EXACT')}
+                    {showCampaignPrice ? (
+                      <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
+                        {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+                      </span>
+                    ) : null}
+                    {showCampaignPrice && discountPct > 0 ? (
+                      <span
+                        className="ml-0.5 rounded-full bg-[var(--success-50)] px-1.5 py-0.5 font-semibold text-[var(--success-700)]"
+                        style={{ fontSize: 'var(--b-text-eyebrow)' }}
+                      >
+                        -{discountPct}%
+                      </span>
+                    ) : null}
+                  </span>
+                )}
             </div>
             {!isCompact && showPromotionBadge && item.has_campaign_price && item.campaign_valid_until ? (
               <p className="mt-1 text-amber-700" style={{ fontSize: 'var(--b-text-sub)' }}>

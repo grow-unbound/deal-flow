@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { RoleForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { WarehousesLandingClient } from '@/components/seller/warehouses/WarehousesLandingClient';
@@ -7,11 +8,14 @@ import { SellerBootstrapBoundary } from '@/components/seller/layout/SellerBootst
 import { EntitySplitShell } from '@/components/seller/layout';
 import type { WarehousesLandingMetricsV4 } from '@/types/tenant-warehouses';
 import { getSellerServerClaims } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=` seeding now happens client-side inside WarehousesLandingClient
 // via useSearchParams() — layouts (unlike page.tsx) don't receive `searchParams`
 // from Next.js, and the list now lives here so it can stay mounted across
 // /warehouses <-> /warehouses/[id].
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.warehouses);
+
 export default async function WarehousesLayout({ children }: { children: ReactNode }) {
   const claims = await getSellerServerClaims();
   if (!claims.tenant_id || !claims.role?.startsWith('seller_')) return <RoleForbiddenPage />;
@@ -19,13 +23,13 @@ export default async function WarehousesLayout({ children }: { children: ReactNo
 
   return (
     <EntitySplitShell
-      basePath="/warehouses"
+      basePath={SELLER_ROUTES.business.warehouses}
       listSlot={
         <SellerBootstrapBoundary<WarehousesLandingMetricsV4>
           path="/api/tenant/warehouses/metrics"
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/warehouses"
+              basePath={SELLER_ROUTES.business.warehouses}
               ariaLabel="Loading warehouses"
               expandedFallback={<WarehousesLandingSkeleton />}
             />

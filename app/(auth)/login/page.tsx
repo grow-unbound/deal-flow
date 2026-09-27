@@ -14,10 +14,19 @@ import {
   buildWhatsAppChatUrl,
   openWhatsAppShare,
 } from '@/constants/auth-login-copy';
+import { StorefrontPhoneLogin } from '@/components/buyer/auth/StorefrontPhoneLogin';
+import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHero';
+import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
+import {
+  catalogLoginUrlForCurrentBrowserHost,
+  parseRequestHost,
+  sellerAppHostForCurrentBrowserHost,
+} from '@/lib/storefront-host';
 
 type LoginView = 'otp' | 'email';
 type LoginResolution =
   | { kind: 'unregistered' }
+  | { kind: 'buyer_moved'; catalogUrl: string }
   | {
       kind: 'blocked';
       reason: 'seller_disabled' | 'buyer_disabled';
@@ -29,11 +38,12 @@ type LoginResolution =
 interface PhoneOtpSendResponse {
   ref_id: string | null;
   registered: boolean;
-  outcome: 'otp_sent' | 'unregistered' | 'seller_disabled' | 'buyer_disabled';
+  outcome: 'otp_sent' | 'unregistered' | 'seller_disabled' | 'buyer_disabled' | 'buyer_moved';
   message: string;
   seller_name: string | null;
   seller_whatsapp_number: string | null;
   buyer_name: string | null;
+  catalog_url?: string;
 }
 
 function isPhoneOtpSendResponse(
@@ -46,10 +56,39 @@ function safeNext(raw: string | null): string | null {
   if (!raw?.trim()) return null;
   try {
     const decoded = decodeURIComponent(raw);
-    if ((decoded.startsWith('/buy/') || decoded.startsWith('/c/')) && !decoded.startsWith('//'))
+    if (decoded.startsWith('//')) return null;
+    if (
+      decoded.startsWith('/buy/')
+      || decoded.startsWith('/c/')
+      || decoded === '/'
+      || decoded.startsWith('/product/')
+      || decoded.startsWith('/category/')
+      || decoded.startsWith('/brand/')
+      || decoded.startsWith('/list/')
+      || decoded.startsWith('/search')
+      || decoded.startsWith('/cart')
+      || decoded.startsWith('/orders')
+      || decoded.startsWith('/profile')
+    ) {
       return decoded;
+    }
   } catch { /* ignore */ }
   return null;
+}
+
+function buyerRoleFromAccessToken(accessToken: string | undefined): string | null {
+  if (!accessToken) return null;
+  try {
+    const payload = accessToken.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const role = claims.user_role ?? claims.role;
+    return typeof role === 'string' && role.startsWith('buyer_') ? role : null;
+  } catch {
+    return null;
+  }
 }
 
 function LoginForm() {
@@ -61,6 +100,17 @@ function LoginForm() {
   const prefillEmail = searchParams.get('email') ?? '';
   const requestedView = searchParams.get('view');
   const next = safeNext(searchParams.get('next'));
+  // Absolute cross-origin return URL (e.g. the tenant product page a buyer was
+  // on before being sent here to log in) — deliberately separate from `next`,
+  // which safeNext() restricts to relative paths. Real validation happens
+  // server-side in /api/auth/phone-otp/verify against the resolved tenant
+  // host; this is just carried through untouched.
+  const returnTo = searchParams.get('return_to');
+  const {
+    isCatalogHost,
+    tenant: returnToTenant,
+    tenantLoading: returnToTenantLoading,
+  } = useCatalogTenantContext();
 
   const [view, setView] = useState<LoginView>(
     requestedView === 'email' || prefillEmail ? 'email' : 'otp',
@@ -70,6 +120,7 @@ function LoginForm() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [resolution, setResolution] = useState<LoginResolution | null>(null);
+  const [signOutLoading, setSignOutLoading] = useState(false);
 
   const [identifier, setIdentifier] = useState(prefillEmail);
   const [password, setPassword] = useState('');
@@ -79,8 +130,40 @@ function LoginForm() {
   const [showWelcomeSubtitle, setShowWelcomeSubtitle] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (isCatalogHost) {
+      setView('otp');
+    }
+  }, [isCatalogHost]);
+
+  useEffect(() => {
     setShowWelcomeSubtitle(!hasLoggedInOnDevice());
   }, []);
+
+  const sellerLoginUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${sellerAppHostForCurrentBrowserHost(window.location.host)}/login`
+    : '/login';
+  const buyerLoginUrl = typeof window !== 'undefined'
+    ? catalogLoginUrlForCurrentBrowserHost(window.location.host, window.location.protocol)
+    : '/login';
+
+  useEffect(() => {
+    if (isCatalogHost || typeof window === 'undefined') return;
+    let cancelled = false;
+    void supabase.auth.getSession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (buyerRoleFromAccessToken(data.session?.access_token)) {
+          setResolution({ kind: 'buyer_moved', catalogUrl: buyerLoginUrl });
+        }
+      })
+      .catch(() => {
+        // Stale local Supabase cookies can fail refresh during login render.
+        // The page should still behave as a normal unauthenticated entrypoint.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buyerLoginUrl, isCatalogHost]);
 
   async function handlePhoneSubmit(phoneNumber: string) {
     setPhoneError('');
@@ -92,7 +175,7 @@ function LoginForm() {
       const res = await fetch('/api/auth/phone-otp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, ...(returnTo ? { return_to: returnTo } : {}) }),
       });
 
       const data = (await res.json()) as PhoneOtpSendResponse | { error?: string };
@@ -111,19 +194,24 @@ function LoginForm() {
         shouldResetLoading = false;
         router.push(
           `/verify?ref_id=${encodeURIComponent(data.ref_id ?? '')}&phone=${encodeURIComponent(phoneNumber)}`
-          + (next ? `&next=${encodeURIComponent(next)}` : ''),
+          + (next ? `&next=${encodeURIComponent(next)}` : '')
+          + (returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : ''),
         );
         return;
       }
 
-      if (data.outcome === 'unregistered') {
+      if (data.outcome === 'unregistered' || data.outcome === 'buyer_moved') {
         captureLoginFailed({
           method: 'phone_otp',
-          failure_type: 'unregistered_phone',
+          failure_type: data.outcome === 'buyer_moved' ? 'buyer_login_moved' : 'unregistered_phone',
           status: res.status,
           outcome: data.outcome,
         });
-        setResolution({ kind: 'unregistered' });
+        setResolution(
+          data.outcome === 'buyer_moved'
+            ? { kind: 'buyer_moved', catalogUrl: data.catalog_url ?? buyerLoginUrl }
+            : { kind: 'unregistered' },
+        );
         return;
       }
 
@@ -268,6 +356,22 @@ function LoginForm() {
     openWhatsAppShare(message);
   }
 
+  async function handleSignOutHere() {
+    setSignOutLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        await supabase.auth.signOut({ scope: 'local' } as never);
+      }
+      setResolution(null);
+      setPhoneError('');
+      setEmailError('');
+      setPhoneFormKey((current) => current + 1);
+    } finally {
+      setSignOutLoading(false);
+    }
+  }
+
   const inputCls =
     'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
   const labelCls =
@@ -282,26 +386,38 @@ function LoginForm() {
     posthog?.capture('login_failed', {
       ...properties,
       has_next: Boolean(next),
+      has_return_to: Boolean(returnTo),
+      is_catalog_host: isCatalogHost,
       requested_view: view,
     });
   }
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <h1
-        className={
-          showWelcomeSubtitle
-            ? 'font-display text-h2 text-cream-900 mb-1'
-            : 'font-display text-h2 text-cream-900 mb-6'
-        }
-      >
-        {AUTH_LOGIN_COPY.login.welcomeTitle}
-      </h1>
-      {showWelcomeSubtitle ? (
-        <p className="text-body-sm text-cream-600 mb-6">
-          {AUTH_LOGIN_COPY.login.welcomeSubtitle}
-        </p>
-      ) : null}
+      {isCatalogHost ? (
+        <CatalogBuyerAuthHero
+          variant="login"
+          tenant={returnToTenant}
+          tenantLoading={returnToTenantLoading}
+        />
+      ) : (
+        <>
+          <h1
+            className={
+              showWelcomeSubtitle
+                ? 'font-display text-h2 text-cream-900 mb-1'
+                : 'font-display text-h2 text-cream-900 mb-6'
+            }
+          >
+            {AUTH_LOGIN_COPY.login.welcomeTitle}
+          </h1>
+          {showWelcomeSubtitle ? (
+            <p className="text-body-sm text-cream-600 mb-6">
+              {AUTH_LOGIN_COPY.login.welcomeSubtitle}
+            </p>
+          ) : null}
+        </>
+      )}
 
       {accountVerified && (
         <div className="mb-4 rounded-md bg-teal-50 border border-teal-200 px-4 py-3">
@@ -319,7 +435,7 @@ function LoginForm() {
         </div>
       )}
 
-      {view === 'otp' ? (
+      {view === 'otp' || isCatalogHost ? (
         <>
           <p className="text-body-sm text-cream-600 mb-6">
             {AUTH_LOGIN_COPY.login.landingBody}
@@ -328,16 +444,41 @@ function LoginForm() {
           {resolution ? (
             <div className="space-y-4">
               <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2">
-                {resolution.kind === 'unregistered' ? (
+                {resolution.kind === 'buyer_moved' ? (
                   <>
                     <p className="text-body-sm text-warning-700 font-medium">
-                      {AUTH_LOGIN_COPY.resolution.unregistered.title}
+                      Buyer login has moved
                     </p>
-                    {AUTH_LOGIN_COPY.resolution.unregistered.lines.map((line) => (
+                    <p className="text-body-sm text-warning-700/90">
+                      Buyer login has changed to a new URL: {resolution.catalogUrl}
+                    </p>
+                  </>
+                ) : resolution.kind === 'unregistered' ? (
+                  <>
+                    <p className="text-body-sm text-warning-700 font-medium">
+                      {isCatalogHost
+                        ? AUTH_LOGIN_COPY.resolution.unregisteredCatalog.title
+                        : AUTH_LOGIN_COPY.resolution.unregistered.title}
+                    </p>
+                    {(isCatalogHost
+                      ? AUTH_LOGIN_COPY.resolution.unregisteredCatalog.lines
+                      : AUTH_LOGIN_COPY.resolution.unregistered.lines
+                    ).map((line) => (
                       <p key={line} className="text-body-sm text-warning-700/90">
                         {line}
                       </p>
                     ))}
+                    {isCatalogHost ? (
+                      <p className="text-body-sm text-warning-700/90">
+                        {AUTH_LOGIN_COPY.resolution.unregisteredCatalog.supportPrefix}{' '}
+                        <a
+                          href={AUTH_LOGIN_COPY.login.supportWhatsAppHref}
+                          className="font-semibold underline"
+                        >
+                          {AUTH_LOGIN_COPY.login.supportWhatsAppDisplay}
+                        </a>
+                      </p>
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -356,29 +497,64 @@ function LoginForm() {
               </div>
 
               <div className="space-y-3">
-                {resolution.kind === 'unregistered' ? (
+                {resolution.kind === 'buyer_moved' ? (
                   <>
-                    <Link
-                      href="/signup"
+                    <a
+                      href={resolution.catalogUrl}
                       className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
                     >
-                      {AUTH_LOGIN_COPY.login.createSellerAccount}
-                    </Link>
+                      Go to Buyer Login
+                    </a>
                     <button
                       type="button"
-                      onClick={handleInformSeller}
+                      onClick={handleSignOutHere}
+                      disabled={signOutLoading}
                       className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
                     >
-                      {AUTH_LOGIN_COPY.login.informSeller}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetPhoneEntry}
-                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
-                    >
-                      {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                      {signOutLoading ? 'Logging out…' : 'Log out on this device'}
                     </button>
                   </>
+                ) : resolution.kind === 'unregistered' ? (
+                  isCatalogHost ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={resetPhoneEntry}
+                        className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                      >
+                        {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                      </button>
+                      <a
+                        href={sellerLoginUrl}
+                        className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.resolution.unregisteredCatalog.sellerLogin}
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href="/signup"
+                        className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                      >
+                        {AUTH_LOGIN_COPY.login.createSellerAccount}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleInformSeller}
+                        className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.login.informSeller}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneEntry}
+                        className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                      >
+                        {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                      </button>
+                    </>
+                  )
                 ) : (
                   <>
                     <button
@@ -401,7 +577,14 @@ function LoginForm() {
               </div>
             </div>
           ) : (
-            <PhoneInput key={phoneFormKey} onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
+            <PhoneInput
+              key={phoneFormKey}
+              onSubmit={handlePhoneSubmit}
+              loading={phoneLoading}
+              error={phoneError}
+              submitLabel={isCatalogHost ? 'Send OTP' : undefined}
+              loadingLabel={isCatalogHost ? 'Sending OTP…' : undefined}
+            />
           )}
         </>
       ) : (
@@ -484,14 +667,22 @@ function LoginForm() {
         </>
       )}
 
-      <div className="mt-4 text-right">
-        <Link
-          href="/signup"
-          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-        >
-          {AUTH_LOGIN_COPY.login.createSellerAccount}
-        </Link>
-      </div>
+      {!isCatalogHost ? (
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <a
+            href={buyerLoginUrl}
+            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+          >
+            Buyer Login
+          </a>
+          <Link
+            href="/signup"
+            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+          >
+            {AUTH_LOGIN_COPY.login.createSellerAccount}
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -513,10 +704,25 @@ function LoginFallback() {
   );
 }
 
+function TenantStorefrontLogin() {
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get('next')) ?? '/';
+  return <StorefrontPhoneLogin nextPath={next} />;
+}
+
+function LoginSwitcher() {
+  const [storefront, setStorefront] = useState(false);
+  useEffect(() => {
+    setStorefront(parseRequestHost(window.location.host).kind === 'tenant');
+  }, []);
+  if (storefront) return <TenantStorefrontLogin />;
+  return <LoginForm />;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<LoginFallback />}>
-      <LoginForm />
+      <LoginSwitcher />
     </Suspense>
   );
 }

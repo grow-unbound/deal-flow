@@ -54,7 +54,7 @@ export function CustomerPriceListsTab({ buyerId }: { buyerId: string }) {
                   <th className="px-3 py-3">Price list</th>
                   <th className="px-3 py-3">Assignment</th>
                   <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3">Validity</th>
+                  <th className="px-3 py-3">Assignment validity</th>
                   <th className="px-3 py-3 text-right">Priority</th>
                 </tr>
               </thead>

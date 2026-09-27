@@ -1,15 +1,16 @@
 'use client';
 
-import { Bell, ChevronDown, ExternalLink, LogOut, Mail, Phone, Repeat } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Mail, Phone, Repeat } from 'lucide-react';
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { TenantLogo } from '@/components/brand/TenantLogo';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { GlobalSearchOverlay } from '@/components/seller/layout/GlobalSearchOverlay';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
+import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { useTenant } from '@/contexts/TenantContext';
@@ -37,17 +38,6 @@ function NotificationsBell({ unreadCount, onClick }: { unreadCount: number; onCl
       ) : null}
     </button>
   );
-}
-
-function getInitials(value: string | null | undefined) {
-  const parts = (value ?? '')
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? '?').toUpperCase();
-  return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
 }
 
 interface SellerShellTenantBranding {
@@ -116,22 +106,7 @@ export function SellerGlobalHeader({ tenantBrandingPromise, tenantBrandingOverri
         <GlobalSearchOverlay className="max-w-[min(50vw,40rem)] flex-[1_1_0%]" />
 
         <div className="ml-auto flex items-center gap-2">
-          <Button asChild variant="ghost" className="h-9 rounded-[12px] px-3 text-cream-800 hover:text-[#221E1A]">
-            <a
-              href="/api/buyer/preview/launch"
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                posthog?.capture('seller_open_buyer_app_clicked', {
-                  tenant_id: currentTenant?.id ?? null,
-                  role: isSellerAdmin ? 'seller_admin' : isSellerAssistant ? 'seller_assistant' : 'seller',
-                  destination: '/api/buyer/preview/launch',
-                });
-              }}
-            >
-              Open Buyer App <ExternalLink size={14} />
-            </a>
-          </Button>
+          <SellerOpenCatalogCta />
 
           <NotificationsBell unreadCount={unreadCount} onClick={() => setDrawerOpen(true)} />
 
@@ -142,20 +117,18 @@ export function SellerGlobalHeader({ tenantBrandingPromise, tenantBrandingOverri
                 className="inline-flex h-9 items-center gap-2 rounded-[12px] px-2 pr-2 text-left transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
                 aria-label={`Open account menu for ${userName}`}
               >
-                <Avatar size="md" className="h-9 w-9">
-                  {tenantLogoUrl ? <AvatarImage src={tenantLogoUrl} alt={tenantName} /> : null}
-                  <AvatarFallback>{getInitials(userName)}</AvatarFallback>
-                </Avatar>
+                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-[10px] border border-cream-200 bg-white p-0.5 shadow-sm">
+                  <TenantLogo name={tenantName} logoUrl={tenantLogoUrl} size={32} shape="square" />
+                </span>
                 <ChevronDown size={14} strokeWidth={2} className="text-cream-500" />
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[16px] border border-cream-300 bg-cream-50 p-0 shadow-xl">
               <div className="border-b border-cream-200 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <Avatar size="lg" className="h-12 w-12">
-                    {tenantLogoUrl ? <AvatarImage src={tenantLogoUrl} alt={tenantName} /> : null}
-                    <AvatarFallback>{getInitials(userName)}</AvatarFallback>
-                  </Avatar>
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-cream-200 bg-white p-1 shadow-sm">
+                    <TenantLogo name={tenantName} logoUrl={tenantLogoUrl} size={40} shape="square" />
+                  </span>
                   <div className="min-w-0">
                     <p className="truncate text-[15px] font-semibold leading-5 text-[#221E1A]">{userName}</p>
                     <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-600">

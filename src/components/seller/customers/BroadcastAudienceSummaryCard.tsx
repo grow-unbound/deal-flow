@@ -69,7 +69,7 @@ export function BroadcastAudienceSummaryCard({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
           <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Broadcast</p>
           <p className="mt-1 font-medium text-cream-900">{broadcastName}</p>
@@ -93,7 +93,7 @@ export function BroadcastAudienceSummaryCard({
 
       {preview ? (
         <>
-          <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-[10px] border border-cream-200 bg-white px-3 py-2.5">
               <p className="text-xs uppercase tracking-[0.12em] text-cream-500">Recipients</p>
               <p className="mt-1 font-medium text-cream-900">{preview.recipient_count}</p>

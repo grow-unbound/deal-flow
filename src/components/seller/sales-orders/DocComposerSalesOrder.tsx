@@ -64,6 +64,7 @@ import {
 } from '@/hooks/useSalesOrders';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
 import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '@/lib/composer-session-draft';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { bumpSecondDateAfterFirst, isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import {
   buildComposerStagedChanges,
@@ -197,7 +198,7 @@ export function DocComposerSalesOrder({
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const closeTarget = mode === 'edit' && orderId ? `/sales-orders/${orderId}` : '/sales-orders';
+  const closeTarget = mode === 'edit' && orderId ? `${SELLER_ROUTES.sales.orders}/${orderId}` : SELLER_ROUTES.sales.orders;
   const qc = useQueryClient();
   const { isLeavingRef, beginLeaving, resetLeaving, shouldBlockComposer, isSubmitting, submitAction } = useComposerLeaveGuard();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
@@ -519,7 +520,7 @@ export function DocComposerSalesOrder({
       return;
     }
     toast.error("Can't edit after dispatch.");
-    router.replace(`/sales-orders/${documentState.id}`);
+    router.replace(`${SELLER_ROUTES.sales.orders}/${documentState.id}`);
   }, [documentState, mode, router]);
 
   async function createDraftOnDemand(): Promise<SalesOrderComposerDocument> {
@@ -759,7 +760,7 @@ export function DocComposerSalesOrder({
     beginLeaving('save');
     try {
       const saved = await saveDocumentNow(documentState, diffLines);
-      router.push(`/sales-orders/${saved.id}`);
+      router.push(`${SELLER_ROUTES.sales.orders}/${saved.id}`);
     } catch (mutationError) {
       resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save sales order');
@@ -964,7 +965,7 @@ export function DocComposerSalesOrder({
             <Button
               type="button"
               variant="accent"
-              className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
+              className={effectiveShortLines.length > 0 ? 'gap-2 border-warning-500 text-warning-700 hover:bg-warning-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
               disabled={(primaryDisabled || isSubmitting) && submitAction !== 'confirm'}
               onClick={() => void handleConfirmClick()}
             >
@@ -999,8 +1000,8 @@ export function DocComposerSalesOrder({
           <DialogBody>
             <div className="space-y-3">
               {effectiveShortLines.map((line) => (
-                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                  <p className="font-medium text-amber-900">{line.product_name}</p>
+                <div key={line.line_id} className="rounded-[12px] border border-warning-50 bg-warning-50 px-3 py-3 text-sm text-warning-700">
+                  <p className="font-medium text-warning-700">{line.product_name}</p>
                   <p className="mt-1">
                     Ordered {line.qty}, only {line.on_hand} on hand. Backorder {line.shortfall}.
                   </p>
@@ -1019,7 +1020,7 @@ export function DocComposerSalesOrder({
             <Button
               type="button"
               variant="secondary"
-              className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
+              className="gap-2 border-warning-500 text-warning-700 hover:bg-warning-50"
               disabled={!pendingConfirmOrderId || isSubmitting}
               onClick={() => {
                 if (!pendingConfirmOrderId || isLeavingRef.current) return;

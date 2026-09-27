@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { PriceListSimplePricingStrategySchema } from '@/lib/zod';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import { z } from 'zod';
 
 const PricingUpdateSchema = z.object({
@@ -74,5 +75,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     updatedCount = Number(applyResult ?? 0);
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ ok: true, updated_count: updatedCount });
 }

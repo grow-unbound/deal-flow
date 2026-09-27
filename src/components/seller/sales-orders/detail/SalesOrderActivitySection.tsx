@@ -26,7 +26,7 @@ function ActivityIcon({ row }: { row: SalesOrderActivityRow }) {
     case 'confirmed':
       return <Check className={cn(base, 'text-teal-600')} aria-hidden />;
     case 'short_stock':
-      return <AlertTriangle className={cn(base, 'text-amber-600')} aria-hidden />;
+      return <AlertTriangle className={cn(base, 'text-warning-500')} aria-hidden />;
     case 'dispatched':
       return <Truck className={base} aria-hidden />;
     case 'delivered':
@@ -34,7 +34,7 @@ function ActivityIcon({ row }: { row: SalesOrderActivityRow }) {
     case 'payment_received':
       return <Check className={cn(base, 'text-teal-600')} aria-hidden />;
     case 'cancelled':
-      return <X className={cn(base, 'text-danger-600')} aria-hidden />;
+      return <X className={cn(base, 'text-danger-500')} aria-hidden />;
     default:
       return <Pencil className={base} aria-hidden />;
   }

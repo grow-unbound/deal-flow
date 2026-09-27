@@ -41,6 +41,7 @@ import {
   useSavePriceListComposer,
 } from '@/hooks/usePriceLists';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type { PriceListPricingStrategy } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -449,7 +450,7 @@ export function PriceListComposer({
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [isDirty]);
 
-  const closeTarget = mode === 'edit' && priceListId ? `/price-lists/${priceListId}` : '/price-lists';
+  const closeTarget = mode === 'edit' && priceListId ? `${SELLER_ROUTES.market.pricing}/${priceListId}` : SELLER_ROUTES.market.pricing;
   const dirtyGuard = useDirtyCloseGuard({
     isDirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -518,11 +519,11 @@ export function PriceListComposer({
     });
 
     if (saveMode === 'publish') {
-      router.push(`/price-lists/${result.price_list.id}`);
+      router.push(`${SELLER_ROUTES.market.pricing}/${result.price_list.id}`);
       return;
     }
 
-    router.push(mode === 'edit' && priceListId ? `/price-lists/${priceListId}` : '/price-lists');
+    router.push(mode === 'edit' && priceListId ? `${SELLER_ROUTES.market.pricing}/${priceListId}` : SELLER_ROUTES.market.pricing);
   }
 
   function toggleMany(
@@ -536,7 +537,7 @@ export function PriceListComposer({
   if (isError || (mode === 'edit' && !detail)) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
-        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
+        <div className="rounded-[18px] border border-danger-50 bg-danger-50 p-5 text-base text-danger-700">
           We couldn't load this pricelist composer right now.
         </div>
       </div>
@@ -1093,11 +1094,11 @@ export function PriceListComposer({
                     <div className="h-px bg-cream-300" />
                     <div className="space-y-2">
                       <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Staged changes</h4>
-                      <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
-                        <div className="space-y-2 text-sm leading-[1.5] text-amber-900">
+                      <div className="rounded-[10px] border border-warning-50 bg-warning-50 px-3 py-3">
+                        <div className="space-y-2 text-sm leading-[1.5] text-warning-700">
                           {pendingStagedSummary.map((item) => (
                             <div key={item.label} className="flex items-start justify-between gap-4">
-                              <span className="text-amber-700">{item.label}</span>
+                              <span className="text-warning-700">{item.label}</span>
                               <span className="max-w-[190px] text-right font-medium">{item.value}</span>
                             </div>
                           ))}
@@ -1111,13 +1112,13 @@ export function PriceListComposer({
                   className={cn(
                     'mt-auto rounded-[10px] border px-3 py-3 text-sm leading-[1.5]',
                     isLiveEdit && detail?.status === 'active'
-                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      ? 'border-warning-50 bg-warning-50 text-warning-700'
                       : 'border-teal-200 bg-teal-50 text-teal-700',
                   )}
                 >
                   {isLiveEdit && detail?.status === 'active' ? (
                     <div className="flex gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-700" />
                       <span>
                         Save & apply to live updates this pricelist for future orders only. In-flight orders keep their current prices.
                       </span>

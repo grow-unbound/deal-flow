@@ -11,6 +11,7 @@ import { formatBuyerSelectedLocationLabel, type BuyerDeliveryLocation } from '@/
 import { apiFetch } from '@/lib/api-fetch';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { STOREFRONT, toInternalBuyPath } from '@/lib/storefront-paths';
 import { cn } from '@/lib/utils';
 import { getAnalyticsRouteInfo } from '@/lib/analytics-route';
 
@@ -45,21 +46,22 @@ const BACK_BTN: React.CSSProperties = {
 
 const STICKY_HEADER: React.CSSProperties = {
   height: 'var(--header-h, 56px)',
-  background: 'rgba(250, 247, 242, 0.92)',
+  background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
   backdropFilter: 'blur(14px)',
   WebkitBackdropFilter: 'blur(14px)',
   borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
 };
 
 export function safeReturnTo(raw: string | null): string {
-  if (!raw?.trim()) return '/buy/home';
+  if (!raw?.trim()) return STOREFRONT.home;
   try {
     const decoded = decodeURIComponent(raw);
-    if (decoded.startsWith('/buy/') && !decoded.startsWith('//')) return decoded;
+    if (decoded.startsWith('//')) return STOREFRONT.home;
+    if (toInternalBuyPath(decoded) || decoded.startsWith('/buy/')) return decoded;
   } catch {
     /* ignore */
   }
-  return '/buy/home';
+  return STOREFRONT.home;
 }
 
 function buildSelectedLocationAnalytics(location: BuyerDeliveryLocation) {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Repeat, User, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { formatWhatsappDestination } from '@/lib/phone';
 import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
 import { useBuyerSession } from '@/hooks/useBuyerSession';
@@ -15,8 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-
-const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
+import { redirectToBuyerAccountSelector } from '@/lib/buyer-switch-account';
 
 interface BuyerInvoice {
   id: string;
@@ -288,7 +287,7 @@ function BusinessDetailsSheet({
           />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-[var(--bg-surface)] px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
@@ -348,7 +347,7 @@ function PhoneSheet({
           <BuyerSheetPhoneInput value={phone} onChange={setPhone} />
         </SheetField>
       </SheetBody>
-      <SheetFooter className="gap-3 border-t border-cream-300 bg-cream-50 px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
+      <SheetFooter className="gap-3 border-t border-cream-300 bg-[var(--bg-surface)] px-[22px] pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[14px]">
         <Button
           variant="secondary"
           size="lg"
@@ -575,17 +574,9 @@ export default function ProfilePage() {
   const handleSwitchAccount = async () => {
     setSwitchPending(true);
     try {
-      const res = await apiPost('/api/auth/switch-context', {});
-      const body = await res.json();
-      if (!res.ok || !body.contexts || !body.ref_id) {
-        toast.error(body.error ?? 'No other accounts linked to this number.');
-        return;
-      }
-      sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(body.contexts));
-      router.push(`/login/select-context?ref_id=${encodeURIComponent(body.ref_id)}`);
-    } catch {
-      toast.error('Network error. Please try again.');
-    } finally {
+      await redirectToBuyerAccountSelector();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not switch accounts. Please try again.');
       setSwitchPending(false);
     }
   };
@@ -593,7 +584,7 @@ export default function ProfilePage() {
   if (isError) {
     return (
       <div className="p-4">
-        <div className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-5 text-sm text-cream-700">
+        <div className="rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] px-4 py-5 text-sm text-cream-700">
           Couldn&apos;t load your profile right now.
         </div>
       </div>
@@ -683,8 +674,8 @@ export default function ProfilePage() {
           <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
             <AccountRow
               icon={<Repeat className="h-5 w-5" />}
-              title="Switch account"
-              subtitle="Use another account linked to this number"
+              title="Other suppliers you buy from"
+              subtitle="Switch to another approved catalog with this number"
               onClick={() => { void handleSwitchAccount(); }}
               action={switchPending ? <Spinner size="sm" /> : <ChevronRight className="h-5 w-5 text-cream-500" />}
             />
@@ -864,7 +855,7 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              <div className="mt-5 flex items-center justify-between gap-3 rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
+              <div className="mt-5 flex items-center justify-between gap-3 rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] px-4 py-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Outstanding invoices</p>
                   <p className="mt-1 text-sm text-cream-600">Review unpaid invoices in the Orders section.</p>

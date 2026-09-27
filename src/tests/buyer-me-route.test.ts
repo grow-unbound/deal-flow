@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireBuyerAccessProfileMock = vi.fn();
 const loadBuyerCreditSnapshotMock = vi.fn();
+const hasPhoneConsentedMock = vi.fn();
 
 const dbState = {
   buyer: {
@@ -13,6 +14,7 @@ const dbState = {
     phone: '9876543210',
     gstin: '07AABCR1234M1Z5',
     buyer_app_enabled: true,
+    whatsapp_consent_at: null as string | null,
   },
   buyerUsers: [
     { buyer_id: 'buyer-1', phone: '9876543210', is_active: true, deleted_at: null },
@@ -52,6 +54,10 @@ function createQueryBuilder(table: string) {
       filters[`neq:${column}`] = value;
       return builder;
     },
+    not: (column: string, operator: string, value: unknown) => {
+      filters[`not:${column}`] = { operator, value };
+      return builder;
+    },
     maybeSingle: async () => {
       if (table === 'tenant_settings') {
         return { data: dbState.tenantSettings, error: null };
@@ -82,12 +88,7 @@ function createQueryBuilder(table: string) {
       return builder;
     },
     order: () => builder,
-    limit: async () => {
-      if (table === 'orders') {
-        return { data: dbState.orders, error: null };
-      }
-      return { data: [], error: null };
-    },
+    limit: () => builder,
     then: undefined,
   };
 
@@ -106,9 +107,7 @@ function createQueryBuilder(table: string) {
 
     return builder;
   };
-  builder.order = () => ({
-    limit: async () => ({ data: dbState.orders, error: null }),
-  });
+  builder.order = () => builder;
 
   return builder;
 }
@@ -119,6 +118,15 @@ vi.mock('@/lib/server/buyer-access', () => ({
 
 vi.mock('@/lib/server/buyer-credit', () => ({
   loadBuyerCreditSnapshot: (...args: unknown[]) => loadBuyerCreditSnapshotMock(...args),
+}));
+
+vi.mock('@/lib/server/phone-consent', () => ({
+  hasPhoneConsented: (...args: unknown[]) => hasPhoneConsentedMock(...args),
+}));
+
+vi.mock('@/lib/server/public-catalog', () => ({
+  loadLivePublicCatalog: async () => null,
+  getCachedGuestPricingContext: async () => null,
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -142,6 +150,7 @@ describe('buyer me route', () => {
       phone: '9876543210',
       gstin: '07AABCR1234M1Z5',
       buyer_app_enabled: true,
+      whatsapp_consent_at: null,
     };
     dbState.buyerUsers = [
       { buyer_id: 'buyer-1', phone: '9876543210', is_active: true, deleted_at: null },
@@ -149,6 +158,7 @@ describe('buyer me route', () => {
     dbState.orders = [];
     dbState.conflictPhone = null;
     loadBuyerCreditSnapshotMock.mockResolvedValue({ credit_used: 84200 });
+    hasPhoneConsentedMock.mockResolvedValue(true);
   });
 
   it('returns the resolved greeting name for authenticated buyers', async () => {
@@ -181,6 +191,38 @@ describe('buyer me route', () => {
     expect(body.business_name).toBe('Rajan Wine Merchants');
     expect(body.phone).toBe('9876543210');
     expect(body.gstin).toBe('07AABCR1234M1Z5');
+  });
+
+  it('does not require consent when the phone has consented but the buyer row is stale', async () => {
+    dbState.buyer.whatsapp_consent_at = null;
+    hasPhoneConsentedMock.mockResolvedValue(true);
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: {
+        sub: 'user-1',
+        tenant_id: 'tenant-1',
+        role: 'buyer_admin',
+        buyer_id: 'buyer-1',
+        location_ids: null,
+        mode: 'buyer',
+        share_token: null,
+        preview: null,
+      },
+      buyer: dbState.buyer,
+      tenant: {
+        id: 'tenant-1',
+        business_name: 'Tenant One',
+        slug: 'tenant-one',
+      },
+      greeting_name: 'Rajan',
+    });
+
+    const { GET } = await import('../../app/api/buyer/me/route');
+    const response = await GET(new Request('http://localhost/api/buyer/me') as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hasPhoneConsentedMock).toHaveBeenCalledWith('9876543210');
+    expect(body.whatsapp_consent_required).toBe(false);
   });
 
   it('allows buyer_admin to update business details and phone', async () => {

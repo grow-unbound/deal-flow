@@ -4,7 +4,7 @@ export default function CartLoading() {
     <div className="flex min-h-dvh flex-col" role="status" aria-label="Loading cart">
       <div
         className="sticky top-0 z-20 flex items-center gap-2 border-b border-cream-200 px-4"
-        style={{ height: 'var(--header-h, 56px)', background: 'rgba(253, 251, 247, 0.92)' }}
+        style={{ height: 'var(--header-h, 56px)', background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)' }}
       >
         <div className="h-8 w-8 animate-pulse rounded-md bg-cream-200" />
         <div className="h-5 w-24 animate-pulse rounded-md bg-cream-200" />
@@ -13,7 +13,7 @@ export default function CartLoading() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-cream-100 p-3 animate-pulse"
+            className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] p-3 animate-pulse"
           >
             <div className="h-16 w-16 shrink-0 rounded-lg bg-cream-200" />
             <div className="min-w-0 flex-1 space-y-2">

@@ -5,17 +5,19 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
-import { cn, formatNumberValue } from '@/lib/utils';
+import { cn, formatNumberInput, formatNumberValue, parseNumberInput } from '@/lib/utils';
 import { navigateBuyerBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerFixedFooter } from '@/components/buyer/layout/BuyerFixedFooter';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, hasBuyerCampaignPrice } from '@/lib/buyer-ui';
+import { BUYER_CARD_RADIUS_CLASS, getBuyerProductPrimaryImageUrl, guestPriceReveal, hasBuyerCampaignPrice, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import { useBuyerAnalyticsIds } from '@/lib/analytics-identity';
+import { useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -25,8 +27,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const router = useRouter();
   const posthog = usePostHog();
   const analyticsIds = useBuyerAnalyticsIds();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
   const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const { data: meData } = useBuyerMe();
+  const { openLogin } = useStorefrontLogin();
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const {
     item,
@@ -35,25 +40,38 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     isError: productError,
     isRecosLoading,
   } = useBuyerProductDetail(tenantProductId);
+  // Prefer the product's own same-request-fresh catalog_pricing_mode over
+  // meData.guest_pricing_mode, which is a 15-min-stale reference query and
+  // can drift out of sync with the catalog's actual current pricing mode.
+  // Fall back to /me only before the product has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(item ? item.catalog_pricing_mode : meData?.guest_pricing_mode)
+    : 'amount';
   const [imgError, setImgError] = React.useState(false);
+  const [familyImgError, setFamilyImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(true);
+  const [targetMin, setTargetMin] = React.useState('');
+  const [targetMax, setTargetMax] = React.useState('');
   const viewedKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!item || viewedKeyRef.current === item.tenant_product_id) return;
     viewedKeyRef.current = item.tenant_product_id;
     posthog?.capture('product_viewed', {
+      ...buyerAnalytics('product_detail'),
       ...analyticsIds,
       tenant_product_id: item.tenant_product_id,
+      brand_id: item.brand_id ?? null,
+      category_id: item.category_id ?? null,
       internal_sku: item.internal_sku ?? null,
       brand: item.brand_name ?? null,
       has_campaign_price: item.has_campaign_price === true,
       campaign_id: item.campaign_id ?? null,
       stock_status: item.stock_status ?? null,
     });
-  }, [item, posthog, analyticsIds]);
+  }, [item, posthog, analyticsIds, buyerAnalytics]);
 
   const cartLine = item ? cartItems.find((i) => i.tenant_product_id === item.tenant_product_id) : undefined;
 
@@ -63,19 +81,28 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   function handleAddToCart(): void {
     if (!item) return;
+    const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(item.catalog_pricing_mode);
+    if (isGuest || (!hiddenPriceEnquiry && !hasVisibleBuyerPrice(item.price))) {
+      openLogin();
+      return;
+    }
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
       brand: item.brand_name ?? undefined,
       internal_sku: item.internal_sku,
       image_url: getBuyerProductPrimaryImageUrl(item) ?? undefined,
-      unit_price: item.price,
+      unit_price: hiddenPriceEnquiry ? null : (item.price ?? 0),
       resolved_price: item.resolved_price,
       has_campaign_price: item.has_campaign_price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
-      line_total: item.price,
+      line_total: hiddenPriceEnquiry ? 0 : (item.price ?? 0),
+      cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+      collect_target_unit_price_range: item.collect_target_unit_price_range === true,
+      buyer_target_unit_price_min: parseNumberInput(targetMin, 'CURRENCY_EXACT'),
+      buyer_target_unit_price_max: parseNumberInput(targetMax, 'CURRENCY_EXACT'),
       tenant_category_id: item.category_id ?? undefined,
     }, item.campaign_id ?? campaignId, {
       source_surface: 'product_detail',
@@ -86,6 +113,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     // two narrow recommendation-widget paths fired this event, so the main
     // add-to-cart flow (this one) was invisible to that dashboard card.
     posthog?.capture('reco_add_to_cart', {
+      ...buyerAnalytics('product_detail'),
       ...analyticsIds,
       widget: 'product_detail',
       product_id: item.tenant_product_id,
@@ -124,6 +152,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   }
 
   const showCampaignPrice = item ? hasBuyerCampaignPrice(item) : false;
+  const hiddenPriceEnquiry = item ? isHiddenPriceEnquiryMode(item.catalog_pricing_mode) : false;
+  const collectTargetRange = hiddenPriceEnquiry && item?.collect_target_unit_price_range === true;
   const metaParts = item ? [item.internal_sku, item.category_name].filter(Boolean) : [];
   const stockLabel = item
     ? item.stock_status === 'out_of_stock'
@@ -138,20 +168,23 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const productImage = item && !imgError && item.image_urls.length > 0
     ? (item.image_url_large ?? item.image_urls[0])
     : null;
-  const categoryImage = item && !productImage && !categoryImgError && item.category_image_url
+  const familyImage = item && !productImage && !familyImgError && item.family_image_url
+    ? item.family_image_url
+    : null;
+  const categoryImage = item && !productImage && !familyImage && !categoryImgError && item.category_image_url
     ? item.category_image_url
     : null;
-  const brandLogo = item && !productImage && !categoryImage && !brandImgError && item.brand_logo_url
+  const brandLogo = item && !productImage && !familyImage && !categoryImage && !brandImgError && item.brand_logo_url
     ? item.brand_logo_url
     : null;
-  const activeImage = productImage ?? categoryImage ?? brandLogo;
+  const activeImage = productImage ?? familyImage ?? categoryImage ?? brandLogo;
   const showStockOverlay = stockVisible && (item?.stock_status === 'limited' || item?.stock_status === 'out_of_stock');
   const categoryRecoTitle = item?.category_name
     ? `More in ${item.category_name}`
     : 'More in this category';
 
   return (
-    <div className="flex min-h-[50dvh] flex-col pb-28 md:pb-10" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex min-h-[50dvh] flex-col pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] md:pb-10" style={{ background: 'var(--bg-base)' }}>
       <BuyerDetailShell title="Product" hideDesktopHeader>
         {/* Hero — square, card-like padding, aligned to header px-3 */}
         <div className="px-3 pb-4 md:px-6 md:pb-6 md:pt-6">
@@ -168,6 +201,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 sizes="(min-width: 768px) 42vw, 100vw"
                 onError={() => {
                   if (productImage) setImgError(true);
+                  else if (familyImage) setFamilyImgError(true);
                   else if (categoryImage) setCategoryImgError(true);
                   else setBrandImgError(true);
                 }}
@@ -220,9 +254,33 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                 </p>
               ) : null}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-1">
-                <p className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price-lg)', color: 'var(--fg-1)' }}>
-                  {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-                </p>
+                {hiddenPriceEnquiry ? (
+                  <div className="space-y-1">
+                    <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                      Price on enquiry
+                    </p>
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
+                      Seller will respond after you send the enquiry.
+                    </p>
+                  </div>
+                ) : item.price == null ? (
+                  priceReveal === 'login_cta' ? (
+                    <button
+                      type="button"
+                      onClick={openLogin}
+                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-cream-600 transition-colors duration-fast [@media(hover:hover)]:hover:border-cream-400 [@media(hover:hover)]:hover:bg-[var(--bg-surface)] [@media(hover:hover)]:hover:text-cream-800"
+                      style={{ fontSize: 'var(--b-text-label)' }}
+                    >
+                      Login for Price
+                    </button>
+                  ) : (
+                    <span className="inline-block h-7 w-28 rounded-md bg-cream-300" aria-label="Price hidden" />
+                  )
+                ) : (
+                  <p className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price-lg)', color: 'var(--fg-1)' }}>
+                    {formatNumberValue(item.price, 'CURRENCY_EXACT')}
+                  </p>
+                )}
                 {showCampaignPrice ? (
                   <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
@@ -238,6 +296,32 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                     year: 'numeric',
                   })}
                 </p>
+              ) : null}
+
+              {collectTargetRange ? (
+                <div className="space-y-2 rounded-[10px] border border-[var(--border-1)] bg-[var(--bg-base)] p-3">
+                  <div>
+                    <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                      Target buying price per unit
+                    </p>
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
+                      Optional. This helps the seller prepare a suitable price.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1">
+                      <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Min target rate</span>
+                      <CurrencyTargetRateInput value={targetMin} onChange={setTargetMin} placeholder="Min" />
+                    </label>
+                    <label className="space-y-1">
+                      <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--fg-3)' }}>Max target rate</span>
+                      <CurrencyTargetRateInput value={targetMax} onChange={setTargetMax} placeholder="Max" />
+                    </label>
+                  </div>
+                  {item.default_uom ? (
+                    <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>Per {item.default_uom}</p>
+                  ) : null}
+                </div>
               ) : null}
 
               {/* Desktop-only CTA — replaces the mobile sticky footer */}
@@ -278,7 +362,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                     style={{ background: 'var(--teal-500)', fontSize: 'var(--b-text-label)' }}
                   >
                     <Plus className="h-4 w-4" aria-hidden />
-                    Add to Cart
+                    {hiddenPriceEnquiry ? 'Add to Enquiry' : 'Add to Cart'}
                   </button>
                 )}
               </div>
@@ -337,17 +421,9 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           </div>
         </div>
 
-        {/* Reco rails — title + skeleton while loading; hide after settle if empty */}
-        <RecoSection
-          title="Frequently Bought Together"
-          widget="co_order"
-          items={recos.co_order}
-          sourceProductId={tenantProductId}
-          isLoading={isRecosLoading}
-          sectionClassName="px-3 pb-3 md:px-6"
-          scrollClassName="gap-3 px-3 md:px-6"
-        />
-
+        {/* Reco rail — title + skeleton while loading; hide after settle if empty.
+            "Frequently Bought Together" (co_order) was dropped to cut a reco widget
+            off the PDP's data/compute path — see recommendations route. */}
         <RecoSection
           title={categoryRecoTitle}
           widget="same_category"
@@ -356,6 +432,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           isLoading={isRecosLoading}
           sectionClassName="px-3 pb-3"
           scrollClassName="gap-3 px-3"
+          priceReveal={priceReveal}
         />
       </BuyerDetailShell>
 
@@ -383,9 +460,28 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           ) : (
             <>
               <div className="flex flex-col items-end">
-                <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>
-                  {formatNumberValue(item.price, 'CURRENCY_EXACT')}
-                </span>
+                {hiddenPriceEnquiry ? (
+                  <span className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1)' }}>
+                    Price on enquiry
+                  </span>
+                ) : item.price == null ? (
+                  priceReveal === 'login_cta' ? (
+                    <button
+                      type="button"
+                      onClick={openLogin}
+                      className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-xs border border-cream-300 bg-white px-2.5 py-1 font-medium text-cream-600"
+                      style={{ fontSize: 'var(--b-text-sub)' }}
+                    >
+                      Login for Price
+                    </button>
+                  ) : (
+                    <span className="inline-block h-5 w-20 rounded-md bg-cream-300" aria-label="Price hidden" />
+                  )
+                ) : (
+                  <span className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', color: 'var(--fg-1)' }}>
+                    {formatNumberValue(item.price, 'CURRENCY_EXACT')}
+                  </span>
+                )}
                 {showCampaignPrice ? (
                   <span className="line-through text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                     {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
@@ -428,7 +524,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
                   style={{ background: 'var(--teal-500)' }}
                 >
                   <Plus className="h-4 w-4" aria-hidden />
-                  Add
+                  {hiddenPriceEnquiry ? 'Enquire' : 'Add'}
                 </button>
               )}
             </>
@@ -453,6 +549,31 @@ function ProductHeroStockLabel({ status }: { status: 'limited' | 'out_of_stock' 
     >
       {isLimited ? 'Low stock' : 'Out of stock'}
     </span>
+  );
+}
+
+function CurrencyTargetRateInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="flex h-10 overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white focus-within:border-[var(--teal-500)]">
+      <span className="flex h-full items-center border-r border-[var(--border-1)] bg-cream-100 px-2.5 text-sm font-semibold text-cream-700">
+        ₹
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(formatNumberInput(event.target.value, 'CURRENCY_EXACT'))}
+        inputMode="decimal"
+        className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none"
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 

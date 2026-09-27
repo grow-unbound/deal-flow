@@ -64,8 +64,8 @@ export function BuyerSimpleDocumentDetail<TDocument>({
       <BuyerDetailShell title={title}>
         {loading ? (
           <div className="space-y-3 px-4 py-4">
-            <div className={`h-32 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
-            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-32 animate-pulse border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-40 animate-pulse border border-cream-200 bg-[var(--bg-surface)] ${BUYER_CARD_RADIUS_CLASS}`} />
           </div>
         ) : error ? (
           <div className="p-4">

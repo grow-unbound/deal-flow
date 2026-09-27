@@ -11,6 +11,7 @@ vi.mock('@/lib/server/buyer-access', () => ({
 
 vi.mock('@/lib/server/buyer-product-data', () => ({
   resolveBuyerProductScopeContext: (...args: unknown[]) => resolveBuyerProductScopeContextMock(...args),
+  isCatalogApprovalRequiredForProfile: () => false,
 }));
 
 vi.mock('@/lib/server/buyer-assemble-catalog-items', () => ({
@@ -92,6 +93,7 @@ describe('GET /api/buyer/products/[id]', () => {
       buyerId: 'buyer-1',
       inventoryWarehouseId: 'wh-1',
       allowedTenantBrandIds: null,
+      guestPricing: null,
     });
     assembleBuyerCatalogItemsForProductIdsMock.mockResolvedValue(new Map());
 
@@ -114,6 +116,7 @@ describe('GET /api/buyer/products/[id]', () => {
       buyerId: 'buyer-1',
       inventoryWarehouseId: 'wh-1',
       allowedTenantBrandIds: ['brand-1'],
+      guestPricing: null,
     });
     assembleBuyerCatalogItemsForProductIdsMock.mockResolvedValue(new Map([[PRODUCT_ID, item]]));
 
@@ -160,6 +163,7 @@ describe('GET /api/buyer/products/[id]', () => {
       buyerId: 'buyer-1',
       inventoryWarehouseId: 'wh-1',
       allowedTenantBrandIds: null,
+      guestPricing: null,
     });
     assembleBuyerCatalogItemsForProductIdsMock.mockResolvedValue(new Map([[PRODUCT_ID, item]]));
 

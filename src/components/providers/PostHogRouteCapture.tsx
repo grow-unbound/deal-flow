@@ -5,11 +5,14 @@ import { usePathname } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import { getAnalyticsRouteInfo } from '@/lib/analytics-route';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 
 export function PostHogRouteCapture(): null {
   const posthog = usePostHog();
   const { currentBuyerId, currentTenantId, isLoading, tenantProfile } = useAuth();
   const pathname = usePathname();
+  const isBuyerRoute = pathname?.startsWith('/buy') === true || pathname?.startsWith('/catalog') === true;
+  const buyerAnalytics = useBuyerAnalyticsProperties({ enabled: isBuyerRoute });
   const lastEventKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -18,13 +21,15 @@ export function PostHogRouteCapture(): null {
     if (lastEventKeyRef.current === eventKey) return;
     lastEventKeyRef.current = eventKey;
 
+    const buyerProperties = isBuyerRoute ? buyerAnalytics('buyer_page') : {};
     posthog.capture('$pageview', {
       ...getAnalyticsRouteInfo(pathname),
-      tenant_id: currentTenantId,
-      buyer_id: currentBuyerId,
+      ...buyerProperties,
+      tenant_id: isBuyerRoute ? (buyerProperties as { tenant_id?: string | null }).tenant_id ?? currentTenantId : currentTenantId,
+      buyer_id: isBuyerRoute ? (buyerProperties as { buyer_id?: string | null }).buyer_id ?? currentBuyerId : currentBuyerId,
       role: tenantProfile?.role ?? null,
     });
-  }, [currentBuyerId, currentTenantId, isLoading, pathname, posthog, tenantProfile?.role]);
+  }, [buyerAnalytics, currentBuyerId, currentTenantId, isBuyerRoute, isLoading, pathname, posthog, tenantProfile?.role]);
 
   return null;
 }

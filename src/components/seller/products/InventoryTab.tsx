@@ -70,7 +70,7 @@ function WarehouseRow({ warehouse, inventoryRow, productId }: WarehouseRowProps)
           <span
             className={cn(
               'font-mono font-semibold text-sm',
-              lowStock ? 'text-danger-600' : 'text-teal-600',
+              lowStock ? 'text-danger-500' : 'text-teal-600',
             )}
           >
             {sellable}
@@ -164,7 +164,7 @@ function AddWarehouseForm({ onCancel }: AddWarehouseFormProps) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-4">
         <div>
           <Label className="text-xs text-cream-600 mb-1 block">
-            Name <span className="text-danger-600">*</span>
+            Name <span className="text-danger-500">*</span>
           </Label>
           <Input
             type="text"

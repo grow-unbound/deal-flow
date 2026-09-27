@@ -1,5 +1,9 @@
 import { BuyerSearchPageClient } from '@/components/buyer/search/BuyerSearchPageClient';
 import { requireBuyerDeliverySelection } from '@/lib/server/buyer-location-selection';
+import { storefrontPageTitle } from '@/lib/server/storefront-metadata';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = storefrontPageTitle('Search');
 
 type SearchPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;

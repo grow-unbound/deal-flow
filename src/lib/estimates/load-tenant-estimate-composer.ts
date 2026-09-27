@@ -118,7 +118,7 @@ export async function loadEstimateDocument(
           .eq('tenant_id', tenantId).eq('id', buyerId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     d.schema('app').from('estimate_items')
-      .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, discount_pct, disc_pct, tax_pct, item_order, scheme_tag')
+      .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, discount_pct, disc_pct, tax_pct, item_order, scheme_tag, buyer_target_unit_price_min, buyer_target_unit_price_max')
       .eq('estimate_id', id).is('deleted_at', null),
     d.schema('app').from('audit_log')
       .select('id, ts, action, diff')
@@ -200,6 +200,8 @@ export async function loadEstimateDocument(
       unit_price: Number(row.unit_price ?? 0),
       discount_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
       line_total: Number(row.line_total ?? 0),
+      buyer_target_unit_price_min: row.buyer_target_unit_price_min == null ? null : Number(row.buyer_target_unit_price_min),
+      buyer_target_unit_price_max: row.buyer_target_unit_price_max == null ? null : Number(row.buyer_target_unit_price_max),
     };
   });
 
@@ -231,6 +233,8 @@ export async function loadEstimateDocument(
       }),
       item_order: Number(row.item_order ?? index + 1),
       scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
+      buyer_target_unit_price_min: row.buyer_target_unit_price_min == null ? null : Number(row.buyer_target_unit_price_min),
+      buyer_target_unit_price_max: row.buyer_target_unit_price_max == null ? null : Number(row.buyer_target_unit_price_max),
     };
   });
 

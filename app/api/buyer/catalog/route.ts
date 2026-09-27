@@ -6,8 +6,10 @@ import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import {
   fetchBuyerCatalogPage,
+  isCatalogApprovalRequiredForProfile,
   resolveBuyerCatalogContext,
 } from '@/lib/server/buyer-product-data';
+import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
 import type { BuyerCatalogResponse } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
@@ -29,6 +31,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
 
     const context = await resolveBuyerCatalogContext(supabaseAdmin as any, req, profile);
+    if (isCatalogApprovalRequiredForProfile(profile, context.publicCatalog)) {
+      return NextResponse.json({ error: 'Approval required' }, {
+        status: 403,
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
+    }
 
     if (context.buyerId) {
       void recordBuyerAppActivitySafe(supabaseAdmin as any, {
@@ -42,7 +50,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         },
       });
     }
-    const response = await fetchBuyerCatalogPage({
+    const useFamilyCatalog =
+      context.publicCatalog?.productDisplayMode === 'group_variants'
+      && !tenantProductId
+      && !requestedCampaignId;
+
+    const response = useFamilyCatalog ? await fetchBuyerFamilyCatalogPage({
+      db: supabaseAdmin as any,
+      tenantId: context.tenantId,
+      buyerId: context.buyerId,
+      allowedTenantBrandIds: context.allowedTenantBrandIds,
+      inventoryWarehouseId: context.inventoryWarehouseId,
+      search,
+      categoryId,
+      brandId,
+      limit,
+      offset,
+      guestPricing: context.guestPricing,
+      publicCatalog: context.publicCatalog,
+    }) : await fetchBuyerCatalogPage({
       db: supabaseAdmin as any,
       tenantId: context.tenantId,
       buyerId: context.buyerId,
@@ -53,9 +79,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       categoryId,
       brandId,
       tenantProductId,
-      requestedCampaignId,
+      requestedCampaignId: context.guestPricing ? '' : requestedCampaignId,
       limit,
       offset,
+      guestPricing: context.guestPricing,
+      publicCatalog: context.publicCatalog,
     });
 
     if (offset === 0 && context.buyerId && response.selected_campaign_id) {

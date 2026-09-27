@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
@@ -679,6 +680,9 @@ export async function POST(req: NextRequest) {
       // Analytics is non-blocking for brand creation.
     }
 
+    if (claims.tenant_id) {
+      revalidatePublicCatalogCache(claims.tenant_id);
+    }
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
     if (err && typeof err === 'object' && 'status' in err && 'error' in err) {

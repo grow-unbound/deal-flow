@@ -5,6 +5,11 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, Store } from 'lucide-react';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import {
+  BUYER_DETAIL_RAIL_ITEM_CLASS,
+  BUYER_DETAIL_RAIL_LABEL_CLASS,
+  BUYER_DETAIL_RAIL_THUMB_CLASS,
+} from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
 import type { BuyerBrand, BuyerCategory } from '@/types/buyer';
 
@@ -217,8 +222,7 @@ export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactN
                   : 'flex-shrink-0 whitespace-nowrap rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] px-3 py-1.5 font-medium text-[var(--fg-2)] transition-colors'
                 : cn(
                     'border-b border-[var(--border-1)] text-left transition-colors last:border-b-0 [@media(hover:hover)]:hover:bg-[var(--bg-recessed)] focus-visible:bg-[var(--bg-recessed)] focus-visible:outline-none',
-                    'flex min-h-[88px] flex-col items-center justify-center gap-2 px-1 py-3 sm:min-h-[96px] sm:px-2',
-                    'lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1 lg:py-3',
+                    BUYER_DETAIL_RAIL_ITEM_CLASS,
                     selected
                       ? 'bg-[var(--cream-300)] font-bold text-cream-950'
                       : 'bg-transparent font-medium text-[var(--fg-2)]',
@@ -236,9 +240,8 @@ export function BuyerEntityChipNav(props: BuyerEntityChipNavProps): React.ReactN
             <span className={cn('min-w-0', variant === 'rail' ? 'flex flex-1 flex-col items-center text-center lg:items-start lg:text-left' : '')}>
               <span
                 className={cn(
-                  variant === 'rail' ? 'line-clamp-2 text-center font-medium leading-tight lg:text-left' : '',
+                  variant === 'rail' ? BUYER_DETAIL_RAIL_LABEL_CLASS : '',
                 )}
-                style={variant === 'rail' ? { fontSize: 'clamp(11px, 1.8vw, var(--b-text-label))' } : undefined}
               >
                 {item.label}
               </span>
@@ -266,7 +269,8 @@ function RailThumb({
   return (
     <div
       className={cn(
-        'relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:p-2',
+        'relative flex shrink-0 items-center justify-center overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)]',
+        BUYER_DETAIL_RAIL_THUMB_CLASS,
         entityKind === 'brand' ? 'rounded-full' : 'rounded-[10px] lg:rounded-[12px]',
       )}
     >
@@ -281,7 +285,7 @@ function RailThumb({
           unoptimized
         />
       ) : (
-        <FallbackIcon className="h-6 w-6 text-[var(--fg-3)] lg:h-7 lg:w-7" aria-hidden />
+        <FallbackIcon className="h-5 w-5 text-[var(--fg-3)] sm:h-6 sm:w-6 lg:h-7 lg:w-7" aria-hidden />
       )}
       <span className="sr-only">{label}</span>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost, type ApiFetchInit } from '@/lib/api-fetch';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
@@ -10,6 +10,7 @@ import type {
   BuyerCatalogResponse,
   BuyerCatalogSummary,
   BuyerCategory,
+  BuyerProductFamilyDetail,
   BuyerResolvedProductsResponse,
 } from '@/types/buyer';
 import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
@@ -21,6 +22,7 @@ import {
 } from '@/lib/query-navigation';
 
 export type BuyerProductDetailApiResponse = { item: BuyerCatalogItem };
+export type BuyerProductFamilyDetailApiResponse = BuyerProductFamilyDetail;
 
 const EMPTY_RECOS: BuyerProductPageRecos = { co_order: [], co_buyer: [], same_category: [] };
 
@@ -32,8 +34,16 @@ export function buyerProductRecommendationsQueryKey(tenantProductId: string) {
   return ['buyer-product-recommendations', tenantProductId] as const;
 }
 
+export function buyerProductFamilyDetailQueryKey(productFamilyId: string, stockSignature: string) {
+  return ['buyer-product-family-detail', productFamilyId, stockSignature] as const;
+}
+
 export function buyerProductDetailUrl(tenantProductId: string): string {
   return `/api/buyer/products/${encodeURIComponent(tenantProductId)}`;
+}
+
+export function buyerProductFamilyDetailUrl(productFamilyId: string): string {
+  return `/api/buyer/product-families/${encodeURIComponent(productFamilyId)}`;
 }
 
 export function buyerProductRecommendationsUrl(tenantProductId: string): string {
@@ -83,6 +93,7 @@ export function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | nu
 
 async function fetchJson<T>(url: string, init?: ApiFetchInit): Promise<T> {
   const response = await apiFetch(url, init);
+  if (response.status === 429) throw new Error("You're browsing very quickly. Please wait a moment and try again.");
   if (!response.ok) throw new Error(`Request failed: ${url}`);
   return response.json() as Promise<T>;
 }
@@ -141,6 +152,7 @@ export function useBuyerCatalogSearchInfinite(
   search: string,
   filters: BuyerCatalogSearchFilters = {},
   enabled = true,
+  options: { allowEmpty?: boolean } = {},
 ) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
@@ -148,6 +160,7 @@ export function useBuyerCatalogSearchInfinite(
   const categoryId = filters.categoryId?.trim() ?? '';
   const brandId = filters.brandId?.trim() ?? '';
   const campaignId = filters.campaignId?.trim() ?? '';
+  const allowEmpty = options.allowEmpty === true;
 
   return useInfiniteQuery<BuyerCatalogResponse>({
     queryKey: [
@@ -157,8 +170,9 @@ export function useBuyerCatalogSearchInfinite(
       brandId,
       campaignId,
       stockSignature,
+      allowEmpty ? 'browse' : 'search',
     ],
-    enabled: enabled && trimmedSearch.length > 0,
+    enabled: enabled && (allowEmpty || trimmedSearch.length > 0),
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
@@ -182,11 +196,26 @@ export function useBuyerCatalogSearchInfinite(
   });
 }
 
-export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
+/**
+ * `initialCatalogPage` is a server-resolved first page (SSR-seeded from
+ * app/(buyer)/buy/home/{category,brand,list}/[id]/page.tsx via
+ * loadInitialCatalogListData) — only ever meaningful on first mount for the
+ * `id`/mode this hook was called with, matching how `activeId`/`search`
+ * start equal to the page's own `id`/`''` in CatalogFilteredBrowse. Once the
+ * user switches entity or types a search, the queryKey changes and this
+ * seed is irrelevant (React Query only consults `initialData` on a cache
+ * miss for a given key, never for key transitions).
+ */
+export function useBuyerCatalogList(
+  mode: FilterMode,
+  id: string,
+  search = '',
+  initialCatalogPage?: BuyerCatalogResponse | null,
+) {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const trimmedSearch = search.trim();
-  return useInfiniteQuery<BuyerCatalogResponse>({
+  return useInfiniteQuery<BuyerCatalogResponse, Error, InfiniteData<BuyerCatalogResponse>, readonly unknown[], number>({
     queryKey: ['buyer-catalog-list', mode, id, trimmedSearch, stockSignature],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
@@ -208,6 +237,9 @@ export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
     placeholderData: keepPreviousData,
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
+    initialData: initialCatalogPage
+      ? { pages: [initialCatalogPage], pageParams: [0] }
+      : undefined,
   });
 }
 
@@ -245,6 +277,7 @@ export function useBuyerProductRecommendations(tenantProductId: string) {
     queryKey: buyerProductRecommendationsQueryKey(tenantProductId),
     queryFn: async () =>
       fetchJson<BuyerProductPageRecos>(buyerProductRecommendationsUrl(tenantProductId)),
+    enabled: Boolean(tenantProductId),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
@@ -257,6 +290,7 @@ export function useBuyerProductDetail(tenantProductId: string) {
     queryKey: buyerProductDetailQueryKey(tenantProductId, stockSignature),
     queryFn: async () =>
       fetchJson<BuyerProductDetailApiResponse>(buyerProductDetailUrl(tenantProductId), { fresh: true }),
+    enabled: Boolean(tenantProductId),
     staleTime: BUYER_PRICE_QUERY_STALE_TIME,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
   });
@@ -270,6 +304,26 @@ export function useBuyerProductDetail(tenantProductId: string) {
     isLoading: productQuery.isLoading,
     isError: productQuery.isError || (!productQuery.isLoading && !item),
     isRecosLoading: recommendationsQuery.isLoading,
+  };
+}
+
+export function useBuyerProductFamilyDetail(productFamilyId: string) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
+  const familyQuery = useQuery<BuyerProductFamilyDetailApiResponse>({
+    queryKey: buyerProductFamilyDetailQueryKey(productFamilyId, stockSignature),
+    queryFn: async () =>
+      fetchJson<BuyerProductFamilyDetailApiResponse>(buyerProductFamilyDetailUrl(productFamilyId), { fresh: true }),
+    enabled: Boolean(productFamilyId),
+    staleTime: BUYER_PRICE_QUERY_STALE_TIME,
+    gcTime: BUYER_PRICE_QUERY_GC_TIME,
+  });
+
+  return {
+    detail: familyQuery.data ?? null,
+    family: familyQuery.data?.family ?? null,
+    isLoading: familyQuery.isLoading,
+    isError: familyQuery.isError || (!familyQuery.isLoading && !familyQuery.data),
   };
 }
 
@@ -291,7 +345,13 @@ export function useBuyerResolvedProducts(
       return response.json() as Promise<BuyerResolvedProductsResponse>;
     },
     // Cart/checkout price resolution — shortest tier, refetch on every remount.
+    // keepPreviousData renders the last-known resolved items instantly (cart
+    // opens with no blank/loading gap) while the revalidation above still
+    // runs in the background and patches in fresh price/stock the moment it
+    // lands — staleTime stays 0 so a distributor's price edit is never held
+    // back by a cache, only the paint is no longer blocked on the network.
     staleTime: 0,
     gcTime: BUYER_PRICE_QUERY_GC_TIME,
+    placeholderData: keepPreviousData,
   });
 }

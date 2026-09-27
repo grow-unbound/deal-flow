@@ -8,6 +8,7 @@ import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/l
 import { resolveCampaignWorkflowStatus, type CampaignWorkflowStatus, type CampaignWorkflowStatusLabel, type CampaignWorkflowStatusTone, type RawCampaignStatus } from '@/lib/campaign-workflow-status';
 import { CampaignFormPayloadSchema, CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { getFlag } from '@/lib/flags';
@@ -819,5 +820,6 @@ export async function POST(request: NextRequest) {
     // Analytics is non-blocking for catalog creation.
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ catalog: insertedCatalog, whatsapp_notify: whatsappNotify });
 }

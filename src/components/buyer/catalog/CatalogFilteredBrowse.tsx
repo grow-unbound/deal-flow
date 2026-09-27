@@ -8,6 +8,7 @@ import { usePostHog } from 'posthog-js/react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock, CampaignTitleRow } from '@/components/buyer/catalog/CampaignSummaryBlock';
+import { CatalogRailSkeleton } from '@/components/buyer/catalog/CatalogBrowseDetailLoading';
 import { CatalogSearchState } from '@/components/buyer/catalog/CatalogSearchState';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
@@ -17,6 +18,7 @@ import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { setBuyerRailPathname } from '@/hooks/useBuyerRailPathnameOverride';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import {
   useBuyerBrands,
   useBuyerCatalogList,
@@ -24,18 +26,38 @@ import {
 } from '@/hooks/useBuyerProducts';
 import { useBuyerBrandRecos, useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
-import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import {
+  BUYER_INFINITE_SCROLL_RATIO,
+  dedupeBuyerCatalogItems,
+  guestPriceReveal,
+} from '@/lib/buyer-ui';
 import { cn } from '@/lib/utils';
+import { normalizeBuyerSearchQuery, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
+import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
 interface CatalogFilteredBrowseProps {
   mode: CatalogFilteredMode;
   id: string;
+  /** SSR-seeded first page (authenticated buyers only) — see loadInitialCatalogListData. */
+  initialCatalogPage?: BuyerCatalogResponse | null;
+  initialBrands?: BuyerBrand[];
+  initialCategories?: BuyerCategory[];
 }
 
-export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
+export function CatalogFilteredBrowse({
+  mode,
+  id,
+  initialCatalogPage,
+  initialBrands,
+  initialCategories,
+}: CatalogFilteredBrowseProps): React.ReactNode {
   const posthog = usePostHog();
+  const buyerAnalytics = useBuyerAnalyticsProperties();
+  const { data: me } = useBuyerMe();
+  const isGuest = me?.mode !== 'buyer' && me?.mode !== 'preview';
   const { setCampaignId } = useCart();
   const { setRefreshFn } = useBuyerRealtimeContext();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
@@ -59,12 +81,12 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     data: categories,
     isLoading: categoriesLoading,
     refetch: refetchCategories,
-  } = useBuyerCategories();
+  } = useBuyerCategories(initialCategories);
   const {
     data: brands,
     isLoading: brandsLoading,
     refetch: refetchBrands,
-  } = useBuyerBrands();
+  } = useBuyerBrands(initialBrands);
 
   const {
     data: categoryRecos,
@@ -77,9 +99,24 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     refetch: refetchBrandRecos,
   } = useBuyerBrandRecos(mode === 'brand' ? activeId : '');
 
-  const listQuery = useBuyerCatalogList(mode, activeId, debouncedSearch);
+  // initialData re-seeds ANY new queryKey miss, not just the key it was
+  // fetched for — TanStack Query applies it whenever the current queryKey
+  // has no cache entry, regardless of which key the data actually belongs
+  // to. initialCatalogPage is SSR data for this page's own `id`/empty
+  // search only; once the rail nav switches activeId (no real navigation,
+  // `id` prop never changes) or the user types a search, the queryKey
+  // changes but the stale initialCatalogPage would otherwise get reapplied
+  // as if it were fresh data for the new key — exactly the bug where
+  // switching category/brand silently kept showing the original list.
+  const isInitialDataStillValid = activeId === id && !debouncedSearch.trim();
+  const listQuery = useBuyerCatalogList(
+    mode,
+    activeId,
+    debouncedSearch,
+    isInitialDataStillValid ? initialCatalogPage : undefined,
+  );
   const pages = listQuery.data?.pages ?? [];
-  const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
+  const items = React.useMemo(() => dedupeBuyerCatalogItems(pages.flatMap((page) => page.items ?? [])), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
   const isSwitchingEntity = mode !== 'list' && activeId !== resolvedGridId;
   // Cold-cache only, plus detail-rail switches where we want the grid to show an explicit refresh state.
@@ -106,6 +143,14 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   });
 
   const firstPage = pages[0];
+  // Prefer the catalog list response's own (same-request-fresh) pricing_mode —
+  // it's read from the identical live catalog config that decides SKU-vs-family
+  // grouping server-side. me.guest_pricing_mode is a 15-min-stale reference
+  // query and would drift out of sync with grouping whenever a seller changes
+  // catalog settings; only fall back to it before the catalog list has loaded.
+  const priceReveal = isGuest
+    ? guestPriceReveal(firstPage ? firstPage.pricing_mode : me?.guest_pricing_mode)
+    : undefined;
   const campaignMessage = mode === 'list' ? (firstPage?.selected_campaign_message ?? null) : null;
   const campaignValidUntil = mode === 'list' ? (firstPage?.selected_campaign_valid_until ?? null) : null;
 
@@ -161,16 +206,21 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     const key = `${mode}:${activeId}:${debouncedSearch}:${items.length}:${listQuery.isError ? 'error' : 'ok'}`;
     if (searchEventKeyRef.current === key) return;
     searchEventKeyRef.current = key;
+    const normalized = normalizeBuyerSearchQuery(debouncedSearch);
     posthog.capture('buyer_catalog_search_results_viewed', {
+      ...buyerAnalytics('catalog_filtered_browse'),
       source_surface: 'catalog_filtered_browse',
       browse_mode: mode,
       entity_id: activeId,
+      ...normalized,
       query_length: debouncedSearch.length,
       result_count: items.length,
+      result_product_ids: items.slice(0, 20).map((item) => item.tenant_product_id),
+      result_product_count: items.length,
       has_more: hasMore,
       status: listQuery.isError ? 'error' : 'success',
     });
-  }, [activeId, debouncedSearch, hasMore, items.length, listQuery.isError, listQuery.isFetching, mode, posthog]);
+  }, [activeId, buyerAnalytics, debouncedSearch, hasMore, items, listQuery.isError, listQuery.isFetching, mode, posthog]);
 
   const selectedCategoryName = categories?.find((c) => c.id === activeId)?.name;
   const selectedBrandName = brands?.find((b) => b.id === activeId)?.name;
@@ -194,8 +244,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
     const nextPath =
       mode === 'category'
-        ? `/buy/home/category/${nextId}`
-        : `/buy/home/brand/${nextId}`;
+        ? STOREFRONT.category(nextId)
+        : STOREFRONT.brand(nextId);
     window.history.replaceState(window.history.state, '', nextPath);
     setBuyerRailPathname(nextPath);
   }, [mode]);
@@ -203,7 +253,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const desktopRail =
     mode === 'category' ? (
       showChipsSkeleton ? (
-        <DesktopRailSkeleton />
+        <CatalogRailSkeleton />
       ) : (categories?.length ?? 0) > 0 ? (
         <BuyerEntityChipNav
           kind="category"
@@ -216,7 +266,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
       ) : null
     ) : mode === 'brand' ? (
       showChipsSkeleton ? (
-        <DesktopRailSkeleton />
+        <CatalogRailSkeleton />
       ) : (brands?.length ?? 0) > 0 ? (
         <BuyerEntityChipNav
           kind="brand"
@@ -234,7 +284,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
       <BuyerDetailShell
         title={title}
         hideDesktopHeader
-        backFallbackHref="/buy/home"
+        backFallbackHref={STOREFRONT.home}
         headerSearch={
           <BuyerCatalogSearchInput
             value={search}
@@ -281,6 +331,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w5_category_trending"
                 items={categoryRecos ?? []}
                 isLoading={showCategoryRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -292,6 +343,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 widget="w6_brand_trending"
                 items={brandRecos ?? []}
                 isLoading={showBrandRecosSkeleton}
+                priceReveal={priceReveal}
               />
             </div>
           ) : null}
@@ -330,6 +382,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 sentinelIndex={sentinelIndex}
                 sentinelRef={sentinelRef}
                 showPromotionBadge={mode !== 'list'}
+                priceReveal={priceReveal}
               />
 
               {!showProductsSkeleton && items.length === 0 ? (
@@ -351,32 +404,12 @@ function NoProductsFoundState(): React.ReactNode {
       description="Try a different search or switch filters to explore more products."
       action={(
         <Link
-          href="/buy/home"
+          href={STOREFRONT.home}
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--teal-500)] px-5 py-2.5 text-sm font-semibold text-[var(--teal-500)] transition-colors hover:bg-[var(--teal-500)] hover:text-white"
         >
           Browse Catalog
         </Link>
       )}
     />
-  );
-}
-
-function DesktopRailSkeleton(): React.ReactNode {
-  return (
-    <div className="flex flex-col" role="status" aria-label="Loading desktop filters">
-      {Array.from({ length: 8 }).map((_, index) => (
-        <div
-          key={index}
-          className="flex min-h-[88px] flex-col items-center justify-center gap-2 border-b border-cream-200 px-1 py-3 last:border-b-0 sm:min-h-[96px] sm:px-2 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1"
-        >
-          <div className="h-12 w-12 shrink-0 animate-pulse rounded-[10px] border border-cream-200 bg-[var(--bg-surface)] p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:rounded-[12px] lg:p-2">
-            <div className="h-full w-full rounded-[8px] bg-cream-200 lg:rounded-[10px]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="h-4 w-14 animate-pulse rounded bg-cream-200 lg:w-4/5" />
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }

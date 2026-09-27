@@ -52,7 +52,7 @@ export function FieldMappingsPanel({ tenantIntegrationId }: { tenantIntegrationI
     <div className="rounded-2xl border border-cream-200 bg-white p-4">
       <div className="text-sm font-semibold text-cream-900">Custom field mappings</div>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-cream-700">
-        Zoho custom fields (cf_*) that are promoted into DealFlow columns on sync. Configured per tenant integration.
+        Zoho custom fields (cf_*) that are promoted into Yukti columns on sync. Configured per tenant integration.
       </p>
 
       <div className="mt-4">
@@ -89,7 +89,7 @@ export function FieldMappingsPanel({ tenantIntegrationId }: { tenantIntegrationI
                       <StatusTag
                         label={row.is_active ? 'Active' : 'Inactive'}
                         tone={row.is_active ? 'success' : 'neutral'}
-                        className="text-[11px]"
+                        className="text-xs"
                       />
                     </td>
                   </tr>

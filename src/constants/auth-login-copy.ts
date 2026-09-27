@@ -5,7 +5,7 @@ export const AUTH_LOGIN_COPY = {
     welcomeTitle: 'Welcome to Yukti',
     welcomeSubtitle:
       'Browse catalogs, place orders, track invoices, and manage sales, all in one place',
-    landingBody: 'Enter your registered mobile number to get a WhatsApp OTP',
+    landingBody: 'Enter your mobile number to get a WhatsApp OTP',
     emailBody: 'Sign in with your email and password',
     loginWithEmail: 'Login with Email',
     loginWithMobileOtp: 'Login with mobile OTP',
@@ -38,6 +38,17 @@ export const AUTH_LOGIN_COPY = {
         'If you sell to other businesses, create your seller account below',
         "If you're trying to order from a business you work with, ask them to add you as a buyer",
       ],
+    },
+    // Catalog host, no return_to: we don't know which distributor this person is buying from, so we
+    // can't onboard them. Point them at the two ways forward instead of a dead end.
+    unregisteredCatalog: {
+      title: "We couldn't find a buyer account for this number",
+      lines: [
+        'Buying from a distributor? Open the catalog link they shared and log in from there. You can request access in a minute.',
+        'Distributor? Sign in to the seller app.',
+      ],
+      supportPrefix: 'Still stuck? WhatsApp us:',
+      sellerLogin: "I'm a distributor: go to seller login",
     },
     sellerDisabled: {
       title: ({ sellerName }: { sellerName: string }) =>

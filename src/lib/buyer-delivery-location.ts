@@ -27,6 +27,9 @@ export type BuyerDeliveryLocation = z.infer<typeof buyerDeliveryLocationSchema>;
 export const buyerDeliveryCookieSchema = z.object({
   selected: buyerDeliveryLocationSchema.nullable().optional(),
   recent: z.array(buyerDeliveryLocationSchema).max(5).optional(),
+  /** Tenant slug stamped at write time so client-side reads can reject stale
+   *  cross-tenant data without an extra API call. Present only in new cookies. */
+  tenant_slug: z.string().optional(),
 });
 
 export type BuyerDeliveryCookiePayload = z.infer<typeof buyerDeliveryCookieSchema>;
@@ -35,10 +38,12 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export function toPersistedDeliveryCookiePayload(
   payload: BuyerDeliveryCookiePayload,
+  tenantSlug?: string,
 ): BuyerDeliveryCookiePayload {
   return {
     selected: payload.selected ?? null,
     recent: [],
+    tenant_slug: tenantSlug ?? payload.tenant_slug,
   };
 }
 

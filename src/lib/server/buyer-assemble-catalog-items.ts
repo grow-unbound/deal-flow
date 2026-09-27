@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
 import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
+import type { GuestPricingContext, PublicCatalogRecord } from '@/lib/server/public-catalog';
 
 type CampaignMapEntry = {
   campaign_id: string | null;
@@ -27,6 +28,8 @@ export async function assembleBuyerCatalogItemsForProductIds(
     campaignValidUntil: string | null;
     priceOverrides: Map<string, number | null>;
     inventoryWarehouseId?: string | null;
+    guestPricing?: GuestPricingContext | null;
+    publicCatalog?: PublicCatalogRecord | null;
   },
 ): Promise<Map<string, BuyerCatalogItem>> {
   const {
@@ -39,6 +42,8 @@ export async function assembleBuyerCatalogItemsForProductIds(
     campaignValidUntil,
     priceOverrides,
     inventoryWarehouseId = null,
+    guestPricing = null,
+    publicCatalog = null,
   } = params;
   if (productIds.length === 0) return new Map<string, BuyerCatalogItem>();
 
@@ -73,7 +78,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     || campaignValidUntil != null
     || priceOverrides.size > 0;
 
-  if (!hasExplicitCampaignContext && buyerId) {
+  if (!hasExplicitCampaignContext && buyerId && !guestPricing) {
     const visibleCampaigns = await getVisibleBuyerCatalogs(resolvedTenantId, buyerId);
     if (visibleCampaigns.length > 0) {
       const visibleCampaignIds = visibleCampaigns.map((campaign) => campaign.id);
@@ -125,10 +130,12 @@ export async function assembleBuyerCatalogItemsForProductIds(
 
   return enrichBuyerProducts(db, {
     tenantId: resolvedTenantId,
-    buyerId,
+    buyerId: guestPricing ? null : buyerId,
     tenantProductIds: productIds,
-    allowedTenantBrandIds,
+    allowedTenantBrandIds: guestPricing ? null : allowedTenantBrandIds,
     inventoryWarehouseId,
-    campaignByProductId,
+    campaignByProductId: guestPricing ? new Map() : campaignByProductId,
+    guestPricing,
+    publicCatalog,
   });
 }

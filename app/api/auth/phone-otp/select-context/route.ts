@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getVerifiedClaims } from '@/lib/auth';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
+import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
+import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
+import { isCatalogRequest } from '@/lib/server/catalog-request';
+import { STOREFRONT } from '@/lib/storefront-paths';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+
+async function getCurrentRequestUserId(request: NextRequest): Promise<string | null> {
+  const claims = await getVerifiedClaims(request);
+  if (claims.sub) return claims.sub;
+
+  const supabase = await getRequestSupabaseClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user.id;
+}
 
 /**
  * POST /api/auth/phone-otp/select-context
@@ -17,12 +33,16 @@ export async function POST(request: NextRequest) {
       tenant_id?: string;
       buyer_id?: string | null;
       role?: string;
+      return_to?: string;
+      request_access?: boolean;
     };
     const ref_id: string = (body?.ref_id ?? '').trim();
     const kind: string = (body?.kind ?? '').trim();
     const tenant_id: string = (body?.tenant_id ?? '').trim();
     const buyer_id: string | null = body?.buyer_id ?? null;
     const role: string = (body?.role ?? '').trim();
+    const returnTo: string | null = body?.return_to?.trim() || null;
+    const requestAccess = body?.request_access === true;
 
     if (!ref_id || !kind || !tenant_id || !role) {
       return NextResponse.json(
@@ -48,6 +68,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SECURITY: a record with a stamped creator (created_by_user_id --
+    // written by /api/auth/switch-context, an authenticated-caller shortcut,
+    // as opposed to a real OTP hash check) may only ever be redeemed by that
+    // same caller's own session. Without this, an attacker's own
+    // switch-context call could hand back a ref_id whose `candidates` array
+    // includes OTHER people's login candidates (e.g. after poisoning their
+    // own app.buyers.phone to a victim's phone), and this route would mint
+    // a real session for whichever candidate was requested with no check
+    // that it belongs to the caller at all.
+    if (record.createdByUserId) {
+      const currentUserId = await getCurrentRequestUserId(request);
+      if (!currentUserId || currentUserId !== record.createdByUserId) {
+        return NextResponse.json(
+          { error: 'Not authorized to redeem this context selection.' },
+          { status: 403 },
+        );
+      }
+    }
+
     const candidate = record.candidates.find((ctx) =>
       ctx.kind === kind
       && ctx.tenant_id === tenant_id
@@ -64,6 +103,14 @@ export async function POST(request: NextRequest) {
 
     await buyerOtpStore.delete(ref_id);
 
+    // Only a record written immediately after a real OTP hash check
+    // (phone-otp/verify route) may have its phone stamped as
+    // otp_verified_phone at mint time. A record written by the
+    // switch-context shortcut (record.otpVerified === false) derived its
+    // phone from a mutable app.buyers.phone lookup, not a fresh OTP — never
+    // let it forge/refresh that claim.
+    const otpVerifiedPhone = record.otpVerified ? record.phone : undefined;
+
     if (candidate.kind === 'seller') {
       const { session, user } = await mintSellerSession(
         candidate as LoginOtpCandidate & { kind: 'seller' },
@@ -72,37 +119,78 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, redirect: '/dashboard', session });
     }
 
-    const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+    const buyerCandidate = toBuyerLoginCandidate(candidate);
+
+    const currentTenantId = request.headers.get('x-verified-tenant-id');
+    const onCatalogHost = isCatalogRequest(request);
     const { supabaseAdmin } = await import('@/lib/supabase');
-    if (supabaseAdmin && candidate.buyer_id) {
-      void recordBuyerAppActivitySafe(supabaseAdmin as any, {
-        tenantId: candidate.tenant_id,
-        buyerId: candidate.buyer_id,
-        eventName: 'session_started',
-        path: request.nextUrl.pathname,
-        context: {
-          role: candidate.role,
-          principal_type: candidate.principal_type,
-        },
-      });
-    }
-    // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
-    // the consent checkbox before /buy/home.
-    let redirect = '/buy/home';
-    if (candidate.buyer_id) {
-      const { supabaseAdmin } = await import('@/lib/supabase');
-      if (supabaseAdmin) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const db = supabaseAdmin as any;
-        const { data } = await db
-          .schema('app')
-          .from('buyers')
-          .select('whatsapp_consent_at')
-          .eq('id', candidate.buyer_id)
-          .maybeSingle();
-        if (data && !data.whatsapp_consent_at) redirect = '/consent';
+
+    const recordSessionStart = (): void => {
+      if (supabaseAdmin && candidate.buyer_id) {
+        void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+          tenantId: candidate.tenant_id,
+          buyerId: candidate.buyer_id,
+          eventName: 'session_started',
+          path: request.nextUrl.pathname,
+          context: {
+            role: candidate.role,
+            principal_type: candidate.principal_type,
+          },
+        });
       }
+    };
+
+    if (!buyerCandidate.buyer_app_enabled) {
+      if (!requestAccess) {
+        return NextResponse.json(
+          { error: 'Buyer app access is not enabled for this account.', access_disabled: true },
+          { status: 403 },
+        );
+      }
+
+      const onboardingPath = '/onboarding';
+      if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
+        const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+        const destinationHost = tenantStorefrontHostForRequest(
+          request.headers.get('host') ?? '',
+          buyerCandidate.tenant_slug,
+        );
+        const protocol = destinationHost.includes('localhost') ? 'http' : 'https';
+        const onboardingUrl = `${protocol}://${destinationHost}${onboardingPath}`;
+        recordSessionStart();
+        return NextResponse.json({
+          success: true,
+          handoff_url: buildStorefrontHandoffUrl(destinationHost, hashedToken, onboardingUrl),
+        });
+      }
+
+      const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
+      recordSessionStart();
+      return NextResponse.json({ success: true, redirect: onboardingPath, session });
     }
+
+    if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+      const destinationHost = tenantStorefrontHostForRequest(
+        request.headers.get('host') ?? '',
+        buyerCandidate.tenant_slug,
+      );
+      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
+
+      if (onCatalogHost) {
+        recordSessionStart();
+        return NextResponse.json({ success: true, handoff_url: handoffUrl });
+      }
+
+      return NextResponse.json({ success: true, handoff_url: handoffUrl });
+    }
+
+    const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
+    recordSessionStart();
+    // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
+    // the consent checkbox before /buy/home. Phone-level now — a phone that
+    // already consented on any other tenant relationship isn't asked again.
+    const redirect = await requirePhoneConsentRedirect(candidate.phone) ?? STOREFRONT.home;
     return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);

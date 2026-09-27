@@ -13,7 +13,6 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,6 +37,7 @@ import {
 } from '@/hooks/useIntegrationsSettings';
 import { useRole } from '@/hooks/useRole';
 import { classifyIntegrationMappingMode, getIntegrationTopologyDefinition } from '@/lib/integrations/definitions';
+import { getMetaAppIdPublic, getWhatsAppEmbeddedSignupConfigIdPublic } from '@/lib/integrations/whatsapp-oauth';
 import { cn } from '@/lib/utils';
 import type { IntegrationSettingsPayload } from '@/types/integrations';
 
@@ -45,6 +45,8 @@ import { ConnectedIntegrationCard } from './ConnectedIntegrationCard';
 import { IntegrationPickerDialog } from './IntegrationPickerDialog';
 import type { SyncConfirmOptions } from './SyncWindowDialog';
 import { IntegrationsSettingsContentSkeleton } from './IntegrationsSettingsSkeleton';
+import { WhatsAppConnectedCard } from './WhatsAppConnectedCard';
+import { WhatsAppEmbeddedSignupDialog } from './WhatsAppEmbeddedSignupDialog';
 
 type WizardState = {
   open: boolean;
@@ -169,12 +171,16 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
   const busyEnabled = useFlagState('BUSY_INTEGRATION');
+  const whatsappEnabled = useFlagState('WHATSAPP_INTEGRATION');
 
   const familyAvailability: Record<IntegrationFamilyFlag, boolean> = {
     ZOHO_INTEGRATION: zohoEnabled !== false,
     TALLY_INTEGRATION: tallyEnabled !== false,
     BUSY_INTEGRATION: busyEnabled !== false,
+    WHATSAPP_INTEGRATION: whatsappEnabled !== false,
   };
+
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
 
   const integrations = data?.integrations ?? [];
   const [wizard, setWizard] = useState<WizardState>(buildWizardState(null));
@@ -577,19 +583,20 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
   return (
     <>
       <div className="space-y-6">
-        <SellerTopbar
-          eyebrow="Settings"
-          title="Integrations"
-          subtitle="Connect accounting and ERP tools."
-          action={
-            isSellerAdmin && (unconnectedAvailable.length > 0 || integrations.length === 0) ? (
-              <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Add integration
-              </Button>
-            ) : null
-          }
-        />
+        <div className="flex items-end justify-between gap-6">
+          <div>
+            <h2 className="font-display text-xl font-semibold text-cream-900">Integrations</h2>
+            <p className="mt-1 max-w-[60ch] text-md leading-[1.3] text-cream-700">
+              Connect accounting and ERP tools.
+            </p>
+          </div>
+          {isSellerAdmin && (unconnectedAvailable.length > 0 || integrations.length === 0) ? (
+            <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add integration
+            </Button>
+          ) : null}
+        </div>
 
         {/* ── Connected integration cards or empty state ───────────────────────── */}
         {integrations.length === 0 ? (
@@ -608,7 +615,15 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           />
         ) : connectedIntegrations.length > 0 ? (
           <div className="space-y-6">
-            {connectedIntegrations.map((integration) => (
+            {connectedIntegrations.map((integration) =>
+              integration.id === 'whatsapp_business' ? (
+                <WhatsAppConnectedCard
+                  key={integration.id}
+                  integration={integration}
+                  isSellerAdmin={isSellerAdmin}
+                  onDisconnect={() => void runDisconnectIntegration(integration)}
+                />
+              ) : (
               <ConnectedIntegrationCard
                 key={integration.id}
                 integration={integration}
@@ -633,7 +648,8 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 }
                 isRunningAnalysis={isRunningAnalysis && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'analysis'}
               />
-            ))}
+              ),
+            )}
           </div>
         ) : (
           <EmptyState
@@ -663,8 +679,20 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
         integrations={unconnectedAvailable}
         onSelect={(integration) => {
           setPickerOpen(false);
+          if (integration.id === 'whatsapp_business') {
+            setWhatsappDialogOpen(true);
+            return;
+          }
           openWizard(integration);
         }}
+      />
+
+      <WhatsAppEmbeddedSignupDialog
+        open={whatsappDialogOpen}
+        onOpenChange={setWhatsappDialogOpen}
+        metaAppId={getMetaAppIdPublic()}
+        configId={getWhatsAppEmbeddedSignupConfigIdPublic()}
+        onConnected={() => void refetch()}
       />
 
       <Dialog
@@ -681,7 +709,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
-            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-700">
               {disconnectDialogIntegration ? (
                 <>
                   <div className="font-semibold text-warning-950">
@@ -726,7 +754,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
-            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-700">
               {stopSyncDialogIntegration ? (
                 <>
                   <div className="font-semibold text-warning-950">
@@ -915,12 +943,12 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     wizard.step === index
                       ? 'border-teal-200 bg-teal-50'
                       : index < wizard.step
-                        ? 'border-success-200 bg-success-50'
+                        ? 'border-success-50 bg-success-50'
                         : 'border-cream-200 bg-white',
                   )}
                 >
                   <div className="flex items-center gap-1.5">
-                    {index < wizard.step ? <CheckCircle2 className="h-3.5 w-3.5 text-success-600" /> : null}
+                    {index < wizard.step ? <CheckCircle2 className="h-3.5 w-3.5 text-success-500" /> : null}
                     <div
                       className={cn(
                         'text-xs font-semibold uppercase tracking-[0.12em]',
@@ -933,7 +961,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                   <div
                     className={cn(
                       'mt-1 text-sm font-medium',
-                      index < wizard.step ? 'text-success-900' : 'text-cream-900',
+                      index < wizard.step ? 'text-success-700' : 'text-cream-900',
                     )}
                   >
                     {stepLabel}
@@ -959,12 +987,12 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                       <div className="rounded-2xl border border-cream-200 bg-white px-4 py-4">
                         <div className="text-sm font-semibold text-cream-900">Mapping preview</div>
                         <div className="mt-1 text-sm text-cream-700">
-                          These Zoho entities are synced into DealFlow after the connection completes.
+                          These Zoho entities are synced into Yukti after the connection completes.
                         </div>
                         <div className="mt-3 overflow-hidden rounded-2xl border border-cream-200">
                           <div className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-200 bg-cream-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
                             <div>Zoho entity</div>
-                            <div>DealFlow target</div>
+                            <div>Yukti target</div>
                             <div>Capture</div>
                             <div>Status</div>
                           </div>
@@ -977,7 +1005,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                                   className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-100 px-3 py-2 last:border-b-0"
                                 >
                                   <div className="flex items-center gap-2 text-sm font-medium text-cream-900">
-                                    <CheckCircle2 className="h-4 w-4 text-success-600" />
+                                    <CheckCircle2 className="h-4 w-4 text-success-500" />
                                     <span>{mapping.source_label}</span>
                                   </div>
                                   <div className="text-sm text-cream-700">{mapping.target_label}</div>
@@ -1020,7 +1048,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           Local bridge flow
                         </div>
                         <p className="mt-2 text-sm leading-6 text-cream-700">
-                          Keep the DealFlow bridge agent online near the source system, then verify the connection before the first import.
+                          Keep the Yukti bridge agent online near the source system, then verify the connection before the first import.
                         </p>
                       </div>
                     ) : null}
@@ -1042,8 +1070,8 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                         className={cn(
                           'rounded-2xl border px-3 py-2 text-sm',
                           oauthNotice.kind === 'success'
-                            ? 'border-success-200 bg-success-50 text-success-900'
-                            : 'border-warning-500/30 bg-warning-50 text-warning-800',
+                            ? 'border-success-50 bg-success-50 text-success-700'
+                            : 'border-warning-500/30 bg-warning-50 text-warning-700',
                         )}
                       >
                         {oauthNotice.message}
@@ -1079,13 +1107,13 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                     ) : null}
 
                     {!isSellerAdmin ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-700">
                         Seller admin access is required to connect and start syncing.
                       </div>
                     ) : null}
 
                     {missingRequired.length > 0 ? (
-                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+                      <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-3 py-2 text-sm text-warning-700">
                         Fill the required fields before continuing.
                       </div>
                     ) : null}

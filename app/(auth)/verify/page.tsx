@@ -4,11 +4,13 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
+import { CatalogBuyerAuthHero } from '@/components/buyer/auth/CatalogBuyerAuthHero';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
 import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
 import { markLoggedInOnDevice } from '@/lib/auth-device-login';
+import { useCatalogTenantContext } from '@/hooks/useCatalogTenantContext';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -23,9 +25,23 @@ function VerifyOtpForm() {
   const ref_id = searchParams.get('ref_id') ?? '';
   const phone = searchParams.get('phone') ?? '';
   const next = searchParams.get('next') ?? '';
+  const returnTo = searchParams.get('return_to') ?? '';
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const {
+    isCatalogHost,
+    tenant: returnToTenant,
+    tenantLoading: returnToTenantLoading,
+  } = useCatalogTenantContext();
+
+  const loginQuery = [
+    returnTo ? `return_to=${encodeURIComponent(returnTo)}` : '',
+    next ? `next=${encodeURIComponent(next)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  const loginHref = loginQuery ? `/login?${loginQuery}` : '/login';
 
   // Guard: if no ref_id, redirect back to login
   useEffect(() => {
@@ -43,20 +59,39 @@ function VerifyOtpForm() {
       const res = await fetch('/api/auth/phone-otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ref_id, otp }),
+        body: JSON.stringify({ ref_id, otp, return_to: returnTo || undefined }),
       });
 
       const data: {
         success?: boolean;
         redirect?: string;
+        handoff_url?: string;
         contexts?: LoginOtpContext[];
         ref_id?: string;
         session?: SessionPayload;
+        return_to?: string;
         error?: string;
       } = await res.json();
 
       if (!res.ok || !data.success) {
         setError(data.error ?? 'Verification failed. Please try again.');
+        return;
+      }
+
+      // Cross-origin handoff: OTP was verified on a host other than the
+      // buyer's own tenant (e.g. catalog.useyukti.in). Tenant-host redemption
+      // owns the buyer catalog session; a session here is only for legacy
+      // server responses that still include one.
+      if (data.handoff_url) {
+        if (data.session?.access_token && data.session?.refresh_token) {
+          await supabaseBrowser.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        }
+        shouldResetLoading = false;
+        markLoggedInOnDevice();
+        window.location.assign(data.handoff_url);
         return;
       }
 
@@ -68,7 +103,9 @@ function VerifyOtpForm() {
           // sessionStorage may be unavailable in some environments
         }
         shouldResetLoading = false;
-        router.push(`/login/select-context?ref_id=${encodeURIComponent(data.ref_id)}`);
+        const params = new URLSearchParams({ ref_id: data.ref_id });
+        if (data.return_to || returnTo) params.set('return_to', data.return_to ?? returnTo);
+        router.push(`/login/select-context?${params.toString()}`);
         return;
       }
 
@@ -88,6 +125,13 @@ function VerifyOtpForm() {
           .filter((k) => k.startsWith(SNAPSHOT_PREFIX))
           .forEach((k) => sessionStorage.removeItem(k));
       } catch { /* sessionStorage may be unavailable */ }
+
+      // Nothing left to navigate to without a session or explicit redirect — surface it rather
+      // than falling through to /dashboard, which just bounces an unauthenticated user to /login.
+      if (!data.redirect && !data.session?.access_token) {
+        setError('We could not sign you in. Please request a new OTP and try again.');
+        return;
+      }
 
       shouldResetLoading = false;
       const serverRedirect = data.redirect ?? '/dashboard';
@@ -113,14 +157,24 @@ function VerifyOtpForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
-      </div>
+      {isCatalogHost ? (
+        <CatalogBuyerAuthHero
+          variant="verify"
+          tenant={returnToTenant}
+          tenantLoading={returnToTenantLoading}
+        />
+      ) : (
+        <>
+          <div className="mb-7 flex justify-center">
+            <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+          </div>
 
-      <h1 className="text-h3 font-display text-cream-900 mb-1">Enter OTP</h1>
-      <p className="text-body-sm text-cream-600 mb-6">
-        We sent a 6-digit code to your WhatsApp.
-      </p>
+          <h1 className="text-h3 font-display text-cream-900 mb-1">Enter OTP</h1>
+          <p className="text-body-sm text-cream-600 mb-6">
+            We sent a 6-digit code to your WhatsApp.
+          </p>
+        </>
+      )}
 
       <OtpForm
         phone={phone}
@@ -131,21 +185,23 @@ function VerifyOtpForm() {
 
       <div className="mt-6 pt-4 border-t border-cream-200 flex items-center justify-between">
         <Link
-          href="/login"
+          href={loginHref}
           className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
         >
           ← {AUTH_LOGIN_COPY.login.changeNumber}
         </Link>
         <div className="flex items-center gap-4">
-          <Link
-            href="/login?view=email"
-            className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
-          >
-            {AUTH_LOGIN_COPY.login.loginWithEmail}
-          </Link>
+          {!isCatalogHost ? (
+            <Link
+              href="/login?view=email"
+              className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
+            >
+              {AUTH_LOGIN_COPY.login.loginWithEmail}
+            </Link>
+          ) : null}
           <button
             type="button"
-            onClick={() => router.push('/login')}
+            onClick={() => router.push(loginHref)}
             className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
           >
             {AUTH_LOGIN_COPY.login.resendOtp}

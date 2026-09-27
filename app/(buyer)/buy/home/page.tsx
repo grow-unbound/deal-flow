@@ -7,6 +7,7 @@ import { getBuyerServerClaims } from '@/lib/server/buyer-server-claims';
 import { loadBuyerHomePromotions } from '@/lib/server/buyer-home-promotions';
 import { loadBuyerHomeReco } from '@/lib/server/buyer-home-reco';
 import { getBuyerServerProductScope } from '@/lib/server/buyer-server-product-scope';
+import { isBuyerAppAccessEnabledInDb } from '@/lib/server/buyer-pending-guard';
 import { fetchBuyerBrands, fetchBuyerCategories } from '@/lib/server/buyer-product-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
@@ -23,9 +24,12 @@ async function loadInitialCatalogData(): Promise<CatalogInitialData> {
   if (!supabaseAdmin) return {};
   const claims = await getBuyerServerClaims();
   if (!claims.tenant_id || !claims.buyer_id) return {};
+  if (claims.role === 'buyer_pending') return {};
   const db = supabaseAdmin;
   const tenantId = claims.tenant_id;
   const buyerId = claims.buyer_id;
+  // The JWT role can be stale (buyer disabled after the token was issued): confirm against the DB.
+  if (!(await isBuyerAppAccessEnabledInDb(db, tenantId, buyerId))) return {};
 
   const [promotions, reco, scope] = await Promise.all([
     loadBuyerHomePromotions(db, tenantId, buyerId).catch((error) => {
@@ -88,12 +92,15 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     );
   }
 
-  const { promotions, reco, brands, categories } = await loadInitialCatalogData();
+  const [claims, { promotions, reco, brands, categories }] = await Promise.all([
+    getBuyerServerClaims(),
+    loadInitialCatalogData(),
+  ]);
   const heroImageUrl = promotions?.latest_promotions_preview[0]?.hero_image_url;
   if (heroImageUrl) preload(heroImageUrl, { as: 'image' });
 
   return (
-    <BuyerSelectionGate returnTo={returnTo}>
+    <BuyerSelectionGate returnTo={returnTo} required={Boolean(claims.buyer_id)}>
       <CatalogDiscoveryLanding
         initialPromotions={promotions}
         initialReco={reco}

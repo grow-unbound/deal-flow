@@ -7,6 +7,7 @@ import { sendInvoiceReminderWhatsApp } from '@/lib/server/whatsapp-document-send
 import { supabaseAdmin } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { withTenantSellerIds } from '@/lib/analytics-identity-server';
+import { syncInvoiceEntrySafe, touchEntryForSourceSafe } from '@/lib/server/inbox-entries';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       event: 'invoice_reminder_sent',
       properties: { ...withTenantSellerIds(claims), invoice_id: id },
     });
+
+    touchEntryForSourceSafe(db, {
+      tenantId: claims.tenant_id,
+      entryType: eff === 'overdue' ? 'invoice_overdue' : 'invoice_due',
+      sourceEntityType: 'invoice',
+      sourceEntityId: id,
+      action: 'send_reminder',
+      toStatus: 'in_progress',
+      actorUserId: claims.sub,
+      metadata: { last_reminder_at: now },
+    });
+    syncInvoiceEntrySafe(db, id);
 
     return NextResponse.json({ data: { id, last_reminder_at: now } });
   } catch (e) {

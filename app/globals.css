@@ -155,12 +155,12 @@
     --ctl-text-md: var(--yk-text-md);
   }
 
-/* ── Buyer-app design override (DealFlow "Ember & Cream") ─────────────────
+/* ── Buyer-app design override (Yukti "Ember & Cream") ─────────────────
    Scoped under [data-app="buyer"] — seller cockpit is completely untouched.
    All buyer font sizes live here as --b-text-* tokens; no pixel literals in JSX.
 ──────────────────────────────────────────────────────────────────────────── */
 [data-app="buyer"] {
-  /* DealFlow palette overrides */
+  /* Yukti palette overrides */
   --cream-50:  #FAF7F2;
   --cream-100: #F4EFE6;
   --cream-200: #EAE4D7;
@@ -184,8 +184,9 @@
   --success-500: #2F5733;
   --danger-500:  #C93D27;
 
-  --bg-base:    #FAF7F2;
-  --bg-page:    #FAF7F2;
+  /* Reversible buyer catalog visual test: canvas matches product-card info surface. */
+  --bg-base:    var(--bg-surface);
+  --bg-page:    var(--bg-surface);
   --bg-surface: #FFFFFF;
 
   /* Buyer type scale — single source of truth; change --b-base to shift all sizes */
@@ -615,13 +616,13 @@
   }
 
   .doc-type-chip--so {
-    background: var(--amber-50);
-    color: var(--amber-700);
-    border-color: var(--amber-100);
+    background: var(--warning-50);
+    color: var(--warning-700);
+    border-color: var(--warning-50);
   }
 
   .doc-type-chip--so .dot {
-    background: var(--amber-500);
+    background: var(--warning-500);
   }
 
   .doc-type-chip--invoice {
@@ -676,7 +677,7 @@
   }
 
   .doc-status--paid .dot {
-    background: var(--success-600);
+    background: var(--success-500);
   }
 
   .doc-status--void .dot {
@@ -758,7 +759,7 @@
 
   .doc-status--confirmed {
     background: var(--success-50);
-    color: var(--success-800);
+    color: var(--success-700);
     border-color: #c8ddc9;
   }
 
@@ -767,18 +768,18 @@
   }
 
   .doc-status--dispatched {
-    background: var(--amber-50);
-    color: var(--amber-900);
-    border-color: var(--amber-200);
+    background: var(--warning-50);
+    color: var(--warning-700);
+    border-color: var(--warning-50);
   }
 
   .doc-status--dispatched .dot {
-    background: var(--amber-500);
+    background: var(--warning-500);
   }
 
   .doc-status--delivered {
     background: var(--success-50);
-    color: var(--success-900);
+    color: var(--success-700);
     border-color: #a3c9a5;
   }
 
@@ -846,9 +847,9 @@
   }
 
   .callout--warning {
-    border: 1px solid var(--amber-200);
-    background: var(--amber-50);
-    color: var(--amber-700);
+    border: 1px solid var(--warning-50);
+    background: var(--warning-50);
+    color: var(--warning-700);
     border-radius: 12px;
     padding: 12px 14px;
     font-size: var(--yk-text-sm);
@@ -912,8 +913,8 @@
   }
 
   .doc-line-stock-warning {
-    background: var(--amber-50);
-    box-shadow: inset 3px 0 0 var(--amber-500);
+    background: var(--warning-50);
+    box-shadow: inset 3px 0 0 var(--warning-500);
   }
 
   .doc-line-stock-danger {
@@ -947,9 +948,9 @@
   }
 
   .stock-warn-badge {
-    border: 1px solid var(--amber-200);
-    background: var(--amber-50);
-    color: var(--amber-700);
+    border: 1px solid var(--warning-50);
+    background: var(--warning-50);
+    color: var(--warning-700);
   }
 
   .doc-readonly .qty-cell button,

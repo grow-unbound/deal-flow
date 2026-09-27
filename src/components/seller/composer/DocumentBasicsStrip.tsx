@@ -183,7 +183,7 @@ export function DocumentComposerFooterRow({
           className={cn(
             'h-2 w-2 rounded-full',
             autoSaveTone === 'warning'
-              ? 'bg-amber-500'
+              ? 'bg-warning-500'
               : autoSaveTone === 'pending'
                 ? 'bg-teal-500 animate-pulse'
               : autoSaveTone === 'saved'

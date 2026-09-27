@@ -7,14 +7,31 @@ export const BUYER_TWO_LINE_TITLE_CLASS =
 
 /** Shared responsive density for buyer catalog/product grids. */
 export const BUYER_PRODUCT_GRID_CLASS =
-  'grid grid-cols-2 gap-1.5 px-1.5 pb-3 md:grid-cols-3 md:gap-2 md:px-2 lg:grid-cols-4 min-[1240px]:grid-cols-5 min-[1380px]:grid-cols-6' as const;
+  'grid grid-cols-2 gap-x-2.5 gap-y-1.5 px-1.5 pb-3 md:grid-cols-3 md:gap-x-3 md:gap-y-2 md:px-2 lg:grid-cols-4 min-[1240px]:grid-cols-5 min-[1380px]:grid-cols-6' as const;
+
+/** Shared split layout for buyer category/brand/list detail pages with a master-list rail.
+ * The base rail width clamps down on sub-400px phones so the product cards retain usable width. */
+export const BUYER_DETAIL_RAIL_GRID_CLASS =
+  'grid items-start grid-cols-[clamp(64px,19vw,84px)_minmax(0,1fr)] gap-2 px-1.5 pb-4 sm:grid-cols-[108px_minmax(0,1fr)] sm:gap-4 sm:px-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-4 lg:pb-6' as const;
+
+/** Shared rail item density for buyer category/brand detail pages. */
+export const BUYER_DETAIL_RAIL_ITEM_CLASS =
+  'flex min-h-[72px] flex-col items-center justify-center gap-1.5 px-0.5 py-2 sm:min-h-[96px] sm:gap-2 sm:px-2 sm:py-3 lg:min-h-[76px] lg:flex-row lg:items-center lg:justify-start lg:gap-3 lg:px-1 lg:py-3' as const;
+
+/** Shared thumbnail size for buyer category/brand detail rails. */
+export const BUYER_DETAIL_RAIL_THUMB_CLASS =
+  'h-10 w-10 p-1 sm:h-14 sm:w-14 sm:p-1.5 lg:h-16 lg:w-16 lg:p-2' as const;
+
+/** Shared two-line label density for buyer category/brand detail rails. */
+export const BUYER_DETAIL_RAIL_LABEL_CLASS =
+  'line-clamp-2 text-center text-[10px] font-medium leading-tight sm:text-[11px] lg:text-left lg:text-[var(--b-text-label)]' as const;
 
 /** Category tile grid — fixed 3-column density on mobile (auto-fill's 180px floor is too
  * coarse below md, it collapses to 1 column); at md+ switches to auto-fill so tiles stretch
  * to fill available width instead of leaving a dead gutter at wide viewports. Pair with a
  * centered max-width wrapper on ultrawide screens. */
 export const BUYER_GRID_AUTOFILL_CLASS =
-  'grid grid-cols-3 gap-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] md:gap-2.5' as const;
+  'grid grid-cols-3 gap-x-3 gap-y-2 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] md:gap-x-3.5 md:gap-y-2.5' as const;
 
 /** Prefetch next page when the user scrolls past this fraction of the loaded list. */
 export const BUYER_INFINITE_SCROLL_RATIO = 0.75 as const;
@@ -44,16 +61,41 @@ export const BUYER_TILE_FRAME_CLASS =
  * directly as the tile) via `focus-visible:`, or it wraps a focusable descendant (e.g.
  * ProductCard's outer div wrapping an inner Link/button) via `has-[:focus-visible]:`. */
 export const BUYER_TILE_HOVER_CLASS =
-  '[@media(hover:hover)]:hover:bg-[var(--bg-recessed)] [@media(hover:hover)]:hover:border-[var(--border-2)] focus-visible:bg-[var(--bg-recessed)] focus-visible:border-[var(--border-2)] has-[:focus-visible]:bg-[var(--bg-recessed)] has-[:focus-visible]:border-[var(--border-2)]' as const;
+  '[@media(hover:hover)]:hover:bg-[var(--bg-surface)] [@media(hover:hover)]:hover:border-[var(--border-2)] [@media(hover:hover)]:hover:shadow-[0_8px_22px_rgba(34,30,26,0.10)] focus-visible:bg-[var(--bg-surface)] focus-visible:border-[var(--border-2)] focus-visible:shadow-[0_8px_22px_rgba(34,30,26,0.10)] has-[:focus-visible]:bg-[var(--bg-surface)] has-[:focus-visible]:border-[var(--border-2)] has-[:focus-visible]:shadow-[0_8px_22px_rgba(34,30,26,0.10)]' as const;
 
 type BuyerProductImageLike = {
   image_urls?: string[] | null;
+  family_image_url?: string | null;
   category_image_url?: string | null;
   brand_logo_url?: string | null;
 };
 
+type BuyerCatalogItemLike = {
+  item_type?: 'sku' | 'family';
+  id: string;
+  tenant_product_id: string;
+  display_name: string;
+  brand_id?: string | null;
+  category_id?: string | null;
+};
+
+export function dedupeBuyerCatalogItems<T extends BuyerCatalogItemLike>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.item_type === 'family'
+      ? ['family', item.brand_id ?? '', item.category_id ?? '', item.display_name.trim().toLowerCase()].join(':')
+      : `sku:${item.tenant_product_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function getBuyerProductImageCandidates(input: BuyerProductImageLike): string[] {
   const productImage = input.image_urls?.find((url) => typeof url === 'string' && url.trim().length > 0)?.trim() ?? null;
+  const familyImage = typeof input.family_image_url === 'string' && input.family_image_url.trim().length > 0
+    ? input.family_image_url.trim()
+    : null;
   const categoryImage = typeof input.category_image_url === 'string' && input.category_image_url.trim().length > 0
     ? input.category_image_url.trim()
     : null;
@@ -61,21 +103,48 @@ export function getBuyerProductImageCandidates(input: BuyerProductImageLike): st
     ? input.brand_logo_url.trim()
     : null;
 
-  return [productImage, categoryImage, brandImage].filter((url, index, arr): url is string => Boolean(url) && arr.indexOf(url) === index);
+  return [productImage, familyImage, categoryImage, brandImage].filter((url, index, arr): url is string => Boolean(url) && arr.indexOf(url) === index);
 }
 
 export function getBuyerProductPrimaryImageUrl(input: BuyerProductImageLike): string | null {
   return getBuyerProductImageCandidates(input)[0] ?? null;
 }
 
+export function hasVisibleBuyerPrice(price: number | null | undefined): price is number {
+  return typeof price === 'number' && Number.isFinite(price);
+}
+
+export function isHiddenPriceEnquiryMode(
+  mode: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | '' | null | undefined,
+): boolean {
+  return mode === 'hide_price_collect_enquiry';
+}
+
+/**
+ * Maps a tenant's public-catalog pricing mode to how ProductCard should
+ * render price for a guest: hidden_until_login shows a clickable "Login for
+ * Price" CTA (not just an inert grey bar) since that's the mode where a
+ * guest can actually do something about it. Shared between the real guest
+ * storefront and the seller's own onboarding preview, which must render
+ * identically.
+ */
+export function guestPriceReveal(
+  mode: 'hidden_until_login' | 'hide_price_collect_enquiry' | 'base_selling_rate' | 'assigned_price_list' | '' | null | undefined,
+): 'hidden_bar' | 'login_cta' | 'amount' {
+  if (mode === 'hidden_until_login') return 'login_cta';
+  if (mode === 'hide_price_collect_enquiry') return 'hidden_bar';
+  if (mode === 'base_selling_rate' || mode === 'assigned_price_list') return 'amount';
+  return 'hidden_bar';
+}
+
 export function hasBuyerCampaignPrice(input: {
   has_campaign_price?: boolean;
-  price: number;
+  price: number | null;
   resolved_price?: number | null;
 }): boolean {
+  if (!hasVisibleBuyerPrice(input.price) || input.resolved_price == null) return false;
   return Boolean(
     input.has_campaign_price
-    && input.resolved_price != null
     && Math.abs(input.resolved_price - input.price) > 0.004,
   );
 }

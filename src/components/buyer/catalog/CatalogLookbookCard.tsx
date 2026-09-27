@@ -64,6 +64,7 @@ export function CatalogLookbookCard({
   return (
     <Link
       href={href}
+      prefetch={false}
       onClick={() => markBuyerNavigationForward()}
       className={cn(
         'block overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[var(--shadow-xs)]',

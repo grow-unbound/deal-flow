@@ -24,10 +24,10 @@ export function FulfilmentAlert({ lines, onResolve }: FulfilmentAlertProps) {
     lines.length === 1 ? "One line can't be fully fulfilled" : `${lines.length} lines can't be fully fulfilled`;
 
   return (
-    <div className="mt-3 flex items-start gap-3 rounded-[10px] border border-amber-200 bg-amber-50 p-4">
-      <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
+    <div className="mt-3 flex items-start gap-3 rounded-[10px] border border-warning-50 bg-warning-50 p-4">
+      <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning-500" aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="text-base font-semibold text-amber-700">{title}</div>
+        <div className="text-base font-semibold text-warning-700">{title}</div>
         <div className="mt-0.5 text-sm leading-[1.45] text-cream-800">
           <span className="font-semibold text-cream-900">{first.name}</span>
           {' — '}
@@ -37,7 +37,7 @@ export function FulfilmentAlert({ lines, onResolve }: FulfilmentAlertProps) {
       </div>
       <button
         type="button"
-        className="cockpit-btn cockpit-btn-ghost cockpit-btn-sm shrink-0 self-center text-amber-800 hover:bg-amber-100"
+        className="cockpit-btn cockpit-btn-ghost cockpit-btn-sm shrink-0 self-center text-warning-700 hover:bg-warning-50"
         onClick={() => onResolve?.()}
       >
         Resolve stock

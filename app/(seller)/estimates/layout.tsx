@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { EstimatesLandingClient } from '@/components/seller/estimates/EstimatesLandingClient';
@@ -8,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { EstimatesLandingMetricsV4 } from '@/types/tenant-estimates';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // EstimatesLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -15,18 +17,20 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // mounted across /estimates <-> /estimates/[id]. The SSR bootstrap fetch below
 // always uses the default period; a deep link with an explicit `?period=` briefly
 // shows the default period's data until the client-side period hook corrects it.
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.estimates);
+
 export default async function EstimatesLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 
   return (
     <EntitySplitShell
-      basePath="/estimates"
+      basePath={SELLER_ROUTES.sales.estimates}
       listSlot={
         <SellerBootstrapBoundary<EstimatesLandingMetricsV4>
           path={`/api/tenant/estimates/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/estimates"
+              basePath={SELLER_ROUTES.sales.estimates}
               ariaLabel="Loading estimates"
               showTransactionTabs
               variant="transaction"

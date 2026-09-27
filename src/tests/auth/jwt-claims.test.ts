@@ -149,6 +149,18 @@ describe('buyer preview tokens', () => {
     expect(context.buyer_id).toBe('buyer-123');
   });
 
+  it('uses guest mode on a live storefront host without buyer_id', async () => {
+    const req = new NextRequest('http://localhost/');
+    req.headers.set('x-verified-tenant-id', 'tenant-abc');
+    req.headers.set('x-verified-storefront-live', '1');
+
+    const context = await getBuyerAppContext(req);
+    expect(context.mode).toBe('guest');
+    expect(context.tenant_id).toBe('tenant-abc');
+    expect(context.buyer_id).toBeNull();
+    expect(context.share_token).toBeNull();
+  });
+
   it('allows seller-authenticated preview mode for matching tenant tokens', async () => {
     const req = new NextRequest('http://localhost/buy/home');
     req.headers.set('x-verified-tenant-id', 'tenant-abc');

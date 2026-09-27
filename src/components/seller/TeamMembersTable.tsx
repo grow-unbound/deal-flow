@@ -199,7 +199,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             { label: 'Email', className: 'px-5' },
             { label: 'Phone', className: 'px-5' },
             { label: 'Role', className: 'px-5' },
-            { label: 'Locations', className: 'px-5' },
+            { label: 'Branches', className: 'px-5' },
             { label: 'Status', className: 'px-5' },
             ...(isAdmin ? [{ label: 'Actions', align: 'right' as const, className: 'px-5' }] : []),
           ]}
@@ -411,7 +411,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={!deactivateMember || removeMutation.isPending}
-              className="bg-danger-500 text-cream-50 hover:bg-danger-600"
+              className="bg-danger-500 text-cream-50 hover:bg-danger-500"
               onClick={(event) => {
                 event.preventDefault();
                 if (deactivateMember) {

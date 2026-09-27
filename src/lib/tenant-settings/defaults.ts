@@ -4,6 +4,7 @@ import type { TenantSettingsNotifications } from '@/types/tenant-settings';
 export const DEFAULT_TENANT_SETTINGS_STORED = {
   business: {
     company_name: '',
+    tagline: '',
     gstin: '',
     logo_url: null as string | null,
     address: { line1: '', line2: '', city: '', state: '', pincode: '' },
@@ -30,7 +31,11 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     },
   },
   buyer_app: {
-    enabled: false,
+    // Public catalog + catalog login are core MVP, not a togglable module —
+    // no seller setup step should be required to unlock it. This only affects
+    // tenants with no explicit stored value; existing tenants are flipped by
+    // the default_on_buyer_app_for_existing_tenants migration.
+    enabled: true,
     whatsapp_number: '',
     whatsapp_display_name: '',
     share_link_expiry_enabled: false,

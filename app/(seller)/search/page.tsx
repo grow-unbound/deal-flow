@@ -1,6 +1,9 @@
 import { Suspense } from 'react';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { SellerMobileSearchPage } from '@/components/seller/mobile/SellerMobileSearchPage';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.search);
 
 export default async function SellerSearchPage() {
   await requireSellerServerTenantId();

@@ -27,21 +27,26 @@ export function useBuyerDeliveryOptional(): BuyerDeliveryContextValue | null {
   return React.useContext(BuyerDeliveryContext);
 }
 
-function readFromDocument(): BuyerDeliveryCookiePayload {
+function readFromDocument(tenantSlug?: string): BuyerDeliveryCookiePayload {
   if (typeof document === 'undefined') return { selected: null, recent: [] };
   const raw = document.cookie
     .split('; ')
     .find((row) => row.startsWith(`${DELIVERY_COOKIE_NAME}=`))
     ?.slice(`${DELIVERY_COOKIE_NAME}=`.length);
+  const parsed = parseDeliveryCookie(raw);
+  // If we know the current tenant and the cookie carries a different tenant's
+  // slug, discard the selected outlet — it belongs to a different distributor.
+  const crossTenant = tenantSlug && parsed?.tenant_slug && parsed.tenant_slug !== tenantSlug;
   return {
-    selected: parseDeliveryCookie(raw)?.selected ?? null,
+    selected: crossTenant ? null : (parsed?.selected ?? null),
     recent: readRecentFromStorage(),
   };
 }
 
-function writeToDocument(payload: BuyerDeliveryCookiePayload): void {
+function writeToDocument(payload: BuyerDeliveryCookiePayload, tenantSlug?: string): void {
   const maxAge = 60 * 60 * 24 * 365;
-  const value = serializeDeliveryCookie(payload);
+  const toWrite = tenantSlug ? { ...payload, tenant_slug: tenantSlug } : payload;
+  const value = serializeDeliveryCookie(toWrite);
   document.cookie = `${DELIVERY_COOKIE_NAME}=${value}; path=/; max-age=${maxAge}; SameSite=Lax`;
   writeRecentToStorage(payload.recent ?? []);
 }
@@ -71,9 +76,11 @@ function writeRecentToStorage(recent: BuyerDeliveryLocation[]): void {
 export function BuyerDeliveryProvider({
   children,
   initialPayload,
+  tenantSlug,
 }: {
   children: React.ReactNode;
   initialPayload?: string | null;
+  tenantSlug?: string;
 }) {
   const queryClient = useQueryClient();
   const hasServerCookiePayload = typeof initialPayload === 'string' && initialPayload.length > 0;
@@ -86,7 +93,7 @@ export function BuyerDeliveryProvider({
 
   React.useEffect(() => {
     setState((prev) => {
-      const clientState = readFromDocument();
+      const clientState = readFromDocument(tenantSlug);
       const nextSelected = clientState.selected ?? prev.selected ?? null;
       const clientRecent = clientState.recent ?? [];
       const nextRecent = clientRecent.length > 0 ? clientRecent : prev.recent ?? [];
@@ -96,7 +103,7 @@ export function BuyerDeliveryProvider({
       return { selected: nextSelected, recent: nextRecent };
     });
     setHydrated(true);
-  }, [hasServerCookiePayload]);
+  }, [hasServerCookiePayload, tenantSlug]);
 
   React.useEffect(() => {
     const selected = state.selected;
@@ -144,7 +151,7 @@ export function BuyerDeliveryProvider({
             nextSelected,
           );
           next.selected = nextSelected;
-          writeToDocument(next);
+          writeToDocument(next, tenantSlug);
           return next;
         });
       })
@@ -156,9 +163,9 @@ export function BuyerDeliveryProvider({
   }, [state.selected]);
 
   const refreshFromDocumentCookie = React.useCallback(() => {
-    setState(readFromDocument());
+    setState(readFromDocument(tenantSlug));
     setHydrated(true);
-  }, []);
+  }, [tenantSlug]);
 
   const setSelected = React.useCallback((loc: BuyerDeliveryLocation) => {
     setState((prev) => {
@@ -167,7 +174,7 @@ export function BuyerDeliveryProvider({
         loc,
       );
       next.selected = loc;
-      writeToDocument(next);
+      writeToDocument(next, tenantSlug);
       return next;
     });
     void queryClient.invalidateQueries({

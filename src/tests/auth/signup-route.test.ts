@@ -60,7 +60,7 @@ describe('POST /api/auth/signup', () => {
       data: {
         tenant_id: 'tenant-1',
         slug: 'acme-distributors',
-        subdomain: 'acme-distributors.yukti.so',
+        subdomain: 'acme-distributors.useyukti.in',
       },
       error: null,
     });

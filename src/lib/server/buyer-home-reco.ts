@@ -1,6 +1,10 @@
+import { unstable_cache } from 'next/cache';
 import type { BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
+import { loadLivePublicCatalog, type PublicCatalogRecord } from '@/lib/server/public-catalog';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
+import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -135,6 +139,10 @@ export async function loadBuyerHomeReco(
     }
   }
 
+  // The catalog's pricing mode (e.g. hide_price_collect_enquiry) applies to
+  // logged-in buyers too; without it these rails render real prices.
+  const publicCatalog = await loadLivePublicCatalog(db, tenantId).catch(() => null);
+
   const [reorderPreviewMap, bestsellers] = await Promise.all([
     assembleBuyerCatalogItemsForProductIds(db, {
       tenantId,
@@ -145,8 +153,9 @@ export async function loadBuyerHomeReco(
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      publicCatalog,
     }),
-    loadBestsellers(db, tenantId, buyerId, allowedTenantBrandIds, recoRes),
+    loadBestsellers(db, tenantId, buyerId, allowedTenantBrandIds, recoRes, publicCatalog),
   ]);
 
   return {
@@ -163,6 +172,7 @@ async function loadBestsellers(
   buyerId: string,
   allowedTenantBrandIds: string[] | null,
   recoRes: { data: unknown; error: Error | null },
+  publicCatalog: PublicCatalogRecord | null,
 ): Promise<BuyerCatalogItem[]> {
   try {
     if (recoRes.error || !recoRes.data) return [];
@@ -179,6 +189,7 @@ async function loadBestsellers(
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
+      publicCatalog,
     });
 
     return bestsellerIds
@@ -187,4 +198,74 @@ async function loadBestsellers(
   } catch {
     return [];
   }
+}
+
+/**
+ * Which product IDs are this tenant's guest bestsellers (RPC, falling back to
+ * most-recently-added when there's no order history yet — the common case for
+ * a freshly-published catalog). Zero per-visitor variance, so this is cached
+ * per tenant — otherwise every guest home load pays for the RPC and, on an
+ * empty result, a second sequential fallback query, for the same answer.
+ * Invalidated via revalidatePublicCatalogCache() on catalog writes.
+ */
+function getCachedGuestBestsellerIds(tenantId: string): Promise<string[]> {
+  return unstable_cache(
+    async () => {
+      if (!supabaseAdmin) return [];
+      const recoRes = await supabaseAdmin
+        .schema('app')
+        .rpc('reco_get_home', { p_tenant_id: tenantId, p_buyer_id: null })
+        .then((res) => res, () => ({ data: null, error: new Error('reco_get_home failed') }));
+
+      const recoData = recoRes.data as { bestsellers?: string[] } | null;
+      const bestsellerIds = (recoData?.bestsellers ?? []).slice(0, 12);
+      if (bestsellerIds.length > 0) return bestsellerIds;
+
+      const { data, error } = await supabaseAdmin
+        .schema('app')
+        .from('tenant_products')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(12);
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    },
+    ['guest-bestseller-ids', tenantId],
+    { revalidate: 300, tags: [`public-catalog:${tenantId}`] },
+  )();
+}
+
+export async function loadGuestHomeReco(
+  db: SupabaseClient,
+  tenantId: string,
+): Promise<BuyerHomeRecoResponse> {
+  const [guestPricing, rawBestsellerIds] = await Promise.all([
+    getCachedGuestPricingContext(tenantId),
+    getCachedGuestBestsellerIds(tenantId),
+  ]);
+
+  const excluded = new Set(guestPricing?.excludedProductIds ?? []);
+  const bestsellerIds = rawBestsellerIds.filter((id) => !excluded.has(id));
+
+  const bestsellerMap = await assembleBuyerCatalogItemsForProductIds(db, {
+    tenantId,
+    buyerId: null,
+    productIds: bestsellerIds,
+    allowedTenantBrandIds: null,
+    campaignId: null,
+    campaignName: null,
+    campaignValidUntil: null,
+    priceOverrides: new Map(),
+    guestPricing,
+  });
+
+  return {
+    order_again_preview: [],
+    bestsellers: bestsellerIds
+      .map((id) => bestsellerMap.get(id))
+      .filter((item): item is BuyerCatalogItem => Boolean(item)),
+  };
 }

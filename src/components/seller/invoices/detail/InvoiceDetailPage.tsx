@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import { useDocumentWhatsAppRealtime } from '@/hooks/useDocumentWhatsAppRealtime';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
@@ -317,7 +318,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                         icon: <Edit2 className="h-4 w-4" />,
                         onClick: () => {
                           void prefetchInvoiceComposer(queryClient, id);
-                          router.push(`/invoices/${id}/edit`);
+                          router.push(`${SELLER_ROUTES.sales.invoices}/${id}/edit`);
                         },
                       } satisfies DetailActionItem,
                     ]

@@ -22,7 +22,9 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerProductsWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -122,6 +124,7 @@ function ProductsLandingContent({
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
   const isPaneOpen = useSplitPaneOpen('/products');
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const { isSellerAssistant } = useRole();
   const period = 'quarter';
@@ -204,8 +207,8 @@ function ProductsLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading products" showLeading />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading products" showLeading showTransactionTabs />
     ) : (
       <ProductsLandingSkeleton />
     );
@@ -251,7 +254,7 @@ function ProductsLandingContent({
           title={isPaneOpen ? selectedOption.label : 'Products'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${filteredTotal} products across ${summaryBrands} brands and ${categoryCount} categories.`}
+            : 'Maintain the sellable catalog, stock posture, brands, and categories.'}
           horizon={horizonLabel}
           showHorizonControl={false}
         secondary={{
@@ -271,6 +274,7 @@ function ProductsLandingContent({
         })}
         compact={isPaneOpen}
       />
+      <SellerProductsWorkspaceTabs />
 
       {isPaneOpen ? null : (
         <InsightStrip4

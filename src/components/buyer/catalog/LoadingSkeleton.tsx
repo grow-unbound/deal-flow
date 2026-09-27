@@ -16,7 +16,7 @@ export function ProductCardSkeletonItem() {
       <div className="relative aspect-square bg-[var(--bg-recessed)]">
         <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-[var(--cream-300)]" />
       </div>
-      <div className="flex flex-col gap-1.5 bg-[var(--cream-50)] p-2.5">
+      <div className="flex flex-col gap-1.5 bg-[var(--bg-surface)] p-2.5">
         {/* Reserves the same 2-line title height ProductCard's BUYER_TWO_LINE_TITLE_CLASS
             does, plus the SKU line below it, so real content swapping in doesn't shift
             the price row down. */}

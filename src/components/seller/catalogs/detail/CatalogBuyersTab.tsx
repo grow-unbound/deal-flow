@@ -226,7 +226,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
   return (
     <section className="h-full max-h-[calc(100dvh-var(--topbar-h)-14rem)] space-y-4 overflow-y-auto pt-5">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
           <div>
             <h3 className="font-display text-lg text-cream-950">Selected cohort</h3>
             <p className="mt-1 text-base text-cream-900">{selectedCohort.display_label}</p>
@@ -234,7 +234,7 @@ export function CatalogBuyersTab({ catalogId, buyers, selectedCohort, composer, 
               {selectedCohort.member_count} buyers · scope {selectedCohort.scope_type === 'all' ? 'all buyers' : selectedCohort.scope_type}
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-right">
               <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Opens</p>
               <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.opens}</p>

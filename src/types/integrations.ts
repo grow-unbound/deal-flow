@@ -5,7 +5,7 @@ const IntegrationSinceValueSchema = z.union([
   z.string().date(),
 ]);
 
-export const INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory', 'tally_prime', 'busy'] as const;
+export const INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory', 'tally_prime', 'busy', 'whatsapp_business'] as const;
 export const IntegrationTypeIdSchema = z.enum(INTEGRATION_TYPE_IDS);
 export type IntegrationTypeId = z.infer<typeof IntegrationTypeIdSchema>;
 

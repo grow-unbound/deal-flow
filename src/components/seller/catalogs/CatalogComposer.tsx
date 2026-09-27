@@ -139,12 +139,12 @@ function tagLabel(tag: CatalogComposerProduct['tag']) {
 
 function stockTextClasses(tone: CatalogComposerProduct['stock_tone']) {
   if (tone === 'success') return 'text-teal-700';
-  if (tone === 'warning') return 'text-amber-700';
+  if (tone === 'warning') return 'text-warning-700';
   return 'text-cream-700';
 }
 
 function tagPillClasses(tag: CatalogComposerProduct['tag']) {
-  if (tag === 'new' || tag === 'new_stock') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (tag === 'new' || tag === 'new_stock') return 'border-warning-50 bg-warning-50 text-warning-700';
   return 'border-cream-300 bg-cream-100 text-cream-700';
 }
 
@@ -158,7 +158,7 @@ function BuyerCountPill({ count }: { count: number }) {
 
 function priceListStatusPillClasses(status: 'active' | 'draft') {
   if (status === 'active') return 'border-teal-200 bg-teal-50 text-teal-700';
-  return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-warning-50 bg-warning-50 text-warning-700';
 }
 
 export function CatalogComposerSkeleton() {
@@ -698,7 +698,7 @@ export function CatalogComposer({
   if (isError || (mode === 'edit' && detail && !detail.composer)) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
-        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
+        <div className="rounded-[18px] border border-danger-50 bg-danger-50 p-5 text-base text-danger-700">
           We couldn&apos;t load this campaign composer right now.
         </div>
       </div>
@@ -1399,11 +1399,11 @@ export function CatalogComposer({
                       <div className="h-px bg-cream-300" />
                       <div className="space-y-2">
                         <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Next publish</h4>
-                        <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
-                          <div className="space-y-2 text-sm leading-[1.5] text-amber-900">
+                        <div className="rounded-[10px] border border-warning-50 bg-warning-50 px-3 py-3">
+                          <div className="space-y-2 text-sm leading-[1.5] text-warning-700">
                             {pendingPublishSummary.map((item) => (
                               <div key={item.label} className="flex items-start justify-between gap-4">
-                                <span className="text-amber-700">{item.label}</span>
+                                <span className="text-warning-700">{item.label}</span>
                                 <span className="max-w-[190px] text-right font-medium">{item.value}</span>
                               </div>
                             ))}
@@ -1415,11 +1415,11 @@ export function CatalogComposer({
 
                   <div className={cn(
                     'mt-auto rounded-[10px] px-3 py-3 text-sm leading-[1.5]',
-                    isPublishedEdit ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'border border-teal-200 bg-teal-50 text-teal-700',
+                    isPublishedEdit ? 'border border-warning-50 bg-warning-50 text-warning-700' : 'border border-teal-200 bg-teal-50 text-teal-700',
                   )}>
                     <div className="flex gap-2">
                       {isPublishedEdit ? (
-                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning-700" />
                       ) : (
                         <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
                       )}

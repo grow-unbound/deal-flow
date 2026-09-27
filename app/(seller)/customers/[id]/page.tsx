@@ -21,6 +21,7 @@ import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatNumberValue } from '@/lib/utils';
 import { CustomerDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists';
 
@@ -216,7 +217,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               buyerName={data.header.buyer_name}
               kind="estimate"
               title="Estimates"
-              routeBase="/estimates"
+              routeBase={SELLER_ROUTES.sales.estimates}
             />
           ) : (
             <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />
@@ -232,7 +233,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               buyerName={data.header.buyer_name}
               kind="invoice"
               title="Invoices"
-              routeBase="/invoices"
+              routeBase={SELLER_ROUTES.sales.invoices}
             />
           ) : (
             <Skeleton className="mt-4 h-[24rem] rounded-[14px]" />

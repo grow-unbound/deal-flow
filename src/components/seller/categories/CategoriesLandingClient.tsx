@@ -22,6 +22,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import {
   useCategoriesLandingMetrics,
@@ -40,6 +41,8 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
 import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SellerProductsWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Sales (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)' | 'Invoices (high → low)' | 'Customers (high → low)';
 type CategoryLandingFilters = { status: string[]; products: string[]; stock: string[] };
@@ -71,7 +74,8 @@ function CategoriesLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/categories');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.products.categories);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const queryClient = useQueryClient();
   useSellerPageView();
@@ -86,7 +90,7 @@ function CategoriesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: 'fixed-quarter',
-    pathnameOverride: '/categories',
+    pathnameOverride: SELLER_ROUTES.products.categories,
     version: 5,
     initialState: {
       search: '',
@@ -113,7 +117,7 @@ function CategoriesLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
     scopeKey: 'fixed-quarter',
-    pathnameOverride: '/categories',
+    pathnameOverride: SELLER_ROUTES.products.categories,
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = (landingData?.filters?.groups ?? []).map((group) => ({
@@ -154,13 +158,14 @@ function CategoriesLandingContent({
 
   const showRefreshingState = isLoading && !data;
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading categories"
         showLeading
         eyebrowWidth="w-20"
         titleWidth="w-44"
         subtitleWidth="w-52"
+        showTransactionTabs
       />
     ) : (
       <CategoriesLandingSkeleton />
@@ -192,11 +197,11 @@ function CategoriesLandingContent({
           isError={isError}
         >
         <PageHeader
-          eyebrow={isPaneOpen ? 'Categories' : 'Catalog'}
+          eyebrow={isPaneOpen ? 'Categories' : 'Products'}
           title={isPaneOpen ? selectedOption.label : 'Categories'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${totalRows} categories in ${horizonLabel.toLowerCase()}.`}
+            : 'Maintain the sellable catalog, stock posture, brands, and categories.'}
           horizon={horizonLabel}
           primary="Add category"
           onPrimaryClick={() => {
@@ -205,6 +210,7 @@ function CategoriesLandingContent({
           }}
           compact={isPaneOpen}
         />
+        <SellerProductsWorkspaceTabs />
 
         {isPaneOpen ? null : (
           <InsightStrip4
@@ -291,7 +297,7 @@ function CategoriesLandingContent({
             sentinelRef={sentinelRef}
             mobileRows={visibleRows.map((row) => ({
               id: row.id,
-              href: `/categories/${row.id}`,
+              href: `${SELLER_ROUTES.products.categories}/${row.id}`,
               leading: (
                 <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} imageUrl={row.image_url} size={32} />
               ),
@@ -314,7 +320,7 @@ function CategoriesLandingContent({
                   'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
                   row.id === openId ? 'bg-ember-50' : 'bg-white',
                 )}
-                onClick={() => router.push(`/categories/${row.id}`)}
+                onClick={() => router.push(`${SELLER_ROUTES.products.categories}/${row.id}`)}
                 onPointerDown={() => triggerHaptic()}
               >
                 <td className="px-3 py-3">

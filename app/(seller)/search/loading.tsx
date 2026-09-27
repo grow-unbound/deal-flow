@@ -7,7 +7,10 @@ export default function SellerSearchLoading() {
       </header>
       <div className="space-y-2 px-3 py-2">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="h-[70px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+          <div key={index} className="rounded-[12px] border border-cream-200 bg-white px-3.5 py-3">
+            <div className="h-4 w-2/3 animate-pulse rounded-full bg-cream-200" />
+            <div className="mt-2 h-3 w-1/3 animate-pulse rounded-full bg-cream-100" />
+          </div>
         ))}
       </div>
     </div>

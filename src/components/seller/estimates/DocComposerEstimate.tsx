@@ -52,6 +52,7 @@ import type {
 } from '@/types/estimate-composer';
 import type { WhatsAppDocumentSendState } from '@/types/whatsapp-document-send';
 import { bumpSecondDateAfterFirst } from '@/lib/date-utils';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import {
   buildComposerStagedChanges,
   stagedSliceFromEstimate,
@@ -242,7 +243,7 @@ export function DocComposerEstimate({
     lineState.filter((line) => line.diff !== 'removed').map((line) => line.tenant_product_id),
     selectedPriceListId,
   );
-  const closeTarget = mode === 'edit' && estimateId ? `/estimates/${estimateId}` : '/estimates';
+  const closeTarget = mode === 'edit' && estimateId ? `${SELLER_ROUTES.sales.estimates}/${estimateId}` : SELLER_ROUTES.sales.estimates;
 
   const prevEditEstimateIdRef = useRef<string | undefined>(undefined);
 
@@ -607,7 +608,7 @@ async function saveDocumentNow(nextDocument: EstimateComposerDocument, nextLines
     beginLeaving('save');
     try {
       const saved = await saveDocumentNow(documentState, diffLines);
-      router.push(`/estimates/${saved.id}`);
+      router.push(`${SELLER_ROUTES.sales.estimates}/${saved.id}`);
     } catch (mutationError) {
       resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save estimate');
@@ -640,7 +641,7 @@ async function saveDocumentNow(nextDocument: EstimateComposerDocument, nextLines
       toast.success('Estimate sent');
 
       setSendOpen(false);
-      router.push(`/estimates/${targetId}`);
+      router.push(`${SELLER_ROUTES.sales.estimates}/${targetId}`);
     } catch (mutationError) {
       resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to send estimate');

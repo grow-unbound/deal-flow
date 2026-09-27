@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, acquireBuyerForStorefront, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
 import { buyerOtpStore, writeVerifiedCandidatesRecord, hashOtp, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
+import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
+import { tenantStorefrontHostForRequest, buildStorefrontHandoffUrl } from '@/lib/storefront-host';
+import { isCatalogRequest } from '@/lib/server/catalog-request';
+import {
+  dedupeBuyerAccountCandidates,
+  filterBuyerCandidatesForReturnTo,
+  pickPreferredBuyerCandidate,
+  tenantSlugFromReturnTo,
+} from '@/lib/server/catalog-return-to';
+import { getTenantBrandingBySlug } from '@/lib/server/tenant-branding';
 
 const MAX_ATTEMPTS = 5;
 
@@ -23,9 +33,10 @@ const MAX_ATTEMPTS = 5;
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { ref_id?: string; otp?: string };
+    const body = await request.json() as { ref_id?: string; otp?: string; return_to?: string };
     const ref_id: string = (body?.ref_id ?? '').trim();
     const otp: string = (body?.otp ?? '').trim();
+    const returnTo = body?.return_to?.trim() || null;
 
     if (!ref_id || !otp) {
       return NextResponse.json({ error: 'ref_id and otp are required' }, { status: 400 });
@@ -97,8 +108,55 @@ export async function POST(request: NextRequest) {
     // at one tenant and a buyer at an unrelated tenant should both be offered.
     const effectiveCandidates = record.candidates;
 
+    const onCatalogHost = isCatalogRequest(request);
+    if (onCatalogHost && returnTo) {
+      const tenantScoped = dedupeBuyerAccountCandidates(filterBuyerCandidatesForReturnTo(effectiveCandidates, returnTo));
+      // A single tenant-scoped account is never a "pick one" situation — including a not-yet-approved
+      // one, which mintCandidateSession hands off to the tenant host's /onboarding or /pending.
+      if (tenantScoped.length === 1) {
+        return buildMintedCandidateResponse(request, tenantScoped[0], returnTo, record.phone);
+      }
+
+      if (tenantScoped.length > 0) {
+        const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, tenantScoped, true);
+        if (!verifiedRefId) {
+          return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        }
+        return NextResponse.json({ success: true, contexts: tenantScoped, ref_id: verifiedRefId, return_to: returnTo });
+      }
+
+      const tenantSlug = tenantSlugFromReturnTo(returnTo);
+      const tenant = tenantSlug ? await getTenantBrandingBySlug(tenantSlug) : null;
+      if (tenant?.tenantId) {
+        const acquisitionCandidate: LoginOtpCandidate = {
+          kind: 'buyer',
+          tenant_id: tenant.tenantId,
+          tenant_name: tenant.businessName,
+          tenant_slug: tenant.slug,
+          tenant_whatsapp_number: tenant.whatsappNumber,
+          tenant_whatsapp_display_name: tenant.businessName,
+          tenant_logo_url: tenant.logoUrl,
+          role: 'buyer_admin',
+          buyer_id: null,
+          principal_type: 'buyer',
+          user_id: null,
+          buyer_user_id: null,
+          phone: record.phone,
+          business_name: '',
+          contact_name: null,
+          buyer_app_enabled: false,
+          tenant_app_enabled: true,
+        };
+        return buildMintedCandidateResponse(request, acquisitionCandidate, returnTo, record.phone);
+      }
+    }
+
     if (effectiveCandidates.length > 1) {
-      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates);
+      // otpVerified: true — this record is written immediately after the
+      // OTP hash check above succeeded, for the literal phone the OTP was
+      // sent to. select-context uses this flag to allow the eventual
+      // session mint to stamp otp_verified_phone.
+      const verifiedRefId = await writeVerifiedCandidatesRecord(record.phone, effectiveCandidates, true);
       if (!verifiedRefId) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
       }
@@ -106,63 +164,141 @@ export async function POST(request: NextRequest) {
     }
 
     const candidate = effectiveCandidates[0];
-    const { session, redirect } = await mintCandidateSession(request, candidate);
-    return NextResponse.json({ success: true, redirect, session });
+    return buildMintedCandidateResponse(request, candidate, returnTo, record.phone);
   } catch (err) {
     console.error('[phone-otp/verify] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
+async function buildMintedCandidateResponse(
+  request: NextRequest,
+  candidate: LoginOtpCandidate,
+  returnTo: string | null,
+  // The OTP store record's phone — the literal number a real OTP was just
+  // verified against. Threaded through to the mint calls below so the
+  // otp_verified_phone claim can be stamped at the moment of genuine
+  // verification, never re-derived from any database column.
+  otpVerifiedPhone: string,
+): Promise<NextResponse> {
+  const result = await mintCandidateSession(request, candidate, returnTo, otpVerifiedPhone);
+  if ('handoffUrl' in result) {
+    if ('session' in result && result.session) {
+      return NextResponse.json({
+        success: true,
+        handoff_url: result.handoffUrl,
+        session: result.session,
+      });
+    }
+    return NextResponse.json({ success: true, handoff_url: result.handoffUrl });
+  }
+  return NextResponse.json({ success: true, redirect: result.redirect, session: result.session });
+}
+
+type MintResult =
+  | { pending: false; session: unknown; redirect: string }
+  | { pending: false; handoffUrl: string; session?: unknown };
+
 async function mintCandidateSession(
   request: NextRequest,
   candidate: LoginOtpCandidate,
-): Promise<{ session: unknown; redirect: string }> {
+  returnTo: string | null = null,
+  // The OTP store record's phone — pass-through only, never re-derived.
+  // See buildMintedCandidateResponse's doc.
+  otpVerifiedPhone?: string,
+): Promise<MintResult> {
   if (candidate.kind === 'seller') {
     const { session, user } = await mintSellerSession(
       candidate as LoginOtpCandidate & { kind: 'seller' },
     );
     await stampSellerImplicitWhatsappConsent(candidate.tenant_id, user.id);
-    return { session, redirect: '/dashboard' };
+    return { pending: false, session, redirect: '/dashboard' };
   }
 
-  const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+  const storefrontHome = request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home';
+  const buyerCandidate = candidate.buyer_id
+    ? toBuyerLoginCandidate(candidate)
+    : await acquireBuyerForStorefront(candidate.tenant_id, candidate.phone);
+
+  // Not yet approved (fresh self-registration, or a still-suspended known
+  // buyer) — mint a real (but restricted) session anyway. custom_access_token_hook
+  // grants a `buyer_pending` role for this case (tenant_id + buyer_id claims,
+  // nothing else) so the buyer can revisit the intake/blocked screens without
+  // re-OTPing, while every buyer_app_enabled-gated RLS policy still shuts them
+  // out of priced catalog/orders/invoices. Yukti_Inbox_Feature-Spec_v1.md §7.1.
+  if (!buyerCandidate.buyer_app_enabled) {
+    // Pending buyers only make sense on their own tenant host (/api/buyer/me needs
+    // tenant context, which the catalog host doesn't have). When OTP was verified
+    // anywhere else, hand the session off to the tenant host and land on the
+    // intake/pending screen there — same as select-context does.
+    if (isCatalogRequest(request) || request.headers.get('x-verified-tenant-id') !== buyerCandidate.tenant_id) {
+      const pendingPath = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+      const destinationHost = tenantStorefrontHostForRequest(
+        request.headers.get('host') ?? '',
+        buyerCandidate.tenant_slug,
+      );
+      const protocol = destinationHost.includes('localhost') ? 'http' : 'https';
+      const handoffUrl = buildStorefrontHandoffUrl(
+        destinationHost,
+        hashedToken,
+        `${protocol}://${destinationHost}${pendingPath}`,
+      );
+      return { pending: false, handoffUrl };
+    }
+
+    const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
+    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
+    return { pending: false, session, redirect };
+  }
+
+  const currentTenantId = request.headers.get('x-verified-tenant-id');
+  const onCatalogHost = isCatalogRequest(request);
+
+  if (currentTenantId !== buyerCandidate.tenant_id) {
+    const destinationHost = tenantStorefrontHostForRequest(
+      request.headers.get('host') ?? '',
+      buyerCandidate.tenant_slug,
+    );
+
+    if (onCatalogHost) {
+      const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+      const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
+      const { supabaseAdmin } = await import('@/lib/supabase');
+      if (supabaseAdmin && buyerCandidate.buyer_id) {
+        void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+          tenantId: buyerCandidate.tenant_id,
+          buyerId: buyerCandidate.buyer_id,
+          eventName: 'session_started',
+          path: request.nextUrl.pathname,
+          context: {
+            role: buyerCandidate.role,
+            principal_type: buyerCandidate.principal_type,
+          },
+        });
+      }
+      return { pending: false, handoffUrl };
+    }
+
+    const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
+    const handoffUrl = buildStorefrontHandoffUrl(destinationHost, hashedToken, returnTo);
+    return { pending: false, handoffUrl };
+  }
+
+  const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
   const { supabaseAdmin } = await import('@/lib/supabase');
-  if (supabaseAdmin && candidate.buyer_id) {
+  if (supabaseAdmin && buyerCandidate.buyer_id) {
     void recordBuyerAppActivitySafe(supabaseAdmin as any, {
-      tenantId: candidate.tenant_id,
-      buyerId: candidate.buyer_id,
+      tenantId: buyerCandidate.tenant_id,
+      buyerId: buyerCandidate.buyer_id,
       eventName: 'session_started',
       path: request.nextUrl.pathname,
       context: {
-        role: candidate.role,
-        principal_type: candidate.principal_type,
+        role: buyerCandidate.role,
+        principal_type: buyerCandidate.principal_type,
       },
     });
   }
-  // WhatsApp Broadcast Phase C (§4.8, §9): route first-time buyers through the
-  // forced consent checkbox before /buy/home. requireBuyerConsentRedirect
-  // checks app.buyers.whatsapp_consent_at directly rather than trusting any
-  // client-supplied state.
-  const redirect = await requireBuyerConsentRedirect(candidate.buyer_id) ?? '/buy/home';
-  return { session, redirect };
-}
-
-async function requireBuyerConsentRedirect(buyerId: string | null): Promise<string | null> {
-  if (!buyerId) return null;
-  try {
-    const { supabaseAdmin } = await import('@/lib/supabase');
-    if (!supabaseAdmin) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabaseAdmin as any;
-    const { data } = await db
-      .schema('app')
-      .from('buyers')
-      .select('whatsapp_consent_at')
-      .eq('id', buyerId)
-      .maybeSingle();
-    return data && !data.whatsapp_consent_at ? '/consent' : null;
-  } catch {
-    return null;
-  }
+  const redirect = await requirePhoneConsentRedirect(buyerCandidate.phone) ?? storefrontHome;
+  return { pending: false, session, redirect };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { BookCheck, Boxes, Cable, ChevronRight, ServerCog } from 'lucide-react';
+import { BookCheck, Boxes, Cable, ChevronRight, MessageCircle, ServerCog } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,7 @@ import {
 import type { IntegrationCatalogItem } from '@/hooks/useIntegrationsSettings';
 
 function getIntegrationIcon(integration: IntegrationCatalogItem) {
+  if (integration.id.includes('whatsapp')) return MessageCircle;
   if (integration.connectivity_mode === 'local') return Cable;
   if (integration.id.includes('inventory')) return Boxes;
   if (integration.id.includes('books')) return BookCheck;

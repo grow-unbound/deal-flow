@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 export async function PATCH(
   request: NextRequest,
@@ -49,6 +50,7 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ item: data });
 }
 
@@ -142,5 +144,6 @@ export async function DELETE(
     ts: new Date().toISOString(),
   });
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return new NextResponse(null, { status: 204 });
 }

@@ -25,6 +25,18 @@ Sentry.init({
     'ResizeObserver loop limit exceeded',
     'Non-Error promise rejection captured',
     'AbortError',
+    // Next.js App Router control-flow signals (redirect()/notFound()), not errors.
+    /^NEXT_REDIRECT/,
+    /^NEXT_NOT_FOUND/,
+    // Browser denies a permission-gated API call (WebOTP, credential autofill,
+    // clipboard, etc.) — user/browser choice, not an app bug.
+    'SecurityError',
+    // Client-side fetch failing outright (offline, flaky mobile network, DNS) —
+    // not actionable server-side; the fetch call site's own error UI handles it.
+    'TypeError: network error',
+    'TypeError: Failed to fetch',
+    'TypeError: NetworkError when attempting to fetch resource.',
+    'TypeError: Load failed',
   ],
   denyUrls: [/extensions\//i, /^chrome-extension:\/\//i, /^moz-extension:\/\//i],
   beforeSend(event) {

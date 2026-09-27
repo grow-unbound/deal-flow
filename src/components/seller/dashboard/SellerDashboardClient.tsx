@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
+import type { BuyerAppLandingMetricsV4 } from '@/hooks/useBuyerApp';
 import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import {
@@ -24,10 +25,12 @@ import {
   StatusTag,
 } from '@/components/seller/layout';
 import { PerformanceCard, RankedList } from '@/components/seller/detail';
+import { CatalogLiveShareCard, CatalogUnpublishedIntercept } from '@/components/seller/dashboard/CatalogOnboardingCards';
+import { useTenant } from '@/contexts/TenantContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { cn, formatAsOfLabel, formatNumberValue } from '@/lib/utils';
-import { DASHBOARD_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
+import { BUYER_APP_KPI_COPY, DASHBOARD_KPI_COPY, kpiLabel, kpiSupportingText } from '@/lib/seller-landing-kpi-copy';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type {
   SellerDashboardFeed,
@@ -61,6 +64,17 @@ function formatDashboardMetricCard(card: SellerDashboardMetricsV4['cards'][numbe
     return `${card.value ?? 0}%`;
   }
   if (idLabel.includes('count') || idLabel.includes('customers') || idLabel.includes('orders') || idLabel.includes('invoices') || idLabel.includes('estimates')) {
+    return formatNumberValue(card.value ?? 0, 'COUNT');
+  }
+  return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
+}
+
+function formatBuyerAppMetricCard(card: BuyerAppLandingMetricsV4['cards'][number]) {
+  const idLabel = card.id.toLowerCase();
+  if (idLabel.includes('rate') || idLabel.includes('pct') || idLabel.includes('share')) {
+    return `${card.value ?? 0}%`;
+  }
+  if (idLabel.includes('count') || idLabel.includes('buyers') || idLabel.includes('orders') || idLabel.includes('invoices') || idLabel.includes('estimates')) {
     return formatNumberValue(card.value ?? 0, 'COUNT');
   }
   return formatNumberValue(card.value ?? 0, 'CURRENCY_THRESHOLD');
@@ -142,9 +156,11 @@ function normalizeSalesMixItems(items: SellerDashboardSalesMixItemV4[]) {
 function AdminSection({
   data,
   metrics,
+  buyerAppMetrics,
 }: {
   data: SellerDashboardResponse;
   metrics: SellerDashboardMetricsV4 | null | undefined;
+  buyerAppMetrics: BuyerAppLandingMetricsV4 | null | undefined;
 }) {
   const admin = data.admin;
   const [salesMixDimension, setSalesMixDimension] = useState<SellerDashboardSalesMixDimension>('brands');
@@ -154,6 +170,7 @@ function AdminSection({
   const { data: customerActivityData, isLoading: customerActivityLoading } = useSellerDashboardCustomerActivity();
   const { data: salesMixData } = useSellerDashboardSalesMix(salesMixDimension);
   const { data: locationPerformanceData, isLoading: locationPerformanceLoading } = useSellerDashboardLocationPerformance();
+  const { currentTenant } = useTenant();
   if (!admin) return null;
 
   const mixResult = normalizeSalesMixItems(salesMixData?.items ?? []);
@@ -163,6 +180,7 @@ function AdminSection({
 
   return (
     <>
+      {currentTenant?.public_catalog_live === true ? <CatalogLiveShareCard /> : <CatalogUnpublishedIntercept />}
       <InsightStrip4
         tiles={(metrics?.cards ?? []).slice(0, 4).map((metric) => ({
           label: metric.time_basis ? `${kpiLabel(DASHBOARD_KPI_COPY, metric)} · ${metric.time_basis}` : kpiLabel(DASHBOARD_KPI_COPY, metric),
@@ -172,6 +190,23 @@ function AdminSection({
       />
       {asOfLabel ? (
         <p className="mt-2 mb-1 text-right text-xs text-cream-600">{asOfLabel}</p>
+      ) : null}
+      {(buyerAppMetrics?.cards?.length ?? 0) > 0 ? (
+        <div className="mt-5">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <div>
+              <p className="eyebrow text-cream-600">Buyer channels</p>
+              <p className="mt-1 text-sm text-cream-700">Health, visibility, funnels, usage, and engagement from buyer self-serve activity.</p>
+            </div>
+          </div>
+          <InsightStrip4
+            tiles={(buyerAppMetrics?.cards ?? []).slice(0, 4).map((metric) => ({
+              label: metric.time_basis ? `${kpiLabel(BUYER_APP_KPI_COPY, metric)} · ${metric.time_basis}` : kpiLabel(BUYER_APP_KPI_COPY, metric),
+              value: formatBuyerAppMetricCard(metric),
+              sub: kpiSupportingText(BUYER_APP_KPI_COPY, metric),
+            }))}
+          />
+        </div>
       ) : null}
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <PerformanceCard
@@ -322,10 +357,12 @@ function AssistantSection({
 export function SellerDashboardClient({
   initialData,
   initialMetrics = null,
+  initialBuyerAppMetrics = null,
   initialPeriod,
 }: {
   initialData: SellerDashboardResponse | null;
   initialMetrics?: SellerDashboardMetricsV4 | null;
+  initialBuyerAppMetrics?: BuyerAppLandingMetricsV4 | null;
   initialPeriod: SellerLandingPeriod;
 }) {
   const period = initialPeriod;
@@ -357,14 +394,14 @@ export function SellerDashboardClient({
       <div className="hidden md:block">
         <PageHeader
           eyebrow="Operations"
-          title="Dashboard"
-          subtitle={subtitle}
+          title="Pulse"
+          subtitle="Business health across sales, customers, products, and buyer channels."
           horizon={horizonLabel}
         />
       </div>
 
       {dashboard.role === 'seller_admin'
-        ? <AdminSection data={dashboard} metrics={metricsData} />
+        ? <AdminSection data={dashboard} metrics={metricsData} buyerAppMetrics={initialBuyerAppMetrics} />
         : <AssistantSection data={dashboard} metrics={metricsData} newEntityIds={newEntityIds} markSeen={markSeen} />}
     </PageWrap>
   );

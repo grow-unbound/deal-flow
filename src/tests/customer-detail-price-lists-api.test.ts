@@ -73,12 +73,21 @@ describe('customer detail price-lists route', () => {
         data: { id: 'buyer-1', business_name: 'Singh Hospitality' },
       },
     ];
-    dbResponses['app.cohort_members'] = [
+    dbResponses['app.cohort_members_active'] = [
       {
         data: [
           {
             cohort_id: 'cohort-1',
-            cohorts: { name: 'Premium', deleted_at: null },
+          },
+        ],
+      },
+    ];
+    dbResponses['app.cohorts'] = [
+      {
+        data: [
+          {
+            id: 'cohort-1',
+            name: 'Premium',
           },
         ],
       },
@@ -90,18 +99,24 @@ describe('customer detail price-lists route', () => {
             price_list_id: 'pl-buyer',
             target_type: 'buyer',
             target_id: 'buyer-1',
+            valid_from: '2026-09-01T00:00:00Z',
+            deleted_at: null,
             created_at: '2026-06-01T00:00:00Z',
           },
           {
             price_list_id: 'pl-cohort',
             target_type: 'cohort',
             target_id: 'cohort-1',
+            valid_from: '2026-09-02T00:00:00Z',
+            deleted_at: null,
             created_at: '2026-06-02T00:00:00Z',
           },
           {
             price_list_id: 'pl-all',
             target_type: 'all_buyers',
             target_id: null,
+            valid_from: '2026-09-03T00:00:00Z',
+            deleted_at: null,
             created_at: '2026-06-03T00:00:00Z',
           },
         ],
@@ -154,6 +169,8 @@ describe('customer detail price-lists route', () => {
           id: 'pl-buyer',
           name: 'Buyer Special',
           target_label: 'Buyer specific · Singh Hospitality',
+          valid_from: '2026-09-01T00:00:00Z',
+          valid_to: null,
           priority: 50,
         }),
         expect.objectContaining({
@@ -169,7 +186,7 @@ describe('customer detail price-lists route', () => {
   });
 
   it('derives active, draft, and expired statuses from validity windows', async () => {
-    vi.setSystemTime(new Date('2026-07-19T00:00:00Z'));
+    vi.setSystemTime(new Date('2026-09-02T12:00:00Z'));
 
     const response = await GET(
       new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1/price-lists'),
@@ -178,8 +195,8 @@ describe('customer detail price-lists route', () => {
     const body = await response.json();
 
     const statuses = new Map(body.assigned.map((row: { id: string; status: string }) => [row.id, row.status]));
-    expect(statuses.get('pl-buyer')).toBe('expired');
-    expect(statuses.get('pl-cohort')).toBe('draft');
-    expect(statuses.get('pl-all')).toBe('expired');
+    expect(statuses.get('pl-buyer')).toBe('active');
+    expect(statuses.get('pl-cohort')).toBe('active');
+    expect(statuses.get('pl-all')).toBe('draft');
   });
 });

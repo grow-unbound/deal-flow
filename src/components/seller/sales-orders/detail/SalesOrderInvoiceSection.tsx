@@ -61,7 +61,7 @@ export function SalesOrderInvoiceSection({
         </div>
         <StatusTag label="Tax invoice" tone="accent" />
       </div>
-      <div className="grid grid-cols-2 gap-4 px-5 pb-4 pt-2">
+      <div className="grid grid-cols-1 gap-4 px-5 pb-4 pt-2 sm:grid-cols-2">
         <div>
           <div className="table-label text-cream-500">Billed to</div>
           <div className="mt-1 text-base font-medium text-cream-900">{buyer.name}</div>

@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 
-const VALIDATION_REF = process.env.PHASE1A_SUPABASE_REF || 'euhzgherjvjopjrpoqjr';
+const VALIDATION_REF = process.env.PHASE1A_SUPABASE_REF || 'hcpzbnmumbykdqveyjhr';
 const BASELINE_CUTOFF = '20260714114957';
 const CANDIDATE_VERSION = '20260715112649';
 const PHASE4_VERSION = '20260716071422';

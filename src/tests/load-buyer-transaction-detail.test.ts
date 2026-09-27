@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
 
 function buildMockDb({
@@ -111,5 +111,27 @@ describe('loadBuyerDocumentLineItems', () => {
         image_url: 'https://cdn.example.com/master-recorder.webp',
       }),
     ]);
+  });
+
+  it.each([
+    ['orders', 'order_items', false],
+    ['invoices', 'invoice_items', false],
+    ['estimates', 'estimate_items', true],
+  ] as const)('selects buyer_target_* columns for %s only when they exist', async (parentTable, childTable, expectsTargets) => {
+    const itemSelect = vi.fn(() => ({ eq: () => ({ is: async () => ({ data: [], error: null }) }) }));
+    const db = {
+      schema: () => ({
+        from: (table: string) => {
+          if (table !== childTable) throw new Error(`Unexpected table: ${table}`);
+          return { select: itemSelect };
+        },
+      }),
+    };
+
+    await loadBuyerDocumentLineItems(db as never, 'tenant-1', parentTable, 'doc-1');
+
+    const selected = (itemSelect.mock.calls[0] as unknown as [string])[0];
+    expect(selected.includes('buyer_target_unit_price_min')).toBe(expectsTargets);
+    expect(selected.includes('buyer_target_unit_price_max')).toBe(expectsTargets);
   });
 });

@@ -1,0 +1,367 @@
+import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const getVerifiedClaimsMock = vi.fn();
+const signEntityVariantUploadsMock = vi.fn();
+const putObjectBlobMock = vi.fn();
+const supabaseSchemaMock = vi.fn();
+
+vi.mock('@/lib/auth', () => ({
+  getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: { schema: (...args: unknown[]) => supabaseSchemaMock(...args) },
+}));
+
+vi.mock('@/lib/r2', () => ({
+  putObjectBlob: (...args: unknown[]) => putObjectBlobMock(...args),
+}));
+
+vi.mock('@/lib/server/r2-presign-entity', () => ({
+  signEntityVariantUploads: (...args: unknown[]) => signEntityVariantUploadsMock(...args),
+}));
+
+const loadOnboardingCatalogSummaryMock = vi.fn();
+const loadOnboardingPreviewMock = vi.fn();
+const saveCatalogSetupStateMock = vi.fn();
+
+vi.mock('@/lib/server/onboarding-catalog-preview', () => ({
+  loadOnboardingCatalogSummary: (...args: unknown[]) => loadOnboardingCatalogSummaryMock(...args),
+  loadOnboardingPreview: (...args: unknown[]) => loadOnboardingPreviewMock(...args),
+}));
+
+vi.mock('@/lib/server/catalog-setup', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server/catalog-setup')>();
+  return {
+    ...actual,
+    CatalogSetupValidationError: class CatalogSetupValidationError extends Error {
+      constructor(message: string, public status = 400) {
+        super(message);
+      }
+    },
+    saveCatalogSetupState: (...args: unknown[]) => saveCatalogSetupStateMock(...args),
+  };
+});
+
+import { POST as batchPresign } from '../../../app/api/uploads/r2/batch/route';
+import { POST as entityVariantUpload } from '../../../app/api/uploads/r2/entity-variant/route';
+import { GET as getOnboardingCatalog, PATCH as publishCatalog } from '../../../app/api/tenant/onboarding/catalog/route';
+
+function jsonRequest(url: string, body: unknown): NextRequest {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function formRequest(form: FormData): NextRequest {
+  return {
+    formData: async () => form,
+  } as NextRequest;
+}
+
+function tenantRowQuery(data: unknown = { id: '11111111-1111-4111-8111-111111111111', tenant_id: 'tenant-1' }) {
+  const builder = {
+    from: vi.fn(() => builder),
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    is: vi.fn(() => builder),
+    maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
+  };
+  return builder;
+}
+
+describe('POST /api/uploads/r2/batch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+  });
+
+  it('returns 400 for an unknown entity type', async () => {
+    const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', {
+      items: [{
+        entity_type: 'not_an_entity',
+        entity_id: '11111111-1111-4111-8111-111111111111',
+        original_content_type: 'image/jpeg',
+      }],
+    }));
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toMatch(/Unknown entity type/);
+    expect(signEntityVariantUploadsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an empty items array', async () => {
+    const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', { items: [] }));
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts tenant product family image batches', async () => {
+    signEntityVariantUploadsMock.mockResolvedValueOnce([
+      { name: 'original', key: 'tenants/tenant-1/product-families/111/original.jpg', upload_url: 'https://upload.example/original' },
+      { name: 'medium', key: 'tenants/tenant-1/product-families/111/medium.webp', upload_url: 'https://upload.example/medium' },
+    ]);
+    const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', {
+      items: [{
+        entity_type: 'tenant_product_family',
+        entity_id: '11111111-1111-4111-8111-111111111111',
+        original_content_type: 'image/jpeg',
+      }],
+    }));
+    expect(res.status).toBe(200);
+    expect(signEntityVariantUploadsMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: 'tenant_product_family',
+      entityId: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-1',
+    }));
+  });
+
+  it('returns 403 for a buyer role', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'buyer_admin',
+      buyer_id: 'buyer-1',
+      location_ids: null,
+    });
+    const res = await batchPresign(jsonRequest('http://localhost/api/uploads/r2/batch', {
+      items: [{
+        entity_type: 'tenant_product',
+        entity_id: '11111111-1111-4111-8111-111111111111',
+        original_content_type: 'image/jpeg',
+      }],
+    }));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/uploads/r2/entity-variant', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    supabaseSchemaMock.mockReturnValue(tenantRowQuery());
+    putObjectBlobMock.mockResolvedValue(undefined);
+  });
+
+  it('uploads a tenant product family variant through the server', async () => {
+    const form = new FormData();
+    form.set('entity_type', 'tenant_product_family');
+    form.set('entity_id', '11111111-1111-4111-8111-111111111111');
+    form.set('variant_name', 'medium');
+    form.set('content_type', 'image/webp');
+    form.set('file', new Blob(['image-bytes'], { type: 'image/webp' }), 'medium.webp');
+
+    const res = await entityVariantUpload(formRequest(form));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { key: string };
+    expect(body.key).toBe('tenants/tenant-1/product-families/11111111-1111-4111-8111-111111111111/medium.webp');
+    expect(putObjectBlobMock).toHaveBeenCalledWith(
+      body.key,
+      expect.any(Uint8Array),
+      'image/webp',
+    );
+  });
+
+  it('rejects unsupported entity types before writing to R2', async () => {
+    const form = new FormData();
+    form.set('entity_type', 'catalog_product');
+    form.set('entity_id', '11111111-1111-4111-8111-111111111111');
+    form.set('variant_name', 'medium');
+    form.set('content_type', 'image/webp');
+    form.set('file', new Blob(['image-bytes'], { type: 'image/webp' }), 'medium.webp');
+
+    const res = await entityVariantUpload(formRequest(form));
+
+    expect(res.status).toBe(400);
+    expect(putObjectBlobMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/tenant/onboarding/catalog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    loadOnboardingCatalogSummaryMock.mockResolvedValue({
+      productCount: 17,
+      slug: 'acme',
+      businessName: 'Acme',
+    });
+    loadOnboardingPreviewMock.mockResolvedValue({
+      productCount: 17,
+      items: [],
+      brands: [],
+      categories: [],
+      anomalies: [],
+      slug: 'acme',
+      businessName: 'Acme',
+      live: false,
+      pricingMode: null,
+      priceListId: null,
+      accessMode: 'public_link',
+      collectTargetUnitPriceRange: false,
+      productDisplayMode: 'sku_list',
+      priceLists: [],
+      photoTargets: [],
+    });
+  });
+
+  it('returns the metrics snapshot summary without loading preview rows', async () => {
+    const res = await getOnboardingCatalog(
+      new NextRequest('http://localhost/api/tenant/onboarding/catalog?summary=1'),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      productCount: 17,
+      slug: 'acme',
+      businessName: 'Acme',
+    });
+    expect(loadOnboardingCatalogSummaryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a storefront host on the current review suffix', async () => {
+    const original = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      const res = await getOnboardingCatalog(
+        new NextRequest('https://app.yukti.so/api/tenant/onboarding/catalog', {
+          headers: { host: 'app.yukti.so' },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toMatchObject({
+        slug: 'acme',
+        storefrontHost: 'acme.yukti.so',
+      });
+    } finally {
+      if (original === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = original;
+      }
+    }
+  });
+});
+
+describe('PATCH /api/tenant/onboarding/catalog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    saveCatalogSetupStateMock.mockResolvedValue({ slug: 'acme' });
+  });
+
+  it('returns 403 for seller_assistant', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: null,
+    });
+    const res = await publishCatalog(new NextRequest('http://localhost/api/tenant/onboarding/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'acme',
+        pricing_mode: 'hidden_until_login',
+      }),
+    }));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when pricing_mode is missing', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    const res = await publishCatalog(new NextRequest('http://localhost/api/tenant/onboarding/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'acme' }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('publishes through the shared catalog setup contract', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+      location_ids: null,
+    });
+    const res = await publishCatalog(new NextRequest('http://localhost/api/tenant/onboarding/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'acme',
+        pricing_mode: 'hide_price_collect_enquiry',
+        access_mode: 'public_link',
+        collect_target_unit_price_range: true,
+        product_display_mode: 'group_variants',
+        settings: {
+          business: { tagline: 'Wholesale CCTV catalog' },
+        },
+        setup_place: {
+          label: 'WineYard, Hyderabad',
+          lat: 17.385044,
+          lng: 78.486671,
+          address: {
+            line1: 'Road 1',
+            line2: '',
+            city: 'Hyderabad',
+            state: 'TG',
+            pincode: '500001',
+          },
+        },
+      }),
+    }));
+    expect(res.status).toBe(200);
+    expect(saveCatalogSetupStateMock).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 'tenant-1',
+      actorId: 'user-1',
+      patch: expect.objectContaining({
+        slug: 'acme',
+        pricing_mode: 'hide_price_collect_enquiry',
+        access_mode: 'public_link',
+        collect_target_unit_price_range: true,
+        product_display_mode: 'group_variants',
+        settings: {
+          business: { tagline: 'Wholesale CCTV catalog' },
+        },
+        setup_place: expect.objectContaining({
+          lat: 17.385044,
+          lng: 78.486671,
+          address: expect.objectContaining({
+            city: 'Hyderabad',
+            state: 'TG',
+          }),
+        }),
+        publish: true,
+      }),
+    });
+  });
+});

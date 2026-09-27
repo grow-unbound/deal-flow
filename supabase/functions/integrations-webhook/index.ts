@@ -17,6 +17,7 @@ import {
   createDbTokenCache,
   assertZohoIntegration,
 } from '../_shared/sync-utils.ts';
+import { captureSentryError } from '../_shared/sentry.ts';
 
 // Maps integration_webhooks.entity_type → persistZohoEntityPage phase param
 const PHASE_BY_ENTITY: Record<string, string> = {
@@ -25,6 +26,7 @@ const PHASE_BY_ENTITY: Record<string, string> = {
   estimates: 'estimates',
   salesorders: 'orders',
   invoices: 'invoices',
+  customerpayments: 'customer_payments',
 };
 
 // Maps persist phase → app schema table name (for soft-delete path)
@@ -34,6 +36,7 @@ const TABLE_BY_PHASE: Record<string, string> = {
   estimates: 'estimates',
   orders: 'orders',
   invoices: 'invoices',
+  customer_payments: 'payments',
 };
 
 // Extract endpoint_token from URL path: /integrations-webhook/{token}
@@ -64,6 +67,23 @@ function retryable(reason: string): Response {
 // this fires at 100s so the catch block has time to mark the event "failed"
 // and return 200 before the wall is hit (avoiding orphaned "received" rows).
 const PERSIST_TIMEOUT_MS = 100_000;
+
+// Postgres/PostgREST failures where nothing (or only idempotent upserts —
+// see the "All persisters are idempotent" note atop integrations-persist.ts)
+// happened before the error: safe to hand back to Zoho for retry, same
+// reasoning as LockTimeoutError below. Without this, these errors fall
+// through to ok('error') and the event is silently dropped for good.
+function isTransientPersistError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.startsWith('persist_timeout') ||
+    message.includes('canceling statement due to statement timeout') ||
+    message.includes('canceling statement due to lock timeout') ||
+    message.includes('current transaction is aborted') ||
+    message.includes('deadlock detected') ||
+    message.includes('could not serialize access')
+  );
+}
 
 // Create placeholder webhook event record at START
 async function createWebhookEventPlaceholder(
@@ -183,6 +203,28 @@ async function logWebhookError(
   } catch (e) {
     console.error(`[webhook-errors] failed to log error: ${String(e)}`);
   }
+
+  // Every caller of logWebhookError is a path that used to be silent (this
+  // is the fix for the WineYard contacts secret-drift outage — see the
+  // auth_failed branch above). DB row is queryable; Sentry is the "someone
+  // gets paged/notified" half — one place to see this instead of relying on
+  // someone thinking to check integration_webhook_errors.
+  await captureSentryError(`[integrations-webhook] ${opts.stage}/${opts.reasonCode}: ${opts.message}`, {
+    level: 'error',
+    tags: {
+      integration: 'zoho',
+      entity_type: opts.entityType,
+      stage: opts.stage,
+      reason_code: opts.reasonCode,
+    },
+    extra: {
+      tenant_id: opts.tenantId,
+      tenant_integration_id: opts.tenantIntegrationId,
+      webhook_id: opts.webhookId,
+      event_id: opts.eventId,
+      external_ref: opts.externalRef,
+    },
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -232,12 +274,40 @@ Deno.serve(async (req: Request) => {
 
     if (!webhook || !webhook.is_active || webhook.status !== 'active') {
       console.log(`[${traceId}] FAIL: inactive webhook`);
+      if (webhook) {
+        await logWebhookError(admin, {
+          tenantId: webhook.tenant_id,
+          tenantIntegrationId: webhook.tenant_integration_id,
+          webhookId: webhook.id,
+          eventId: null,
+          entityType: webhook.entity_type,
+          externalRef: null,
+          stage: 'routing',
+          reasonCode: 'webhook_inactive',
+          message: `Webhook row is_active=${webhook.is_active} status=${webhook.status} — Zoho is still posting to a disabled/removed endpoint.`,
+        });
+      }
       return ok('inactive');
     }
 
     console.log(`[${traceId}] validating webhook secret`);
     if (!validateWebhookSecret(req, webhook.secret)) {
       console.log(`[${traceId}] FAIL: auth_failed - secret mismatch`);
+      // This is exactly the failure mode that caused the WineYard contacts
+      // outage (2026-08-31 to 2026-09-05): a stale/drifted secret silently
+      // ate every inbound event with no trace anywhere. Always 200 Zoho
+      // (see ok() above), but never let this be silent to us again.
+      await logWebhookError(admin, {
+        tenantId: webhook.tenant_id,
+        tenantIntegrationId: webhook.tenant_integration_id,
+        webhookId: webhook.id,
+        eventId: null,
+        entityType: webhook.entity_type,
+        externalRef: null,
+        stage: 'auth',
+        reasonCode: 'secret_mismatch',
+        message: 'x-zoho-webhook-token did not match the stored secret for this endpoint_token — Zoho and our DB have drifted.',
+      });
       return ok('auth_failed');
     }
     console.log(`[${traceId}] secret validated ✓`);
@@ -248,6 +318,17 @@ Deno.serve(async (req: Request) => {
 
     if (!phase) {
       console.log(`[${traceId}] FAIL: unsupported_entity`);
+      await logWebhookError(admin, {
+        tenantId: webhook.tenant_id,
+        tenantIntegrationId: webhook.tenant_integration_id,
+        webhookId: webhook.id,
+        eventId: null,
+        entityType,
+        externalRef: null,
+        stage: 'routing',
+        reasonCode: 'unsupported_entity',
+        message: `No PHASE_BY_ENTITY mapping for entity_type=${entityType}.`,
+      });
       return ok('unsupported_entity');
     }
 
@@ -465,13 +546,19 @@ Deno.serve(async (req: Request) => {
         entityType: catchCtx.entityType,
         externalRef: catchCtx.externalId,
         stage: 'persist',
-        reasonCode: err instanceof LockTimeoutError ? 'LOCK_TIMEOUT' : 'EXCEPTION',
+        reasonCode: err instanceof LockTimeoutError
+          ? 'LOCK_TIMEOUT'
+          : isTransientPersistError(err) ? 'TRANSIENT_DB_ERROR' : 'EXCEPTION',
         message: String(err),
       });
     }
     if (err instanceof LockTimeoutError) {
       console.log(`[${traceId}] lock_timeout — returning 503 so Zoho retries`);
       return retryable('lock_timeout');
+    }
+    if (isTransientPersistError(err)) {
+      console.log(`[${traceId}] transient_db_error — returning 503 so Zoho retries`);
+      return retryable('transient_db_error');
     }
     return ok('error');
   }

@@ -1,0 +1,52 @@
+import type { Metadata } from 'next';
+
+/** Section titles for seller/auth/catalog surfaces (root layout adds `| Yukti`). */
+export function sellerPageTitle(section: string): Metadata {
+  return { title: section };
+}
+
+export const SELLER_PAGE_TITLES = {
+  dashboard: 'Pulse',
+  products: 'Products',
+  brands: 'Brands',
+  categories: 'Categories',
+  customers: 'Customers',
+  today: 'Today',
+  customerGroups: 'Customer Groups',
+  priceLists: 'Pricing',
+  campaigns: 'Campaigns',
+  catalogs: 'Catalog',
+  announcements: 'Announcements',
+  pricing: 'Pricing',
+  estimates: 'Estimates',
+  salesOrders: 'Sales Orders',
+  invoices: 'Invoices',
+  warehouses: 'Warehouses',
+  locations: 'Branches',
+  settings: 'Settings',
+  settingsBilling: 'Billing',
+  settingsTeam: 'Team',
+  settingsIntegrations: 'Integrations',
+  settingsRecommendations: 'Recommendations',
+  businessBranches: 'Branches',
+  businessWarehouses: 'Warehouses',
+  businessTeam: 'Team',
+  buyers: 'Buyers',
+  buyerApp: 'Buyer App',
+  buyerAppAccess: 'Buyer App Access',
+  exports: 'Exports',
+  notifications: 'Today',
+  search: 'Search',
+  catalogSetup: 'Catalog Setup',
+  workspaces: 'Workspaces',
+  login: 'Log in',
+  signup: 'Sign up',
+  verify: 'Verify',
+  forgotPassword: 'Forgot Password',
+  resetPassword: 'Reset Password',
+  setupPassword: 'Setup Password',
+  selectContext: 'Select Context',
+  activate: 'Activate',
+  acceptInvite: 'Accept Invite',
+  verifyAccount: 'Verify Account',
+} as const;

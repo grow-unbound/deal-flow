@@ -19,6 +19,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useWarehousesLanding, useWarehousesLandingMetrics } from '@/hooks/useWarehouses';
 import { cn, formatNumberValue } from '@/lib/utils';
@@ -33,9 +34,11 @@ import type {
 } from '@/types/tenant-warehouses';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerBusinessWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
 import { WarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Sales (high → low)' | 'Sold units (high → low)' | 'Sold SKUs (high → low)' | 'Sellable units (high → low)' | 'Name (A → Z)';
 type WarehouseLandingFilters = { status: string[]; stock: string[] };
@@ -89,7 +92,8 @@ export function WarehousesLandingClient({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/warehouses');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.business.warehouses);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   useSellerPageView();
   const captureCta = useSellerCtaCapture();
@@ -102,7 +106,7 @@ export function WarehousesLandingClient({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-warehouses-landing',
     scopeKey: 'v4-this-quarter',
-    pathnameOverride: '/warehouses',
+    pathnameOverride: SELLER_ROUTES.business.warehouses,
     version: 4,
     initialState: {
       search: '',
@@ -135,7 +139,7 @@ export function WarehousesLandingClient({
   useRouteScrollRestoration({
     storageKey: 'seller-warehouses-landing',
     scopeKey: 'v4-this-quarter',
-    pathnameOverride: '/warehouses',
+    pathnameOverride: SELLER_ROUTES.business.warehouses,
     ready: !isLoading,
   });
 
@@ -200,8 +204,8 @@ export function WarehousesLandingClient({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
-      <SellerSplitPaneLandingSkeleton ariaLabel="Loading warehouses" />
+    return isMobile || isPaneOpen ? (
+      <SellerSplitPaneLandingSkeleton ariaLabel="Loading warehouses" showTransactionTabs />
     ) : (
       <WarehousesLandingSkeleton />
     );
@@ -216,11 +220,11 @@ export function WarehousesLandingClient({
           isError={isError}
         >
         <PageHeader
-          eyebrow={isPaneOpen ? 'Warehouses' : 'Inventory'}
+          eyebrow={isPaneOpen ? 'Warehouses' : 'Business'}
           title={isPaneOpen ? selectedOption.label : 'Warehouses'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${totalRows} warehouses · sales and stock posture for ${horizonLabel.toLowerCase()}.`}
+            : 'Manage branches, warehouses, and team access.'}
           horizon={horizonLabel}
           primary="Add warehouse"
           onPrimaryClick={() => {
@@ -229,6 +233,7 @@ export function WarehousesLandingClient({
           }}
           compact={isPaneOpen}
         />
+        <SellerBusinessWorkspaceTabs />
 
         {isPaneOpen ? null : (
           <InsightStrip4
@@ -307,7 +312,7 @@ export function WarehousesLandingClient({
           sentinelRef={sentinelRef}
           mobileRows={rows.map((row) => ({
             id: row.id,
-            href: `/warehouses/${row.id}`,
+            href: `${SELLER_ROUTES.business.warehouses}/${row.id}`,
             eyebrow: [row.city, row.state].filter(Boolean).join(', ') || '—',
             primary: row.name,
             supporting: `${row.sold_sku_count} sold SKUs · ${formatNumberValue(row.sellable_units, 'COUNT')} in stock`,
@@ -323,7 +328,7 @@ export function WarehousesLandingClient({
               </tr>
             ) : null}
             <tr
-              onClick={() => router.push(`/warehouses/${row.id}`)}
+              onClick={() => router.push(`${SELLER_ROUTES.business.warehouses}/${row.id}`)}
               onPointerDown={() => triggerHaptic()}
               className={cn(
                 'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
@@ -349,7 +354,7 @@ export function WarehousesLandingClient({
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.sold_sku_count > 0 ? row.sold_sku_count : '—'}</td>
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{row.sold_units > 0 ? formatNumberValue(row.sold_units, 'COUNT') : '—'}</td>
               <td className="px-3 py-3 text-right font-mono text-base tabular-nums text-cream-900">{formatNumberValue(row.sellable_units, 'COUNT')}</td>
-              <td className={cn('px-3 py-3 text-sm font-medium', stockTone(row.stock_status) === 'danger' ? 'text-red-700' : stockTone(row.stock_status) === 'warning' ? 'text-amber-700' : 'text-emerald-700')}>
+              <td className={cn('px-3 py-3 text-sm font-medium', stockTone(row.stock_status) === 'danger' ? 'text-danger-700' : stockTone(row.stock_status) === 'warning' ? 'text-warning-700' : 'text-emerald-700')}>
                 {stockLabel(row.stock_status)}
               </td>
               <td className="px-3 py-3 text-right text-cream-500">

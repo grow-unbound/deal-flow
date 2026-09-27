@@ -5,6 +5,7 @@ import { assembleTenantSettingsPayload } from '@/lib/tenant-settings/assemble-te
 import { syncTenantFeatureFlags } from '@/lib/posthog-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { revalidateTenantSettingsCache } from '@/lib/server/tenant-settings-cache';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
 
 export async function GET(request: NextRequest) {
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
       db
         .schema('app')
         .from('tenants')
-        .select('business_name, gstin, primary_state, plan')
+        .select('business_name, tagline, gstin, primary_state, plan')
         .eq('id', claims.tenant_id)
         .maybeSingle(),
     ]);
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
     const raw = (tsRow as { settings?: unknown } | null)?.settings ?? {};
     const payload = await assembleTenantSettingsPayload(db, claims.tenant_id, raw, {
       business_name: tenantRow.business_name as string,
+      tagline: (tenantRow.tagline as string | null) ?? null,
       gstin: (tenantRow.gstin as string | null) ?? null,
       primary_state: (tenantRow.primary_state as string | null) ?? null,
       plan: (tenantRow.plan as string) ?? 'starter',
@@ -117,6 +119,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if (parsed.data.buyer_app) {
+      revalidateTenantSettingsCache(claims.tenant_id);
+    }
+
     // Sync relevant feature flags to PostHog group properties for sidebar/nav gating
     if (parsed.data.orders?.features || parsed.data.buyer_app || parsed.data.catalog) {
       void syncTenantFeatureFlags(claims.tenant_id, {
@@ -140,8 +146,10 @@ export async function PATCH(request: NextRequest) {
     if (b && Object.keys(b).length > 0) {
       const updates: Record<string, string | null> = {};
       if (b.company_name !== undefined) updates.business_name = b.company_name;
+      if (b.tagline !== undefined) updates.tagline = b.tagline.trim() === '' ? null : b.tagline.trim();
       if (b.gstin !== undefined) updates.gstin = b.gstin.trim() === '' ? null : b.gstin.trim();
       if (b.address?.state !== undefined) updates.primary_state = b.address.state.trim() === '' ? null : b.address.state.trim();
+      if (b.logo_url !== undefined) updates.logo_url = b.logo_url;
       if (Object.keys(updates).length > 0) {
         const { error: upErr } = await db
           .schema('app')
@@ -164,7 +172,7 @@ export async function PATCH(request: NextRequest) {
       db
         .schema('app')
         .from('tenants')
-        .select('business_name, gstin, primary_state, plan')
+        .select('business_name, tagline, gstin, primary_state, plan')
         .eq('id', claims.tenant_id)
         .maybeSingle(),
     ]);
@@ -176,6 +184,7 @@ export async function PATCH(request: NextRequest) {
     const raw = (tsRow as { settings?: unknown } | null)?.settings ?? {};
     const payload = await assembleTenantSettingsPayload(db, claims.tenant_id, raw, {
       business_name: tenantRow.business_name as string,
+      tagline: (tenantRow.tagline as string | null) ?? null,
       gstin: (tenantRow.gstin as string | null) ?? null,
       primary_state: (tenantRow.primary_state as string | null) ?? null,
       plan: (tenantRow.plan as string) ?? 'starter',

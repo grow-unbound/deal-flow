@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListAssignmentSchema } from '@/lib/zod';
+import { syncDefaultPriceListAssignment } from '@/lib/server/price-list-default-assignment';
 
 export async function GET(
   request: NextRequest,
@@ -63,7 +64,55 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ assignments: assignments ?? [] }, { headers: SELLER_CACHE_PERSONAL });
+  const assignmentRows = assignments ?? [];
+  const cohortIds = Array.from(new Set(
+    assignmentRows
+      .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
+      .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+  ));
+  const buyerIds = Array.from(new Set(
+    assignmentRows
+      .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
+      .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+  ));
+
+  const [cohortsRes, buyersRes] = await Promise.all([
+    cohortIds.length > 0
+      ? db.schema('app').from('cohorts').select('id, name, cached_member_count').in('id', cohortIds).eq('tenant_id', claims.tenant_id).limit(10_000)
+      : Promise.resolve({ data: [], error: null }),
+    buyerIds.length > 0
+      ? db.schema('app').from('buyers').select('id, business_name').in('id', buyerIds).eq('tenant_id', claims.tenant_id).limit(10_000)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (cohortsRes.error || buyersRes.error) {
+    console.error(
+      '[GET /api/price-lists/[id]/assignments] denorm error:',
+      cohortsRes.error || buyersRes.error,
+    );
+    return NextResponse.json({ error: 'Failed to fetch assignment details' }, { status: 500 });
+  }
+
+  const cohortNameMap = new Map((cohortsRes.data ?? []).map((cohort: { id: string; name: string }) => [cohort.id, cohort.name]));
+  const cohortMemberCountMap = new Map((cohortsRes.data ?? []).map((cohort: { id: string; cached_member_count: number | null }) => [cohort.id, cohort.cached_member_count ?? 0]));
+  const buyerNameMap = new Map((buyersRes.data ?? []).map((buyer: { id: string; business_name: string }) => [buyer.id, buyer.business_name]));
+
+  return NextResponse.json({
+    assignments: assignmentRows.map((assignment: { target_type: string; target_id: string | null }) => {
+      const label = assignment.target_type === 'cohort'
+        ? (assignment.target_id ? cohortNameMap.get(assignment.target_id) ?? 'Unknown customer group' : 'Unknown customer group')
+        : assignment.target_type === 'buyer'
+          ? (assignment.target_id ? buyerNameMap.get(assignment.target_id) ?? 'Unknown buyer' : 'Unknown buyer')
+          : 'All buyers';
+      const members = assignment.target_type === 'cohort' && assignment.target_id
+        ? cohortMemberCountMap.get(assignment.target_id) ?? 0
+        : assignment.target_type === 'buyer'
+          ? 1
+          : 0;
+
+      return { ...assignment, label, members };
+    }),
+  }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function POST(
@@ -154,18 +203,36 @@ export async function POST(
     }
   }
 
-  const { data: assignment, error: insertError } = await db
-    .schema('app')
-    .from('price_list_assignments')
-    .insert({
-      price_list_id: id,
-      target_type: data.target_type,
-      target_id: data.target_type === 'all_buyers' ? null : (data.target_id ?? null),
-      created_by: claims.sub,
-      updated_by: claims.sub,
-    })
-    .select()
-    .single();
+  let assignment: Record<string, unknown> | null = null;
+  let insertError: { code?: string; message?: string } | null = null;
+
+  if (data.target_type === 'all_buyers') {
+    try {
+      assignment = await syncDefaultPriceListAssignment(db, {
+        tenantId: claims.tenant_id,
+        priceListId: id,
+        userId: claims.sub,
+        enabled: true,
+      });
+    } catch (error) {
+      insertError = { message: error instanceof Error ? error.message : 'Failed to save default pricelist' };
+    }
+  } else {
+    const insertResult = await db
+      .schema('app')
+      .from('price_list_assignments')
+      .insert({
+        price_list_id: id,
+        target_type: data.target_type,
+        target_id: data.target_id ?? null,
+        created_by: claims.sub,
+        updated_by: claims.sub,
+      })
+      .select()
+      .single();
+    assignment = insertResult.data;
+    insertError = insertResult.error;
+  }
 
   if (insertError) {
     if (insertError.code === '23505') {
@@ -191,7 +258,7 @@ export async function POST(
     entity_type: 'price_list',
     entity_id: id,
     action: 'create',
-    diff: { event: 'assignment_added', assignment_id: assignment.id, target_type: assignment.target_type },
+    diff: { event: 'assignment_added', assignment_id: assignment?.id, target_type: assignment?.target_type },
     ts: new Date().toISOString(),
   });
 

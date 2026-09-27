@@ -51,6 +51,7 @@ import { TransactionOriginMark } from '@/components/seller/transactional/Transac
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 import { DocumentDetailLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { SendDocumentWhatsAppDialog } from '@/components/seller/shared/SendDocumentWhatsAppDialog';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 const noop = () => {};
 
@@ -154,6 +155,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
   const showVoid = isAdmin && (data.status === 'draft' || data.status === 'sent');
   const showDuplicate = false; // data.status !== 'void' && data.status !== 'converted';
   const showSend = data.status === 'draft' || data.status === 'sent';
+  const targetRateLines = data.items.filter(
+    (line) => line.buyer_target_unit_price_min != null && line.buyer_target_unit_price_max != null,
+  );
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0
@@ -181,7 +185,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
           toast.error('Duplicate succeeded but no id returned');
           return;
         }
-        router.push(`/estimates/${newIdStr}/edit`);
+        router.push(`${SELLER_ROUTES.sales.estimates}/${newIdStr}/edit`);
       },
     });
   }
@@ -193,9 +197,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
         setConvertOpen(false);
         toast.success('Sales order created');
         if (orderId) {
-          router.push(`/sales-orders/${orderId}`);
+          router.push(`${SELLER_ROUTES.sales.orders}/${orderId}`);
         } else {
-          router.push(`/estimates/${id}`);
+          router.push(`${SELLER_ROUTES.sales.estimates}/${id}`);
         }
       },
     });
@@ -208,9 +212,9 @@ export function EstimateDetailPage({ id }: { id: string }) {
         setConvertOpen(false);
         toast.success('Invoice created');
         if (invoiceId) {
-          router.push(`/invoices/${invoiceId}`);
+          router.push(`${SELLER_ROUTES.sales.invoices}/${invoiceId}`);
         } else {
-          router.push(`/estimates/${id}`);
+          router.push(`${SELLER_ROUTES.sales.estimates}/${id}`);
         }
       },
     });
@@ -332,7 +336,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
                         icon: <Edit2 className="h-4 w-4" />,
                         onClick: () => {
                           seedEstimateComposerCache(queryClient, id, data);
-                          router.push(`/estimates/${id}/edit`);
+                          router.push(`${SELLER_ROUTES.sales.estimates}/${id}/edit`);
                         },
                       } satisfies DetailActionItem,
                     ]
@@ -376,6 +380,24 @@ export function EstimateDetailPage({ id }: { id: string }) {
               onToggleFreight={noop}
               onToggleInternal={noop}
             />
+            {targetRateLines.length > 0 ? (
+              <div className="rounded-lg border border-warning-50 bg-warning-50/70 p-4">
+                <p className="text-sm font-semibold text-warning-700">Buyer target rates</p>
+                <div className="mt-2 space-y-2">
+                  {targetRateLines.map((line) => (
+                    <div key={line.id} className="flex items-start justify-between gap-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-warning-700">{line.product_name}</p>
+                        <p className="text-warning-700">{line.sku}</p>
+                      </div>
+                      <p className="shrink-0 font-mono font-semibold text-warning-700">
+                        {formatNumberValue(line.buyer_target_unit_price_min ?? 0, 'CURRENCY_EXACT')} - {formatNumberValue(line.buyer_target_unit_price_max ?? 0, 'CURRENCY_EXACT')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <TotalsCard
               totals={totals}
               previousTotals={null}

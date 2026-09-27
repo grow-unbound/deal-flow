@@ -2,9 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { GeneralSettingsForm } from '@/components/seller/settings/GeneralSettingsForm';
-import { PageWrap } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
@@ -140,22 +138,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <PageWrap>
-      <SellerTopbar
-        eyebrow="Settings"
-        title="Settings"
-        subtitle="Manage your business profile, policies, and feature configuration."
-        action={
-          <>
-            <Button type="button" variant="outline" disabled={!dirty || isSaving} onClick={handleDiscard}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={!dirty || isSaving} onClick={() => void handleSave()}>
-              {isSaving ? 'Saving…' : 'Save changes'}
-            </Button>
-          </>
-        }
-      />
+    <>
+      <div className="mb-5 flex justify-end gap-2">
+        <Button type="button" variant="outline" disabled={!dirty || isSaving} onClick={handleDiscard}>
+          Cancel
+        </Button>
+        <Button type="button" disabled={!dirty || isSaving} onClick={() => void handleSave()}>
+          {isSaving ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
       <GeneralSettingsForm
         data={data}
         isLoading={isLoading}
@@ -170,6 +161,6 @@ export default function SettingsPage() {
         onCampaignsToggle={handleCampaignsToggle}
         isSaving={isSaving}
       />
-    </PageWrap>
+    </>
   );
 }

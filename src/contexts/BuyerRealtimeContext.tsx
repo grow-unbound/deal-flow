@@ -30,8 +30,6 @@ export function BuyerRealtimeProvider({ children }: { children: React.ReactNode 
   const [refreshFn, setRefreshFnState] = React.useState<(() => Promise<void> | void) | null>(null);
   const setRefreshFn = useCallback((fn: (() => Promise<void> | void) | null) => setRefreshFnState(() => fn), []);
 
-  const [buyerCohortIds] = React.useState<string[]>([]);
-
   const { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
 
   const handleNew = useCallback((n: AppNotification) => {
@@ -51,7 +49,6 @@ export function BuyerRealtimeProvider({ children }: { children: React.ReactNode 
   const { updatedEntityIds, markSeen } = useBuyerRealtime({
     tenantId,
     buyerId,
-    buyerCohortIds,
     onNew: handleNew,
     onPatch: patchByEntityId,
     onRefresh: handleRefresh,

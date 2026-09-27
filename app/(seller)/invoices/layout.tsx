@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { InvoicesLandingClient } from '@/components/seller/invoices/InvoicesLandingClient';
@@ -8,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { InvoicesLandingMetricsV4 } from '@/hooks/useInvoices';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // InvoicesLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -15,18 +17,20 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // mounted across /invoices <-> /invoices/[id]. The SSR bootstrap fetch below
 // always uses the default period; a deep link with an explicit `?period=` briefly
 // shows the default period's data until the client-side period hook corrects it.
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.invoices);
+
 export default async function InvoicesLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 
   return (
     <EntitySplitShell
-      basePath="/invoices"
+      basePath={SELLER_ROUTES.sales.invoices}
       listSlot={
         <SellerBootstrapBoundary<InvoicesLandingMetricsV4>
           path={`/api/tenant/invoices/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/invoices"
+              basePath={SELLER_ROUTES.sales.invoices}
               ariaLabel="Loading invoices"
               showTransactionTabs
               variant="transaction"

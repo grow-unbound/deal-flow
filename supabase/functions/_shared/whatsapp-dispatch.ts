@@ -4,7 +4,7 @@
 // send pipeline.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { whatsAppClient, WhatsAppConfigError } from './whatsapp-client.ts';
+import { resolveWhatsAppClientForTenant, WhatsAppConfigError } from './whatsapp-client.ts';
 
 export function createAdminClient() {
   const url = Deno.env.get('SUPABASE_URL');
@@ -28,6 +28,7 @@ interface PreparedMessage {
   skipped?: string;
   message_id?: string;
   queue_id?: string;
+  tenant_id?: string | null;
   recipient_phone: string;
   send_payload: SendPayload;
   failure_reason?: string;
@@ -47,14 +48,6 @@ export async function dispatchMessageIds(
   admin: ReturnType<typeof createAdminClient>,
   messageIds: string[],
 ): Promise<DispatchResult> {
-  if (!whatsAppClient.isConfigured()) {
-    console.warn('[whatsapp-dispatch] WhatsApp credentials not configured — skipping Meta dispatch');
-    for (const messageId of messageIds) {
-      await completeSend(admin, messageId, false, null, 'WhatsApp credentials not configured');
-    }
-    return { dispatched: 0, failed: messageIds.length, skipped: 0 };
-  }
-
   let dispatched = 0;
   let failed = 0;
   let skipped = 0;
@@ -90,14 +83,23 @@ export async function dispatchMessageIds(
       continue;
     }
 
+    const { client: resolvedClient, source: credentialSource } = await resolveWhatsAppClientForTenant(admin, msg.tenant_id);
+    if (!resolvedClient.isConfigured()) {
+      await completeSend(admin, messageId, false, null, 'WhatsApp credentials not configured');
+      failed += 1;
+      continue;
+    }
+
     try {
       console.info('[whatsapp-dispatch] sending provider message', {
         messageId,
         queueId: msg.queue_id ?? null,
+        tenantId: msg.tenant_id ?? null,
+        credentialSource,
         recipientPhone: msg.recipient_phone,
         metaTemplateName: payload.meta_template_name,
       });
-      const result = await whatsAppClient.sendTemplate({
+      const result = await resolvedClient.sendTemplate({
         to: msg.recipient_phone,
         templateName: payload.meta_template_name,
         locale: payload.locale,
@@ -122,6 +124,8 @@ export async function dispatchMessageIds(
       console.info('[whatsapp-dispatch] provider send succeeded', {
         messageId,
         queueId: msg.queue_id ?? null,
+        tenantId: msg.tenant_id ?? null,
+        credentialSource,
         recipientPhone: msg.recipient_phone,
         metaTemplateName: payload.meta_template_name,
         providerMessageId: result.providerMessageId,
@@ -135,6 +139,8 @@ export async function dispatchMessageIds(
       console.error('[whatsapp-dispatch] provider send failed', {
         messageId,
         queueId: msg.queue_id ?? null,
+        tenantId: msg.tenant_id ?? null,
+        credentialSource,
         recipientPhone: msg.recipient_phone,
         metaTemplateName: payload.meta_template_name,
         providerError: reason,

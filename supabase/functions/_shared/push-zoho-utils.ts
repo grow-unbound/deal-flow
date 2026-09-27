@@ -333,8 +333,11 @@ export function verifyPushSecret(req: Request): boolean {
 export function parseWebhookRecord(body: unknown): Record<string, unknown> | null {
   if (typeof body !== 'object' || body === null) return null;
   const b = body as Record<string, unknown>;
-  if (b.record && typeof b.record === 'object') return b.record as Record<string, unknown>;
-  if (b.type === 'INSERT' && b.record) return b.record as Record<string, unknown>;
+  if (b.record && typeof b.record === 'object' && b.record !== null) {
+    return b.record as Record<string, unknown>;
+  }
+  // DB trigger / pg_net may post the row itself (id + tenant_id at top level).
+  if (typeof b.id === 'string' && typeof b.tenant_id === 'string') return b;
   return null;
 }
 

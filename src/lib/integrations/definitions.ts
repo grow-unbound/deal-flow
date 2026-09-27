@@ -552,6 +552,16 @@ const INTEGRATION_TOPOLOGIES: Record<IntegrationTypeId, IntegrationTopologyDefin
       },
     ],
   },
+  whatsapp_business: {
+    integration_type_id: 'whatsapp_business',
+    integration_label: 'WhatsApp Business',
+    webhook_event_types: [],
+    notes: [
+      'Connecting a WhatsApp Business Account does not sync any Yukti domain data — it only supplies the send credentials (WABA phone number + access token) used for notifications, alerts, and marketing messages.',
+      'Meta only allows one Business Solution Provider per phone number at a time. Connecting here disconnects the number from any other provider it is currently registered with.',
+    ],
+    mappings: [],
+  },
 };
 
 export function getIntegrationTopologyDefinition(integrationTypeId: IntegrationTypeId): IntegrationTopologyDefinition {

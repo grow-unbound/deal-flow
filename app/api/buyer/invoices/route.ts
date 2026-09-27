@@ -38,6 +38,16 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
       return NextResponse.json({ invoices: [], nextCursor: null, total: null }, { status: 401 });
     }
 
+    // Defense-in-depth: requireBuyerAccessProfile deliberately lets a
+    // `buyer_pending` session read its own row, but this route uses the
+    // service-role client for the actual invoices read, bypassing RLS
+    // entirely. Matches the pattern in app/api/buyer/orders/route.ts.
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json({ invoices: [], nextCursor: null, total: null }, { status: 403 });
+    }
+
     if (profile.context.mode === 'preview' && !profile.context.buyer_id) {
       return NextResponse.json({ invoices: [], nextCursor: null, total: null });
     }

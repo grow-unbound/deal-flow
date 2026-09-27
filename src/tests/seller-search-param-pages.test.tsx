@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-
 const catalogsClientMock = vi.fn();
 const getFlagMock = vi.fn();
 const requireSellerServerTenantIdMock = vi.fn();
@@ -66,11 +64,7 @@ describe('seller landing pages forward URL search to landing clients', () => {
     fetchSellerPageBootstrapMock.mockReturnValue({ data: { ok: true }, status: 200 });
   });
 
-  it('passes search to the campaigns landing alias', async () => {
-    const element = await CampaignsPage({ searchParams: Promise.resolve({ search: 'monsoon' }) });
-    render(element);
-
-    expect(screen.getByText('catalogs-client')).toBeInTheDocument();
-    expect(catalogsClientMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ initialSearch: 'monsoon', initialPeriod: 'last90' }));
+  it('keeps the campaigns page as a routable split-pane leaf', () => {
+    expect(CampaignsPage()).toBeNull();
   });
 });

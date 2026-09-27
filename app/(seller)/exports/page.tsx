@@ -2,7 +2,10 @@ import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { PageWrap } from '@/components/seller/layout';
 import { getFlag, FLAGS } from '@/lib/flags';
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.exports);
 
 export default async function ExportsPage() {
   const tenantId = await requireSellerServerTenantId();

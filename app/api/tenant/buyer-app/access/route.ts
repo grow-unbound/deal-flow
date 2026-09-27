@@ -10,6 +10,7 @@ import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get'
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import type { AccessPageResponse } from '@/hooks/useBuyerAppAccess';
 import { queueBuyerAppEnabledMessages } from '@/lib/server/buyer-app-enable-notify';
+import { syncBuyerEntrySafe } from '@/lib/server/inbox-entries';
 
 const AccessQuerySchema = z.object({
   q: z.string().trim().max(120).default(''),
@@ -221,6 +222,10 @@ export async function PATCH(request: NextRequest) {
           }),
         ),
       );
+
+      for (const row of updated as { id: string }[]) {
+        syncBuyerEntrySafe(db, row.id);
+      }
     }
 
     let whatsappSentCount = 0;

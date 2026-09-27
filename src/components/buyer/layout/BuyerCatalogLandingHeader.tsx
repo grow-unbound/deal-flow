@@ -5,8 +5,10 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
+import { OnboardingStatusPill } from '@/components/buyer/layout/OnboardingStatusPill';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 
 interface BuyerCatalogLandingHeaderProps {
   searchPlaceholder?: string;
@@ -30,7 +32,10 @@ export function BuyerCatalogLandingHeader({
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
   const { data: me, isLoading: meLoading } = useBuyerMe();
+  const { openLogin } = useStorefrontLogin();
   const tenantLoading = meLoading && !me;
+  const isPending = !tenantLoading && me?.mode === 'pending';
+  const isGuest = !tenantLoading && !isPending && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const tenantName = me ? (me.tenant.name || 'Yukti') : 'Yukti';
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
 
@@ -77,7 +82,24 @@ export function BuyerCatalogLandingHeader({
                   )}
                 </div>
               </div>
-              <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
+              {tenantLoading ? (
+                <div
+                  className="h-9 w-24 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
+                  aria-label="Loading buyer account action"
+                />
+              ) : isPending ? (
+                <OnboardingStatusPill status={me?.pending?.onboarding_status} className="max-w-[42vw]" />
+              ) : isGuest ? (
+                <button
+                  type="button"
+                  onClick={openLogin}
+                  className="max-w-[42vw] shrink-0 rounded-[12px] bg-cream-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cream-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream-950/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]"
+                >
+                  Log in
+                </button>
+              ) : (
+                <BuyerCatalogLocationLink className="max-w-[42vw] shrink-0 rounded-[12px] px-1 py-1" />
+              )}
             </div>
           </div>
         </div>

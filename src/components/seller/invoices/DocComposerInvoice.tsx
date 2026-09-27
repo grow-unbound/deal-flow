@@ -50,6 +50,7 @@ import { Input } from '@/components/ui/input';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
 import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '@/lib/composer-session-draft';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type {
   InvoiceComposerDocument,
   InvoiceComposerProductSearchRow,
@@ -246,7 +247,7 @@ export function DocComposerInvoice({
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const closeTarget = mode === 'edit' && invoiceId ? `/invoices/${invoiceId}` : '/invoices';
+  const closeTarget = mode === 'edit' && invoiceId ? `${SELLER_ROUTES.sales.invoices}/${invoiceId}` : SELLER_ROUTES.sales.invoices;
   const qc = useQueryClient();
   const { isLeavingRef, beginLeaving, resetLeaving, shouldBlockComposer, isSubmitting, submitAction } = useComposerLeaveGuard();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
@@ -687,7 +688,7 @@ export function DocComposerInvoice({
     beginLeaving('save');
     try {
       const saved = await saveDocumentNow(documentState, diffLines);
-      router.push(`/invoices/${saved.id}`);
+      router.push(`${SELLER_ROUTES.sales.invoices}/${saved.id}`);
     } catch (mutationError) {
       resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save invoice');
@@ -706,7 +707,7 @@ export function DocComposerInvoice({
         sendMutation.mutate(undefined, {
           onSuccess: () => {
             setSendOpen(false);
-            router.push(`/invoices/${targetId}`);
+            router.push(`${SELLER_ROUTES.sales.invoices}/${targetId}`);
           },
           onError: () => {
             resetLeaving();
@@ -723,7 +724,7 @@ export function DocComposerInvoice({
 
       setSendOpen(false);
       void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
-      router.push(`/invoices/${targetId}`);
+      router.push(`${SELLER_ROUTES.sales.invoices}/${targetId}`);
     } catch (mutationError) {
       resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save or send invoice');

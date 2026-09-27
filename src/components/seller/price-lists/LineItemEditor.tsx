@@ -118,7 +118,7 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
               onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
             />
             {showMrpWarning && (
-              <p className="text-amber-600 text-xs">This price exceeds the product MRP.</p>
+              <p className="text-warning-500 text-xs">This price exceeds the product MRP.</p>
             )}
           </div>
 
@@ -153,7 +153,7 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
         </div>
 
         {addError && (
-          <p className="text-red-600 text-xs mt-2">{addError}</p>
+          <p className="text-danger-500 text-xs mt-2">{addError}</p>
         )}
       </div>
 
@@ -208,7 +208,7 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-700"
+                        className="h-8 w-8 p-0 text-danger-500 hover:bg-danger-50 hover:text-danger-700"
                         onClick={() => deleteItem.mutate(item.id)}
                         disabled={deleteItem.isPending}
                         aria-label="Remove item"

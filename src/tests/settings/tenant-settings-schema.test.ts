@@ -23,6 +23,7 @@ describe('GstinSchema', () => {
 describe('TenantSettingsBusinessSchema', () => {
   const valid = {
     company_name: 'Acme',
+    tagline: 'Wholesale catalog',
     gstin: '',
     address: { line1: '1', line2: '', city: 'Mumbai', state: 'MH', pincode: '400001' },
     phone: '',
@@ -113,11 +114,24 @@ describe('buildGeneralSettingsView', () => {
   it('defaults delivery routing threshold to 50km when missing', () => {
     const view = buildGeneralSettingsView({}, {
       business_name: 'Acme',
+      tagline: null,
       gstin: null,
       primary_state: null,
       plan: 'starter',
     });
 
     expect(view.delivery_routing_threshold_km).toBe(50);
+  });
+
+  it('reads tagline from tenant row when not in settings JSON', () => {
+    const view = buildGeneralSettingsView({}, {
+      business_name: 'Acme',
+      tagline: 'Wholesale catalog',
+      gstin: null,
+      primary_state: null,
+      plan: 'starter',
+    });
+
+    expect(view.business.tagline).toBe('Wholesale catalog');
   });
 });

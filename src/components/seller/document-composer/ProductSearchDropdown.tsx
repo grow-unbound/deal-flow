@@ -118,7 +118,7 @@ export function ProductSearchDropdown({
       )}
       style={overlayStyle}
     >
-      <div className="flex items-center justify-between border-b border-cream-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">
+      <div className="flex items-center justify-between border-b border-cream-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
         <span>Matching products</span>
         {loading || isFetchingNextPage ? (
           <span className="inline-flex items-center gap-1.5 normal-case tracking-normal text-cream-500">

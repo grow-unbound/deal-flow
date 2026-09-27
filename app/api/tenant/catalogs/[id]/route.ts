@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 import {
   resolveCampaignWorkflowStatus,
   type CampaignWorkflowStatusLabel,
@@ -842,6 +843,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (error) return NextResponse.json({ error: 'Failed to extend validity' }, { status: 500 });
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
   }
 
@@ -973,6 +975,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({
       ok: true,
       share_link: {
@@ -1050,6 +1053,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ ok: true, catalog: updatedCatalog });
   }
 
@@ -1113,6 +1117,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       if (error) return NextResponse.json({ error: 'Failed to generate share link' }, { status: 500 });
       revalidateSellerDashboardCache(claims.tenant_id);
+      revalidatePublicCatalogCache(claims.tenant_id);
     }
 
     return NextResponse.json({
@@ -1142,6 +1147,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (error) return NextResponse.json({ error: 'Failed to add product to catalog' }, { status: 500 });
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
   }
 
@@ -1159,6 +1165,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (error) return NextResponse.json({ error: 'Failed to remove product from catalog' }, { status: 500 });
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
   }
 
@@ -1416,6 +1423,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     revalidateSellerDashboardCache(claims.tenant_id);
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ catalog: updatedCatalog });
   }
 
@@ -1507,6 +1515,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Failed to save unpublished changes' }, { status: 500 });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ catalog: savedDraft });
   }
 
@@ -1629,6 +1638,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   revalidateSellerDashboardCache(claims.tenant_id);
+  revalidatePublicCatalogCache(claims.tenant_id);
 
   let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
 

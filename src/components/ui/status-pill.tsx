@@ -36,7 +36,7 @@ export function StatusPill({ label, tone, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium uppercase tracking-[0.08em]',
+        'inline-flex items-center gap-1.5 rounded-full border px-[var(--ctl-badge-px)] py-[var(--ctl-badge-py)] text-[length:var(--ctl-badge-text)] font-medium uppercase tracking-[0.08em]',
         toneStyles[tone],
         className,
       )}

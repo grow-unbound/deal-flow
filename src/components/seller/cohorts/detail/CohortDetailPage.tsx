@@ -116,7 +116,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
                     <RefreshCw size={14} strokeWidth={2} className={refreshMutation.isPending ? 'animate-spin' : ''} aria-hidden />
                     {refreshMutation.isPending ? 'Refreshing…' : 'Refresh now'}
                   </Button>
-                  <span className="text-[11px] text-cream-500 pr-0.5">
+                  <span className="text-xs text-cream-500 pr-0.5">
                     {formatRefreshedAt(data.details_rules.last_refreshed_at)}
    </span>
                 </div>

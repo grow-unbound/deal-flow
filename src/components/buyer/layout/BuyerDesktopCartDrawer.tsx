@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { Check, ChevronLeft, ChevronRight, MapPin, Minus, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { BuyerLocationDialog } from '@/components/buyer/layout/BuyerLocationDialog';
 import { usePostHog } from 'posthog-js/react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
@@ -20,15 +21,16 @@ import {
 import { DialogBody } from '@/components/ui/dialog';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { CartTargetPriceInput } from '@/components/buyer/cart/CartTargetPriceInput';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
 import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
-import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
+import { BuyAsPicker } from '@/components/buyer/cart/BuyAsPicker';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { BuyerTransactionConfirmation, type BuyerTransactionConfirmationData } from '@/components/buyer/transactions/BuyerTransactionConfirmation';
 import { apiFetch } from '@/lib/api-fetch';
-import { getBuyerProductPrimaryImageUrl } from '@/lib/buyer-ui';
+import { getBuyerProductPrimaryImageUrl, hasVisibleBuyerPrice, isHiddenPriceEnquiryMode } from '@/lib/buyer-ui';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -37,9 +39,11 @@ import { formatNumberValue } from '@/lib/utils';
 type CartLineItem = {
   tenant_product_id: string;
   qty: number;
-  unit_price: number;
+  unit_price: number | null;
   gst_rate?: number | null;
   product_name?: string;
+  buyer_target_unit_price_min?: number | null;
+  buyer_target_unit_price_max?: number | null;
 };
 
 type OrderPlaceResponse = {
@@ -66,14 +70,14 @@ const BACK_BTN: React.CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 999,
-  background: 'var(--bg-surface)',
+  background: 'var(--bg-surface, #fff)',
   border: '1px solid var(--border-1)',
   color: 'var(--cream-800)',
 };
 
 const STICKY_HEADER: React.CSSProperties = {
   height: 'var(--header-h, 56px)',
-  background: 'rgba(250, 247, 242, 0.92)',
+  background: 'color-mix(in srgb, var(--bg-surface, #fff) 92%, transparent)',
   backdropFilter: 'blur(14px)',
   WebkitBackdropFilter: 'blur(14px)',
   borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
@@ -102,21 +106,32 @@ function CartDrawerItem({
   item,
   onQtyChange,
   onRemove,
+  onTargetRangeChange,
   showDivider,
   stockBadgeVisible = false,
   grayedOut = false,
+  collectTargetRange = false,
 }: {
   item: BuyerCartItem;
   onQtyChange: (tenant_product_id: string, qty: number) => void;
   onRemove: (tenant_product_id: string) => void;
+  onTargetRangeChange?: (
+    tenant_product_id: string,
+    field: 'buyer_target_unit_price_min' | 'buyer_target_unit_price_max',
+    value: string,
+  ) => void;
   showDivider: boolean;
   stockBadgeVisible?: boolean;
   grayedOut?: boolean;
+  collectTargetRange?: boolean;
 }) {
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
+  const hiddenPriceLine = item.cart_mode === 'hidden_price_enquiry' || item.unit_price == null;
   const showCampaignPrice = Boolean(
-    item.has_campaign_price
+    !hiddenPriceLine
+    && item.has_campaign_price
     && item.resolved_price != null
+    && item.unit_price != null
     && Math.abs(item.resolved_price - item.unit_price) > 0.004,
   );
   const stockBadgeLabel = item.stock_status === 'out_of_stock' ? 'Out of stock' : 'Low stock';
@@ -153,67 +168,86 @@ function CartDrawerItem({
                 {subline}
               </p>
             ) : null}
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
-              <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
-                {formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}
-                {item.unit ? ` / ${item.unit}` : ''}
-              </span>
-              {showCampaignPrice ? (
-                <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
-                  {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+            {!hiddenPriceLine ? (
+              <div className="mt-1 flex items-baseline justify-between gap-x-2 gap-y-1" style={{ color: 'var(--fg-3, var(--cream-600))' }}>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="tabular-nums" style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)' }}>
+                    {`${formatNumberValue(item.unit_price, 'CURRENCY_EXACT')}${item.unit ? ` / ${item.unit}` : ''}`}
+                  </span>
+                  {showCampaignPrice ? (
+                    <span className="tabular-nums line-through" style={{ fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)' }}>
+                      {formatNumberValue(item.resolved_price, 'CURRENCY_EXACT')}
+                    </span>
+                  ) : null}
+                </div>
+                <span
+                  className="tabular-nums font-semibold"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
+                >
+                  {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
                 </span>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             {stockBadgeVisible ? (
               <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
                 {stockBadgeLabel}
               </p>
             ) : null}
+            {collectTargetRange ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <CartTargetPriceInput
+                  label="Min Price"
+                  value={item.buyer_target_unit_price_min}
+                  placeholder="Min"
+                  onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_min', value)}
+                />
+                <CartTargetPriceInput
+                  label="Max Price"
+                  value={item.buyer_target_unit_price_max}
+                  placeholder="Max"
+                  onChange={(value) => onTargetRangeChange?.(item.tenant_product_id, 'buyer_target_unit_price_max', value)}
+                />
+              </div>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => onRemove(item.tenant_product_id)}
-            className="mt-1.5 self-start"
-            style={{ color: 'var(--cream-400)' }}
-            aria-label="Remove item"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div className="flex shrink-0 flex-col items-end justify-between py-0.5">
-          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: 'var(--teal-500)' }}>
+          <div className="mt-2 flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
-              className="flex items-center justify-center"
-              style={{ width: 24, height: 24, color: '#fff' }}
-              aria-label="Decrease"
+              onClick={() => onRemove(item.tenant_product_id)}
+              className="flex h-6 items-center gap-1"
+              style={{ color: 'var(--cream-500)', fontSize: 'var(--b-text-sub)' }}
+              aria-label="Remove item"
             >
-              <Minus className="h-2.5 w-2.5" />
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
             </button>
-            <span
-              className="tabular-nums text-center font-semibold"
-              style={{ minWidth: '1.25rem', fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', color: '#fff' }}
-            >
-              {item.quantity}
-            </span>
-            <button
-              type="button"
-              onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
-              className="flex items-center justify-center"
-              style={{ width: 24, height: 24, color: '#fff' }}
-              aria-label="Increase"
-            >
-              <Plus className="h-2.5 w-2.5" />
-            </button>
+            <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: 'var(--teal-500)' }}>
+              <button
+                type="button"
+                onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
+                className="flex items-center justify-center"
+                style={{ width: 24, height: 24, color: '#fff' }}
+                aria-label="Decrease"
+              >
+                <Minus className="h-2.5 w-2.5" />
+              </button>
+              <span
+                className="tabular-nums text-center font-semibold"
+                style={{ minWidth: '1.25rem', fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', color: '#fff' }}
+              >
+                {item.quantity}
+              </span>
+              <button
+                type="button"
+                onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
+                className="flex items-center justify-center"
+                style={{ width: 24, height: 24, color: '#fff' }}
+                aria-label="Increase"
+              >
+                <Plus className="h-2.5 w-2.5" />
+              </button>
+            </div>
           </div>
-          <span
-            className="tabular-nums font-semibold"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
-          >
-            {formatNumberValue(item.line_total, 'CURRENCY_EXACT')}
-          </span>
         </div>
       </div>
     </>
@@ -235,16 +269,22 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData, isLoading: cartBundlesLoading } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
+  const tenantName = meData?.tenant.name?.trim() || 'Seller';
+  const isGuest = meData?.mode !== 'buyer' && meData?.mode !== 'preview';
   const selectedDelivery = delivery?.selected ?? null;
   const deliveryHydrated = delivery?.hydrated ?? true;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
   const allowPlaceOrder = meData?.order_features.create_sales_orders ?? false;
   const allowRequestQuote = meData?.order_features.create_enquiries ?? false;
+  const hiddenPriceEnquiry = isHiddenPriceEnquiryMode(meData?.buyer_catalog?.pricing_mode)
+    || items.some((item) => item.cart_mode === 'hidden_price_enquiry');
+  const collectTargetRange = hiddenPriceEnquiry && meData?.buyer_catalog?.collect_target_unit_price_range === true;
   const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
   const [oosConfirmOpen, setOosConfirmOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<BuyerTransactionConfirmationData | null>(null);
+  const [outletDialogOpen, setOutletDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!open) setConfirmation(null);
@@ -258,9 +298,9 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (!open || !deliveryHydrated || selectedDelivery) return;
-    router.replace(`/buy/location?returnTo=${encodeURIComponent(returnToOpenHref)}`);
-  }, [deliveryHydrated, open, returnToOpenHref, router, selectedDelivery]);
+    if (isGuest || !open || !deliveryHydrated || selectedDelivery) return;
+    setOutletDialogOpen(true);
+  }, [isGuest, deliveryHydrated, open, selectedDelivery]);
 
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
@@ -270,28 +310,39 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   );
 
   useEffect(() => {
-    if (!reconcileQuery.data) return;
-    const nextItems = reconcileQuery.data.items.map((product) => {
+    // isPlaceholderData means this is the PREVIOUS queryKey's result (kept
+    // around by placeholderData for an instant paint) — it belongs to a
+    // different item set and must never be used to overwrite the cart, or
+    // adding/removing an item briefly flashes the old selection's images
+    // back in until the real fetch for the new item set lands.
+    if (!reconcileQuery.data || reconcileQuery.isPlaceholderData) return;
+    const nextItems = reconcileQuery.data.items.flatMap((product) => {
+      if (!hiddenPriceEnquiry && !hasVisibleBuyerPrice(product.price)) return [];
       const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
       const quantity = existing?.quantity ?? 1;
-      return {
+      const unitPrice = hiddenPriceEnquiry ? null : product.price;
+      return [{
         tenant_product_id: product.tenant_product_id,
         name: product.display_name,
         brand: product.brand_name ?? undefined,
         internal_sku: product.internal_sku,
         image_url: getBuyerProductPrimaryImageUrl(product) ?? undefined,
-        unit_price: product.price,
+        unit_price: unitPrice,
         resolved_price: product.resolved_price,
         has_campaign_price: product.has_campaign_price,
         gst_rate: product.gst_rate ?? gstRate,
         unit: product.default_uom ?? undefined,
         quantity,
-        line_total: product.price * quantity,
+        line_total: unitPrice == null ? 0 : unitPrice * quantity,
+        cart_mode: hiddenPriceEnquiry ? 'hidden_price_enquiry' : 'priced',
+        collect_target_unit_price_range: product.collect_target_unit_price_range === true,
+        buyer_target_unit_price_min: existing?.buyer_target_unit_price_min ?? null,
+        buyer_target_unit_price_max: existing?.buyer_target_unit_price_max ?? null,
         tenant_category_id: product.category_id ?? undefined,
         campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
         stock_status: product.stock_status,
         on_hand: product.on_hand,
-      } satisfies BuyerCartItem;
+      } satisfies BuyerCartItem];
     });
 
     const currentSignature = JSON.stringify(items);
@@ -299,7 +350,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
     if (currentSignature !== nextSignature) {
       replaceItems(nextItems);
     }
-  }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
+  }, [gstRate, hiddenPriceEnquiry, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
 
   const stockVisible = meData?.stock_visibility?.enabled ?? false;
   const blockOnOos = meData?.stock_visibility?.block_order_on_oos ?? false;
@@ -316,20 +367,20 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const deliveryFee = 0;
   const totals = useMemo(
-    () => computeBuyerCartTotals(
+    () => hiddenPriceEnquiry ? { subtotal: 0, tax_amount: 0, total: 0 } : computeBuyerCartTotals(
       items.map((item) => ({
         quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_price: item.unit_price ?? 0,
         disc_pct: 0,
         gst_rate: item.gst_rate ?? gstRate,
       })),
       gstInclusive,
       gstRate,
     ),
-    [items, gstInclusive, gstRate],
+    [hiddenPriceEnquiry, items, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
-  const ctaCount = (allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0);
+  const ctaCount = hiddenPriceEnquiry ? 1 : ((allowRequestQuote ? 1 : 0) + (allowPlaceOrder ? 1 : 0));
   const isBusy = submissionPhase !== 'idle';
   const placingOrder = submissionPhase === 'placing_order';
   const requestingQuote = submissionPhase === 'requesting_quote';
@@ -347,8 +398,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }
 
   function openOutletSelector() {
-    markBuyerNavigationForward();
-    router.push(`/buy/location?returnTo=${encodeURIComponent(returnToOpenHref)}`);
+    setOutletDialogOpen(true);
   }
 
   function buildLineItems(sourceItems: BuyerCartItem[] = items): CartLineItem[] {
@@ -358,7 +408,22 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       unit_price: i.unit_price,
       gst_rate: i.gst_rate ?? gstRate,
       product_name: i.name,
+      buyer_target_unit_price_min: i.buyer_target_unit_price_min ?? null,
+      buyer_target_unit_price_max: i.buyer_target_unit_price_max ?? null,
     }));
+  }
+
+  function handleTargetRangeChange(
+    tenantProductId: string,
+    field: 'buyer_target_unit_price_min' | 'buyer_target_unit_price_max',
+    value: string,
+  ) {
+    const normalized = value === '' ? null : Number(value);
+    replaceItems(items.map((item) => (
+      item.tenant_product_id === tenantProductId
+        ? { ...item, [field]: Number.isFinite(normalized) ? normalized : null }
+        : item
+    )));
   }
 
   function buildAnalyticsLineItems() {
@@ -385,6 +450,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
       total,
+      hidden_price_enquiry: hiddenPriceEnquiry,
       line_items: buildAnalyticsLineItems(),
       gst_inclusive: gstInclusive,
       has_campaign_items: items.some((item) => item.has_campaign_price === true),
@@ -405,6 +471,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
       total,
+      hidden_price_enquiry: hiddenPriceEnquiry,
       line_items: buildAnalyticsLineItems(),
       error_reason: message,
     });
@@ -561,7 +628,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
       const inStockTotal = computeBuyerCartTotals(
         inStockItems.map((item) => ({
           quantity: item.quantity,
-          unit_price: item.unit_price,
+          unit_price: item.unit_price ?? 0,
           disc_pct: 0,
           gst_rate: item.gst_rate ?? gstRate,
         })),
@@ -601,6 +668,10 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   });
 
   function handlePlaceOrder() {
+    if (hiddenPriceEnquiry) {
+      handleRequestQuote();
+      return;
+    }
     if (isBusy || items.length === 0) return;
     if (!selectedDelivery) {
       openOutletSelector();
@@ -643,18 +714,20 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        data-app="buyer"
         side="right"
         showCloseButton={false}
-        className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-[var(--cream-50)] p-0"
+        className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-[var(--bg-surface)] p-0"
       >
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
           <button type="button" onClick={closeDrawer} className="flex shrink-0 items-center justify-center p-0" style={BACK_BTN} aria-label="Close cart">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
-            {confirmation ? (confirmation.kind === 'estimate' ? 'Quote requested' : 'Order placed') : 'Cart'}
+                  {confirmation ? (confirmation.kind === 'estimate' ? (confirmation.total > 0 ? 'Quote requested' : 'Enquiry sent') : 'Order placed') : (hiddenPriceEnquiry ? 'Enquiry' : 'Cart')}
           </h1>
           {!confirmation && items.length > 0 ? (
             <button
@@ -672,7 +745,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         </header>
 
         {confirmation ? (
-          <div className="flex flex-1 flex-col overflow-y-auto">
+          <div className="flex flex-1 flex-col overflow-y-auto bg-[var(--bg-surface)]">
             <BuyerTransactionConfirmation
               kind={confirmation.kind}
               id={confirmation.id}
@@ -683,9 +756,9 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
               linkedEstimateNumber={confirmation.linkedEstimateNumber}
               linkedEstimateId={confirmation.linkedEstimateId}
               detailEndpoint={confirmation.kind === 'estimate' ? '/api/buyer/estimates' : '/api/buyer/orders'}
-              successHeading={confirmation.kind === 'estimate' ? 'Estimate created successfully' : 'Order created successfully'}
-              successCopy={confirmation.kind === 'estimate' ? 'Your estimate is ready.' : 'Your order is in the queue.'}
-              documentLabel={confirmation.kind === 'estimate' ? 'Estimate' : 'Order'}
+              successHeading={confirmation.kind === 'estimate' ? (confirmation.total > 0 ? 'Estimate created successfully' : 'Enquiry sent') : 'Order created successfully'}
+              successCopy={confirmation.kind === 'estimate' ? (confirmation.total > 0 ? 'Your estimate is ready.' : 'Your seller will respond with prices.') : 'Your order is in the queue.'}
+              documentLabel={confirmation.kind === 'estimate' ? (confirmation.total > 0 ? 'Estimate' : 'Enquiry') : 'Order'}
               onGoToCatalog={() => {
                 closeDrawer();
                 router.push('/buy/home');
@@ -700,7 +773,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
             />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--bg-surface)] px-6 py-24 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--cream-100)' }}>
               <ShoppingCart className="h-8 w-8" style={{ color: 'var(--cream-400)' }} />
             </div>
@@ -728,14 +801,14 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: '8.5rem' }}>
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-surface)] px-4 pt-4" style={{ paddingBottom: '8.5rem' }}>
               <div className="space-y-3">
                 <div className="pb-1">
                   <p className="mb-0.5 font-semibold uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
                     {items.length} items · {itemCount} {itemCount === 1 ? 'unit' : 'units'}
                   </p>
                   <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
-                    Review &amp; place
+                    {hiddenPriceEnquiry ? 'Review enquiry' : 'Review &amp; place'}
                   </h2>
                 </div>
 
@@ -746,14 +819,16 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                       item={item}
                       onQtyChange={updateQty}
                       onRemove={removeItem}
+                      onTargetRangeChange={handleTargetRangeChange}
                       showDivider={idx > 0}
                       stockBadgeVisible={stockVisible && item.stock_status !== 'available'}
                       grayedOut={stockVisible && item.stock_status === 'out_of_stock'}
+                      collectTargetRange={collectTargetRange && item.collect_target_unit_price_range === true}
                     />
                   ))}
                 </div>
 
-                {cartBundlesLoading ? (
+                {!hiddenPriceEnquiry && cartBundlesLoading ? (
                   <div
                     className="overflow-hidden rounded-[12px]"
                     style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
@@ -784,7 +859,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                       ))}
                     </div>
                   </div>
-                ) : cartBundlesData && tenantId ? (
+                ) : !hiddenPriceEnquiry && cartBundlesData && tenantId ? (
                   <CartGapWidget
                     bundles={cartBundlesData.bundles}
                     items={items}
@@ -792,21 +867,34 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                   />
                 ) : null}
 
-                <div className="overflow-hidden rounded-[12px]" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
-                  <div className="space-y-2.5 px-4 py-3.5">
-                    <TotalsRow label="Subtotal" value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} />
-                    <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')} isText={gstInclusive} />
-                    <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatNumberValue(deliveryFee, 'CURRENCY_EXACT')} isText />
+                {hiddenPriceEnquiry ? (
+                  <div className="rounded-[12px] px-4 py-3.5" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+                    <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
+                      {tenantName} will respond with prices.
+                    </p>
+                    <p className="mt-1" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))', lineHeight: 1.45 }}>
+                      No subtotal or total is calculated for enquiries.
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border-1)' }}>
-                    <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
-                      Total
-                    </span>
-                    <span style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg-1, var(--cream-900))' }}>
-                      {formatNumberValue(total, 'CURRENCY_EXACT')}
-                    </span>
+                ) : (
+                  <div className="overflow-hidden rounded-[12px]" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+                    <div className="space-y-2.5 px-4 py-3.5">
+                      <TotalsRow label="Subtotal" value={formatNumberValue(totals.subtotal, 'CURRENCY_EXACT')} />
+                      <TotalsRow label="GST" value={gstInclusive ? 'Included in Prices' : formatNumberValue(totals.tax_amount, 'CURRENCY_EXACT')} isText={gstInclusive} />
+                      <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatNumberValue(deliveryFee, 'CURRENCY_EXACT')} isText />
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+                      <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
+                        Total
+                      </span>
+                      <span style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg-1, var(--cream-900))' }}>
+                        {formatNumberValue(total, 'CURRENCY_EXACT')}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                <BuyAsPicker />
 
                 <button
                   type="button"
@@ -888,13 +976,13 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
               className="mt-auto border-t px-4 pt-2.5"
               style={{
                 paddingBottom: 'calc(0.875rem + env(safe-area-inset-bottom, 0px))',
-                background: 'rgba(250, 247, 242, 0.94)',
+                background: 'color-mix(in srgb, var(--bg-surface, #fff) 94%, transparent)',
                 backdropFilter: 'blur(12px)',
                 WebkitBackdropFilter: 'blur(12px)',
                 borderTopColor: 'var(--border-1)',
               }}
             >
-              {ctaCount === 2 ? (
+              {!hiddenPriceEnquiry && ctaCount === 2 ? (
                 <div className="flex items-center justify-between pb-2">
                   <span style={{ fontSize: 'var(--b-text-label)', fontWeight: 600, color: 'var(--fg-1, var(--cream-900))' }}>
                     Total
@@ -908,7 +996,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                 </div>
               ) : null}
               <div className="flex items-center gap-2">
-                {ctaCount === 1 ? (
+                {!hiddenPriceEnquiry && ctaCount === 1 ? (
                   <div className="flex shrink-0 flex-col">
                     <span className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.1em', color: 'var(--fg-3, var(--cream-600))' }}>
                       Total
@@ -921,7 +1009,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                     </span>
                   </div>
                 ) : null}
-                {allowRequestQuote ? (
+                {(allowRequestQuote || hiddenPriceEnquiry) ? (
                   <button
                     type="button"
                     onClick={handleRequestQuote}
@@ -930,10 +1018,10 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
                     style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
                   >
                     <WhatsAppIcon className="h-4 w-4 shrink-0" />
-                    {requestingQuote ? 'Requesting...' : 'Get WhatsApp quote'}
+                    {requestingQuote ? (hiddenPriceEnquiry ? 'Sending...' : 'Requesting...') : (hiddenPriceEnquiry ? 'Send enquiry' : 'Get WhatsApp quote')}
                   </button>
                 ) : null}
-                {allowPlaceOrder ? (
+                {allowPlaceOrder && !hiddenPriceEnquiry ? (
                   <button
                     type="button"
                     onClick={handlePlaceOrder}
@@ -980,5 +1068,7 @@ export function BuyerDesktopCartDrawer({ open, onOpenChange }: BuyerDesktopCartD
         </AlertDialog>
       </SheetContent>
     </Sheet>
+    <BuyerLocationDialog open={outletDialogOpen} onOpenChange={setOutletDialogOpen} returnTo={returnToOpenHref} />
+    </>
   );
 }

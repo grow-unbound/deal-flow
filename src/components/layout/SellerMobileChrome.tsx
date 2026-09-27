@@ -3,14 +3,16 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, ExternalLink, Home, LogOut, Menu, Package, Search, ShoppingBag, Users } from 'lucide-react';
-import { usePostHog } from 'posthog-js/react';
+import { Bell, LogOut, Menu, Search, ShoppingBag, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Pressable } from '@/components/ui/pressable';
+import { useMobileHeaderTitleValue } from '@/components/layout/MobileHeaderTitle';
+import { MobileBackButton } from '@/components/seller/mobile/MobileBackButton';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
-import { navGroups, type NavFlagKey, type NavItem } from '@/components/layout/SellerSidebar';
+import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
+import { navGroups, DashboardIcon, TodayIcon, type NavFlagKey, type NavItem } from '@/components/layout/SellerSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { useTenant } from '@/contexts/TenantContext';
@@ -18,9 +20,11 @@ import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { ROLES } from '@/constants';
 import { cn } from '@/lib/utils';
+import { SELLER_ROUTES, isSalesPath } from '@/lib/seller-routes';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
-const SELLER_MOBILE_PREFETCH_HREFS = ['/dashboard', '/sales-orders', '/customers', '/products'];
+const SELLER_MOBILE_ASSISTANT_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
+const SELLER_MOBILE_ADMIN_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.pulse, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
 const SCROLL_DELTA_THRESHOLD = 8;
 const CHROME_HIDE_AFTER_PX = 48;
 
@@ -46,22 +50,49 @@ function getInitials(value: string | null | undefined) {
 }
 
 function isTransactionsPath(pathname: string) {
-  return pathname.startsWith('/estimates') || pathname.startsWith('/sales-orders') || pathname.startsWith('/invoices');
+  return isSalesPath(pathname);
 }
 
+const SELLER_MOBILE_LANDING_PATHS = new Set([
+  '/dashboard',
+  '/today',
+  '/pulse',
+  '/customers',
+  SELLER_ROUTES.products.root,
+  SELLER_ROUTES.products.brands,
+  SELLER_ROUTES.products.categories,
+  '/brands',
+  '/categories',
+  SELLER_ROUTES.sales.invoices,
+  SELLER_ROUTES.sales.estimates,
+  SELLER_ROUTES.sales.orders,
+  '/invoices',
+  '/estimates',
+  '/sales-orders',
+  SELLER_ROUTES.business.branches,
+  SELLER_ROUTES.business.warehouses,
+  SELLER_ROUTES.business.team,
+  '/locations',
+  '/warehouses',
+  SELLER_ROUTES.market.catalogs,
+  SELLER_ROUTES.market.campaigns,
+  SELLER_ROUTES.market.announcements,
+  SELLER_ROUTES.market.pricing,
+  SELLER_ROUTES.market.customerGroups,
+  SELLER_ROUTES.market.recommendations,
+  '/campaigns',
+  SELLER_ROUTES.settings.general,
+  SELLER_ROUTES.settings.integrations,
+  SELLER_ROUTES.settings.billing,
+  '/buyer-app',
+]);
+
 function isSellerMobileLandingPath(pathname: string) {
-  return (
-    pathname === '/dashboard' ||
-    pathname === '/customers' ||
-    pathname === '/products' ||
-    pathname === '/estimates' ||
-    pathname === '/sales-orders' ||
-    pathname === '/invoices'
-  );
+  return SELLER_MOBILE_LANDING_PATHS.has(pathname);
 }
 
 function isSellerMobileDashboardPath(pathname: string) {
-  return pathname === '/dashboard';
+  return pathname === '/dashboard' || pathname === '/pulse';
 }
 
 function isSellerMobileDeepPath(pathname: string) {
@@ -78,6 +109,23 @@ function getRouteTitle(pathname: string) {
   if (!segment) return 'Seller';
 
   if (action === 'edit') return 'Edit';
+  if (segment === 'today') return 'Today';
+  if (segment === 'pulse') return 'Pulse';
+  if (segment === 'sales') {
+    if (maybeId === 'orders') return 'Orders';
+    if (maybeId === 'estimates') return 'Estimates';
+    return 'Invoices';
+  }
+  if (segment === 'business') {
+    if (maybeId === 'warehouses') return 'Warehouses';
+    if (maybeId === 'team') return 'Team';
+    return 'Branches';
+  }
+  if (segment === 'catalog') return 'Catalog';
+  if (segment === 'catalogs') return 'Catalog';
+  if (segment === 'announcements') return 'Announcements';
+  if (segment === 'pricing') return 'Pricing';
+  if (segment === 'recommendations') return 'Recommendations';
   if (segment === 'sales-orders') return maybeId ? 'Sales Order' : 'Sales Orders';
   if (segment === 'customer-groups') return maybeId ? 'Customer Group' : 'Customer Groups';
   if (segment === 'price-lists') return maybeId ? 'Price List' : 'Price Lists';
@@ -164,13 +212,13 @@ export function SellerMobileTopbar({
   const streamedFeatureAvailability = use(featureAvailabilityPromise);
   const tenantBranding = tenantBrandingOverride ?? streamedTenantBranding;
   const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
+  const headerTitleOverride = useMobileHeaderTitleValue();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
   const { role, isSellerAdmin, isSellerAssistant } = useRole();
-  const posthog = usePostHog();
   const pathname = usePathname();
   const router = useRouter();
   const tenantName = tenantBranding.tenantName || currentTenant?.business_name || 'Tenant';
@@ -203,24 +251,7 @@ export function SellerMobileTopbar({
         </SheetHeader>
 
         <SheetBody className="px-3 py-3">
-          <Button asChild variant="primary" className="mb-3 h-11 w-full justify-center rounded-xl">
-            <a
-              href="/api/buyer/preview/launch"
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => {
-                posthog?.capture('seller_open_buyer_app_clicked', {
-                  tenant_id: currentTenant?.id ?? null,
-                  role: isSellerAdmin ? 'seller_admin' : isSellerAssistant ? 'seller_assistant' : 'seller',
-                  destination: '/api/buyer/preview/launch',
-                  source_surface: 'seller_mobile_menu',
-                });
-              }}
-            >
-              <ExternalLink size={15} />
-              Open Buyer App
-            </a>
-          </Button>
+          <SellerOpenCatalogCta className="mb-3" fullWidth sourceSurface="seller_mobile_menu" />
 
           <nav className="space-y-4">
             {nav.map((group) => (
@@ -294,7 +325,7 @@ export function SellerMobileTopbar({
                 className="mt-1.5 font-semibold leading-[0.96] text-cream-900"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.022em' }}
               >
-                Dashboard
+                Pulse
               </h1>
               <p className="mt-1.5 max-w-[30rem] font-medium leading-5 text-cream-500" style={{ fontSize: 'var(--b-text-sub)', letterSpacing: '-0.01em' }}>
                 {tenantName}
@@ -324,19 +355,12 @@ export function SellerMobileTopbar({
             !chromeVisible && '-translate-y-full',
           )}
         >
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] p-0 text-[var(--fg-2)] transition-colors active:bg-[var(--cream-100)]"
-            aria-label="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
+          <MobileBackButton onClick={() => router.back()} />
           <p
             className="min-w-0 flex-1 truncate text-center font-semibold capitalize leading-tight text-cream-900"
             style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)', letterSpacing: '-0.01em' }}
           >
-            {getRouteTitle(pathname)}
+            {headerTitleOverride ?? getRouteTitle(pathname)}
           </p>
           <span className="h-10 w-10 shrink-0" aria-hidden />
         </header>
@@ -350,17 +374,20 @@ export function SellerMobileTopbar({
 }
 
 const bottomTabs = [
-  { label: 'Dashboard', href: '/dashboard', icon: Home },
-  { label: 'Transactions', href: '/invoices', icon: ShoppingBag },
-  { label: 'Search', href: '/search', icon: Search, center: true },
+  { label: 'Home', href: SELLER_ROUTES.pulse, icon: DashboardIcon, adminOnly: true },
+  { label: 'Today', href: SELLER_ROUTES.today, icon: TodayIcon },
+  { label: 'Search', href: '/search', icon: Search },
+  { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: ShoppingBag },
   { label: 'Customers', href: '/customers', icon: Users },
-  { label: 'Products', href: '/products', icon: Package },
 ];
 
 export function SellerMobileBottomTabs() {
   const pathname = usePathname();
+  const { isSellerAdmin } = useRole();
   const visible = useSellerMobileChromeVisibility(isSellerMobileLandingPath(pathname));
-  useIdleRoutePrefetch(SELLER_MOBILE_PREFETCH_HREFS);
+  useIdleRoutePrefetch(isSellerAdmin ? SELLER_MOBILE_ADMIN_PREFETCH_HREFS : SELLER_MOBILE_ASSISTANT_PREFETCH_HREFS);
+  // Pulse (Home) is seller_admin only; assistants get the remaining tabs.
+  const tabs = bottomTabs.filter((tab) => !tab.adminOnly || isSellerAdmin);
 
   if (!isSellerMobileLandingPath(pathname)) return null;
 
@@ -372,30 +399,23 @@ export function SellerMobileBottomTabs() {
       )}
       aria-label="Seller mobile navigation"
     >
-      <div className="grid min-h-[60px] w-full grid-cols-5 items-stretch">
-        {bottomTabs.map((tab) => {
+      <div
+        className="grid min-h-[60px] w-full items-stretch"
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      >
+        {tabs.map((tab) => {
           const active = isBottomTabActive(pathname, tab.href);
           const Icon = tab.icon;
           return (
             <Pressable key={tab.href} asChild haptic>
               <Link href={tab.href} className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-center">
-                <span
-                  className={cn(
-                    'flex items-center justify-center',
-                    tab.center
-                      ? 'h-10 w-10 rounded-full bg-cream-900 text-white shadow-sm'
-                      : active
-                        ? 'text-ember-500'
-                        : 'text-cream-600',
-                  )}
-                >
-                  <Icon size={tab.center ? 19 : 21} strokeWidth={2} />
+                <span className={cn('flex items-center justify-center', active ? 'text-ember-500' : 'text-cream-600')}>
+                  <Icon size={21} strokeWidth={2} />
                 </span>
                 <span
                   className={cn(
-                    'max-w-full truncate text-[11px] font-semibold leading-tight tracking-0',
+                    'max-w-full truncate text-xs font-semibold leading-tight tracking-0',
                     active ? 'text-ember-500' : 'text-cream-600',
-                    tab.center && 'text-cream-700',
                   )}
                 >
                   {tab.label}

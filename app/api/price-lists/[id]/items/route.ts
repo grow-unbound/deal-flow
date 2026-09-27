@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListItemCreateSchema } from '@/lib/zod';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 export async function GET(
   request: NextRequest,
@@ -291,6 +292,7 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add item' }, { status: 500 });
     }
 
+    revalidatePublicCatalogCache(claims.tenant_id);
     return NextResponse.json({ item }, { status: 201 });
   }
 
@@ -331,5 +333,6 @@ export async function POST(
     ts: new Date().toISOString(),
   });
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ item }, { status: 201 });
 }

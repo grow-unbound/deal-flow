@@ -3,6 +3,7 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { DetailCardRenderer, PerformanceCard, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
+import { CHART_CATEGORICAL_PALETTE } from '@/lib/theme/chart-colors';
 import { formatNumberValue } from '@/lib/utils';
 
 interface CustomerPerformanceTabProps {
@@ -10,7 +11,7 @@ interface CustomerPerformanceTabProps {
   performanceCards?: unknown[];
 }
 
-const MIX_COLORS = ['#204A41', '#B7703D', '#A59984', '#C07A43'];
+const MIX_COLORS = CHART_CATEGORICAL_PALETTE.slice(0, 4);
 
 function monthTick(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
@@ -40,7 +41,7 @@ export function CustomerPerformanceTab({ performance, performanceCards }: Custom
   }
 
   return (
-    <section className="mt-5 grid grid-cols-2 gap-4">
+    <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
       <PerformanceCard title="Sales and demand history" subtitle="Last 12 months" bodyClassName="p-0">
         <TrendFrame
           emptyTitle="No sales history yet"

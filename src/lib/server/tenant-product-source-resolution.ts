@@ -4,6 +4,7 @@ type CatalogBrandSource = {
   id: string;
   name: string;
   slug: string;
+  logo_url: string | null;
 };
 
 type CatalogCategorySource = {
@@ -16,6 +17,9 @@ type CatalogProductSource = {
   id: string;
   brand_id: string | null;
   category_id: string | null;
+  gst_rate: number | null;
+  hsn_code: string | null;
+  image_urls: string[] | null;
   brands: CatalogBrandSource | null;
   categories: CatalogCategorySource | null;
 };
@@ -23,6 +27,9 @@ type CatalogProductSource = {
 export type ImportedProductTenantLinks = {
   tenant_brand_id: string | null;
   tenant_category_id: string | null;
+  gst_rate: number | null;
+  hsn_code: string | null;
+  image_urls: string[] | null;
 };
 
 function slugify(value: string) {
@@ -47,7 +54,7 @@ async function loadCatalogProductSource(db: DbClient, masterProductId: string): 
   const { data, error } = await db
     .schema('catalog')
     .from('products')
-    .select('id, brand_id, category_id, brands(id, name, slug), categories(id, name, slug)')
+    .select('id, brand_id, category_id, gst_rate, hsn_code, image_urls, brands(id, name, slug, logo_url), categories(id, name, slug)')
     .eq('id', masterProductId)
     .maybeSingle();
 
@@ -112,6 +119,7 @@ async function ensureTenantBrandForCatalogBrand(
       tenant_id: tenantId,
       master_brand_id: sourceBrand.id,
       display_name_override: sourceBrand.name,
+      logo_url: sourceBrand.logo_url ?? null,
       slug: candidateSlugs[0] ?? slugify(sourceBrand.name),
       is_active: true,
       created_by: actorId,
@@ -270,5 +278,8 @@ export async function resolveImportedProductTenantLinks(
   return {
     tenant_brand_id: tenantBrandId ?? null,
     tenant_category_id: tenantCategoryId ?? null,
+    gst_rate: source.gst_rate ?? null,
+    hsn_code: source.hsn_code ?? null,
+    image_urls: source.image_urls ?? null,
   };
 }

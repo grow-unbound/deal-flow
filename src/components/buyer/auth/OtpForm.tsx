@@ -52,7 +52,7 @@ export function OtpForm({ phone, onSubmit, loading = false, error }: OtpFormProp
   }
 
   const digitInputCls =
-    'w-10 h-12 text-center text-h4 font-display rounded-md border border-cream-300 bg-cream-50 text-cream-900 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50 caret-transparent';
+    'w-10 h-12 text-center text-h4 font-display rounded-md border border-cream-300 bg-[var(--bg-surface)] text-cream-900 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50 caret-transparent';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">

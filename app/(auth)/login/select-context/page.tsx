@@ -4,8 +4,12 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Store, ShoppingBag } from 'lucide-react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { TenantLogo } from '@/components/brand/TenantLogo';
+import { WorkspaceLookbook } from '@/components/buyer/workspace/WorkspaceLookbook';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { parseRequestHost } from '@/lib/storefront-host';
 import type { LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import type { WorkspaceAccount, WorkspaceTenantGroup } from '@/lib/server/workspaces';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -61,54 +65,145 @@ function accountSecondaryLine(ctx: LoginOtpCandidate) {
 
 function groupByTenant(contexts: LoginOtpCandidate[]) {
   const order: string[] = [];
-  const groups = new Map<string, { tenantName: string; accounts: LoginOtpCandidate[] }>();
+  const groups = new Map<string, { tenantName: string; tenantSlug: string; logoUrl: string | null; accounts: LoginOtpCandidate[] }>();
   for (const ctx of contexts) {
     const existing = groups.get(ctx.tenant_id);
     if (existing) {
       existing.accounts.push(ctx);
     } else {
       order.push(ctx.tenant_id);
-      groups.set(ctx.tenant_id, { tenantName: ctx.tenant_name, accounts: [ctx] });
+      groups.set(ctx.tenant_id, {
+        tenantName: ctx.tenant_name,
+        tenantSlug: ctx.tenant_slug,
+        logoUrl: ctx.tenant_logo_url,
+        accounts: [ctx],
+      });
     }
   }
   return order.map((tenantId) => ({ tenantId, ...groups.get(tenantId)! }));
+}
+
+function toWorkspaceGroups(groups: ReturnType<typeof groupByTenant>): WorkspaceTenantGroup[] {
+  return groups.map((group) => ({
+    tenant_id: group.tenantId,
+    tenant_name: group.tenantName,
+    tenant_slug: group.tenantSlug,
+    logo_url: group.logoUrl,
+    accounts: group.accounts.map((ctx): WorkspaceAccount => ({
+      buyer_id: ctx.buyer_id ?? ctx.user_id ?? '',
+      business_name: accountDisplayName(ctx),
+      contact_name: accountSecondaryLine(ctx),
+      role: ctx.role,
+      buyer_app_enabled: ctx.buyer_app_enabled,
+    })),
+  }));
+}
+
+function workspaceAccountKey(tenantId: string, account: WorkspaceAccount): string {
+  return `${tenantId}:${account.buyer_id}:${account.role}`;
+}
+
+type ViewMode = 'app' | 'catalog' | 'default';
+
+function useViewMode(): ViewMode {
+  const [mode, setMode] = useState<ViewMode>('default');
+  useEffect(() => {
+    const hostKind = parseRequestHost(window.location.hostname);
+    if (hostKind.kind === 'app') {
+      setMode('app');
+    } else if (hostKind.kind === 'reserved' && hostKind.label === 'catalog') {
+      setMode('catalog');
+    }
+  }, []);
+  return mode;
 }
 
 function SelectContextForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const ref_id = searchParams.get('ref_id') ?? '';
+  const returnTo = searchParams.get('return_to') ?? '';
+  const viewMode = useViewMode();
 
   const [contexts, setContexts] = useState<LoginOtpCandidate[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Load contexts from sessionStorage
   useEffect(() => {
+    let cancelled = false;
+    const applyContexts = (rows: LoginOtpCandidate[]) => {
+      // app.useyukti.in is seller-only now (buyer sessions are bounced off it
+      // entirely) — catalog.useyukti.in is the buyer-only workspace-finder.
+      // Sellers and buyers only ever see their own switcher, never a mixed list.
+      const hostKind = parseRequestHost(window.location.hostname);
+      const scoped = hostKind.kind === 'app'
+        ? rows.filter((ctx) => ctx.kind === 'seller')
+        : (hostKind.kind === 'reserved' && hostKind.label === 'catalog')
+          ? rows.filter((ctx) => ctx.kind === 'buyer')
+          : rows;
+      if (scoped.length === 0) {
+        router.replace('/login');
+        return;
+      }
+      setContexts(dedupeContexts(scoped));
+    };
+
     if (!ref_id) {
       router.replace('/login');
       return;
     }
+
     try {
       const raw = sessionStorage.getItem(SESSION_CONTEXTS_KEY);
-      if (!raw) {
-        router.replace('/login');
-        return;
+      if (raw) {
+        const parsed: LoginOtpCandidate[] = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          applyContexts(parsed);
+          return () => {
+            cancelled = true;
+          };
+        }
       }
-      const parsed: LoginOtpCandidate[] = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        router.replace('/login');
-        return;
-      }
-      setContexts(dedupeContexts(parsed));
     } catch {
-      router.replace('/login');
+      // Fall through to the server-backed ref_id reload below.
     }
+
+    fetch(`/api/auth/phone-otp/contexts?ref_id=${encodeURIComponent(ref_id)}`, { cache: 'no-store' })
+      .then(async (res) => {
+        const data = (await res.json()) as { contexts?: LoginOtpCandidate[]; error?: string };
+        if (!res.ok || !Array.isArray(data.contexts) || data.contexts.length === 0) {
+          throw new Error(data.error ?? 'Session expired. Please log in again.');
+        }
+        return data.contexts;
+      })
+      .then((rows) => {
+        if (!cancelled) applyContexts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace('/login');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [ref_id, router]);
 
   async function handleSelect(ctx: LoginOtpCandidate) {
-    setSelected(contextKey(ctx));
+    if (ctx.kind === 'buyer' && ctx.buyer_app_enabled === false) {
+      void handleRequestAccess(ctx);
+      return;
+    }
+
+    const selectionKey = viewMode === 'catalog'
+      ? workspaceAccountKey(ctx.tenant_id, {
+          buyer_id: ctx.buyer_id ?? ctx.user_id ?? '',
+          business_name: accountDisplayName(ctx),
+          contact_name: accountSecondaryLine(ctx),
+          role: ctx.role,
+        })
+      : contextKey(ctx);
+    setSelected(selectionKey);
     setError('');
     setLoading(true);
 
@@ -122,12 +217,14 @@ function SelectContextForm() {
           tenant_id: ctx.tenant_id,
           buyer_id: ctx.buyer_id,
           role: ctx.role,
+          return_to: returnTo || undefined,
         }),
       });
 
       const data: {
         success?: boolean;
         redirect?: string;
+        handoff_url?: string;
         session?: SessionPayload;
         error?: string;
       } = await res.json();
@@ -136,6 +233,21 @@ function SelectContextForm() {
         setError(data.error ?? 'Selection failed. Please try again.');
         setSelected(null);
         setLoading(false);
+        return;
+      }
+
+      // Cross-origin handoff: picked a tenant this browser has no session
+      // for yet (e.g. chosen from catalog.useyukti.in) — redeem the single-use
+      // link on that tenant's own origin instead of setting a session here.
+      if (data.handoff_url) {
+        if (data.session?.access_token && data.session?.refresh_token) {
+          await supabaseBrowser.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        }
+        try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
+        window.location.assign(data.handoff_url);
         return;
       }
 
@@ -166,6 +278,73 @@ function SelectContextForm() {
     }
   }
 
+  async function handleRequestAccess(ctx: LoginOtpCandidate) {
+    if (ctx.kind !== 'buyer') return;
+
+    const selectionKey = viewMode === 'catalog'
+      ? workspaceAccountKey(ctx.tenant_id, {
+          buyer_id: ctx.buyer_id ?? ctx.user_id ?? '',
+          business_name: accountDisplayName(ctx),
+          contact_name: accountSecondaryLine(ctx),
+          role: ctx.role,
+        })
+      : contextKey(ctx);
+    setSelected(selectionKey);
+    setError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/phone-otp/select-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ref_id,
+          kind: ctx.kind,
+          tenant_id: ctx.tenant_id,
+          buyer_id: ctx.buyer_id,
+          role: ctx.role,
+          return_to: returnTo || undefined,
+          request_access: true,
+        }),
+      });
+
+      const data: {
+        success?: boolean;
+        redirect?: string;
+        handoff_url?: string;
+        session?: SessionPayload;
+        error?: string;
+      } = await res.json();
+
+      if (!res.ok || !data.success) {
+        setError(data.error ?? 'Could not open the request form. Please try again.');
+        setSelected(null);
+        setLoading(false);
+        return;
+      }
+
+      if (data.handoff_url) {
+        try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
+        window.location.assign(data.handoff_url);
+        return;
+      }
+
+      if (data.session?.access_token && data.session?.refresh_token) {
+        await supabaseBrowser.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+
+      try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
+      window.location.assign(data.redirect ?? '/onboarding');
+    } catch {
+      setError('Network error. Please check your connection and try again.');
+      setSelected(null);
+      setLoading(false);
+    }
+  }
+
   if (!contexts) {
     return (
       <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
@@ -181,29 +360,102 @@ function SelectContextForm() {
     );
   }
 
+  const groups = groupByTenant(contexts);
+  const workspaceGroups = toWorkspaceGroups(groups);
+  const candidateByAccountKey = new Map<string, LoginOtpCandidate>();
+  for (const group of groups) {
+    for (let i = 0; i < group.accounts.length; i += 1) {
+      const ctx = group.accounts[i];
+      const account = workspaceGroups.find((t) => t.tenant_id === group.tenantId)!.accounts[i];
+      candidateByAccountKey.set(workspaceAccountKey(group.tenantId, account), ctx);
+    }
+  }
+
+  const heading = viewMode === 'catalog' ? 'Choose a catalog' : 'Choose account';
+  const subheading = viewMode === 'catalog'
+    ? "Your number is linked to buyer accounts with these sellers. Pick one to continue."
+    : 'Your number is linked to multiple accounts. Select one to continue.';
+
+  const errorBanner = error && (
+    <p className="mt-4 text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{error}</p>
+  );
+
+  const backLink = (
+    <div className="mt-6 pt-4 border-t border-cream-200 text-center">
+      <button
+        type="button"
+        onClick={() => router.replace('/login')}
+        className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+      >
+        ← Back to login
+      </button>
+    </div>
+  );
+
+  // catalog.useyukti.in — lookbook grid: one card per seller, buyer accounts
+  // (usually just one) as sub-rows inside the card. Breaks out of the shared
+  // (auth) layout's narrow max-w-md wrapper deliberately, via the standard
+  // "100vw + recenter" technique, since this is the one auth screen meant to
+  // read as a wide, visual gallery rather than a narrow form.
+  if (viewMode === 'catalog') {
+    return (
+      <div className="relative left-1/2 w-dvw -translate-x-1/2 px-4 sm:px-6">
+        <div className="mx-auto max-w-[1440px]">
+          <div className="mb-7 flex justify-center">
+            <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+          </div>
+          <h1 className="mb-1 text-center font-display text-h3 text-cream-900">{heading}</h1>
+          <p className="mb-8 text-center text-body-sm text-cream-600">{subheading}</p>
+
+          <WorkspaceLookbook
+            tenants={workspaceGroups}
+            pendingAccountKey={loading ? selected : null}
+            selectedAccountKey={selected}
+            onSelectAccount={(tenant, account) => {
+              const ctx = candidateByAccountKey.get(workspaceAccountKey(tenant.tenant_id, account));
+              if (ctx) void handleSelect(ctx);
+            }}
+            onRequestAccess={(tenant, account) => {
+              const ctx = candidateByAccountKey.get(workspaceAccountKey(tenant.tenant_id, account));
+              if (ctx) void handleRequestAccess(ctx);
+            }}
+          />
+
+          {errorBanner}
+          {backLink}
+        </div>
+      </div>
+    );
+  }
+
+  // app.useyukti.in (seller-only) and the default/tenant-host case (may mix
+  // kinds) — the original narrow list, now with a real tenant logo instead of
+  // a generic icon where one's known.
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
       <div className="mb-7 flex justify-center">
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      <h1 className="text-h3 font-display text-cream-900 mb-1">Choose account</h1>
-      <p className="text-body-sm text-cream-600 mb-6">
-        Your number is linked to multiple accounts. Select one to continue.
-      </p>
+      <h1 className="text-h3 font-display text-cream-900 mb-1">{heading}</h1>
+      <p className="text-body-sm text-cream-600 mb-6">{subheading}</p>
 
       <div className="space-y-5">
-        {groupByTenant(contexts).map((group) => (
+        {groups.map((group) => (
           <div key={group.tenantId}>
-            <p className="text-caption font-semibold uppercase tracking-wide text-cream-500 mb-2 truncate">
-              {group.tenantName}
-            </p>
+            <div className="mb-2 flex items-center gap-2">
+              <TenantLogo name={group.tenantName} logoUrl={group.logoUrl} size={22} shape="square" />
+              <p className="text-caption font-semibold uppercase tracking-wide text-cream-500 truncate">
+                {group.tenantName}
+              </p>
+            </div>
             <div className="space-y-2">
               {group.accounts.map((ctx) => {
                 const key = contextKey(ctx);
                 const isSelected = selected === key;
                 const isDisabled = loading;
                 const Icon = ctx.kind === 'seller' ? Store : ShoppingBag;
+                const isBuyerDisabled = ctx.kind === 'buyer' && ctx.buyer_app_enabled === false;
 
                 return (
                   <button
@@ -235,7 +487,7 @@ function SelectContextForm() {
                         </div>
                       </div>
                       <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
-                        {roleBadge(ctx.role)}
+                        {isBuyerDisabled ? 'Request access' : roleBadge(ctx.role)}
                       </span>
                     </div>
                     {isSelected && loading && (
@@ -249,21 +501,8 @@ function SelectContextForm() {
         ))}
       </div>
 
-      {error && (
-        <p className="mt-4 text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-6 pt-4 border-t border-cream-200 text-center">
-        <button
-          type="button"
-          onClick={() => router.replace('/login')}
-          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-        >
-          ← Back to login
-        </button>
-      </div>
+      {errorBanner}
+      {backLink}
     </div>
   );
 }

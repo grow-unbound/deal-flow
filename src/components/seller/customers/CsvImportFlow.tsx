@@ -295,7 +295,7 @@ export function CsvImportFlow() {
                       {row.valid ? (
                         <span className="text-teal-600 font-medium">Valid</span>
                       ) : (
-                        <span className="text-danger-600 text-caption">{row.error}</span>
+                        <span className="text-danger-500 text-caption">{row.error}</span>
                       )}
                     </td>
                   </tr>

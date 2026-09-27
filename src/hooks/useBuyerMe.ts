@@ -3,16 +3,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_REFERENCE_QUERY_STALE_TIME, BUYER_REFERENCE_QUERY_GC_TIME } from '@/lib/query-navigation';
+import type { CatalogAccessMode, CatalogPricingMode } from '@/lib/server/public-catalog';
 
 export interface BuyerMeData {
-  mode: 'buyer' | 'preview';
+  mode: 'buyer' | 'preview' | 'guest' | 'pending';
   buyer_id: string;
   business_name: string;
   contact_name: string;
   phone: string;
   gstin: string | null;
   session_person_name: string | null;
-  session_person_kind: 'buyer' | 'buyer_user' | 'preview';
+  session_person_kind: 'buyer' | 'buyer_user' | 'preview' | 'guest';
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -54,10 +55,30 @@ export interface BuyerMeData {
     enabled: boolean;
     block_order_on_oos: boolean;
   };
+  buyer_catalog?: {
+    id: string | null;
+    pricing_mode: CatalogPricingMode | null;
+    access_mode: CatalogAccessMode | null;
+    public_browse_allowed: boolean;
+    collect_target_unit_price_range: boolean;
+  };
   whatsapp_consent_required: boolean;
+  /** Guest-only. The tenant's public-catalog pricing mode — null for buyer/preview. */
+  guest_pricing_mode?: CatalogPricingMode | null;
+  /** mode:'pending' only — self-registered, awaiting seller approval. */
+  pending?: {
+    intake_submitted: boolean;
+    is_returning_yukti_user: boolean;
+    seller_whatsapp_number: string | null;
+    prefill_full_name: string | null;
+    prefill_email: string | null;
+    onboarding_status: 'pending_approval' | 'needs_more_info' | 'approved' | 'declined' | null;
+    missing_fields: string[] | null;
+    declined_reason: string | null;
+  };
 }
 
-export function useBuyerMe() {
+export function useBuyerMe(options: { enabled?: boolean } = {}) {
   return useQuery<BuyerMeData>({
     queryKey: ['buyer-me'],
     queryFn: async () => {
@@ -67,5 +88,6 @@ export function useBuyerMe() {
     },
     staleTime: BUYER_REFERENCE_QUERY_STALE_TIME,
     gcTime: BUYER_REFERENCE_QUERY_GC_TIME,
+    enabled: options.enabled ?? true,
   });
 }

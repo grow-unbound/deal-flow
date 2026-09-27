@@ -116,6 +116,32 @@ const TRANSACTIONAL_TEMPLATE_VARIABLES: Record<string, string[]> = {
     'buyer_name',
     'seller_name',
   ],
+  access_request_received_buyer: [
+    'buyer_name',
+    'seller_name',
+  ],
+  access_request_received_seller_business: [
+    'seller_name',
+    'buyer_name',
+  ],
+  access_request_received_seller_individual: [
+    'seller_name',
+    'buyer_name',
+  ],
+  access_request_approved_buyer: [
+    'buyer_name',
+    'seller_name',
+  ],
+  access_more_info_needed_buyer: [
+    'buyer_name',
+    'seller_name',
+    'missing_fields',
+  ],
+  access_request_declined_buyer: [
+    'buyer_name',
+    'seller_name',
+    'seller_phone_number',
+  ],
 };
 
 function normalizeValue(value: string | null | undefined): string {

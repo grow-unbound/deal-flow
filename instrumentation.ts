@@ -16,9 +16,19 @@ export async function register() {
   }
 }
 
+// Next.js implements redirect()/notFound() by throwing a special error with a
+// `digest` starting "NEXT_REDIRECT"/"NEXT_NOT_FOUND" — App Router's own control
+// flow, not an application failure. @sentry/nextjs@10's captureRequestError
+// doesn't filter these out, so left alone they show up in Sentry as errors.
+function isNextControlFlowError(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+  return typeof digest === 'string' && (digest.startsWith('NEXT_REDIRECT') || digest.startsWith('NEXT_NOT_FOUND'));
+}
+
 export const onRequestError = isDev
   ? undefined
   : async (...args: Parameters<typeof import('@sentry/nextjs').captureRequestError>) => {
+      if (isNextControlFlowError(args[0])) return;
       const Sentry = await import('@sentry/nextjs');
       return Sentry.captureRequestError(...args);
     };

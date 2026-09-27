@@ -90,9 +90,9 @@ export function SyncWindowDialog({
                   maxDate={new Date()}
                   mode="overlay"
                   showSummary={false}
-                  triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-[#B5642F] focus-visible:ring-2 focus-visible:ring-[#B5642F]/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
+                  triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-ember-400 focus-visible:ring-2 focus-visible:ring-ember-400/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
                 />
-                <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
+                <div className="flex items-start gap-2 rounded-lg border border-warning-50 bg-warning-50 px-3 py-2 text-xs text-warning-700">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
                     Re-fetches everything from this date regardless of what&apos;s already synced — this can take up to 30 minutes depending on data volume.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { guardPendingBuyerAccount } from '@/lib/server/buyer-pending-guard';
 import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
 
 export interface BuyerInvoiceItem {
@@ -44,6 +45,8 @@ export async function GET(
     if (!profile?.context.tenant_id || !profile.buyer?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const pendingBlock = guardPendingBuyerAccount(profile);
+    if (pendingBlock) return pendingBlock;
 
     const { tenant_id } = profile.context;
     const buyer_id = profile.buyer.id;
@@ -65,7 +68,12 @@ export async function GET(
     }
 
     const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'invoices', id);
-    const subtotal = Number(invoice.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const items: BuyerInvoiceItem[] = rawItems.map((item) => ({
+      ...item,
+      unit_price: item.unit_price ?? 0,
+      line_total: item.line_total ?? 0,
+    }));
+    const subtotal = Number(invoice.subtotal ?? items.reduce((sum, i) => sum + i.line_total, 0));
     const tax_total = Number(invoice.tax_amount ?? Math.max(0, Number(invoice.total_amount) - subtotal));
 
     const detail: BuyerInvoiceDetail = {
@@ -79,7 +87,7 @@ export async function GET(
       outstanding_balance: invoice.outstanding_balance != null ? Number(invoice.outstanding_balance) : null,
       subtotal,
       tax_total,
-      items: rawItems,
+      items,
     };
 
     return NextResponse.json({ invoice: detail }, { headers: BUYER_CACHE_PERSONAL });

@@ -11,6 +11,8 @@ import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsO
 import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { safeErrorMessage } from '@/lib/server/safe-error-message';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
+import { syncDefaultPriceListAssignment } from '@/lib/server/price-list-default-assignment';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -383,6 +385,8 @@ export async function POST(request: NextRequest) {
 
   const isSimpleForm = simpleParsed.success;
   const data: any = isSimpleForm ? simpleParsed.data : composerParsed!.data;
+  const shouldSyncDefaultAssignment =
+    isSimpleForm && typeof body === 'object' && body !== null && Object.prototype.hasOwnProperty.call(body, 'default_pricelist');
   if (!isSimpleForm && data.save_mode === 'publish' && data.item_prices.length === 0) {
     return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
   }
@@ -522,6 +526,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (shouldSyncDefaultAssignment) {
+    try {
+      await syncDefaultPriceListAssignment(db, {
+        tenantId: claims.tenant_id,
+        priceListId: priceList.id,
+        userId: claims.sub,
+        enabled: data.default_pricelist === true,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: safeErrorMessage(error, 'Price list was created but default assignment could not be saved') },
+        { status: 500 },
+      );
+    }
+  }
+
   await db.schema('app').from('audit_log').insert({
     tenant_id: claims.tenant_id,
     actor_user_id: claims.sub,
@@ -561,5 +581,6 @@ export async function POST(request: NextRequest) {
     // Analytics is non-blocking for price list creation.
   }
 
+  revalidatePublicCatalogCache(claims.tenant_id);
   return NextResponse.json({ price_list: priceList }, { status: 201 });
 }

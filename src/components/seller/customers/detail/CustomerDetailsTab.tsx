@@ -42,7 +42,7 @@ export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <h3 className="font-display text-md text-cream-950">Buyer details</h3>
 
-        <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
           <Row label="Business name" value={details.business_name} />
           <Row label="Contact name" value={details.contact_name ?? '—'} />
           <Row label="Phone" value={details.phone ?? '—'} mono />
@@ -55,10 +55,10 @@ export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
         </div>
       </article>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <article className="rounded-[14px] border border-cream-300 bg-white p-5">
           <h3 className="font-display text-md text-cream-950">Location</h3>
-          <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+          <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
             <Row label="City" value={details.city ?? '—'} />
             <Row label="State" value={details.state ?? '—'} />
             <Row label="Pincode" value={details.pincode ?? '—'} mono />
@@ -70,7 +70,7 @@ export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
 
         <article className="rounded-[14px] border border-cream-300 bg-white p-5">
           <h3 className="font-display text-md text-cream-950">Commercials</h3>
-          <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+          <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
             {creditEnabled ? (
               <Row
                 label="Credit limit"

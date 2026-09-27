@@ -16,6 +16,7 @@ export const TenantAddressSchema = z.object({
 
 export const TenantSettingsBusinessSchema = z.object({
   company_name: z.string().min(1, 'Company name is required').max(200),
+  tagline: z.string().max(120).default(''),
   gstin: GstinSchema,
   logo_url: z.string().url().nullable().optional(),
   address: TenantAddressSchema,

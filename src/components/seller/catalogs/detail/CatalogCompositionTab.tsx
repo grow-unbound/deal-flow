@@ -208,7 +208,7 @@ export function CatalogCompositionTab({ catalogId, summary, composer, headerName
             <p className="text-sm text-cream-700">Priced via pricelist. Change pricing source from Edit to set campaign-specific pricing.</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium text-cream-800">Pricing mode</label>
                   <Select

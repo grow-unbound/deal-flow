@@ -56,7 +56,7 @@ export function BuyerTransactionPlacedPage({
         className="sticky top-0 z-20 flex items-center gap-3 px-4"
         style={{
           height: 'var(--header-h, 56px)',
-          background: 'rgba(253, 251, 247, 0.92)',
+          background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderBottom: '1px solid var(--border-1)',

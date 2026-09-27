@@ -267,8 +267,8 @@ export function CategoriesSettingsClient() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deactivateTarget ? (
-            <div className="rounded-md border border-warning-500/30 bg-warning-50 px-3 py-3 text-base text-warning-800">
-              <span className="font-medium text-warning-900">{deactivateTarget.name}</span>
+            <div className="rounded-md border border-warning-500/30 bg-warning-50 px-3 py-3 text-base text-warning-700">
+              <span className="font-medium text-warning-700">{deactivateTarget.name}</span>
               {deactivateTarget.slug ? (
                 <span className="ml-2 font-mono text-sm text-warning-700/90">{deactivateTarget.slug}</span>
               ) : null}
@@ -277,7 +277,7 @@ export function CategoriesSettingsClient() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-danger-500 text-white hover:bg-danger-600"
+              className="bg-danger-500 text-white hover:bg-danger-500"
               disabled={!deactivateTarget || busy}
               onClick={(e) => {
                 e.preventDefault();

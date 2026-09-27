@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
-import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
@@ -21,6 +20,8 @@ import { resolveAuthoritativePrices } from '@/lib/server/buyer-price-resolution'
 import { getSelectedBuyerDeliveryFromRequest, resolveTenantScopedLocationId } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
+import { syncOrderEntrySafe } from '@/lib/server/inbox-entries';
+import { captureAuthoritativeBuyerDemand } from '@/lib/server/buyer-posthog-events';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -124,6 +125,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     const profile = await requireBuyerAccessProfile(request);
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Defense-in-depth: requireBuyerAccessProfile deliberately lets a
+    // `buyer_pending` session read its own row (so /api/buyer/me and the
+    // intake screen work), but this route uses the service-role client for
+    // the actual order insert, which bypasses RLS entirely — so RLS's own
+    // app.is_buyer() gate (which excludes buyer_pending) is never consulted
+    // here. Must reject explicitly before any further processing, matching
+    // the pattern in app/api/buyer/me/route.ts and
+    // app/api/buyer/onboarding/intake/route.ts.
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { success: false, error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
     }
 
     const context = profile.context;
@@ -270,6 +288,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         subtotal,
         tax_amount,
         total_amount,
+        item_count: acceptedItems.length,
         notes: notes ?? null,
         placed_at,
         created_by: placed_by,
@@ -301,29 +320,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Failed to create order items' }, { status: 500 });
     }
 
+    syncOrderEntrySafe(db as any, typed.id);
+
     // Fire-and-forget: the order row above is already committed (and is what the
     // realtime channel notifies on), so don't hold the HTTP response hostage on
     // PostHog or the outbound WhatsApp API — that made the buyer's own response
     // arrive noticeably after the realtime "order created" toast for the same row.
-    try {
-      const ph = getPostHogClient();
-      ph.capture({
-        distinctId: buyer_id,
-        event: 'order_placed',
-        properties: {
-          tenant_id,
-          buyer_id,
-          order_id: typed.id,
-          order_number: typed.order_number,
-          item_count: acceptedItems.length,
-          total_amount,
-          source: 'buyer_app',
-        },
-      });
-      void ph.flush().catch(() => {});
-    } catch {
-      // non-blocking
-    }
+    captureAuthoritativeBuyerDemand({
+      request,
+      event: 'order_placed',
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      documentId: typed.id,
+      documentNumber: typed.order_number,
+      documentType: 'order',
+      totalAmount: total_amount,
+      itemCount: acceptedItems.length,
+      lineProductIds: acceptedItems.map((item) => item.tenant_product_id),
+      campaignId: resolvedCampaignId,
+    });
 
     const whatsappDispatched = !deferDocumentNumber && Boolean(typed.order_number);
     if (!deferDocumentNumber && typed.order_number) {
@@ -380,6 +395,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const profile = await requireBuyerAccessProfile(request);
     if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Defense-in-depth: see the matching comment in POST above — this GET
+    // also uses the service-role client (supabaseAdmin) for the actual
+    // orders read, bypassing RLS's app.is_buyer() gate entirely.
+    // Seller preview bypasses buyer_app_enabled (see buyer-access.ts) — a
+    // preview session must be allowed through even for a pending/disabled buyer.
+    if (profile.context.mode !== 'preview' && profile.buyer && profile.buyer.buyer_app_enabled === false) {
+      return NextResponse.json(
+        { error: 'Your account is pending approval. You cannot place or view orders yet.' },
+        { status: 403 },
+      );
     }
 
     if (!supabaseAdmin) {

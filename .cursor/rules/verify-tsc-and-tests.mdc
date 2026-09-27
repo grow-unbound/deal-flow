@@ -1,0 +1,13 @@
+---
+description: After every code change, TypeScript and tests must pass before the task is done.
+alwaysApply: true
+---
+
+# Mandatory verification after every change
+
+Do not finish a coding turn until both succeed:
+
+1. `npx tsc --noEmit` — zero errors.
+2. Focused Vitest for touched areas (`pnpm exec vitest run <files>`). If the change is cross-cutting (auth, middleware, catalog, pricing), run those test files together.
+
+If tsc or tests fail, fix them in the same turn. Do not skip because the change “looks small.”

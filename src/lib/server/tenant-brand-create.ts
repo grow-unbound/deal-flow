@@ -28,6 +28,7 @@ function buildTenantBrandInsert(
     displayName: string;
     slug?: string | null;
     description?: string | null;
+    logoUrl?: string | null;
   },
 ) {
   return {
@@ -36,7 +37,7 @@ function buildTenantBrandInsert(
     display_name_override: emptyToNull(options.displayName),
     slug: emptyToNull(options.slug),
     description: emptyToNull(options.description),
-    logo_url: emptyToNull(input.logo_url),
+    logo_url: emptyToNull(options.logoUrl),
     margin_pct: nullableNumber(input.margin_pct),
     exclusivity: input.exclusivity ?? false,
     external_ref: emptyToNull(input.external_ref),
@@ -144,6 +145,7 @@ export async function createTenantBrand(
             masterBrand.name,
           slug: parsed.data.slug ?? masterBrand.slug,
           description: parsed.data.description ?? masterBrand.description,
+          logoUrl: emptyToNull(parsed.data.logo_url) ?? masterBrand.logo_url,
         }),
       )
       .select('*')
@@ -197,6 +199,7 @@ export async function createTenantBrand(
         displayName: parsed.data.name,
         slug: parsed.data.slug,
         description: parsed.data.description,
+        logoUrl: parsed.data.logo_url,
       }),
     )
     .select('*')

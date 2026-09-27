@@ -11,6 +11,14 @@ import {
 } from 'recharts';
 import { DetailCardRenderer, MetricGrid, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { CategoryDetailOverview } from '@/hooks/useCategories';
+import {
+  CHART_AXIS_TICK_COLOR,
+  CHART_TICK_FONT_SIZE,
+  CHART_TOOLTIP_BORDER_COLOR,
+  CHART_TOOLTIP_CURSOR_FILL,
+  CHART_TREND_HIGHLIGHT,
+  CHART_TREND_MUTED,
+} from '@/lib/theme/chart-colors';
 import { formatNumberValue } from '@/lib/utils';
 
 interface CategoryOverviewTabProps {
@@ -34,8 +42,8 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
   }
 
   return (
-    <div className="mt-6 grid grid-cols-5 gap-4">
-      <div className="col-span-3 space-y-4">
+    <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-5">
+      <div className="space-y-4 xl:col-span-3">
         <PerformanceCard title="Sales over time" subtitle="6-week rolling window" bodyClassName="p-5">
           <TrendFrame
             emptyTitle="No sales over time yet"
@@ -45,7 +53,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
                 <BarChart data={trend_weekly} barSize={28} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
                   <XAxis
                     dataKey="week_label"
-                    tick={{ fontSize: 11, fill: '#9B9285' }}
+                    tick={{ fontSize: CHART_TICK_FONT_SIZE, fill: CHART_AXIS_TICK_COLOR }}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -54,17 +62,17 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
                     formatter={(v: number) => [formatNumberValue(v, 'CURRENCY_THRESHOLD'), 'GMV']}
                     contentStyle={{
                       borderRadius: 10,
-                      border: '1px solid #E8E3DC',
+                      border: `1px solid ${CHART_TOOLTIP_BORDER_COLOR}`,
                       fontSize: 12,
                       padding: '6px 10px',
                     }}
-                    cursor={{ fill: '#F5F2EE' }}
+                    cursor={{ fill: CHART_TOOLTIP_CURSOR_FILL }}
                   />
                   <Bar dataKey="gmv" radius={[4, 4, 0, 0]}>
                     {trend_weekly.map((_, i) => (
                       <Cell
                         key={i}
-                        fill={i === trend_weekly.length - 1 ? '#346A5C' : '#C5DDD8'}
+                        fill={i === trend_weekly.length - 1 ? CHART_TREND_HIGHLIGHT : CHART_TREND_MUTED}
                       />
                     ))}
                   </Bar>
@@ -92,7 +100,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
         )}
       </div>
 
-      <div className="col-span-2 space-y-3">
+      <div className="space-y-3 xl:col-span-2">
         <p className="text-sm font-medium text-cream-700">Product action list</p>
         <MetricGrid
           className="mt-0"

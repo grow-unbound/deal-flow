@@ -98,7 +98,7 @@ describe('zoho warehouse sync', () => {
 
   it('publishes the right OAuth scopes per Zoho integration type', () => {
     expect(getZohoOAuthScopes('zoho_books')).toBe(
-      'ZohoBooks.contacts.ALL,ZohoBooks.items.ALL,ZohoBooks.salesorders.ALL,ZohoBooks.invoices.ALL,ZohoBooks.estimates.ALL,ZohoBooks.settings.ALL',
+      'ZohoBooks.contacts.ALL,ZohoBooks.items.ALL,ZohoBooks.salesorders.ALL,ZohoBooks.invoices.ALL,ZohoBooks.estimates.ALL,ZohoBooks.settings.ALL,ZohoBooks.customerpayments.ALL,ZohoBooks.bills.READ',
     );
     expect(getZohoOAuthScopes('zoho_inventory')).toBe('ZohoInventory.fullaccess.all,ZohoInventory.settings.READ');
   });

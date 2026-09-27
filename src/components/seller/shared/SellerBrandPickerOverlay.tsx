@@ -181,7 +181,7 @@ export function SellerBrandPickerOverlay({
                       type="button"
                       onClick={() => toggleBrandSelection(brand.id)}
                       className={cn(
-                        'flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                        'flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-2.5 text-left transition-colors',
                         checked ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
                       )}
                     >

@@ -26,10 +26,10 @@ function ProductCarouselSkeletonCards({ count = 3 }: { count?: number }) {
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
-          className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} ${BUYER_CARD_RADIUS_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-cream-50`}
+          className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} ${BUYER_CARD_RADIUS_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)]`}
         >
           <div className="aspect-square animate-pulse bg-cream-100" />
-          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+          <div className="bg-[var(--bg-surface)] px-3 pb-3 pt-2.5">
             <div className={`${BUYER_TWO_LINE_TITLE_CLASS} animate-pulse rounded bg-cream-200`} />
             <div className="mt-0.5 h-3.5 w-2/5 animate-pulse rounded bg-cream-200" />
             <div className="mt-2 h-5 w-24 animate-pulse rounded bg-cream-200" />
@@ -54,8 +54,8 @@ function SpecRowSkeleton({ isLast }: { isLast?: boolean }) {
 
 export function ProductDetailLoadingSkeleton() {
   return (
-    <div className="flex min-h-[50dvh] flex-col bg-cream-100 pb-28" role="status" aria-label="Loading product">
-      <div className="sticky top-0 z-[15] min-h-14 border-b border-cream-200 bg-cream-100/95 px-3 py-2 backdrop-blur-sm">
+    <div className="flex min-h-[50dvh] flex-col bg-[var(--bg-page)] pb-28" role="status" aria-label="Loading product">
+      <div className="sticky top-0 z-[15] min-h-14 border-b border-cream-200 bg-[var(--bg-surface)] px-3 py-2 backdrop-blur-sm">
         <div className="flex min-h-10 items-center gap-2">
           <div className="h-10 w-10 animate-pulse rounded-lg border border-cream-200 bg-cream-100" />
           <span
@@ -98,7 +98,7 @@ export function ProductDetailLoadingSkeleton() {
             <span className="text-base font-semibold text-[var(--cream-900)]">Product Details</span>
             <div className="h-5 w-5 animate-pulse rounded bg-cream-200" />
           </div>
-          <div className={`overflow-hidden ${BUYER_CARD_RADIUS_CLASS} border border-cream-200 bg-cream-50`}>
+          <div className={`overflow-hidden ${BUYER_CARD_RADIUS_CLASS} border border-cream-200 bg-[var(--bg-surface)]`}>
             <SpecRowSkeleton />
             <SpecRowSkeleton />
             <SpecRowSkeleton />
@@ -119,7 +119,7 @@ export function ProductDetailLoadingSkeleton() {
       </div>
 
       <BuyerFixedFooter
-        className="left-1/2 w-full -translate-x-1/2 border-t border-cream-200 bg-cream-100/95 px-3 py-3"
+        className="left-1/2 w-full -translate-x-1/2 border-t border-cream-200 bg-[var(--bg-surface)] px-3 py-3"
         style={{
           maxWidth: BUYER_PREVIEW_MAX_WIDTH,
           paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',

@@ -837,7 +837,7 @@ export function AddProductSheet({
                     name="internal_sku"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
-                        <FormLabel>Internal SKU <span className="text-red-500">*</span></FormLabel>
+                        <FormLabel>Internal SKU <span className="text-danger-500">*</span></FormLabel>
                       <FormControl>
                           <Input
                             {...field}
@@ -1003,7 +1003,7 @@ export function AddProductSheet({
                     name="mrp"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
-                        <FormLabel>MRP <span className="text-red-500">*</span></FormLabel>
+                        <FormLabel>MRP <span className="text-danger-500">*</span></FormLabel>
                         <FormControl>
                           <InrInput
                             id="mrp"
@@ -1022,7 +1022,7 @@ export function AddProductSheet({
                     name="base_selling_price"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
-                        <FormLabel>Base selling price <span className="text-red-500">*</span></FormLabel>
+                        <FormLabel>Base selling price <span className="text-danger-500">*</span></FormLabel>
                         <FormControl>
                           <InrInput
                             id="base_selling_price"
@@ -1103,7 +1103,7 @@ export function AddProductSheet({
                         variant="ghost"
                         size="icon"
                         onClick={() => removeAttr(idx)}
-                        className="shrink-0 text-cream-500 hover:text-red-600"
+                        className="shrink-0 text-cream-500 hover:text-danger-500"
                         aria-label="Remove attribute"
                       >
                         <X size={14} />

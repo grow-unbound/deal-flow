@@ -20,6 +20,7 @@ import { MutationButton } from '@/components/ui/mutation-button';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Switch } from '@/components/ui/switch';
 import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import {
   Select,
@@ -70,6 +71,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       priority: 0,
       pricing_strategy: 'edit_each',
       strategy_value: null,
+      default_pricelist: false,
       membership_mode: 'manual',
       selected_product_ids: [],
       ...defaultValues,
@@ -86,6 +88,7 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
       priority: 0,
       pricing_strategy: 'edit_each',
       strategy_value: null,
+      default_pricelist: false,
       membership_mode: 'manual',
       selected_product_ids: [],
       ...defaultValues,
@@ -228,6 +231,29 @@ export function PriceListFormSheet({ open, onOpenChange, mode, priceListId, defa
                     <FormLabel>Priority</FormLabel>
                     <FormControl><Input type="number" min={0} {...field} onChange={(event) => field.onChange(event.target.valueAsNumber)} /></FormControl>
                     <p className="text-sm text-cream-600">Pricelists with higher priority get more importance in pricing and supersede lower-priority pricelists or base rate.</p>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </FormBlock>
+              <FormBlock title="Default assignment">
+                <FormField control={form.control} name="default_pricelist" render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-start justify-between gap-4 rounded-[10px] border border-cream-200 bg-white px-4 py-3">
+                      <div className="min-w-0">
+                        <FormLabel>Default pricelist</FormLabel>
+                        <p className="mt-1 text-sm text-cream-600">
+                          Use this when a buyer has no buyer-specific or customer-group pricelist. Turning it on replaces the current default.
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={Boolean(field.value)}
+                          onCheckedChange={field.onChange}
+                          aria-label="Default pricelist"
+                          className="mt-0.5"
+                        />
+                      </FormControl>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )} />

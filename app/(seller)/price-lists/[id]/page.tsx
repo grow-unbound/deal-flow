@@ -24,11 +24,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PriceListProductsTab } from '@/components/seller/price-lists/detail/PriceListProductsTab';
+import { AssignmentsPanel } from '@/components/seller/price-lists/AssignmentsPanel';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListAction, usePriceListDetail } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
 import { formatNumberValue } from '@/lib/utils';
 import { PriceListFormSheet } from '@/components/seller/price-lists/PriceListFormSheet';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 import type { ProductMembershipRules } from '@/lib/zod';
 import { PriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -64,11 +66,13 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.stats?.products_covered ?? 0;
+    const assignmentsCount = priceList?.stats?.assignments_count ?? priceList?.assignments?.length ?? 0;
     return [
       ...(showPerformanceTab ? [{ id: 'performance', label: 'Performance' as const }] : []),
       { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
+      ...(isSellerAdmin ? [{ id: 'assignments', label: 'Assignments' as const, badge: assignmentsCount }] : []),
     ];
-  }, [isSellerAdmin, priceList?.stats?.products_covered, showPerformanceTab]);
+  }, [isSellerAdmin, priceList?.assignments?.length, priceList?.stats?.assignments_count, priceList?.stats?.products_covered, showPerformanceTab]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -90,7 +94,7 @@ export default function PriceListDetailPage() {
       <FeatureGate flag="PRICING_ENGINE">
         <RoleGuard roles={[ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT]}>
           <div className="mx-auto w-full max-w-[1920px] px-4 py-4 md:px-6 md:py-4">
-            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
+            <div className="rounded-[14px] border border-danger-50 bg-danger-50 p-4 text-base text-danger-700">
               Price list not found.
             </div>
           </div>
@@ -183,9 +187,19 @@ export default function PriceListDetailPage() {
                 validFrom={priceList.valid_from}
                 validTo={priceList.valid_to}
                 priority={priceList.priority}
+                defaultPricelist={priceList.assignments.some((assignment) => assignment.target_type === 'all_buyers')}
               />
             ) : (
               <Skeleton className="mt-4 h-[26rem] rounded-[14px]" />
+            )
+          ) : null}
+          {tabActive === 'assignments' ? (
+            priceList ? (
+              <div className="mt-4">
+                <AssignmentsPanel priceListId={priceListId} />
+              </div>
+            ) : (
+              <Skeleton className="mt-4 h-[22rem] rounded-[14px]" />
             )
           ) : null}
 
@@ -198,7 +212,7 @@ export default function PriceListDetailPage() {
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => priceListAction.mutate({ action: 'archive' }, { onSuccess: () => router.push('/price-lists') })}
+                  onClick={() => priceListAction.mutate({ action: 'archive' }, { onSuccess: () => router.push(SELLER_ROUTES.market.pricing) })}
                 >
                   <Archive size={14} aria-hidden />
                   Archive
@@ -223,7 +237,11 @@ export default function PriceListDetailPage() {
                   ? priceList.pricing_strategy
                   : 'edit_each',
                 strategy_value: priceList.strategy_value ?? null,
+                default_pricelist: priceList.assignments.some((assignment) => assignment.target_type === 'all_buyers'),
                 membership_mode: priceList.membership_mode ?? 'manual',
+                selected_product_ids: priceList.membership_mode === 'automatic'
+                  ? []
+                  : priceList.items.map((item) => item.tenant_product_id),
                 rules: priceList.membership_mode === 'automatic' ? (priceList.filters as unknown as ProductMembershipRules) : undefined,
               }}
             />

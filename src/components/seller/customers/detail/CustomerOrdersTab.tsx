@@ -21,6 +21,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import type { CustomerDocumentRow } from '@/hooks/useCustomersLanding';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 interface CustomerOrdersTabProps {
   buyerId: string;
@@ -177,7 +178,7 @@ export function CustomerOrdersTab({
   buyerId,
   buyerName,
   kind = 'order',
-  routeBase = '/sales-orders',
+  routeBase = SELLER_ROUTES.sales.orders,
 }: CustomerOrdersTabProps) {
   const router = useRouter();
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;

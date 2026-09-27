@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import { Suspense, type ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
@@ -21,6 +22,8 @@ async function CohortsListBootstrap() {
   if (status === 403) return <FeatureForbiddenPage />;
   return <CohortsLandingClient initialData={initialData} initialMetrics={initialMetrics} />;
 }
+
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.customerGroups);
 
 export default async function CohortsLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();

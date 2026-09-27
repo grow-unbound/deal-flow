@@ -147,3 +147,57 @@ export class WhatsAppClient {
 }
 
 export const whatsAppClient = new WhatsAppClient();
+
+export type WhatsAppCredentialSource = 'tenant' | 'platform';
+
+export interface ResolvedWhatsAppClient {
+  client: WhatsAppClient;
+  source: WhatsAppCredentialSource;
+}
+
+/**
+ * Resolves which WhatsApp number sends for a tenant: their own connected
+ * WABA (via Embedded Signup) when present, otherwise the shared platform
+ * number. Every dispatch call site must log the returned `source` so it's
+ * always explicit which number a message went out from.
+ */
+// deno-lint-ignore no-explicit-any
+export async function resolveWhatsAppClientForTenant(admin: any, tenantId: string | null | undefined): Promise<ResolvedWhatsAppClient> {
+  if (!tenantId) {
+    return { client: whatsAppClient, source: 'platform' };
+  }
+
+  const { data: integration, error: integrationError } = await admin
+    .schema('app')
+    .from('tenant_integrations')
+    .select('id, config')
+    .eq('tenant_id', tenantId)
+    .eq('integration_type_id', 'whatsapp_business')
+    .eq('status', 'connected')
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (integrationError || !integration) {
+    return { client: whatsAppClient, source: 'platform' };
+  }
+
+  const { data: secret, error: secretError } = await admin
+    .schema('app')
+    .rpc('get_tenant_integration_runtime_secret', {
+      p_tenant_integration_id: integration.id,
+      p_expected_integration_type_id: 'whatsapp_business',
+    });
+
+  if (secretError || !secret?.access_token || !secret?.phone_number_id) {
+    console.error('[whatsapp-client] tenant WABA secret missing/invalid — falling back to platform number', {
+      tenantId,
+      hasError: Boolean(secretError),
+    });
+    return { client: whatsAppClient, source: 'platform' };
+  }
+
+  return {
+    client: new WhatsAppClient({ token: secret.access_token, phoneNumberId: secret.phone_number_id }),
+    source: 'tenant',
+  };
+}

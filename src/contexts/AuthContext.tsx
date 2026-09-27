@@ -7,8 +7,10 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
 import { clearClientAuthSnapshot, setClientAuthSnapshot } from '@/lib/auth-client-store';
+import { clearApiAuthCache } from '@/lib/api-fetch';
 import posthog from 'posthog-js';
 import { resolveUserDisplayName } from '@/lib/user-display-name';
+import { catalogOriginForRequest, parseRequestHost } from '@/lib/storefront-host';
 
 export interface AuthUser {
   id: string;
@@ -26,6 +28,8 @@ export interface TenantProfile {
   tenant_name?: string | null;
   tenant_slug?: string | null;
   is_active: boolean;
+  public_catalog_live?: boolean;
+  storefront_url?: string;
 }
 
 export interface BuyerProfile {
@@ -48,7 +52,7 @@ export interface AuthContextType {
   error: Error | null;
   signOut: () => Promise<void>;
   switchTenant: (tenantId: string) => void;
-  switchBuyer: (buyerId: string) => void;
+  switchBuyer: (buyerId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -95,11 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const manualSignOutRef = React.useRef(false);
+  const manualSignOutRedirectRef = React.useRef<string | null>(null);
   const claimsKeyRef = React.useRef<string | null>(null);
   const tenantProfileRef = React.useRef<TenantProfile | null>(null);
 
   const resetAuthState = () => {
     clearAuthClientStorage();
+    clearApiAuthCache();
     clearClientAuthSnapshot();
     setSession(null);
     setUser(null);
@@ -113,6 +119,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const redirectToLogin = () => {
     if (typeof window === 'undefined') return;
     window.location.replace('/login');
+  };
+
+  const manualSignOutRedirectTarget = async () => {
+    if (typeof window === 'undefined') return '/login';
+    const hostKind = parseRequestHost(window.location.hostname);
+    if (hostKind.kind !== 'tenant') return '/login';
+
+    const profile = tenantProfileRef.current;
+    if (profile?.public_catalog_live === true) return '/';
+    if (profile?.public_catalog_live === false) return `${catalogOriginForRequest(window.location.host)}/login`;
+
+    try {
+      const res = await fetch(`/api/public/tenant-branding?slug=${encodeURIComponent(hostKind.slug)}`, {
+        cache: 'no-store',
+      });
+      const data = (await res.json()) as { is_live?: boolean };
+      return data.is_live === false ? `${catalogOriginForRequest(window.location.host)}/login` : '/';
+    } catch {
+      return '/';
+    }
   };
 
   const readSessionClaims = (activeSession: Session): SessionClaims => {
@@ -180,6 +206,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         business_name: string;
       };
       role?: string;
+      public_catalog_live?: boolean;
+      storefront_url?: string;
     };
 
     const tenant = payload.tenant;
@@ -199,6 +227,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tenant_name: tenant.business_name,
       tenant_slug: tenant.slug,
       is_active: true,
+      public_catalog_live: payload.public_catalog_live === true,
+      storefront_url: payload.storefront_url,
     };
     setTenantProfile(nextProfile);
     tenantProfileRef.current = nextProfile;
@@ -209,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const syncClientSnapshot = (activeSession: Session | null) => {
       if (!activeSession?.access_token) {
+        clearApiAuthCache();
         clearClientAuthSnapshot();
         return;
       }
@@ -243,6 +274,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tenant_name: previous?.tenant_name ?? null,
         tenant_slug: previous?.tenant_slug ?? null,
         is_active: true,
+        public_catalog_live: previous?.public_catalog_live,
+        storefront_url: previous?.storefront_url,
       };
       setTenantProfile(nextProfile);
       tenantProfileRef.current = nextProfile;
@@ -356,11 +389,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           typeof window !== 'undefined'
         ) {
           if (wasManualSignOut) {
-            redirectToLogin();
+            const redirectTarget = manualSignOutRedirectRef.current ?? '/login';
+            manualSignOutRedirectRef.current = null;
+            resetAuthState();
+            window.location.replace(redirectTarget);
             return;
           }
 
           resetAuthState();
+
+          // Supabase fires a SIGNED_OUT-shaped event even for a client that
+          // never had a session at all (e.g. GoTrue's initial state check on
+          // a fresh guest visit) — not just for an actually-expired one. A
+          // tenant storefront host has a real guest mode (public catalog,
+          // no session required), so treat "no session" there as the normal
+          // steady state, not an expiry to redirect out of. app.useyukti.in
+          // and catalog.useyukti.in have no guest mode — every page there
+          // does require ending up authenticated, so keep the redirect.
+          const hostKind = parseRequestHost(window.location.hostname);
+          if (hostKind.kind === 'tenant') {
+            return;
+          }
+
           window.location.assign(getSessionExpiredRedirectPath(window.location.pathname));
           return;
         }
@@ -374,6 +424,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     manualSignOutRef.current = true;
+    posthog.reset();
+    const redirectTarget = await manualSignOutRedirectTarget();
+    manualSignOutRedirectRef.current = redirectTarget;
     queryClient.clear();
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -381,15 +434,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // This avoids a 403 blocking the logout flow.
       await supabase.auth.signOut({ scope: 'local' } as any);
     }
-    redirectToLogin();
+    manualSignOutRedirectRef.current = null;
+    window.location.replace(redirectTarget);
   };
 
   const switchTenant = (tenantId: string) => {
     setCurrentTenantId(tenantId);
   };
 
-  const switchBuyer = (buyerId: string) => {
+  const switchBuyer = async (buyerId: string) => {
+    const res = await fetch('/api/auth/switch-buyer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ buyer_id: buyerId }),
+    });
+    const data: {
+      session?: { access_token: string; refresh_token: string };
+      error?: string;
+    } = await res.json();
+    if (!res.ok || !data.session) {
+      throw new Error(data.error ?? 'Failed to switch buyer account');
+    }
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
     setCurrentBuyerId(buyerId);
+    void queryClient.invalidateQueries({ queryKey: ['buyer-me'] });
   };
 
   const value: AuthContextType = {

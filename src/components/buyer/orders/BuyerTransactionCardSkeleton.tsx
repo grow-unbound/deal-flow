@@ -5,7 +5,7 @@ import * as React from 'react';
  * container, which would double the list's own padding around just those rows. */
 export function TransactionCardSkeletonItem() {
   return (
-    <div className="min-h-[88px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100 px-3.5 py-3">
+    <div className="min-h-[88px] animate-pulse rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] px-3.5 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="h-3.5 w-28 rounded bg-cream-200" />

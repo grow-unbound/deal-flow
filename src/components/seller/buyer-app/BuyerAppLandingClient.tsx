@@ -191,7 +191,7 @@ function BuyerAppLandingContent({
         }))}
       />
 
-      <div className="buyer-app-cards mt-6 grid grid-cols-2 gap-6">
+      <div className="buyer-app-cards mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         {/* Card 1: Adoption funnel — true drop-off pct at each stage */}
         <DetailCardRenderer
           card={{

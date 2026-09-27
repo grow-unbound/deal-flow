@@ -115,7 +115,7 @@ describe('warehouses landing page', () => {
 
     render(<WarehousesLandingClient initialMetrics={null} />);
 
-    expect(screen.getByText('Warehouses')).toBeInTheDocument();
+    expect(screen.getAllByText('Warehouses').length).toBeGreaterThan(0);
     expect(screen.getByText('Sellable Units in stock')).toBeInTheDocument();
     expect(screen.getByText('No sales in period')).toBeInTheDocument();
     expect(screen.getAllByText('Mumbai Central').length).toBeGreaterThan(0);

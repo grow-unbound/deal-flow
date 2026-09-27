@@ -194,7 +194,7 @@ export function useEstimateDetail(estimateId: string) {
 export function useConvertEstimateToOrder(estimateId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { delivery_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; order_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
+    mutationFn: async (input: { delivery_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; price_overrides?: Record<string, number>; order_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
       const res = await apiPatch(`/api/tenant/estimates/${estimateId}/convert`, input);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -216,7 +216,7 @@ export function useConvertEstimateToOrder(estimateId: string) {
 export function useConvertEstimateToInvoice(estimateId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { invoice_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; invoice_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
+    mutationFn: async (input: { invoice_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; price_overrides?: Record<string, number>; invoice_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
       const res = await apiPatch(`/api/tenant/estimates/${estimateId}/convert-to-invoice`, input);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

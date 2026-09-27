@@ -282,6 +282,6 @@ describe('estimates landing page', () => {
     const mono = screen.getAllByText('EST-1').find((el) => el.classList.contains('font-medium') && Boolean(el.closest('tr')));
     expect(mono).toBeTruthy();
     fireEvent.click(mono!.closest('tr')!);
-    expect(pushMock).toHaveBeenCalledWith('/estimates/e1');
+    expect(pushMock).toHaveBeenCalledWith('/sales/estimates/e1');
   });
 });

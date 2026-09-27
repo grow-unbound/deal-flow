@@ -1,34 +1,57 @@
-# DealFlow Claude Instructions
+# Yukti — Claude Instructions
 
-Follow the repo `AGENTS.md` as the source of truth for product, UI, and workflow rules.
+Sole instruction file. `AGENTS.md` only points here. Detail loads on demand: `.claude/rules/` (auto-loads when matching files are read), `docs/architecture.md`, `specs/INDEX.md`.
+Product name is **Yukti** ("DealFlow" was a working title — don't use it in new code, docs or copy; `df_` flag prefixes are legacy, don't rename). Repo is PUBLIC on GitHub — never commit secrets, PII, or confidential business data, even on branches.
 
-## Spacing Standard
-- Forms, dialogs, alert dialogs, and confirmation sheets must use explicit `header` / `body` / `footer` spacing.
-- Keep modal padding balanced and consistent: header at the top, roomy body spacing, and a dedicated footer row for actions.
-- Prefer the shared dialog primitives (`DialogHeader`, `DialogBody`, `DialogFooter`) instead of hand-rolled spacing blocks.
-- In two-column form layouts, keep labels, inputs, and helper text aligned to the grid and avoid letting helper text spill into the action row.
+## Product & stack (locked — don't debate)
+Multi-tenant distributor command center: catalogs, customer-specific pricing, sales documents, buyer ordering, integrations (Indian SMB distributors). Tenant-agnostic: no tenant-specific branches, copy, flags or priorities in code — per-tenant behavior only via tenant settings/flag targeting.
+Next.js App Router · React · Tailwind · shadcn/ui · Zod (client+server) · Supabase (Postgres, RLS, Auth, pgvector) · business logic in Postgres RPCs · R2 images · PostHog (analytics+flags) · pg_cron · Vercel · WhatsApp via Meta Cloud API (OTP, broadcasts) · Turnstile · Sentry · **pnpm**.
 
-## Navigation & Perceived Performance Standard
-- Use SPA navigation for all internal routes (`next/link`, `router.push`, `router.replace`). Do not use raw `<a href="/...">` for in-app pages.
-- Keep route shells persistent and add `loading.tsx` skeleton boundaries for seller and buyer route segments.
-- Every critical view must render a skeleton/pending state first; do not allow blank transition states.
-- For CTA-driven mutations, default to optimistic UI with React Query (`onMutate` + rollback in `onError` + revalidate in `onSettled`).
-- Avoid unnecessary `router.refresh()` calls; prefer targeted query updates and invalidation.
-- CLS budget < 0.05: skeletons must reserve the same height as real content (2-line titles use `min-h-[2.4em]`/`BUYER_TWO_LINE_TITLE_CLASS` on both sides), async conditional widgets show a same-footprint skeleton not nothing-then-pop-in, `dvh` not `vh` for full-height mobile shells, and in-place refetches never swap in a full-page skeleton over already-rendered sections.
+## Hard rules (always apply)
+**Prod safety**
+- dev = `yukti-dev` (`hcpzbnmumbykdqveyjhr`). prod = `yukti-prod` (`cckmurgapnkytbzxqesp`). Never run SQL, migrations, seeds, function/config/auth/storage changes, `--linked` commands or `db push` against prod without explicit user authorization naming the exact action. Earlier approval never carries over.
+- The main checkout may be linked to prod. Before every `--linked` command read the linked ref and require it equals the dev ref; stop on mismatch.
+- No Docker/local Supabase (`supabase start`, `db reset --local`, `test db --local`). Never `db reset --linked` or `migration repair` without an explicit documented recovery authorization.
+- Persistent `db push --linked` (dev only) needs user approval, after `migration list --linked` and `db push --linked --dry-run`.
+- Migrations only via `supabase migration new <name>`. No schema changes in the dashboard.
+- Never print, echo, log, inline or commit `SUPABASE_DB_PASSWORD` or any secret.
 
-## Scrollbar Standard
-- Scrollbars stay transparent until the element is actively hovered/focus-within — no permanently-visible thumb anywhere in either app. Enforced globally in `app/globals.css`; don't add component-level `::-webkit-scrollbar` overrides.
-- Only ever toggle thumb/track *color*. Never toggle the reserved scrollbar-gutter width — the browser reserves that space the moment content overflows regardless of thumb visibility, so a color-only swap is layout-shift-free by construction.
-- For panels where the pointer often rests without scrolling, use the stricter true-active-scroll pattern (`dashboard-vscroll` class + `onScroll`-driven active flag, ~900ms decay) instead of the base hover reveal.
+**Data & security**
+- Schema-qualify everything: SQL (`app.`, `catalog.`, `auth.`) and supabase-js (`supabase.schema('app').from(...)`).
+- Business tables: uuid PK, `created_at/updated_at/created_by/updated_by`, `deleted_at` soft-delete, `external_ref`, FKs `ON DELETE RESTRICT`. (Metrics V2 operational tables have a narrow exemption — `.claude/rules/supabase-sql.md`.)
+- RLS on every `app.*` table. Never trust client `tenant_id`; derive from JWT. New Data API objects: verify schema exposure, grants, RLS.
+- Sensitive ops (publish catalog, status change, exports) go through `SECURITY DEFINER` RPCs that re-check role. Features ship behind `df_<module>` flags gating UI **and** RPC.
+- KPI numbers come from aggregate snapshots/RPCs, never from a page slice (`.claude/rules/metrics.md`).
 
-## Backend & Data-Fetching Performance Standard
-(full rationale - read only when required: `specs/performance-upgrade-2026-07.md`)
-- SSR bootstrap fetches always pass an explicit, bounded `limit` — never fetch a full table for SSR.
-- Before reducing any list's SSR limit: check whether KPIs/summary/callout data are computed from that same limited row set, or from a separate unbounded query. Only cut the limit if the row array is genuinely discarded or refetched independently (e.g. via a real `useInfiniteQuery`). If a list page has no cursor pagination in its client hook, do not cut its API limit — cap unbounded queries with a safety `.limit()` instead, don't truncate the only data source the UI has.
-- Every buyer-facing API GET route sets `Cache-Control: private, ...` (never `public`/`s-maxage` — responses are per-buyer auth-gated). Use `src/lib/server/buyer-cache-headers.ts`.
-- Catalog/list filtering happens in the SQL query (Supabase `.eq()`/`.in()`) before hydration — never filter in JS after fetching and joining the full result set.
-- Images always use `next/image` with the `unoptimized` prop, pointing at the correct presized R2 variant (thumb/small/medium/large per `specs/image-upload-architecture.md`). Never a raw `<img>` tag, never Vercel's runtime image optimizer, never a new resizing pipeline.
-- Heavy or rarely-visited components (charts, modals, drawers, detail-tab panels) are wrapped in `next/dynamic(..., { ssr: false })`. Check `pnpm run analyze` before adding any new heavy dependency (charting, PDF, maps, etc).
-- `tsconfig.json`'s `tsBuildInfoFile` stays inside `.next/cache/` — that's the only directory Vercel's build cache persists between deploys.
-- `middleware.ts`'s route-matcher extension exclusions (`\.js`, `\.css`, etc.) only match paths that *start* with those strings, not paths ending in them. Any new root-level static public file (manifest, service worker, etc.) must be added explicitly to `PUBLIC_PREFIXES`.
-- TanStack Query: set `staleTime`/`gcTime` from `src/lib/query-navigation.ts`'s tiers (`REFERENCE_*` for rarely-changing data, default `NAVIGATION_*`/`BUYER_*` for transactional) — never a raw hardcoded ms value or an implicit default. Every filtered/paginated hook sets `placeholderData: keepPreviousData`. Prefetch on `pointerdown`, not hover. Wrap multi-call server-only reads in React `cache()`; never use Next's shared fetch cache on a tenant-scoped read unless the cache key includes `tenant_id`.
+**UI/perf one-liners** (full rules auto-load in `.claude/rules/`): seller and buyer apps are both mobile-first and responsive to desktop; style only through tokens in `app/globals.css` (no hardcoded colors/px/font sizes; add a token instead); SPA navigation only (`next/link`); every new `page.tsx` ships a mirroring `loading.tsx`; `next/image` with `unoptimized` + R2 variant; explicit `.limit()` on every list query; buyer GET routes send `Cache-Control: private`.
+
+## Workflow
+- Find code with the graph, not grep: `codegraph explore "<question>"`, `codegraph impact <symbol>`, `codegraph callers <symbol>`. Index in `.codegraph/` (gitignored); `codegraph sync` refreshes it.
+- Plan mode for changes touching >2 files. Skip brainstorm/plan ceremony when the spec is already clear.
+- Verify before saying done: `scripts/verify.sh` (tsc + vitest on tests the graph says are affected by the diff). Widen for auth, middleware, catalog, pricing. Never weaken or delete a test to make it pass.
+- Branch → frequent descriptive commits → PR. Never push to main.
+- Commits are always signed. Never `--no-gpg-sign` or `commit.gpgsign=false`. If signing hangs or fails: `ssh-add --apple-load-keychain`, retry; still failing → stop and tell the user.
+- Before opening a PR or ending a session, run `/wrap`.
+
+## Agents & models (token discipline)
+Each subagent restarts cold: it re-pays the full prefix (instructions, tool/skill catalogs) and its own file reads, then the parent pays again for brief + summary. Fan-out costs several × inline.
+- **Default inline.** Spawn only when (a) the task would read >10 files or return >5k tokens the parent doesn't need, or (b) tasks are independent and parallel. Max 3 parallel; subagents never spawn subagents.
+- Never spawn for edits <3 files, single lookups, or anything already in context. Use `codegraph` before an Explore agent.
+- Model: **Sonnet** is the default for all work. **Haiku** for search/summarize/log-triage subagents. **Never use Opus unless the user explicitly asks.**
+- Brief = goal, exact paths, output format, size cap ("≤200 words, file:line only"). Return summaries, never file dumps.
+- This overrides the global "use subagents for investigation" line.
+
+## Context hygiene
+- One task/PR per session. Unrelated task → new session (`/clear`), even if small. Same task → keep going; `/compact` at a natural boundary around 250–300k tokens.
+- Bound tool output: `LIMIT`/`count(*)` before `select *` in `execute_sql`; prefer `read_page`/`get_page_text` over screenshots.
+
+## Where to look
+| Need | Read |
+|---|---|
+| Stack, schemas, tenancy, RBAC, flags, pricing, buyer/seller surfaces | `docs/architecture.md` |
+| Any spec, plan, audit, execution log | `specs/INDEX.md` (don't glob `specs/`) |
+| UI, data-fetching, SQL, metrics rules | `.claude/rules/*.md` (auto) |
+| Product/ops incident memory | `MEMORY.md` (auto) |
+
+## Keeping this file alive
+`/wrap` proposes context updates into `docs/context-inbox.md` with reasoning; the user reviews and `/context-review` applies. Do not edit this file, `docs/architecture.md`, or `.claude/rules/` directly unless the user asked. Budget: this file ≤100 lines; prefer moving or deleting a line over adding one.

@@ -29,6 +29,15 @@ vi.mock('@/hooks/useBuyerNavigationDirection', () => ({
   navigateBuyerBack: vi.fn(),
 }));
 
+vi.mock('@/hooks/useBuyerProducts', () => ({
+  buyerDeliveryStockSignature: () => 'no-delivery',
+  prefetchBuyerProductDetail: vi.fn(),
+}));
+
+vi.mock('@/lib/analytics-identity', () => ({
+  useBuyerAnalyticsIds: () => ({ buyer_id: 'buyer-1', tenant_id: 'tenant-1' }),
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
 }));
@@ -47,6 +56,7 @@ describe('buyer product card', () => {
     useBuyerMeMock.mockReset();
     useBuyerMeMock.mockReturnValue({
       data: {
+        mode: 'buyer',
         buyer_id: 'buyer-1',
         tenant: { id: 'tenant-1' },
         stock_visibility: { enabled: false, block_order_on_oos: false },
@@ -98,7 +108,7 @@ describe('buyer product card', () => {
     expect(screen.queryByText('MRP')).not.toBeInTheDocument();
     expect(screen.queryByText('CP Plus')).not.toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveClass('h-8', 'w-8');
+    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveClass('rounded-full');
   });
 
   it('shows readable out-of-stock badge without dimming the details panel', () => {
@@ -110,6 +120,7 @@ describe('buyer product card', () => {
     });
     useBuyerMeMock.mockReturnValue({
       data: {
+        mode: 'buyer',
         buyer_id: 'buyer-1',
         tenant: { id: 'tenant-1' },
         stock_visibility: { enabled: true, block_order_on_oos: false },
@@ -185,6 +196,48 @@ describe('buyer product card', () => {
     );
 
     expect(screen.getByText('Special Price')).toBeInTheDocument();
+  });
+
+  it('hides direct SKU prices as enquiry copy when catalog pricing is hidden', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    renderWithQueryClient(
+      <ProductCard
+        priceReveal="hidden_bar"
+        item={{
+          id: 'hidden-direct-sku',
+          tenant_product_id: 'tp-hidden-direct-sku',
+          campaign_id: null,
+          campaign_name: null,
+          campaign_valid_until: null,
+          internal_sku: 'SKU-HIDDEN-001',
+          display_name: 'Direct SKU without family',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          category_id: null,
+          category_name: null,
+          mrp: 10000,
+          price: null,
+          catalog_pricing_mode: null,
+          has_campaign_price: false,
+          resolved_price: null,
+          default_uom: 'box',
+          pack_size: null,
+          image_urls: [],
+          stock_status: 'available',
+          on_hand: 10,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Enquire for price')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to enquiry/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Price hidden')).not.toBeInTheDocument();
   });
 
   it('can suppress the promotion badge on campaign detail views', () => {

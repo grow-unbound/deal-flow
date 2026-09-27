@@ -5,24 +5,26 @@ import Link from 'next/link';
 import { ChevronDown, CircleHelp, LogOut, ReceiptText, Repeat, Search, ShoppingCart, User } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import Image from 'next/image';
 import { useIsFetching } from '@tanstack/react-query';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { TenantLogo } from '@/components/brand/TenantLogo';
 import { Popover, PopoverContent, PopoverTrigger, PopoverClose } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useBuyerSession } from '@/hooks/useBuyerSession';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiPost } from '@/lib/api-fetch';
+import { useStorefrontLogin } from '@/contexts/StorefrontLoginContext';
 import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
+import { OnboardingStatusPill } from '@/components/buyer/layout/OnboardingStatusPill';
 import { BuyerDesktopCartDrawer } from '@/components/buyer/layout/BuyerDesktopCartDrawer';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { redirectToBuyerAccountSelector } from '@/lib/buyer-switch-account';
 import { triggerHaptic } from '@/lib/haptics';
+import { normalizeBuyerPathname } from '@/lib/buyer-routes';
+import { STOREFRONT } from '@/lib/storefront-paths';
 import { cn } from '@/lib/utils';
-
-const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
 function getInitials(value: string | null | undefined) {
   const parts = (value ?? '')
@@ -104,6 +106,10 @@ export function BuyerDesktopHeader() {
   const { effectiveBuyerRole } = useBuyerSession();
   const { items } = useCart();
   const { signOut } = useAuth();
+  const { openLogin } = useStorefrontLogin();
+  const buyerContextResolving = isBuyerLoading && !me;
+  const isPending = !buyerContextResolving && me?.mode === 'pending';
+  const isGuest = !buyerContextResolving && !isPending && me?.mode !== 'buyer' && me?.mode !== 'preview';
   const [switchPending, setSwitchPending] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
@@ -114,18 +120,19 @@ export function BuyerDesktopHeader() {
   const tenantLogoUrl = me?.tenant.logo_url ?? null;
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const cartDrawerOpen = searchParams?.get('cart') === 'open';
-  const cartActive = pathname === '/buy/cart' || cartDrawerOpen;
+  const normalizedPath = normalizeBuyerPathname(pathname);
+  const cartActive = normalizedPath === '/buy/cart' || cartDrawerOpen;
   const cartBadge = cartCount > 0 ? (cartCount > 99 ? '99+' : cartCount) : null;
 
-  const isOnSearchPage = pathname === '/buy/search';
+  const isOnSearchPage = normalizedPath === '/buy/search';
   const [searchInput, setSearchInput] = useState(() => (isOnSearchPage ? (searchParams?.get('q') ?? '') : ''));
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchFetching = useIsFetching({ queryKey: ['buyer-catalog-search-text'] }) > 0;
 
   useEffect(() => {
-    setSearchInput(pathname === '/buy/search' ? (searchParams?.get('q') ?? '') : '');
-  }, [pathname, searchParams]);
+    setSearchInput(isOnSearchPage ? (searchParams?.get('q') ?? '') : '');
+  }, [isOnSearchPage, searchParams]);
 
   useEffect(() => () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -138,8 +145,8 @@ export function BuyerDesktopHeader() {
       const next = new URLSearchParams();
       if (value.trim()) next.set('q', value.trim());
       const query = next.toString();
-      const href = query ? `/buy/search?${query}` : '/buy/search';
-      if (pathname === '/buy/search') {
+      const href = query ? `${STOREFRONT.search}?${query}` : STOREFRONT.search;
+      if (isOnSearchPage) {
         router.replace(href);
       } else {
         router.push(href);
@@ -167,17 +174,9 @@ export function BuyerDesktopHeader() {
   async function handleSwitchAccount() {
     setSwitchPending(true);
     try {
-      const res = await apiPost('/api/auth/switch-context', {});
-      const body = await res.json();
-      if (!res.ok || !body.contexts || !body.ref_id) {
-        toast.error(body.error ?? 'No other accounts linked to this number.');
-        return;
-      }
-      sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(body.contexts));
-      router.push(`/login/select-context?ref_id=${encodeURIComponent(body.ref_id)}`);
-    } catch {
-      toast.error('Network error. Please try again.');
-    } finally {
+      await redirectToBuyerAccountSelector();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not switch accounts. Please try again.');
       setSwitchPending(false);
     }
   }
@@ -218,30 +217,41 @@ export function BuyerDesktopHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--cream-50)] md:block">
+      <header className="sticky top-0 z-20 hidden border-b border-cream-200 bg-[var(--bg-surface)] md:block">
         <div
-          className="mx-auto flex min-h-[64px] w-full items-center gap-4 px-5 py-2.5"
+          className="mx-auto flex min-h-[76px] w-full items-center gap-4 px-5 py-3"
           style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
         >
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {isBuyerLoading ? (
               <div
-                className="h-[3.25rem] w-16 shrink-0 animate-pulse rounded-[8px] bg-cream-200"
+                className="h-14 w-14 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
                 aria-label="Loading tenant logo"
               />
             ) : tenantLogoUrl ? (
-              <Link href="/buy/home" className="flex h-[3.25rem] w-16 shrink-0 items-center justify-start">
-                <Image src={tenantLogoUrl} alt={tenantName} width={64} height={52} className="h-[3.25rem] w-auto max-w-16 object-contain object-left" unoptimized />
+              <Link
+                href={STOREFRONT.home}
+                className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-cream-200 bg-white p-1 shadow-sm"
+              >
+                <TenantLogo
+                  name={tenantName}
+                  logoUrl={tenantLogoUrl}
+                  size={48}
+                  shape="square"
+                  className="max-h-full max-w-full"
+                />
               </Link>
             ) : (
-              <Link href="/buy/home" className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
+              <Link href={STOREFRONT.home} className="shrink-0 text-[length:var(--b-text-label)] font-semibold text-cream-950">
                 {tenantName}
               </Link>
             )}
 
             <span className="h-5 w-px shrink-0 bg-cream-200" aria-hidden />
 
-            <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
+            {isGuest || isPending ? null : (
+              <BuyerLocationControl variant="desktop" className="min-w-0 shrink self-center" />
+            )}
           </div>
 
           <div className="flex min-w-[280px] flex-1 justify-center">
@@ -255,23 +265,41 @@ export function BuyerDesktopHeader() {
                 value={searchInput}
                 onChange={(event) => handleSearchInputChange(event.target.value)}
                 placeholder="Search products, SKU, brand…"
-                className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--cream-50)] pl-11 pr-20 text-[length:var(--b-text-sub)] text-cream-950 outline-none transition-colors hover:border-cream-400 focus:border-cream-400 focus:ring-2 focus:ring-ember-400/20 placeholder:text-cream-500"
+                className="h-11 w-full rounded-[12px] border border-cream-300 bg-[var(--bg-surface)] pl-11 pr-20 text-[length:var(--b-text-sub)] text-cream-950 outline-none transition-colors hover:border-cream-400 focus:border-cream-400 focus:ring-2 focus:ring-ember-400/20 placeholder:text-cream-500"
                 aria-label="Search products"
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-cream-50 px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
+              <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[8px] border border-cream-200 bg-[var(--bg-surface)] px-2 py-0.5 text-[length:var(--b-text-eyebrow)] font-medium text-cream-600 lg:inline-flex">
                 Ctrl/Cmd+K
               </span>
             </div>
           </div>
 
           <div className="flex min-w-0 shrink-0 justify-end">
+            {buyerContextResolving ? (
+              <div className="flex shrink-0 items-center gap-1.5" aria-label="Loading buyer account actions">
+                <div className="h-10 w-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+                <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+                <div className="h-10 w-10 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+              </div>
+            ) : isPending ? (
+              <OnboardingStatusPill status={me?.pending?.onboarding_status} />
+            ) : isGuest ? (
+              <Button
+                type="button"
+                haptic
+                className="h-10 rounded-[12px] bg-cream-950 px-4 text-[length:var(--b-text-body)] font-semibold text-white shadow-sm hover:bg-cream-900 focus-visible:ring-2 focus-visible:ring-cream-950/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cream-50)]"
+                onClick={openLogin}
+              >
+                Log in
+              </Button>
+            ) : (
             <div className="flex shrink-0 items-center gap-1.5">
             <Link
-              href="/buy/orders"
+              href={STOREFRONT.orders}
               onPointerDown={() => triggerHaptic('light')}
               className={cn(
                 'inline-flex h-10 items-center gap-2 rounded-[12px] px-3 text-[length:var(--b-text-body)] font-medium transition-colors duration-fast',
-                pathname === '/buy/orders' ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-[var(--yk-hover-tint)] hover:text-cream-950',
+                normalizedPath === '/buy/orders' ? 'bg-cream-100 text-cream-950' : 'text-cream-800 hover:bg-[var(--yk-hover-tint)] hover:text-cream-950',
               )}
             >
               <ReceiptText className="h-5 w-5" />
@@ -293,7 +321,7 @@ export function BuyerDesktopHeader() {
                   </span>
                 </button>
               </PopoverTrigger>
-            <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[18px] border border-cream-200 bg-cream-50 p-0 shadow-xl">
+            <PopoverContent align="end" sideOffset={10} className="w-[22rem] rounded-[18px] border border-cream-200 bg-[var(--bg-surface)] p-0 shadow-xl">
               <div className="border-b border-cream-200 px-4 py-4">
                 <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 border border-cream-200">
@@ -311,7 +339,7 @@ export function BuyerDesktopHeader() {
               <div className="p-3">
                 <PopoverClose asChild>
                   <Button asChild variant="ghost" haptic className="h-11 w-full justify-start rounded-[12px] text-[var(--fg-1)] hover:bg-cream-100">
-                    <Link href="/buy/profile">
+                    <Link href={STOREFRONT.profile}>
                       <User className="h-4 w-4" />
                       Profile
                     </Link>
@@ -347,6 +375,7 @@ export function BuyerDesktopHeader() {
               ariaLabel="Open cart"
             />
             </div>
+            )}
           </div>
         </div>
       </header>

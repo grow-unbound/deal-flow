@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/utils';
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
       <p className={mono ? 'font-mono text-base text-cream-900' : 'text-base text-cream-900'}>{value}</p>
     </div>
   );
@@ -28,7 +28,7 @@ export function WarehouseDetailsTab({ data }: { data: WarehouseDetailResponse })
     <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <h3 className="font-display text-md text-cream-950">Warehouse details</h3>
-        <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
           <Row label="Warehouse name" value={data.name} />
           <Row label="Linked location" value={data.linked_location?.name ?? '—'} />
           <Row label="Status" value={data.status === 'active' ? 'Active' : 'Inactive'} />
@@ -45,7 +45,7 @@ export function WarehouseDetailsTab({ data }: { data: WarehouseDetailResponse })
 
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <h3 className="font-display text-md text-cream-950">Audit</h3>
-        <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
           <Row label="Created" value={formatDate(data.created_at)} mono />
           <Row label="Updated" value={formatDate(data.updated_at)} mono />
           <Row label="Mapped location" value={mappedLocationName} />

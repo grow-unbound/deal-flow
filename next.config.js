@@ -1,5 +1,9 @@
 import bundleAnalyzer from '@next/bundle-analyzer';
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs/config';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -8,6 +12,15 @@ const withBundleAnalyzer = bundleAnalyzer({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: ['*.localhost'],
+  // Turbopack otherwise infers the workspace root by walking up for the
+  // nearest lockfile, which picks the wrong directory when this project is
+  // checked out as a git worktree alongside a sibling checkout that also has
+  // a pnpm-lock.yaml — breaking internal module resolution (e.g. next/font).
+  // Pinning to this file's own directory makes it correct from any checkout.
+  turbopack: {
+    root: __dirname,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -75,16 +88,16 @@ const nextConfig = {
   async headers() {
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com https://challenges.cloudflare.com https://connect.facebook.net",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://assets.yukti.so https://maps.gstatic.com https://maps.googleapis.com",
+      "img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://assets.yukti.so https://maps.gstatic.com https://maps.googleapis.com https://www.facebook.com",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://maps.googleapis.com https://places.googleapis.com https://*.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
-      "frame-src 'self' https://www.google.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://maps.googleapis.com https://places.googleapis.com https://*.r2.cloudflarestorage.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://challenges.cloudflare.com https://graph.facebook.com https://www.facebook.com https://connect.facebook.net",
+      "frame-src 'self' https://www.google.com https://challenges.cloudflare.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
-      "worker-src blob:",
+      "worker-src 'self' blob:",
       "object-src 'none'",
     ].join('; ');
 
@@ -103,26 +116,86 @@ const nextConfig = {
     ];
   },
   async redirects() {
-    return [
-      { source: '/orders', destination: '/sales-orders', permanent: true },
-      { source: '/orders/:id', destination: '/sales-orders/:id', permanent: true },
-    ];
+    return [];
   },
   async rewrites() {
-    return [
-      {
-        source: '/ingest/static/:path*',
-        destination: 'https://us-assets.i.posthog.com/static/:path*',
-      },
-      {
-        source: '/ingest/array/:path*',
-        destination: 'https://us-assets.i.posthog.com/array/:path*',
-      },
-      {
-        source: '/ingest/:path*',
-        destination: 'https://us.i.posthog.com/:path*',
-      },
+    // Tenant-scoped guest-ISR routing (plan #4). Deliberately a next.config.js
+    // rewrite, NOT a middleware NextResponse.rewrite() — a middleware-computed
+    // rewrite defeats Next's Full Route Cache/ISR for the destination
+    // (confirmed: vercel/next.js#83862 — Next matches the PRE-rewrite pathname
+    // against the dynamic-route regex table to decide cacheability, so a
+    // middleware rewrite always falls back to `private, no-store`; verified
+    // empirically against this exact route with next build + next start).
+    // A config-level rewrite is resolved natively by Next's router before
+    // dynamic-route matching, so ISR applies correctly.
+    //
+    // middleware.ts still owns the auth-dependent decision (see its
+    // GUEST_CATALOG_ISR_ENABLED branch in handleTenantHost): for an
+    // authenticated buyer, or with the kill switch off, middleware rewrites
+    // the pathname to the EXISTING dynamic tree (/buy/home/...) itself,
+    // before these rules ever run — so these rules only ever see (and only
+    // ever fire for) a pathname middleware deliberately left unmodified,
+    // i.e. an already-vetted true-guest request on a live, real tenant host.
+    //
+    // Suffixes must stay in sync with src/lib/storefront-host.ts's
+    // CANONICAL_STOREFRONT_SUFFIX / LEGACY_STOREFRONT_SUFFIX /
+    // LOCAL_STOREFRONT_SUFFIX (can't import that .ts module here — this file
+    // runs directly under Node, not through Next's bundler).
+    const GUEST_ISR_HOST_SUFFIX_PATTERNS = [
+      'useyukti\\.in',
+      'yukti\\.so',
+      'localhost(:\\d+)?', // local dev Host header carries the port
     ];
+    const hostHasRule = (suffix) => ({
+      type: 'host',
+      value: `^(?<slug>[^.]+)\\.${suffix}$`,
+    });
+
+    // Home ('/') must be `beforeFiles` — a literal app/page.tsx exists at the
+    // root (the app host's own landing page), which would otherwise shadow
+    // an `afterFiles` rule for the same source and the rewrite would never
+    // fire. The `has: host` condition still scopes this to tenant subdomains
+    // only, so app.<domain>'s own root page is completely unaffected.
+    const guestIsrHomeRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.map((suffix) => ({
+      source: '/',
+      has: [hostHasRule(suffix)],
+      destination: '/buy/g/:slug/home',
+    }));
+
+    // No filesystem collision for these four — safe as `afterFiles`.
+    const GUEST_ISR_ID_ROUTES = [
+      { source: '/category/:id([^/.]+)', internalSuffix: '/home/category/:id' },
+      { source: '/brand/:id([^/.]+)', internalSuffix: '/home/brand/:id' },
+      { source: '/list/:id([^/.]+)', internalSuffix: '/home/list/:id' },
+      { source: '/family/:id([^/.]+)', internalSuffix: '/family/:id' },
+      { source: '/product/:id([^/.]+)', internalSuffix: '/product/:id' },
+    ];
+    const guestIsrIdRules = GUEST_ISR_HOST_SUFFIX_PATTERNS.flatMap((suffix) =>
+      GUEST_ISR_ID_ROUTES.map(({ source, internalSuffix }) => ({
+        source,
+        has: [hostHasRule(suffix)],
+        destination: `/buy/g/:slug${internalSuffix}`,
+      })),
+    );
+
+    return {
+      beforeFiles: guestIsrHomeRules,
+      afterFiles: [
+        ...guestIsrIdRules,
+        {
+          source: '/ingest/static/:path*',
+          destination: 'https://us-assets.i.posthog.com/static/:path*',
+        },
+        {
+          source: '/ingest/array/:path*',
+          destination: 'https://us-assets.i.posthog.com/array/:path*',
+        },
+        {
+          source: '/ingest/:path*',
+          destination: 'https://us.i.posthog.com/:path*',
+        },
+      ],
+    };
   },
 };
 

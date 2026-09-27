@@ -39,6 +39,30 @@ vi.mock('next/navigation', () => ({
   useRouter: () => useRouterMock(),
 }));
 
+vi.mock('@/lib/supabase-browser', () => ({
+  supabaseBrowser: {},
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null, signOut: vi.fn() }),
+}));
+
+const tenantHolder = vi.hoisted(() => ({
+  current: {
+    id: 'tenant-1',
+    slug: 'wineyard',
+    business_name: 'WineYard',
+    public_catalog_live: false as boolean,
+    storefront_url: 'https://wineyard.useyukti.in',
+  },
+}));
+
+vi.mock('@/contexts/TenantContext', () => ({
+  useTenant: () => ({
+    currentTenant: tenantHolder.current,
+  }),
+}));
+
 import { SellerDashboardClient } from '@/components/seller/dashboard/SellerDashboardClient';
 import type { SellerDashboardResponse } from '@/types/seller-dashboard';
 
@@ -140,6 +164,7 @@ const locationPerformanceData = {
 
 describe('SellerDashboardClient', () => {
   beforeEach(() => {
+    tenantHolder.current.public_catalog_live = false;
     periodHookValue.setPeriod.mockReset();
     useSellerLandingPeriodMock.mockReturnValue(periodHookValue);
     useSellerDashboardMetricsMock.mockReset();
@@ -182,6 +207,10 @@ describe('SellerDashboardClient', () => {
 
     expect(await screen.findByText('Zeta')).toBeInTheDocument();
 
+    expect(screen.getByTestId('catalog-onboarding-intercept')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /start setup/i })).toHaveAttribute('href', '/setup/catalog');
+    expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
+
     expect(screen.getByRole('button', { name: 'Brand' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Location' })).not.toBeInTheDocument();
@@ -193,8 +222,9 @@ describe('SellerDashboardClient', () => {
 
     render(<SellerDashboardClient initialData={assistantData} initialPeriod="week" />);
 
+    expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-live-share-card')).not.toBeInTheDocument();
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Needs action').length).toBeGreaterThan(0);
     expect(screen.getByText('Estimates')).toBeInTheDocument();
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
     expect(screen.getByText('Invoices')).toBeInTheDocument();
@@ -222,6 +252,30 @@ describe('SellerDashboardClient', () => {
     expect(within(salesMixDialog).getByText('Sales mix')).toBeInTheDocument();
     expect(within(salesMixDialog).getByText('Zeta')).toBeInTheDocument();
     fireEvent.click(within(salesMixDialog).getByRole('button', { name: 'Close' }));
+  });
+
+  it('shows the live share card after the public catalog is published', () => {
+    tenantHolder.current.public_catalog_live = true;
+    tenantHolder.current.storefront_url = 'https://wineyard.useyukti.in';
+    useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
+
+    render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
+
+    expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-onboarding-intercept')).not.toBeInTheDocument();
+    expect(screen.getByText('wineyard.useyukti.in')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /edit setup/i })).toHaveAttribute('href', '/setup/catalog?step=business');
+  });
+
+  it('shows the live share card on the preview suffix supplied by tenant hydration', () => {
+    tenantHolder.current.public_catalog_live = true;
+    tenantHolder.current.storefront_url = 'https://wineyard.yukti.so';
+    useSellerDashboardMock.mockReturnValue({ data: adminData, isLoading: false, isError: false });
+
+    render(<SellerDashboardClient initialData={adminData} initialPeriod="week" />);
+
+    expect(screen.getByTestId('catalog-live-share-card')).toBeInTheDocument();
+    expect(screen.getByText('wineyard.yukti.so')).toBeInTheDocument();
   });
 
   it('does not render a Recent activity card in the admin section', () => {

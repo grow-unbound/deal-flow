@@ -18,6 +18,8 @@ export const TRANSACTIONAL_PHASES = [
   'estimates',
   'orders',
   'invoices',
+  'invoices_outstanding',
+  'customer_payments',
   'transaction_line_items',
 ] as const;
 
@@ -344,6 +346,7 @@ export const FULL_SYNC_PHASES: readonly CanonicalPhase[] = [
   'estimates',
   'orders',
   'invoices',
+  'customer_payments',
   'inventory',
 ];
 
@@ -371,6 +374,8 @@ export function enrichmentModeForEntity(
     || entityType === 'estimates'
     || entityType === 'orders'
     || entityType === 'invoices'
+    || entityType === 'invoices_outstanding'
+    || entityType === 'customer_payments'
   ) {
     return 'list_only';
   }

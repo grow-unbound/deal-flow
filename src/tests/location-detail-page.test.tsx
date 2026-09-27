@@ -6,11 +6,28 @@ const useLocationDetailMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   useParams: () => ({}),
+  usePathname: () => '/business/branches/loc-1',
   useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    currentTenantId: 'tenant-1',
+    user: { id: 'user-1' },
+    tenantProfile: { id: 'profile-1', role: 'seller_admin' },
+  }),
 }));
 
 vi.mock('@/hooks/useLocations', () => ({
   useLocationDetail: () => useLocationDetailMock(),
+  useLocationDocuments: () => ({
+    data: { rows: [], total: 0, limit: 200, offset: 0 },
+    isPending: false,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock('@/hooks/useTenantLocations', () => ({
@@ -21,8 +38,28 @@ vi.mock('@/hooks/useRouteSnapshot', () => ({
   useRouteSnapshot: () => ({ state: 'orders', setState: vi.fn() }),
 }));
 
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => ({
+    data: {
+      modules: {
+        orders: {
+          features: {
+            enquiries: true,
+            sales_orders: true,
+            invoices: true,
+          },
+        },
+      },
+    },
+  }),
+}));
+
 vi.mock('@/components/seller/settings/LocationFormSheet', () => ({
   LocationFormSheet: () => null,
+}));
+
+vi.mock('@/components/seller/locations/detail/LocationOrdersTab', () => ({
+  LocationOrdersTab: () => <div>orders-panel</div>,
 }));
 
 import { LocationDetailPage } from '@/components/seller/locations/detail/LocationDetailPage';
@@ -88,6 +125,6 @@ describe('location detail page', () => {
 
     expect(screen.queryByRole('tab', { name: 'Performance' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /^Orders/i })).toHaveClass('border-ember-500');
+    expect(screen.getByRole('tab', { name: /^Orders/i })).toHaveClass('md:border-ember-500');
   });
 });

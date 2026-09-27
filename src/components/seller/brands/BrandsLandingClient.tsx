@@ -21,6 +21,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useSplitPaneOpen } from '@/hooks/useSplitPaneOpen';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerPageView, useSellerCtaCapture } from '@/hooks/useSellerPageView';
@@ -39,8 +40,10 @@ import { SELLER_INFINITE_SCROLL_RATIO } from '@/lib/seller-ui';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 import { SellerSplitPaneLandingSkeleton, SplitPaneListRowsSkeleton, SplitPaneStickyHeaderSlot } from '@/components/seller/mobile';
+import { SellerProductsWorkspaceTabs } from '@/components/seller/layout/SellerWorkspaceTabSets';
 import { joinSplitListMeta } from '@/lib/seller-split-list-ui';
 import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 type SortOption = 'Sales (high → low)' | 'Sales (low → high)' | 'Invoice count (high → low)' | 'Sold products (high → low)' | 'Purchasing customers (high → low)';
 type BrandLandingFilters = { status: string[] };
@@ -143,7 +146,8 @@ function BrandLandingContent({
 }) {
   const router = useRouter();
   const { id: openId } = useParams<{ id?: string }>();
-  const isPaneOpen = useSplitPaneOpen('/brands');
+  const isPaneOpen = useSplitPaneOpen(SELLER_ROUTES.products.brands);
+  const isMobile = useIsMobile();
   const initialSearch = useSearchParams().get('search')?.trim() || undefined;
   const period: SellerLandingPeriod = 'month';
   const horizonLabel = 'This Month';
@@ -151,7 +155,7 @@ function BrandLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
     scopeKey: 'v4-this-month',
-    pathnameOverride: '/brands',
+    pathnameOverride: SELLER_ROUTES.products.brands,
     version: 5,
     initialState: {
       search: '',
@@ -175,7 +179,7 @@ function BrandLandingContent({
   useRouteScrollRestoration({
     storageKey: 'seller-brands-landing',
     scopeKey: 'v4-this-month',
-    pathnameOverride: '/brands',
+    pathnameOverride: SELLER_ROUTES.products.brands,
     ready: !isLoading,
   });
   useSellerPageView();
@@ -239,13 +243,14 @@ function BrandLandingContent({
   const showRefreshingState = isLoading && !data;
 
   if (showRefreshingState) {
-    return isPaneOpen ? (
+    return isMobile || isPaneOpen ? (
       <SellerSplitPaneLandingSkeleton
         ariaLabel="Loading brands"
         showLeading
         eyebrowWidth="w-16"
         titleWidth="w-44"
         subtitleWidth="w-52"
+        showTransactionTabs
       />
     ) : (
       <BrandsLandingSkeleton />
@@ -261,11 +266,11 @@ function BrandLandingContent({
           isError={isError}
         >
         <PageHeader
-          eyebrow={isPaneOpen ? 'Brands' : 'Portfolio'}
+          eyebrow={isPaneOpen ? 'Brands' : 'Products'}
           title={isPaneOpen ? selectedOption.label : 'Brands'}
           subtitle={isPaneOpen
             ? `${selectedOption.value} · ${selectedOption.sub}`
-            : `${landingData?.total ?? visibleRows.length} brands · This month invoice performance.`}
+            : 'Maintain the sellable catalog, stock posture, brands, and categories.'}
           horizon={horizonLabel}
           primary="Add a brand"
           onPrimaryClick={() => {
@@ -274,6 +279,7 @@ function BrandLandingContent({
           }}
           compact={isPaneOpen}
         />
+        <SellerProductsWorkspaceTabs />
 
         {isPaneOpen ? null : (
           <InsightStrip4
@@ -362,7 +368,7 @@ function BrandLandingContent({
         sentinelRef={sentinelRef}
         mobileRows={visibleRows.map((brand) => ({
           id: brand.id,
-          href: `/brands/${brand.id}`,
+          href: `${SELLER_ROUTES.products.brands}/${brand.id}`,
           leading: (
             <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={32} />
           ),
@@ -385,7 +391,7 @@ function BrandLandingContent({
               'cursor-pointer border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50 active:bg-cream-100',
               brand.id === openId ? 'bg-ember-50' : 'bg-white',
             )}
-            onClick={() => router.push(`/brands/${brand.id}`)}
+            onClick={() => router.push(`${SELLER_ROUTES.products.brands}/${brand.id}`)}
             onPointerDown={() => triggerHaptic()}
           >
             <td className="px-3 py-3 text-base text-cream-900">

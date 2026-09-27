@@ -1,0 +1,83 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const getVerifiedClaimsMock = vi.fn();
+const updateArgsRef: { value: Record<string, unknown> | null } = { value: null };
+
+vi.mock('@/lib/auth', () => ({
+  getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
+}));
+
+vi.mock('@/lib/server/seller-location-access', () => ({
+  canAccessDocumentLocation: () => true,
+}));
+
+function tableMock(table: string) {
+  const q: any = {
+    select: () => q,
+    eq: () => q,
+    is: () => q,
+    update: (v: Record<string, unknown>) => { updateArgsRef.value = v; return q; },
+    maybeSingle: () => {
+      if (table === 'estimates') {
+        return Promise.resolve({ data: { id: '11111111-1111-1111-1111-111111111111', tenant_id: 'tenant-1', location_id: null, status: 'draft' }, error: null });
+      }
+      if (table === 'estimate_items') {
+        return Promise.resolve({ data: { id: '22222222-2222-2222-2222-222222222222', estimate_id: '11111111-1111-1111-1111-111111111111', qty: 3, disc_pct: 0 }, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+    then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(resolve),
+  };
+  return q;
+}
+
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: {
+    schema: () => ({ from: (table: string) => tableMock(table) }),
+  },
+}));
+
+import { PATCH } from '../../app/api/tenant/estimates/[id]/items/[itemId]/price/route';
+
+describe('PATCH /api/tenant/estimates/[id]/items/[itemId]/price', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updateArgsRef.value = null;
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_admin', sub: 'user-1' });
+  });
+
+  it('sets the line unit price and recomputes the line total, without touching the buyer target', async () => {
+    const req = new NextRequest('http://localhost/api/tenant/estimates/11111111-1111-1111-1111-111111111111/items/22222222-2222-2222-2222-222222222222/price', {
+      method: 'PATCH',
+      body: JSON.stringify({ unit_price: 450 }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111', itemId: '22222222-2222-2222-2222-222222222222' }) });
+    expect(res.status).toBe(200);
+    expect(updateArgsRef.value).toMatchObject({
+      unit_price: 450,
+      line_total: 1350,
+    });
+    expect(updateArgsRef.value).not.toHaveProperty('buyer_target_unit_price_min');
+    expect(updateArgsRef.value).not.toHaveProperty('buyer_target_unit_price_max');
+  });
+
+  it('rejects a negative price', async () => {
+    const req = new NextRequest('http://localhost/api/tenant/estimates/11111111-1111-1111-1111-111111111111/items/22222222-2222-2222-2222-222222222222/price', {
+      method: 'PATCH',
+      body: JSON.stringify({ unit_price: -1 }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111', itemId: '22222222-2222-2222-2222-222222222222' }) });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-seller caller', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'buyer_admin', sub: 'user-1' });
+    const req = new NextRequest('http://localhost/api/tenant/estimates/11111111-1111-1111-1111-111111111111/items/22222222-2222-2222-2222-222222222222/price', {
+      method: 'PATCH',
+      body: JSON.stringify({ unit_price: 450 }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111', itemId: '22222222-2222-2222-2222-222222222222' }) });
+    expect(res.status).toBe(403);
+  });
+});

@@ -35,6 +35,8 @@ vi.mock('@/hooks/useSellerLandingPeriod', () => ({
 
 vi.mock('@/components/seller/transactional', () => ({
   TransactionTable: ({ rows }: { rows: unknown[] }) => <div>Rows: {rows.length}</div>,
+  transactionTableColumnCount: () => 4,
+  transactionTableMinWidth: () => '720px',
 }));
 
 vi.mock('@/components/ui/empty-state', () => ({
@@ -90,7 +92,6 @@ describe('CustomerOrdersTab', () => {
         buyerId="buyer-1"
         buyerName="Singh Hospitality"
         kind="order"
-        routeBase="/sales-orders"
       />,
     );
 

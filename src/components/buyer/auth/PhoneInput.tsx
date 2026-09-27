@@ -6,15 +6,23 @@ interface PhoneInputProps {
   onSubmit: (phoneNumber: string) => void | Promise<void>;
   loading?: boolean;
   error?: string;
+  submitLabel?: string;
+  loadingLabel?: string;
 }
 
 const inputCls =
-  'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50';
+  'w-full px-3 py-2.5 rounded-md bg-[var(--bg-surface)] border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 transition-colors disabled:opacity-50';
 
 const labelCls =
   'block text-cream-700 font-semibold mb-1.5 text-xs uppercase tracking-[0.08em]';
 
-export function PhoneInput({ onSubmit, loading = false, error }: PhoneInputProps) {
+export function PhoneInput({
+  onSubmit,
+  loading = false,
+  error,
+  submitLabel = 'Send OTP',
+  loadingLabel = 'Sending OTP…',
+}: PhoneInputProps) {
   const [value, setValue] = useState('');
 
   function handleSubmit(e: FormEvent) {
@@ -59,7 +67,7 @@ export function PhoneInput({ onSubmit, loading = false, error }: PhoneInputProps
         disabled={loading || value.length !== 10}
         className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Sending OTP…' : 'Send OTP'}
+        {loading ? loadingLabel : submitLabel}
       </button>
     </form>
   );

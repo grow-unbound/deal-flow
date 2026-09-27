@@ -9,6 +9,7 @@ import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/l
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { searchScopedProducts } from '@/lib/server/scoped-product-search';
+import { revalidatePublicCatalogCache } from '@/lib/server/public-catalog-cache';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -610,6 +611,13 @@ export async function POST(req: NextRequest) {
 
     let resolvedTenantBrandId = providedTenantBrandId ?? null;
     let resolvedTenantCategoryId = tenant_category_id ?? null;
+    // Master-linked products/brands: copy gst_rate/hsn_code/image_urls (and,
+    // via ensureTenantBrandForCatalogBrand, the brand's logo_url) from the
+    // catalog master onto the tenant row now, when the seller didn't provide
+    // one — so buyer-facing reads never need a live catalog.* join for these.
+    let resolvedGstRate = gst_rate ?? null;
+    let resolvedHsnCode = hsn_code ?? null;
+    let resolvedImageUrls = image_urls ?? [];
 
     if (master_product_id) {
       let importedLinks: Awaited<ReturnType<typeof resolveImportedProductTenantLinks>> = null;
@@ -629,6 +637,9 @@ export async function POST(req: NextRequest) {
       if (importedLinks) {
         resolvedTenantBrandId = importedLinks.tenant_brand_id;
         resolvedTenantCategoryId = importedLinks.tenant_category_id;
+        resolvedGstRate = resolvedGstRate ?? importedLinks.gst_rate;
+        resolvedHsnCode = resolvedHsnCode ?? importedLinks.hsn_code;
+        resolvedImageUrls = resolvedImageUrls.length > 0 ? resolvedImageUrls : (importedLinks.image_urls ?? []);
       }
     }
 
@@ -646,12 +657,12 @@ export async function POST(req: NextRequest) {
         cost_price: effectiveCostPrice,
         default_uom: default_uom ?? null,
         pack_size: pack_size ?? null,
-        hsn_code: hsn_code ?? null,
-        gst_rate: gst_rate ?? null,
+        hsn_code: resolvedHsnCode,
+        gst_rate: resolvedGstRate,
         description: description ?? null,
         tenant_category_id: resolvedTenantCategoryId,
         attributes_override: attributes ?? {},
-        image_urls: image_urls ?? [],
+        image_urls: resolvedImageUrls,
         is_active: true,
         created_by: actorUserId,
         updated_by: actorUserId,
@@ -697,6 +708,7 @@ export async function POST(req: NextRequest) {
       // Analytics is non-blocking for product creation.
     }
 
+    revalidatePublicCatalogCache(tenantId);
     return NextResponse.json({ product: inserted }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/tenant/products] Unexpected error:', err);

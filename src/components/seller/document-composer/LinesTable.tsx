@@ -366,7 +366,7 @@ export function LinesTable({
                           {line.base_selling_price != null ? ` · Base Price ${formatNumberValue(line.base_selling_price, 'CURRENCY_EXACT')}` : ''}
                         </p>
                         {stockStatus ? (
-                          <p className={cn('mt-1 text-xs font-semibold', stockStatus.tone === 'danger' ? 'text-danger-700' : 'text-amber-800')}>
+                          <p className={cn('mt-1 text-xs font-semibold', stockStatus.tone === 'danger' ? 'text-danger-700' : 'text-warning-700')}>
                             {stockStatus.label} · Required {formatNumberInput(line.qty, 'COUNT')}, on hand {formatNumberInput(Math.max(line.on_hand, 0), 'COUNT')}
                           </p>
                         ) : null}

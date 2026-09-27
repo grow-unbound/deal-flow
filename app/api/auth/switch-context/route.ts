@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
-import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
-import { findAllLoginCandidates, resolveSellerAuthPhone } from '@/lib/server/buyer-access';
+import { findAllLoginCandidates } from '@/lib/server/buyer-access';
+import { resolveSwitchLookupPhone, restrictSwitchContextCandidates } from '@/lib/server/auth-switch-phone';
 import { writeVerifiedCandidatesRecord } from '@/lib/server/buyer-otp-store';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -12,10 +12,21 @@ import { supabaseAdmin } from '@/lib/supabase';
  * or       { error: string } (400/401/500)
  *
  * Lets an already-logged-in seller/buyer jump straight to the multi-account
- * picker (/login/select-context) without a fresh OTP — resolves the caller's
- * own phone number authoritatively, looks up every account that phone is
- * linked to (same lookup the OTP flow uses), and hands back a `verified`
- * OTP-store ref_id the picker/select-context route already know how to use.
+ * picker (/login/select-context) without a fresh OTP.
+ *
+ * SECURITY: prefer the caller's OTP-verified phone
+ * (`app_metadata.otp_verified_phone`, stamped only by a real OTP hash check).
+ * Legacy authenticated seller sessions may fall back to the auth identity's
+ * phone when the current seller membership is present in that phone lookup;
+ * the fallback only exposes seller memberships, not buyer rows. Never use
+ * `app.buyers.phone`/`app.buyer_users.phone` (resolveCallerPhone) for broad
+ * buyer candidate lookup: those are mutable business columns with no OTP
+ * re-verification on write.
+ *
+ * The resulting `verified` OTP-store record is also stamped with the
+ * caller's own auth.uid() (`created_by_user_id`) so that only this same
+ * caller's own subsequent select-context call can redeem it — see
+ * phone-otp/select-context/route.ts.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -24,17 +35,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const phone = await resolveCallerPhone(claims.sub, claims.role);
-    if (!phone) {
-      return NextResponse.json({ error: 'No phone number on file for this account.' }, { status: 400 });
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const candidates = await findAllLoginCandidates(phone);
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(claims.sub);
+    if (userError || !userData?.user) {
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    const lookup = resolveSwitchLookupPhone(userData.user);
+    if (!lookup) {
+      return NextResponse.json(
+        { error: 'Please log in again to switch accounts.' },
+        { status: 400 },
+      );
+    }
+
+    const candidates = restrictSwitchContextCandidates(
+      await findAllLoginCandidates(lookup.phone),
+      claims,
+      lookup,
+    );
     if (candidates.length < 2) {
       return NextResponse.json({ error: 'No other accounts linked to this number.' }, { status: 400 });
     }
 
-    const refId = await writeVerifiedCandidatesRecord(phone, candidates);
+    // otpVerified: false — while `phone` here IS the caller's genuinely
+    // OTP-verified phone, this call itself is not a fresh OTP challenge.
+    // select-context must not stamp otp_verified_phone off the back of this
+    // record (unrelated, already-covered concern — see buyer-otp-store.ts).
+    const refId = await writeVerifiedCandidatesRecord(lookup.phone, candidates, false, claims.sub);
     if (!refId) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
@@ -44,44 +75,4 @@ export async function POST(request: NextRequest) {
     console.error('[switch-context] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-async function resolveCallerPhone(userId: string, role: string | null): Promise<string | null> {
-  if (!supabaseAdmin) return null;
-
-  if (role && (SELLER_ROLES as readonly string[]).includes(role)) {
-    // app.tenant_users.phone — matches what find_seller_candidates_by_phone matches on.
-    // Falls back to auth.users only if tenant_users.phone was never backfilled, and
-    // self-heals it when that happens (see resolveSellerAuthPhone).
-    return resolveSellerAuthPhone(userId);
-  }
-
-  if (role && (BUYER_ROLES as readonly string[]).includes(role)) {
-    // Buyer owners log in directly as app.buyers (buyers.user_id) and have no
-    // buyer_users row at all — check that first. Delegates (real staff) only
-    // ever have a buyer_users row, never buyers.user_id.
-    const { data: ownerRow } = await supabaseAdmin
-      .schema('app')
-      .from('buyers')
-      .select('phone')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const ownerPhone = (ownerRow as { phone: string | null } | null)?.phone;
-    if (ownerPhone) return ownerPhone;
-
-    // A user can be a member of multiple buyer accounts — take one deterministically
-    // rather than .maybeSingle() (which errors on >1 rows).
-    const { data } = await supabaseAdmin
-      .schema('app')
-      .from('buyer_users')
-      .select('phone')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    return (data as { phone: string | null } | null)?.phone ?? null;
-  }
-
-  return null;
 }

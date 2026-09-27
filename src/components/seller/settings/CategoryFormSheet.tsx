@@ -304,7 +304,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
               </FormBlock>
 
               {form.formState.errors.root ? (
-                <p className="text-body-sm text-danger-600">{form.formState.errors.root.message}</p>
+                <p className="text-body-sm text-danger-500">{form.formState.errors.root.message}</p>
               ) : null}
             </FormOverlayBody>
 

@@ -1,6 +1,14 @@
 /**
  * Single source of truth for buyer PWA route taxonomy (tab bar vs deep screens).
+ * Classifiers accept both public storefront paths (`/`, `/product/…`) and the
+ * internal `/buy/…` tree that middleware rewrites to.
  */
+
+import { STOREFRONT, toInternalBuyPath, toPublicStorefrontPath } from '@/lib/storefront-paths';
+
+export function normalizeBuyerPathname(pathname: string): string {
+  return toInternalBuyPath(pathname) ?? pathname;
+}
 
 export const BUYER_LANDING_ROUTES = [
   '/buy/home',
@@ -13,6 +21,7 @@ export type BuyerLandingRoute = (typeof BUYER_LANDING_ROUTES)[number];
 /** Prefixes: hide tab bar when pathname starts with one of these. */
 export const BUYER_DEEP_PREFIXES = [
   '/buy/product/',
+  '/buy/family/',
   '/buy/home/category/',
   '/buy/home/brand/',
   '/buy/home/list/',
@@ -30,18 +39,19 @@ export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/order-placed', '/buy/e
 export const BUYER_PREVIEW_SETUP_PREFIX = '/buy/preview/' as const;
 
 export function isBuyerPreviewSetupRoute(pathname: string): boolean {
-  return pathname.startsWith(BUYER_PREVIEW_SETUP_PREFIX);
+  return normalizeBuyerPathname(pathname).startsWith(BUYER_PREVIEW_SETUP_PREFIX);
 }
 
 export function isBuyerDeepRoute(pathname: string): boolean {
+  const normalized = normalizeBuyerPathname(pathname);
   for (const root of BUYER_DEEP_EXACT_ROOTS) {
-    if (pathname === root || pathname.startsWith(`${root}/`)) return true;
+    if (normalized === root || normalized.startsWith(`${root}/`)) return true;
   }
-  return BUYER_DEEP_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return BUYER_DEEP_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 export function isBuyerLandingRoute(pathname: string): boolean {
-  return (BUYER_LANDING_ROUTES as readonly string[]).includes(pathname);
+  return (BUYER_LANDING_ROUTES as readonly string[]).includes(normalizeBuyerPathname(pathname));
 }
 
 /**
@@ -51,14 +61,16 @@ export function isBuyerLandingRoute(pathname: string): boolean {
  * treat it like `/buy/home/list/[id]`.
  */
 export function isBuyerCampaignShareRoute(pathname: string, hasShareToken: boolean): boolean {
-  return pathname === '/buy/home' && hasShareToken;
+  return normalizeBuyerPathname(pathname) === '/buy/home' && hasShareToken;
 }
 
 /** Desktop breadcrumbs appear on deep buyer pages, plus the Orders/Profile landing tabs (never Home). */
 const BUYER_BREADCRUMB_LANDING_ROUTES = ['/buy/orders', '/buy/profile'] as const;
 
 export function shouldShowBuyerDesktopBreadcrumbs(pathname: string): boolean {
-  return isBuyerDeepRoute(pathname) || (BUYER_BREADCRUMB_LANDING_ROUTES as readonly string[]).includes(pathname);
+  const normalized = normalizeBuyerPathname(pathname);
+  return isBuyerDeepRoute(normalized)
+    || (BUYER_BREADCRUMB_LANDING_ROUTES as readonly string[]).includes(normalized);
 }
 
 /** Hide tab bar / bottom padding (preview gates, not stack "deep" screens). */
@@ -73,12 +85,14 @@ const BUYER_CART_PILL_PREFIXES = [
   '/buy/home/brand/',
   '/buy/home/list/',
   '/buy/product/',
+  '/buy/family/',
 ] as const;
 
 /** Home + catalog tree: show floating View Cart pill when cart is non-empty. */
 export function isBuyerCartPillRoute(pathname: string): boolean {
-  if ((BUYER_CART_PILL_EXACT as readonly string[]).includes(pathname)) return true;
-  return BUYER_CART_PILL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const normalized = normalizeBuyerPathname(pathname);
+  if ((BUYER_CART_PILL_EXACT as readonly string[]).includes(normalized)) return true;
+  return BUYER_CART_PILL_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 export interface BuyerSearchHrefParams {
@@ -89,11 +103,16 @@ export interface BuyerSearchHrefParams {
   campaign_id?: string;
 }
 
-export function buildBuyerLocationHref(returnTo: string): string {
-  return `/buy/location?returnTo=${encodeURIComponent(returnTo)}`;
+function toPublicLocationReturnTo(returnTo: string): string {
+  const [pathname, suffix = ''] = returnTo.split(/(?=[?#])/, 2);
+  return `${toPublicStorefrontPath(pathname) ?? pathname}${suffix}`;
 }
 
-/** Build `/buy/search` URL with query params for overlay search. */
+export function buildBuyerLocationHref(returnTo: string): string {
+  return `${STOREFRONT.location}?returnTo=${encodeURIComponent(toPublicLocationReturnTo(returnTo))}`;
+}
+
+/** Build storefront `/search` URL with query params for overlay search. */
 export function buildBuyerSearchHref(params: BuyerSearchHrefParams): string {
   const sp = new URLSearchParams();
   if (params.scope) sp.set('scope', params.scope);
@@ -102,5 +121,5 @@ export function buildBuyerSearchHref(params: BuyerSearchHrefParams): string {
   if (params.brand_id) sp.set('brand_id', params.brand_id);
   if (params.campaign_id) sp.set('campaign_id', params.campaign_id);
   const qs = sp.toString();
-  return qs ? `/buy/search?${qs}` : '/buy/search';
+  return qs ? `${STOREFRONT.search}?${qs}` : STOREFRONT.search;
 }

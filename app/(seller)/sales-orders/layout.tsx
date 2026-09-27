@@ -1,3 +1,4 @@
+import { sellerPageTitle, SELLER_PAGE_TITLES } from '@/lib/page-titles';
 import type { ReactNode } from 'react';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SalesOrdersLandingClient } from '@/components/seller/sales-orders/SalesOrdersLandingClient';
@@ -8,6 +9,7 @@ import { EntitySplitShell } from '@/components/seller/layout';
 import type { OrdersLandingMetricsV4 } from '@/hooks/useOrders';
 import { DEFAULT_SELLER_LANDING_PERIOD } from '@/lib/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 // Note: `?search=`/`?period=` seeding now happens client-side inside
 // SalesOrdersLandingClient via useSearchParams() — layouts (unlike page.tsx) don't
@@ -15,18 +17,20 @@ import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 // mounted across /sales-orders <-> /sales-orders/[id]. The SSR bootstrap fetch below
 // always uses the default period; a deep link with an explicit `?period=` briefly
 // shows the default period's data until the client-side period hook corrects it.
+export const metadata = sellerPageTitle(SELLER_PAGE_TITLES.salesOrders);
+
 export default async function SalesOrdersLayout({ children }: { children: ReactNode }) {
   await requireSellerServerTenantId();
 
   return (
     <EntitySplitShell
-      basePath="/sales-orders"
+      basePath={SELLER_ROUTES.sales.orders}
       listSlot={
         <SellerBootstrapBoundary<OrdersLandingMetricsV4>
           path={`/api/tenant/orders/metrics?period=${DEFAULT_SELLER_LANDING_PERIOD}`}
           fallback={
             <SplitPaneBootstrapFallback
-              basePath="/sales-orders"
+              basePath={SELLER_ROUTES.sales.orders}
               ariaLabel="Loading sales orders"
               showTransactionTabs
               variant="transaction"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { parseRequestHost } from '@/lib/storefront-host';
 
 export function BuyerServiceWorkerRegistration() {
   useEffect(() => {
@@ -13,9 +14,25 @@ export function BuyerServiceWorkerRegistration() {
       }).catch(() => {});
       return;
     }
-    navigator.serviceWorker.register('/buyer-sw.js', { scope: '/buy/' }).catch(() => {
-      // Non-critical — the app works fine without the service worker, it's a pure speed optimization.
-    });
+
+    const hostKind = parseRequestHost(window.location.hostname);
+    const isTenantHost = hostKind.kind === 'tenant';
+
+    void (async () => {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        const scopePath = new URL(reg.scope).pathname;
+        if (!isTenantHost || scopePath.startsWith('/buy')) {
+          await reg.unregister();
+        }
+      }
+
+      if (!isTenantHost) return;
+
+      await navigator.serviceWorker.register('/buyer-sw.js', { scope: '/' }).catch(() => {
+        // Non-critical — the app works fine without the service worker.
+      });
+    })();
   }, []);
 
   return null;
