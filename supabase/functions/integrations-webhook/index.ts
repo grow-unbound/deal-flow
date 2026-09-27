@@ -68,6 +68,23 @@ function retryable(reason: string): Response {
 // and return 200 before the wall is hit (avoiding orphaned "received" rows).
 const PERSIST_TIMEOUT_MS = 100_000;
 
+// Postgres/PostgREST failures where nothing (or only idempotent upserts —
+// see the "All persisters are idempotent" note atop integrations-persist.ts)
+// happened before the error: safe to hand back to Zoho for retry, same
+// reasoning as LockTimeoutError below. Without this, these errors fall
+// through to ok('error') and the event is silently dropped for good.
+function isTransientPersistError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.startsWith('persist_timeout') ||
+    message.includes('canceling statement due to statement timeout') ||
+    message.includes('canceling statement due to lock timeout') ||
+    message.includes('current transaction is aborted') ||
+    message.includes('deadlock detected') ||
+    message.includes('could not serialize access')
+  );
+}
+
 // Create placeholder webhook event record at START
 async function createWebhookEventPlaceholder(
   admin: SupabaseClient,
@@ -529,13 +546,19 @@ Deno.serve(async (req: Request) => {
         entityType: catchCtx.entityType,
         externalRef: catchCtx.externalId,
         stage: 'persist',
-        reasonCode: err instanceof LockTimeoutError ? 'LOCK_TIMEOUT' : 'EXCEPTION',
+        reasonCode: err instanceof LockTimeoutError
+          ? 'LOCK_TIMEOUT'
+          : isTransientPersistError(err) ? 'TRANSIENT_DB_ERROR' : 'EXCEPTION',
         message: String(err),
       });
     }
     if (err instanceof LockTimeoutError) {
       console.log(`[${traceId}] lock_timeout — returning 503 so Zoho retries`);
       return retryable('lock_timeout');
+    }
+    if (isTransientPersistError(err)) {
+      console.log(`[${traceId}] transient_db_error — returning 503 so Zoho retries`);
+      return retryable('transient_db_error');
     }
     return ok('error');
   }
