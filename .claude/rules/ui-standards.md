@@ -4,7 +4,13 @@ paths:
   - "src/components/**"
   - "app/globals.css"
 ---
-# UI standards (spacing, navigation, skeletons/CLS, scrollbars)
+# UI standards (tokens, responsive, spacing, navigation, skeletons/CLS, scrollbars)
+
+## Mobile-first + tokens only
+- Seller and buyer apps are both **mobile-first, responsive up to desktop**. Write the mobile layout first, then add `md:`/`lg:` adaptations; reuse the same tokens across breakpoints.
+- **No hardcoded design values in components.** Colors, font sizes, spacing scale, radii, shadows, layout widths come from tokens in `app/globals.css` (see `docs/architecture.md` → Surfaces for families). Missing token → add it to `globals.css`, then reference it. Enforced today only for the buyer app: `pnpm check:buyer-ui-tokens` (raw `text-[Npx]` / hex); use `token-exempt` comment only with a reason.
+- Navigation structure (sidebar, bottom tabs, buyer tab bar) lives in code — see `docs/architecture.md`; never restate or hardcode tab lists elsewhere.
+- Known gap: some layout rules below still cite literal values (e.g. `max-w-[1920px]`, `px-8`); treat them as legacy until they are replaced by named tokens.
 
 ## Spacing & Layout Standard
 - Forms, dialogs, alert dialogs, and confirmation sheets must use clear `header` / `body` / `footer` spacing, not ad hoc stacked blocks.

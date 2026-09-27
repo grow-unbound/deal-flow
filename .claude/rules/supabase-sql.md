@@ -31,4 +31,4 @@ Dirty-work, lease, runtime-control, refresh-state and execution-history tables a
 - After a persistent push: verify migration history, RLS, grants, advisors, focused tests.
 
 ## Local storefront hosts (no Vercel, no `/etc/hosts`)
-`*.localhost` resolves to 127.0.0.1. With `pnpm dev`: seller `http://app.localhost:3000`; tenant storefront `http://{slug}.localhost:3000` (e.g. `wineyard`); legacy unscoped seller `http://localhost:3000`. Don't add hosts entries, `lvh.me` or nip.io. Going live = `app.catalogs.live_at` (+ `pricing_mode`); unpublished hosts render `/not-live`.
+`*.localhost` resolves to 127.0.0.1. With `pnpm dev`: seller `http://app.localhost:3000`; tenant storefront `http://{slug}.localhost:3000` (e.g. `acme`); legacy unscoped seller `http://localhost:3000`. Don't add hosts entries, `lvh.me` or nip.io. Going live = `app.catalogs.live_at` (+ `pricing_mode`); unpublished hosts render `/not-live`.

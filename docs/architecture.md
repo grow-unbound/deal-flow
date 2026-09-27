@@ -1,34 +1,42 @@
-# DealFlow architecture (read when working in a domain)
+# Yukti architecture (read when working in a domain)
 
-## Layout
-`app/` Next.js routes — `(auth)`, `(seller)` (dashboard, brands, products, buyers, cohorts, price-lists, catalogs, orders, exports, settings), `(buyer)/shop` (home, catalog, orders, profile; deep: product/[id], cart, checkout), `api/`. `src/` components (`ui/` shadcn, `layout/`, `seller/`, `buyer/`), `lib/`, `hooks/`, `contexts/`, `types/`, `constants/`. `supabase/` migrations, seed, functions. Use `codegraph files` / `codegraph explore` for the live map.
+Verified against the codebase on 2026-09-27. This file points at the code that is the source of truth; it deliberately does not restate lists (routes, tabs, tables, flags) that drift. When code and this file disagree, code wins — flag the drift via `/wrap`.
 
-## Integrations
-Supabase (DB/Auth/RLS/pgvector/Edge Functions/Vault) · Cloudflare R2 + `yukti-image-worker` (only resize path; presized variants thumb/small/medium/large, see `specs/image-upload-architecture.md`) · PostHog (analytics + flags) · Resend · WhatsApp OTP (Meta Cloud API via AiSensy/Interakt) · Zoho Books/Inventory connector · Sentry · Vercel.
+## Product
+Multi-tenant SaaS for Indian SMB multibrand distributors: catalogs, customer-specific pricing, sales documents, buyer ordering, integrations. **Yukti** is the product name everywhere ("DealFlow" was a working title; legacy mentions survive in old specs, some comments, `df_` flag prefixes and the GitHub repo name).
 
-## Data model
-- Business tables: uuid PK, `created_at/updated_at/created_by/updated_by`, `deleted_at`, `external_ref` (unique per `(tenant_id, external_ref)`), FKs `ON DELETE RESTRICT`.
-- Chains: `tenants → tenant_users → tenant_brands → tenant_products → tenant_inventory` · `buyers → buyer_users → cohorts → cohort_members` · `price_lists → price_list_items → price_list_assignments` · `published_catalogs → published_catalog_items` · `orders → order_items` · `audit_log` (append-only, every entity mutation).
-- Pricing: `app.resolve_price(tenant_product_id, buyer_id, qty)` resolves in order: catalog `price_override` → buyer price lists (highest priority + valid window) → cohort price lists → `all_buyers` → `base_selling_price`.
-- Search: PG full-text (tsvector+GIN) + pgvector hybrid via `app.search_products(tenant_id, query, filters)`. No Typesense until post-PMF.
+## Hosts & routing
+- Canonical suffix `useyukti.in` (legacy `yukti.so`), local `*.localhost`. `app.<suffix>` = seller app, `catalog.<suffix>` = catalog host, `{slug}.<suffix>` = tenant storefront (buyer). Reserved labels are listed in `src/lib/storefront-host.ts`.
+- `middleware.ts` resolves the host and **rewrites public storefront paths to internal route namespaces**: buyer pages live under `app/(buyer)/buy/*` (signed-in), `app/(buyer-guest)/buy/g/[tenantSlug]/*` (guest), `app/(guest)/c/[share_token]`; public paths (`/orders`, `/product/[id]`…) are defined in `src/lib/storefront-paths.ts`. There is no `/shop` route. Any new root-level static public file must be added to `PUBLIC_PREFIXES` in `middleware.ts`.
+- Other route groups: `(auth)`, `(seller)`, `(onboarding)`, `(catalog)`, `(storefront)` (`not-live`, `tenant-not-found`), plus root pages `onboarding`, `pending`, `resubmit-documents`, `verify-human`, `consent`. API groups under `app/api/*` (auth, buyer, tenant, brands, products, customers, cohorts, price-lists, whatsapp, settings, team, upload(s), internal, public, health, verify-human).
+
+## Surfaces (seller app and buyer app)
+- **Both are mobile-first and responsive up to desktop.** Same token system, adapted per breakpoint. Never hardcode colors, font sizes, spacing or radii in components — reference tokens defined in `app/globals.css` (`--yk-*` base, `--bg-*`/`--fg-*`/`--border-*` semantic, `--teal-*`/`--cream-*`/`--ember-*` palette, `--ctl-*` controls, `--b-text-*` buyer type scale scoped under `[data-app="buyer"]`, `--sidebar-w`/`--topbar-*`/`--tab-*`/`--header-*` layout). If a token is missing, add it to `globals.css`, don't inline a literal.
+- Navigation is defined in code — read these, don't copy them here:
+  - Seller routes: `src/lib/seller-routes.ts`; desktop sidebar: `src/components/layout/seller-sidebar-layout.ts` + `SellerSidebar.tsx`; mobile chrome and bottom tabs: `SellerMobileChrome.tsx`.
+  - Buyer paths: `src/lib/storefront-paths.ts` (`STOREFRONT`); tab bar: `src/components/layout/BuyerTabBar.tsx`; shell: `BuyerShell.tsx`.
+- Design system: `specs/Yukti_DesignSystem_R12.md`.
+
+## Auth & identity
+Phone OTP delivered over WhatsApp (`sendLoginOtpWhatsapp`, `src/lib/server/whatsapp.ts`; `app/api/auth/phone-otp/*`) plus email verification/OTP and invites (`app/api/auth/*`), Cloudflare Turnstile human check, per-IP challenge state. One auth user can belong to multiple tenants/buyers (context switching: `select-context`, `switch-context`, `switch-buyer`). `platform_admins` is the platform-operator table.
 
 ## Tenancy & RBAC
-- Tenant = distributor (one business = one tenant), subdomain `{slug}.dealflow.in`. Buyers live inside a tenant. One auth user can link to many buyers across tenants via `buyer_users`.
-- JWT carries `tenant_id`, `buyer_id` (nullable), `role` — verify every request.
-- Roles: `seller_admin`, `seller_assistant`, `buyer_admin`, `buyer_assistant`. Seller roles manage brands, products, cohorts, catalogs, orders, Tally export; `seller_admin` only: settings, users, cost prices, cohort/price-list management. Buyers browse and order only.
+- Tenant = one distributor business. Buyers (`app.buyers`, `app.buyer_users`) live inside a tenant. Every request re-verifies tenant membership server-side (see `src/lib/server/seller-server-claims.ts`, `buyer-access`); never trust a client `tenant_id`.
+- Roles: `seller_admin`, `seller_assistant`, `buyer_admin`, `buyer_assistant` (`ROLES` in `src/constants/index.ts`; DB checks in migrations and `SECURITY DEFINER` helpers like `app._*_assert_seller_admin`). Seller-assistant location scoping: `specs/DealFlow_SellerAssistant-RBAC_v1.md`.
+- **Tenant-agnostic by rule:** the codebase, design, tooling and priorities serve all tenants. No tenant-specific branches, copy, flags or special cases in code; per-tenant behavior only via `app.tenant_settings` / integration config / flag targeting. Tests may use fixture names.
 
-## Feature flags (PostHog, non-negotiable)
-Every major feature ships behind `df_<module>` (default off until tenant pilot passes): tenant_onboarding, brand_product_master, customer_master, cohorts, pricing_engine, catalog_publishing, buyer_app, order_management, search, tally_export, zoho_integration. Scaffolded off: ai_intake, replenishment, payments. Gate UI **and** RPC; per-`tenant_id` targeting; every flag has an owner and removal date.
+## Data model (schemas `auth`, `catalog`, `app`)
+Do not enumerate tables here — use `src/types/database.ts`, `codegraph`, or the migrations. Domain groups in `app`:
+tenancy & settings · catalog master (brands, categories, products, product families, inventory, warehouses, locations) · customers (buyers, cohorts) · pricing (`price_lists*`, `app.resolve_price` — see its latest migration for resolution order) · **campaigns** (`campaigns`, `campaign_items`, `campaign_buyer_members`; this replaced the old `published_catalogs*`, whose names survive only in legacy constraint names) and `catalogs` · sales documents (estimates, orders, invoices, credit notes, payments) · `entries` (Today) · integrations (`tenant_integrations`, `integration_*`) · WhatsApp (broadcasts, messages, send queue, credit wallet) · recommendations (`reco_*`) · metrics (`kpi_*_daily`, `metrics_*`, `*_snapshot`; rules in `.claude/rules/metrics.md`) · `audit_log`.
+Search: PG full-text + pgvector via `app.search_products`; embedding provider is configurable (`EMBEDDING_PROVIDER`). Order statuses: `ORDER_STATUSES` in `src/constants/index.ts`.
+Conventions and SQL rules: `CLAUDE.md` (hard rules) and `.claude/rules/supabase-sql.md`.
 
-## Surfaces
-- Seller cockpit: desktop-first, left sidebar (Dashboard, Brands, Products, Customers, Cohorts, Price Lists, Catalogs, Orders, Exports, Settings), footer avatar/name/role/logout pinned `mt-auto`.
-- Buyer PWA: `shop.dealflow.in/{share_token}`, mobile-first, WhatsApp OTP (no passwords), tokenized or authenticated. Tabs: Home / Catalog / Orders / Profile; deep screens (product, cart, checkout, order placed) have no tab bar.
+## Integrations
+Supabase (DB, Auth, RLS, pgvector, Edge Functions, Vault, cron) · Cloudflare R2 + `workers/yukti-image-worker` (the only resize path; presized variants, `specs/image-upload-architecture.md`) · PostHog (analytics + flags) · Sentry · Vercel · Cloudflare Turnstile · Google Maps (Places/Geocoding) · WhatsApp Business via Meta Cloud API (Embedded Signup, templates, broadcasts) · ERP/accounting connectors in `src/lib/integrations/` (`zoho_books`, `zoho_inventory`, `tally_prime`, `busy`, `whatsapp_business`; `specs/integrations.md`).
+Not used despite appearances: **Resend** — the `resend` dependency and `RESEND_API_KEY` in `.env.example` have no code imports (candidate cleanup); "resend" in code means re-sending invites/OTPs.
 
-## Scope guardrails
-Not in MVP (defer ruthlessly): AI multimodal intake, replenishment forecasting, payment reconciliation, live Tally/Busy API, returns, trade promotions, brand-side dashboards, Typesense, webhooks. Order workflow: draft → received → confirmed → dispatched → delivered → cancelled. Tally CSV export: Item Master, Sales Voucher, Ledger Master.
-
-## Customers
-WineYard (CCTV distributor, on Zoho) is the first customer; Zoho integration is the conversion wedge, piloted behind `df_zoho_integration`. Target ₹50–75K/mo Scale tier.
+## Feature flags
+PostHog flags, names in `FEATURE_FLAGS` (`src/constants/index.ts`). The `df_` prefix is legacy — do not rename flags (breaks targeting). Every major feature ships behind a flag that gates UI **and** RPC, supports per-`tenant_id` targeting, and has an owner and removal date. Default off until pilot passes.
 
 ## Security testing
-Cross-tenant isolation tests run on every PR, with feature flags both on and off. `catalog.*` enforces `is_public` + `origin_tenant_id`.
+Cross-tenant isolation tests run on every PR, with flags on and off. `catalog.*` enforces `is_public` + `origin_tenant_id`.

@@ -1,11 +1,11 @@
-# DealFlow (Yukti) — Claude Instructions
+# Yukti — Claude Instructions
 
 Sole instruction file. `AGENTS.md` only points here. Detail loads on demand: `.claude/rules/` (auto-loads when matching files are read), `docs/architecture.md`, `specs/INDEX.md`.
-Repo is PUBLIC on GitHub — never commit secrets, PII, or confidential business data, even on branches.
+Product name is **Yukti** ("DealFlow" was a working title — don't use it in new code, docs or copy; `df_` flag prefixes are legacy, don't rename). Repo is PUBLIC on GitHub — never commit secrets, PII, or confidential business data, even on branches.
 
 ## Product & stack (locked — don't debate)
-Distributor command center: multibrand catalogs, cohort pricing, buyer PWA orders (Indian SMB distributors).
-Next.js App Router · React · Tailwind · shadcn/ui · Zod (client+server) · Supabase (Postgres, RLS, Auth, pgvector) · business logic in Postgres RPCs · R2 images · PostHog (analytics+flags) · pg_cron · Vercel · Resend · WhatsApp OTP · Sentry · **pnpm**.
+Multi-tenant distributor command center: catalogs, customer-specific pricing, sales documents, buyer ordering, integrations (Indian SMB distributors). Tenant-agnostic: no tenant-specific branches, copy, flags or priorities in code — per-tenant behavior only via tenant settings/flag targeting.
+Next.js App Router · React · Tailwind · shadcn/ui · Zod (client+server) · Supabase (Postgres, RLS, Auth, pgvector) · business logic in Postgres RPCs · R2 images · PostHog (analytics+flags) · pg_cron · Vercel · WhatsApp via Meta Cloud API (OTP, broadcasts) · Turnstile · Sentry · **pnpm**.
 
 ## Hard rules (always apply)
 **Prod safety**
@@ -23,7 +23,7 @@ Next.js App Router · React · Tailwind · shadcn/ui · Zod (client+server) · S
 - Sensitive ops (publish catalog, status change, exports) go through `SECURITY DEFINER` RPCs that re-check role. Features ship behind `df_<module>` flags gating UI **and** RPC.
 - KPI numbers come from aggregate snapshots/RPCs, never from a page slice (`.claude/rules/metrics.md`).
 
-**UI/perf one-liners** (full rules auto-load in `.claude/rules/`): SPA navigation only (`next/link`); every new `page.tsx` ships a mirroring `loading.tsx`; `next/image` with `unoptimized` + R2 variant; explicit `.limit()` on every list query; buyer GET routes send `Cache-Control: private`.
+**UI/perf one-liners** (full rules auto-load in `.claude/rules/`): seller and buyer apps are both mobile-first and responsive to desktop; style only through tokens in `app/globals.css` (no hardcoded colors/px/font sizes; add a token instead); SPA navigation only (`next/link`); every new `page.tsx` ships a mirroring `loading.tsx`; `next/image` with `unoptimized` + R2 variant; explicit `.limit()` on every list query; buyer GET routes send `Cache-Control: private`.
 
 ## Workflow
 - Find code with the graph, not grep: `codegraph explore "<question>"`, `codegraph impact <symbol>`, `codegraph callers <symbol>`. Index in `.codegraph/` (gitignored); `codegraph sync` refreshes it.
