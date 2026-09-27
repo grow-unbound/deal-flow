@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: entry, error: entryError } = await db
       .schema('app')
       .from('entries')
-      .select('id, tenant_id, location_id, source_entity_type, source_entity_id')
+      .select('id, tenant_id, location_id, entry_type, source_entity_type, source_entity_id')
       .eq('id', parsedParams.data.id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -62,6 +62,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (entry.location_id && !canAccessDocumentLocation(claims, entry.location_id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Buyer access requests (and their documents) are seller_admin only.
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
     }
     if (entry.source_entity_type !== 'buyer' || !entry.source_entity_id) {
       return NextResponse.json({ documents: [] });

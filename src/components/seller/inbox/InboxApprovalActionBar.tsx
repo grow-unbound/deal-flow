@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, Loader2, CheckCircle2, StickyNote } from 'lucide-react';
+import { Bell, Loader2, CheckCircle2, RefreshCw, StickyNote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,7 +25,9 @@ import {
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useApplyGenericEntryAction, useApplyApprovalEntryAction } from '@/hooks/useInboxEntries';
+import { useApplyGenericEntryAction, useApplyApprovalEntryAction, useRetryZohoSync } from '@/hooks/useInboxEntries';
+import { useRole } from '@/hooks/useRole';
+import { InboxApproveDialog } from './InboxApproveDialog';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
 import { missingFieldKeysForEntryType, MISSING_FIELD_LABELS } from '@/lib/inbox/missing-field-labels';
@@ -215,19 +217,19 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
   const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [approveState, setApproveState] = useState<'idle' | 'pending' | 'done'>('idle');
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approveState, setApproveState] = useState<'idle' | 'done'>('idle');
   const applyGenericAction = useApplyGenericEntryAction();
-  const applyApprovalAction = useApplyApprovalEntryAction();
+  const retryZohoSync = useRetryZohoSync();
+  // Approve / decline / request-info are seller_admin only (also enforced in the route and the RPC).
+  const { isSellerAdmin } = useRole();
 
-  async function handleApprove() {
-    setApproveState('pending');
+  async function handleRetryZoho() {
     try {
-      await applyApprovalAction.mutateAsync({ entryId: entry.id, action: 'approve' });
-      setApproveState('done');
-      toast.success(`${entry.buyer_name} approved`);
+      await retryZohoSync.mutateAsync(entry.id);
+      toast.success('Retrying Zoho sync');
     } catch (error) {
-      setApproveState('idle');
-      toast.error(error instanceof Error ? error.message : 'Could not approve this account');
+      toast.error(error instanceof Error ? error.message : 'Could not retry Zoho sync');
     }
   }
 
@@ -256,7 +258,10 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
     : [];
 
   const leftActions = entry.allowed_actions.filter((a) => a === 'add_note' || a === 'remind_later');
-  const canReopen = entry.allowed_actions.includes('reopen');
+  const canReopen = isSellerAdmin && entry.allowed_actions.includes('reopen');
+  const canDecide = isSellerAdmin;
+  const zohoSyncVisible = entry.status === 'resolved'
+    && ['pending', 'synced', 'failed'].includes(entry.external_sync_status);
 
   return (
     <div className="space-y-3 pt-4">
@@ -264,6 +269,27 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
         <p className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-sm text-cream-700">
           Waiting on the buyer for: {missingFields.map((f) => MISSING_FIELD_LABELS[f] ?? f).join(', ')}.
         </p>
+      ) : null}
+
+      {zohoSyncVisible ? (
+        <div
+          className="flex items-center justify-between gap-3 rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-2 text-sm text-cream-800"
+          data-testid="zoho-sync-status"
+        >
+          <p className="min-w-0">
+            {entry.external_sync_status === 'pending'
+              ? 'Syncing to Zoho…'
+              : entry.external_sync_status === 'synced'
+                ? 'Synced to Zoho'
+                : `Zoho sync failed${entry.external_sync_error ? `: ${entry.external_sync_error}` : ''}. Approval is unaffected; retrying automatically.`}
+          </p>
+          {entry.external_sync_status === 'failed' && isSellerAdmin ? (
+            <Button type="button" size="sm" variant="outline" onClick={handleRetryZoho} disabled={retryZohoSync.isPending}>
+              {retryZohoSync.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+              Retry now
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex items-center justify-between gap-3">
@@ -285,17 +311,13 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
           })}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {entry.allowed_actions.includes('approve') ? (
-            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approveState !== 'idle'}>
-              {approveState === 'pending' ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : approveState === 'done' ? (
-                <CheckCircle2 className="h-4 w-4" aria-hidden />
-              ) : null}
+          {canDecide && entry.allowed_actions.includes('approve') ? (
+            <Button type="button" size="sm" variant="primary" onClick={() => setApproveOpen(true)} disabled={approveState !== 'idle'}>
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
               {approveState === 'done' ? 'Approved' : 'Approve'}
             </Button>
           ) : null}
-          {entry.allowed_actions.includes('request_more_info') ? (
+          {canDecide && entry.allowed_actions.includes('request_more_info') ? (
             <Button type="button" size="sm" variant="outline" onClick={() => setMoreInfoOpen(true)}>
               Request info
             </Button>
@@ -305,7 +327,7 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
               {ACTION_LABELS.reopen}
             </Button>
           ) : null}
-          {entry.allowed_actions.includes('decline') ? (
+          {canDecide && entry.allowed_actions.includes('decline') ? (
             <Button
               type="button"
               size="sm"
@@ -327,6 +349,12 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
         onOpenChange={setNoteOpen}
       />
 
+      <InboxApproveDialog
+        entry={entry}
+        open={approveOpen}
+        onOpenChange={setApproveOpen}
+        onApproved={() => setApproveState('done')}
+      />
       <RequestMoreInfoDialog entry={entry} open={moreInfoOpen} onOpenChange={setMoreInfoOpen} onSubmitted={() => {}} />
       <DeclineDialog entry={entry} open={declineOpen} onOpenChange={setDeclineOpen} onSubmitted={() => {}} />
     </div>

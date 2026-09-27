@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         p_limit: 100,
         p_cursor_priority_at: null,
         p_cursor_id: null,
+        p_actor_user_id: claims.sub,
       });
 
     if (error) {
