@@ -100,7 +100,7 @@ describe('SellerSidebar nav gating', () => {
         render(<SellerSidebar featureAvailabilityPromise={Promise.resolve(makeFeatures())} />);
       });
       expect(screen.getByText('Today')).toBeInTheDocument();
-      expect(screen.getByText('Pulse')).toBeInTheDocument();
+      expect(screen.queryByText('Pulse')).not.toBeInTheDocument();
       expect(screen.getByText('Sales')).toBeInTheDocument();
       expect(screen.getByText('Customers')).toBeInTheDocument();
       expect(screen.getByText('Products')).toBeInTheDocument();

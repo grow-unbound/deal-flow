@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
-import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { getSellerServerClaims, requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { sellerHomeRoute } from '@/lib/server/pulse-access';
 import { SELLER_ROUTES } from '@/lib/seller-routes';
 
 export default async function SalesPage() {
@@ -9,5 +10,6 @@ export default async function SalesPage() {
   if (availability.invoices) redirect(SELLER_ROUTES.sales.invoices);
   if (availability.salesOrders) redirect(SELLER_ROUTES.sales.orders);
   if (availability.estimates) redirect(SELLER_ROUTES.sales.estimates);
-  redirect(SELLER_ROUTES.pulse);
+  const claims = await getSellerServerClaims();
+  redirect(sellerHomeRoute(claims.role));
 }
