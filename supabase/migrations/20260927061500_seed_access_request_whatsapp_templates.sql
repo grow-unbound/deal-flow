@@ -5,7 +5,7 @@
 -- the send path (lookupApprovedTemplateMeta() only matches approval_status='approved').
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -13,6 +13,7 @@ SELECT
   NULL,
   'access_request_received_buyer',
   '1563941444952117',
+  'Access request received',
   'utility',
   'buyer_app',
   'en',
@@ -31,7 +32,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -39,6 +40,7 @@ SELECT
   NULL,
   'access_request_received_seller_business',
   '1954714822581647',
+  'New dealer access request',
   'utility',
   'buyer_app',
   'en',
@@ -57,7 +59,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -65,6 +67,7 @@ SELECT
   NULL,
   'access_request_received_seller_individual',
   '2359442588130512',
+  'New customer access request',
   'utility',
   'buyer_app',
   'en',
@@ -83,7 +86,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -91,6 +94,7 @@ SELECT
   NULL,
   'access_request_approved_buyer',
   '1621969106252150',
+  'Access approved',
   'utility',
   'buyer_app',
   'en',
@@ -109,7 +113,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -117,6 +121,7 @@ SELECT
   NULL,
   'access_more_info_needed_buyer',
   '1251707673781919',
+  'More info needed',
   'utility',
   'buyer_app',
   'en',
@@ -135,7 +140,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO app.whatsapp_templates (
-  tenant_id, meta_template_name, meta_template_id, meta_category, use_case, locale,
+  tenant_id, meta_template_name, meta_template_id, display_name, meta_category, use_case, locale,
   body, variables, button_config, header_config, footer_text, buttons_config,
   approval_status, is_platform_managed, is_broadcast_template
 )
@@ -143,6 +148,7 @@ SELECT
   NULL,
   'access_request_declined_buyer',
   '1842535146743068',
+  'Access declined',
   'utility',
   'buyer_app',
   'en',
