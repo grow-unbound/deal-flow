@@ -10,7 +10,7 @@ import { getBuyerServerClaims } from '@/lib/server/buyer-server-claims';
 type DbClient = any;
 
 /**
- * The delivery cookie is set on the shared shop.dealflow.in host and is not
+ * The delivery cookie is set on the shared (legacy, pre-subdomain) buyer host and is not
  * tenant-scoped, so a buyer who has shopped with more than one distributor on
  * the same device can carry a routed_location_id that belongs to a different
  * tenant than the one they're transacting with right now. Using it as-is trips

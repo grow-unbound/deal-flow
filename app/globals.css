@@ -155,12 +155,12 @@
     --ctl-text-md: var(--yk-text-md);
   }
 
-/* ── Buyer-app design override (DealFlow "Ember & Cream") ─────────────────
+/* ── Buyer-app design override (Yukti "Ember & Cream") ─────────────────
    Scoped under [data-app="buyer"] — seller cockpit is completely untouched.
    All buyer font sizes live here as --b-text-* tokens; no pixel literals in JSX.
 ──────────────────────────────────────────────────────────────────────────── */
 [data-app="buyer"] {
-  /* DealFlow palette overrides */
+  /* Yukti palette overrides */
   --cream-50:  #FAF7F2;
   --cream-100: #F4EFE6;
   --cream-200: #EAE4D7;

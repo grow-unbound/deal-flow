@@ -987,12 +987,12 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                       <div className="rounded-2xl border border-cream-200 bg-white px-4 py-4">
                         <div className="text-sm font-semibold text-cream-900">Mapping preview</div>
                         <div className="mt-1 text-sm text-cream-700">
-                          These Zoho entities are synced into DealFlow after the connection completes.
+                          These Zoho entities are synced into Yukti after the connection completes.
                         </div>
                         <div className="mt-3 overflow-hidden rounded-2xl border border-cream-200">
                           <div className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-200 bg-cream-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
                             <div>Zoho entity</div>
-                            <div>DealFlow target</div>
+                            <div>Yukti target</div>
                             <div>Capture</div>
                             <div>Status</div>
                           </div>
@@ -1048,7 +1048,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           Local bridge flow
                         </div>
                         <p className="mt-2 text-sm leading-6 text-cream-700">
-                          Keep the DealFlow bridge agent online near the source system, then verify the connection before the first import.
+                          Keep the Yukti bridge agent online near the source system, then verify the connection before the first import.
                         </p>
                       </div>
                     ) : null}

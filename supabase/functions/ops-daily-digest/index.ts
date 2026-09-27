@@ -142,7 +142,7 @@ Deno.serve(async (req: Request) => {
   const blocks: Record<string, unknown>[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `📊 DealFlow Daily Digest — ${day}`, emoji: true },
+      text: { type: 'plain_text', text: `📊 Yukti Daily Digest — ${day}`, emoji: true },
     },
     {
       type: 'section',
@@ -206,8 +206,8 @@ Deno.serve(async (req: Request) => {
 
   const criticalCount = sortedFlags.filter((f) => f.severity === 'critical').length;
   const fallbackText = criticalCount > 0
-    ? `DealFlow Daily Digest ${day}: ${criticalCount} critical redflag(s)`
-    : `DealFlow Daily Digest ${day}: ${globalRow.order_count} orders, ${sortedFlags.length} redflag(s)`;
+    ? `Yukti Daily Digest ${day}: ${criticalCount} critical redflag(s)`
+    : `Yukti Daily Digest ${day}: ${globalRow.order_count} orders, ${sortedFlags.length} redflag(s)`;
 
   const slackResponse = await fetch(webhookUrl as string, {
     method: 'POST',

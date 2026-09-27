@@ -1518,7 +1518,7 @@ export function ConnectedIntegrationCard({
                         {phaseGroup.id === 'analysis' ? (
                           <div className="space-y-2">
                             <div className="rounded-lg border border-cream-200 bg-white px-3 py-3 text-sm text-cream-700">
-                              Rebuild snapshots and KPI tables from the rows already synced into DealFlow. Use this after a repaired sync or any time seller metrics look stale; it does not pull fresh source rows.
+                              Rebuild snapshots and KPI tables from the rows already synced into Yukti. Use this after a repaired sync or any time seller metrics look stale; it does not pull fresh source rows.
                             </div>
                             {analysisRunning ? (
                               <div className="flex items-center gap-2 text-sm text-info-700">
@@ -1743,7 +1743,7 @@ export function ConnectedIntegrationCard({
             <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 px-4 py-5">
               <div className="text-sm font-semibold text-cream-900">Sync to Zoho</div>
               <p className="mt-1 text-sm leading-6 text-cream-700">
-                Placeholder for outbound write-back rules. We&apos;ll use this space later to show which DealFlow changes are pushed into Zoho.
+                Placeholder for outbound write-back rules. We&apos;ll use this space later to show which Yukti changes are pushed into Zoho.
               </p>
             </div>
 
