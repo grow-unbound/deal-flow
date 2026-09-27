@@ -243,3 +243,29 @@ describe.each(CASES)('pending buyer gating: $name', (route) => {
     route.assertGuestOnly();
   });
 });
+
+describe('catalog/[share_token] tenant isolation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.resolveGuestPricingContext.mockResolvedValue(GUEST_PRICING);
+    mocks.getCachedGuestPricingContext.mockResolvedValue(GUEST_PRICING);
+    mocks.enrichBuyerProducts.mockResolvedValue(new Map());
+    mocks.loadLivePublicCatalog.mockResolvedValue({ accessMode: 'public_link' });
+  });
+
+  it('approved buyer of another tenant gets 404 and no pricing is resolved', async () => {
+    const other = profileFor('approved') as any;
+    other.context = { ...other.context, tenant_id: 'tenant-other' };
+    mocks.requireBuyerAccessProfile.mockResolvedValue(other);
+    const res = await shareTokenGET(req('/api/buyer/catalog/tok'), { params: Promise.resolve({ share_token: 'tok' }) }) as any;
+    expect(res.status).toBe(404);
+    expect(mocks.enrichBuyerProducts).not.toHaveBeenCalled();
+    expect(mocks.recordCampaignView).not.toHaveBeenCalled();
+  });
+
+  it('approved buyer of the same tenant is unaffected', async () => {
+    mocks.requireBuyerAccessProfile.mockResolvedValue(profileFor('approved'));
+    const res = await shareTokenGET(req('/api/buyer/catalog/tok'), { params: Promise.resolve({ share_token: 'tok' }) }) as any;
+    expect(res.status).toBe(200);
+  });
+});

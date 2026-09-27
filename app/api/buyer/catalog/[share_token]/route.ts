@@ -73,8 +73,9 @@ export async function GET(
     display_order: number | null;
     is_featured: boolean | null;
   }>;
-  // A pending session may only browse its OWN tenant's public catalog.
-  if (gate.pending && profile?.context.tenant_id !== catalog.tenant_id) {
+  // A signed-in session (approved or pending) may only open catalogs of its OWN tenant: never resolve
+  // another tenant's campaign pricing/stock against a buyer of a different distributor.
+  if (profile?.context.tenant_id && profile.context.tenant_id !== catalog.tenant_id) {
     return NextResponse.json({ error: 'Catalog not found or not active' }, { status: 404 });
   }
   const excludedForGuest = new Set(gate.guestPricing?.excludedProductIds ?? []);
