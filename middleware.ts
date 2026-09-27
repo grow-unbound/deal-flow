@@ -56,6 +56,7 @@ import {
 } from '@/lib/storefront-host';
 import {
   isGuestCatalogApiPath,
+  isPendingBuyerBlockedApiPath,
   isGuestIsrPagePath,
   isGuestSearchApiPath,
   isGuestStorefrontPagePath,
@@ -440,13 +441,19 @@ async function handleTenantHost(
     return redirectToCatalogLogin(request);
   }
 
+  // A pending buyer is blocked from guest pages and from every catalog/priced API, but NOT from
+  // /api/buyer/me + nearest-location (see isPendingBuyerBlockedApiPath): /pending and onboarding
+  // read the session through them.
+  const pendingBlockedApi = pendingBuyerMatchesHost && isPendingBuyerBlockedApiPath(pathname);
   if (
     live
     && storefront?.accessMode === 'approved_buyers_only'
-    && (!buyerMatchesHost || pendingBuyerMatchesHost)
-    && (guestApi || guestPage)
+    && (
+      (!buyerMatchesHost && (guestApi || guestPage))
+      || (pendingBuyerMatchesHost && (guestPage || pendingBlockedApi))
+    )
   ) {
-    if (guestApi) {
+    if (guestApi || pendingBlockedApi) {
       return new NextResponse(JSON.stringify({ error: pendingBuyerMatchesHost ? 'Approval required' : 'Login required' }), {
         status: pendingBuyerMatchesHost ? 403 : 401,
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },

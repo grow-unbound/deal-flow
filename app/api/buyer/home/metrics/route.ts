@@ -5,6 +5,7 @@ import { emptyBuyerHomeMetricsV4 } from '@/lib/server/buyer-home-metrics';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { isPendingBuyerCatalogSession } from '@/lib/server/buyer-pending-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
@@ -20,7 +21,8 @@ export async function GET(
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    if (!profile.buyer?.id) {
+    // Pending / access-disabled sessions get the empty (zeroed) payload, never real metrics.
+    if (isPendingBuyerCatalogSession(profile) || !profile.buyer?.id) {
       return NextResponse.json(emptyBuyerHomeMetricsV4(), { headers: BUYER_CACHE_PERSONAL });
     }
 

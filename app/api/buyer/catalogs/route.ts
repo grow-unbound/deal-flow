@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { isPendingBuyerCatalogSession } from '@/lib/server/buyer-pending-guard';
 
 interface CatalogItem {
   id: string;
@@ -29,6 +30,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
+    // Buyer-scoped catalog names + share tokens are never exposed to a pending /
+    // access-disabled session. Empty list (not 403) so the catalog rail simply renders nothing.
+    if (isPendingBuyerCatalogSession(profile)) {
+      return NextResponse.json({ catalogs: [] } satisfies BuyerCatalogsResponse, {
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
     }
 
     const context = profile.context;

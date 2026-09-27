@@ -3,6 +3,7 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_CATALOG, BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { guardPendingBuyerCatalogAccess } from '@/lib/server/buyer-pending-guard';
 
 export interface BuyerSearchItem {
   id: string;
@@ -24,11 +25,23 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { tenant_id, buyer_id } = profile.context;
+    const { tenant_id } = profile.context;
     const scope = (request.nextUrl.searchParams.get('scope') ?? 'catalog') as 'catalog' | 'orders';
     if (profile.context.mode === 'guest' && scope === 'orders') {
       return NextResponse.json({ items: [], scope }, { headers: BUYER_CACHE_PERSONAL });
     }
+
+    // Pending / access-disabled sessions: 403 unless the tenant's public catalog allows public
+    // browsing, and then search runs with NO buyer id (guest scope). Orders search is account
+    // data and is always empty for them.
+    const gate = supabaseAdmin
+      ? await guardPendingBuyerCatalogAccess(supabaseAdmin as any, profile)
+      : { pending: false, blocked: null };
+    if (gate.blocked) return gate.blocked as NextResponse<{ error: string }>;
+    if (gate.pending && scope === 'orders') {
+      return NextResponse.json({ items: [], scope }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+    const buyer_id = gate.pending ? null : profile.context.buyer_id;
     const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
     const cacheHeaders = scope === 'orders' ? BUYER_CACHE_PERSONAL : BUYER_CACHE_CATALOG;
 
