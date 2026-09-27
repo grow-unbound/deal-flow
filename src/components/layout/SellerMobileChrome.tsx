@@ -23,7 +23,8 @@ import { cn } from '@/lib/utils';
 import { SELLER_ROUTES, isSalesPath } from '@/lib/seller-routes';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
-const SELLER_MOBILE_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.pulse, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
+const SELLER_MOBILE_ASSISTANT_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
+const SELLER_MOBILE_ADMIN_PREFETCH_HREFS = [SELLER_ROUTES.today, SELLER_ROUTES.pulse, SELLER_ROUTES.sales.invoices, '/customers', '/products'];
 const SCROLL_DELTA_THRESHOLD = 8;
 const CHROME_HIDE_AFTER_PX = 48;
 
@@ -373,7 +374,7 @@ export function SellerMobileTopbar({
 }
 
 const bottomTabs = [
-  { label: 'Home', href: SELLER_ROUTES.pulse, icon: DashboardIcon },
+  { label: 'Home', href: SELLER_ROUTES.pulse, icon: DashboardIcon, adminOnly: true },
   { label: 'Today', href: SELLER_ROUTES.today, icon: TodayIcon },
   { label: 'Search', href: '/search', icon: Search },
   { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: ShoppingBag },
@@ -382,8 +383,11 @@ const bottomTabs = [
 
 export function SellerMobileBottomTabs() {
   const pathname = usePathname();
+  const { isSellerAdmin } = useRole();
   const visible = useSellerMobileChromeVisibility(isSellerMobileLandingPath(pathname));
-  useIdleRoutePrefetch(SELLER_MOBILE_PREFETCH_HREFS);
+  useIdleRoutePrefetch(isSellerAdmin ? SELLER_MOBILE_ADMIN_PREFETCH_HREFS : SELLER_MOBILE_ASSISTANT_PREFETCH_HREFS);
+  // Pulse (Home) is seller_admin only; assistants get the remaining tabs.
+  const tabs = bottomTabs.filter((tab) => !tab.adminOnly || isSellerAdmin);
 
   if (!isSellerMobileLandingPath(pathname)) return null;
 
@@ -395,8 +399,11 @@ export function SellerMobileBottomTabs() {
       )}
       aria-label="Seller mobile navigation"
     >
-      <div className="grid min-h-[60px] w-full grid-cols-5 items-stretch">
-        {bottomTabs.map((tab) => {
+      <div
+        className="grid min-h-[60px] w-full items-stretch"
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      >
+        {tabs.map((tab) => {
           const active = isBottomTabActive(pathname, tab.href);
           const Icon = tab.icon;
           return (

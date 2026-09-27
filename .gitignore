@@ -50,7 +50,16 @@ supabase/.temp/**/*
 supabase/.temp.*
 
 # Claude 
-.claude/
+# Claude harness: ignore local state, track shared config/rules/agents/hooks/project skills
+.claude/*
+!.claude/settings.json
+!.claude/rules/
+!.claude/agents/
+!.claude/hooks/
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/wrap/
+!.claude/skills/context-review/
 CLAUDE\ OUTPUTS/
 
 #Playwright
@@ -67,9 +76,11 @@ skills-lock.json
 #Media files
 media/
 
-Specs files
+# Specs files
 specs/
-docs/
+docs/*
+!docs/architecture.md
+!docs/context-inbox.md
 CLAUDE_OUTPUTS/
 WineYard/
 .worktrees/

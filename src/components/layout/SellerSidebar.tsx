@@ -73,7 +73,7 @@ export const navGroups: NavGroup[] = [
     label: 'OPERATIONS',
     items: [
       { label: 'Today', href: SELLER_ROUTES.today, icon: TodayIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
-      { label: 'Pulse', href: SELLER_ROUTES.pulse, icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], activeMatch: (pathname) => pathname === '/dashboard' || pathname.startsWith('/pulse') },
+      { label: 'Pulse', href: SELLER_ROUTES.pulse, icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN], activeMatch: (pathname) => pathname === '/dashboard' || pathname.startsWith('/pulse') },
       { label: 'Sales', href: SELLER_ROUTES.sales.invoices, icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], activeMatch: isSalesPath },
       { label: 'Customers', href: '/customers', icon: BuyersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_customer_master' },
       { label: 'Products', href: SELLER_ROUTES.products.root, icon: ProductsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master', activeMatch: isProductsWorkspacePath },
@@ -106,7 +106,6 @@ export interface CollectPrefetchHrefsInput {
 
 const ASSISTANT_NAV_ORDER = [
   SELLER_ROUTES.today,
-  SELLER_ROUTES.pulse,
   SELLER_ROUTES.sales.invoices,
   '/customers',
   SELLER_ROUTES.products.root,

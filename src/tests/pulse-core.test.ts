@@ -1,148 +1,56 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { landingMetricsToPulseContribution, portfolioToPulseContribution, portfolioToPulseOpportunities } from '@/lib/server/pulse-core';
-import type { MetricsV2DashboardPortfolio } from '@/types/seller-dashboard';
+const rpcMock = vi.fn();
+const fromMock = vi.fn();
 
-const portfolio: MetricsV2DashboardPortfolio = {
-  as_of: '2026-09-22T04:00:00.000Z',
-  commercial_horizon_days: 90,
-  table_period: null,
-  primary_demand_kind: 'orders',
-  calculation_version: 1,
-  source_watermark: '2026-09-22T03:45:00.000Z',
-  freshness: {},
-  availability: {},
-  metrics: [
-    {
-      id: 'customers_with_access',
-      label: 'Customers with Buyer App access',
-      time_basis: 'NOW',
-      feasibility: 'READY',
-      available: true,
-      count: 27,
-      unit: 'count',
-    },
-    {
-      id: 'customers_submitting_app_demand',
-      label: 'Customers submitting app demand',
-      time_basis: 'QTD',
-      feasibility: 'READY',
-      available: true,
-      count: 6,
-      unit: 'count',
-    },
-    {
-      id: 'app_sourced_demand_value_share',
-      label: 'App-sourced demand value + share',
-      time_basis: 'QTD',
-      feasibility: 'READY',
-      available: true,
-      value: 18,
-      count: 9,
-      unit: 'percent',
-      meta: {
-        app_demand_value_90d: 840000,
-        total_demand_value_90d: 4200000,
-      },
-    },
-    {
-      id: 'app_sourced_invoiced_sales_share',
-      label: 'App-sourced invoiced sales + share',
-      time_basis: 'QTD',
-      feasibility: 'READY',
-      available: true,
-      value: 12,
-      unit: 'percent',
-      meta: {
-        app_invoiced_sales_90d: 510000,
-        total_invoiced_sales_90d: 4250000,
-      },
-    },
-    {
-      id: 'repeat_app_customers',
-      label: 'Repeat app customers',
-      time_basis: 'QTD',
-      feasibility: 'READY',
-      available: true,
-      count: 3,
-      unit: 'count',
-    },
-  ],
-  actions: [
-    {
-      id: 'valuable_assisted_customers_without_access',
-      label: 'Valuable assisted customers without app access',
-      time_basis: 'NOW + QTD',
-      feasibility: 'READY',
-      available: true,
-      count: 12,
-      unit: 'count',
-      meta: {
-        rows: [
-          { buyer_id: 'buyer-1', name: 'Alpha Retail', invoice_value_qtd: 410000, invoice_count_qtd: 8 },
-          { buyer_id: 'buyer-2', name: 'Bravo Stores', invoice_value_qtd: 250000, invoice_count_qtd: 5 },
-          { buyer_id: 'buyer-3', name: 'City Cameras', invoice_value_qtd: 180000, invoice_count_qtd: 4 },
-          { buyer_id: 'buyer-4', name: 'Delta Security', invoice_value_qtd: 120000, invoice_count_qtd: 3 },
-          { buyer_id: 'buyer-7', name: 'Echo Security', invoice_value_qtd: 90000, invoice_count_qtd: 2 },
-          { buyer_id: 'buyer-8', name: 'Frame Security', invoice_value_qtd: 70000, invoice_count_qtd: 1 },
-        ],
-      },
-    },
-    {
-      id: 'app_demand_needing_operational_action',
-      label: 'App demand needing operational action',
-      time_basis: 'NOW',
-      feasibility: 'READY',
-      available: true,
-      count: 99,
-      unit: 'count',
-      meta: { rows: [{ buyer_id: 'buyer-hidden', name: 'Should Not Render' }] },
-    },
-    {
-      id: 'access_enabled_but_never_used',
-      label: 'Access enabled but never used',
-      time_basis: 'NOW',
-      feasibility: 'READY',
-      available: true,
-      count: 2,
-      unit: 'count',
-      meta: {
-        rows: [
-          { buyer_id: 'buyer-5', name: 'Enabled Retail', invoice_value_qtd: 320000, invoice_count_qtd: 6 },
-        ],
-      },
-    },
-    {
-      id: 'previously_submitted_app_demand_now_inactive',
-      label: 'Previously submitted app demand, now inactive',
-      time_basis: 'NOW + 90D',
-      feasibility: 'READY',
-      available: true,
-      count: 4,
-      unit: 'count',
-      meta: {
-        rows: [
-          { buyer_id: 'buyer-9', name: 'Quiet Retail', last_demand_day: '2026-08-10', value: 175000 },
-        ],
-      },
-    },
-    {
-      id: 'used_app_but_no_demand',
-      label: 'Used the app but submitted no demand',
-      time_basis: 'NOW + 90D',
-      feasibility: 'READY',
-      available: true,
-      count: 1,
-      unit: 'count',
-      meta: {
-        rows: [
-          { buyer_id: 'buyer-6', name: 'Browsing Retail', invoice_value_qtd: 220000, invoice_count_qtd: 4 },
-        ],
-      },
-    },
-  ],
-  explore: [],
-};
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: {
+    schema: vi.fn(() => ({
+      rpc: (...args: unknown[]) => rpcMock(...args),
+      from: (...args: unknown[]) => fromMock(...args),
+    })),
+  },
+}));
+
+import {
+  istDateString,
+  landingMetricsToPulseContribution,
+  loadPulseOpportunities,
+  loadPulseOpportunityBuyerPage,
+  PULSE_DORMANT_DAYS,
+  PULSE_DORMANT_MIN_VALUE,
+} from '@/lib/server/pulse-core';
+
+const admin = { tenant_id: 'tenant-1', role: 'seller_admin' };
+
+function dormantRow(overrides: Record<string, unknown> = {}) {
+  return {
+    buyer_id: 'buyer-1',
+    business_name: 'SV Informatics',
+    last_invoice_date: '2026-06-12',
+    days_since_last_invoice: 106,
+    value_12m: '1107286.00',
+    invoice_count_12m: 13,
+    source_watermark: '2026-09-25T03:45:00.000Z',
+    computed_at: '2026-09-25T04:00:00.000Z',
+    total_count: 294,
+    total_value_12m: '25000000.00',
+    ...overrides,
+  };
+}
+
+function emptyBuilder() {
+  const builder: any = {
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    is: vi.fn(() => builder),
+    gt: vi.fn(() => builder),
+    order: vi.fn(() => builder),
+    in: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    range: vi.fn(() => Promise.resolve({ data: [], error: null })),
+  };
+  return builder;
+}
 
 describe('Pulse core mapping', () => {
   it('maps seller-admin contribution from buyer-app landing metrics without access-enabled filler', () => {
@@ -175,60 +83,122 @@ describe('Pulse core mapping', () => {
       label: 'Customers with Yukti access',
       value: 272,
     }));
+    expect(response).not.toHaveProperty('empty_opportunity');
+  });
+});
+
+describe('Pulse dormant customers opportunity (rolling 90 days)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fromMock.mockImplementation(() => emptyBuilder());
+    rpcMock.mockResolvedValue({ data: [dormantRow()], error: null });
   });
 
-  it('maps contribution cards from existing buyer-app v4 aggregate portfolio with the buyer-app footprint card', () => {
-    const response = portfolioToPulseContribution(portfolio);
-
-    expect(response.source).toBe('app.get_buyer_app_dashboard_v4');
-    expect(response.freshness_label).toBe('2026-09-22T03:45:00.000Z');
-    expect(response.cards.map((card) => card.id)).toEqual([
-      'yukti_access_enabled',
-      'demand_captured',
-      'invoiced_from_captured_demand',
-      'active_yukti_buyers',
-      'repeat_yukti_buyers',
-    ]);
-    expect(response.cards[1]).toEqual(expect.objectContaining({
-      value: 840000,
-      document_count: 9,
-      buyer_count: 6,
-      time_basis: 'QTD',
-    }));
+  it('uses the app dormancy cut-off of 90 days', () => {
+    expect(PULSE_DORMANT_DAYS).toBe(90);
   });
 
-  it('maps no more than three allowed opportunity groups and excludes Inbox-owned operational demand', () => {
-    const response = portfolioToPulseOpportunities(portfolio);
+  it('reads the exact total and bounded previews from the dormancy RPC with evidence text', async () => {
+    const { response, status } = await loadPulseOpportunities(admin, new Date('2026-09-26T05:00:00Z'));
 
-    expect(response.groups).toHaveLength(3);
-    expect(response.groups[0].id).toBe('valuable_assisted_customers_without_access');
-    expect(response.groups[0].previews).toHaveLength(5);
-    expect(response.groups[0].previews[0]).toEqual(expect.objectContaining({
-      supporting_text: '₹4,10,000 · 8 invoices',
-    }));
-    expect(response.groups[1]).toEqual(expect.objectContaining({
-      id: 'previously_submitted_app_demand_now_inactive',
-      title: 'High-value customers going quiet',
-      evidence: 'At least ₹1,75,000 prior Yukti demand · NOW + 90D',
+    expect(status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith('get_pulse_dormant_buyers', {
+      p_tenant_id: 'tenant-1',
+      p_as_of: '2026-09-26',
+      p_dormant_days: 90,
+      p_min_value: PULSE_DORMANT_MIN_VALUE,
+      p_limit: 5,
+      p_offset: 0,
+    });
+    const group = response!.groups.find((g) => g.id === 'dormant_customers_90d')!;
+    expect(group).toEqual(expect.objectContaining({
+      title: 'Dormant customers to win back',
+      count: 294,
+      time_basis: 'Rolling 90 days',
+      evidence: '₹2,50,00,000 last-12-month value · no purchase in 90+ days',
       action_href: '/customers',
     }));
-    expect(response.groups[1].previews[0]).toEqual(expect.objectContaining({
-      prior_demand_value: 175000,
-      last_demand_day: '2026-08-10',
-      supporting_text: '₹1,75,000 prior Yukti demand · Last demand 10 Aug',
+    expect(group.previews[0]).toEqual(expect.objectContaining({
+      buyer_id: 'buyer-1',
+      name: 'SV Informatics',
+      days_since_last_invoice: 106,
+      last_invoice_date: '2026-06-12',
+      supporting_text: 'Last purchase 106 days ago · ₹11,07,286 last 12m',
+      href: '/customers/buyer-1',
     }));
-    expect(response.groups[2]).toEqual(expect.objectContaining({
-      id: 'access_enabled_but_never_used',
-      description: 'Customers have access enabled but still do business outside Yukti.',
-      evidence: 'At least ₹3,20,000 business outside Yukti · NOW',
-      action_href: '/buyer-app/access',
-    }));
-    expect(response.groups[2].previews[0]).toEqual(expect.objectContaining({
-      invoice_value_qtd: 320000,
-      invoice_count_qtd: 6,
-      supporting_text: '₹3,20,000 · 6 invoices',
-    }));
-    expect(JSON.stringify(response)).not.toContain('app_demand_needing_operational_action');
-    expect(JSON.stringify(response)).not.toContain('Should Not Render');
+    expect(JSON.stringify(response)).not.toContain('going quiet');
+  });
+
+  it('omits the group when no buyer is dormant', async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const { response } = await loadPulseOpportunities(admin, new Date('2026-09-26T05:00:00Z'));
+    expect(response!.groups.map((g) => g.id)).not.toContain('dormant_customers_90d');
+  });
+
+  it('surfaces RPC failures as a 500', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const { status, response } = await loadPulseOpportunities(admin);
+    expect(status).toBe(500);
+    expect(response).toBeNull();
+  });
+
+  it('never reads calendar-quarter summary rows for dormancy (identical Sep 30 vs Oct 1 IST)', async () => {
+    const beforeMidnight = new Date('2026-09-30T18:29:59Z'); // 23:59:59 IST, Sep 30
+    const afterMidnight = new Date('2026-09-30T18:30:00Z'); // 00:00:00 IST, Oct 1
+
+    expect(istDateString(beforeMidnight)).toBe('2026-09-30');
+    expect(istDateString(afterMidnight)).toBe('2026-10-01');
+
+    const before = await loadPulseOpportunities(admin, beforeMidnight);
+    const after = await loadPulseOpportunities(admin, afterMidnight);
+
+    const dormantBefore = before.response!.groups.find((g) => g.id === 'dormant_customers_90d');
+    const dormantAfter = after.response!.groups.find((g) => g.id === 'dormant_customers_90d');
+    // Rolling window: same group, count and rows on either side of the quarter rollover,
+    // even though no Q4 summary rows exist yet after midnight (all summary reads return empty).
+    expect(dormantAfter).toEqual(dormantBefore);
+    expect(dormantAfter?.count).toBe(294);
+
+    const dormantCalls = rpcMock.mock.calls.filter(([name]) => name === 'get_pulse_dormant_buyers');
+    expect(dormantCalls).toHaveLength(2);
+    expect(dormantCalls[0][1]).toEqual(expect.objectContaining({ p_as_of: '2026-09-30', p_dormant_days: 90 }));
+    expect(dormantCalls[1][1]).toEqual(expect.objectContaining({ p_as_of: '2026-10-01', p_dormant_days: 90 }));
+    // Only the (unchanged) activation group touches period summaries; dormancy has no period_start input.
+    for (const [, args] of dormantCalls) {
+      expect(Object.keys(args as object).sort()).toEqual([
+        'p_as_of', 'p_dormant_days', 'p_limit', 'p_min_value', 'p_offset', 'p_tenant_id',
+      ]);
+    }
+  });
+
+  it('pages the buyer sheet with real total, offset cursor and bounded page size', async () => {
+    rpcMock.mockResolvedValue({
+      data: [dormantRow(), dormantRow({ buyer_id: 'buyer-2', business_name: 'KMR Educational Society', days_since_last_invoice: 113, value_12m: 700000 })],
+      error: null,
+    });
+
+    const { page, status } = await loadPulseOpportunityBuyerPage(admin, 'dormant_customers_90d', 40, 500, new Date('2026-09-26T05:00:00Z'));
+
+    expect(status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith('get_pulse_dormant_buyers', expect.objectContaining({ p_limit: 50, p_offset: 40 }));
+    expect(page!.total).toBe(294);
+    expect(page!.group.count).toBe(294);
+    expect(page!.rows).toHaveLength(2);
+    expect(page!.rows[1].supporting_text).toBe('Last purchase 113 days ago · ₹7,00,000 last 12m');
+    expect(page!.nextCursor).toBe('42');
+  });
+
+  it('ends pagination on the last page', async () => {
+    rpcMock.mockResolvedValue({ data: [dormantRow({ total_count: 42 })], error: null });
+    const { page } = await loadPulseOpportunityBuyerPage(admin, 'dormant_customers_90d', 41, 20);
+    expect(page!.nextCursor).toBeNull();
+  });
+
+  it('rejects non-admin claims before touching the database', async () => {
+    const claims = { tenant_id: 'tenant-1', role: 'seller_assistant' };
+    expect((await loadPulseOpportunities(claims)).status).toBe(403);
+    expect((await loadPulseOpportunityBuyerPage(claims, 'dormant_customers_90d', 0, 20)).status).toBe(403);
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });

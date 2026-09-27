@@ -98,6 +98,8 @@ export async function GET(request: NextRequest) {
         p_limit: parsed.data.limit + 1,
         p_cursor_priority_at: cursor?.priority_at ?? null,
         p_cursor_id: cursor?.id ?? null,
+        // DB re-verifies the actor is a seller_admin; approval-request entries are hidden otherwise.
+        p_actor_user_id: claims.sub,
       });
 
     if (error) {

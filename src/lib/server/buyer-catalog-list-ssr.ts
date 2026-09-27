@@ -10,6 +10,7 @@ import {
   resolveBuyerInventoryWarehouseIdFromCookies,
 } from '@/lib/server/buyer-product-data';
 import { fetchBuyerFamilyCatalogPage } from '@/lib/server/buyer-product-families';
+import { isBuyerAppAccessEnabledInDb } from '@/lib/server/buyer-pending-guard';
 import { loadLivePublicCatalog } from '@/lib/server/public-catalog';
 import type { BuyerBrand, BuyerCatalogResponse, BuyerCategory } from '@/types/buyer';
 
@@ -50,6 +51,8 @@ export async function loadInitialCatalogListData(
     const db = supabaseAdmin;
     const tenantId = claims.tenant_id;
     const buyerId = claims.buyer_id;
+    // The JWT role can be stale (buyer disabled after the token was issued): confirm against the DB.
+    if (!(await isBuyerAppAccessEnabledInDb(db, tenantId, buyerId))) return EMPTY_RESULT;
 
     const [scope, selectedDelivery] = await Promise.all([
       getBuyerServerProductScope(db, tenantId, buyerId),

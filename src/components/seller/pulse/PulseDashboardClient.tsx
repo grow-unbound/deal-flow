@@ -120,21 +120,7 @@ export function PulseContributionSkeleton() {
   );
 }
 
-function ContributionEmpty({ opportunity }: { opportunity?: PulseOpportunityGroup | null }) {
-  if (opportunity) {
-    return (
-      <div className="p-5">
-        <div className="rounded-[8px] border border-teal-200 bg-teal-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-teal-700">Best next opportunity</p>
-          <h3 className="mt-2 font-display text-xl font-semibold text-cream-950">
-            {opportunity.count} {opportunity.title.toLowerCase()}
-          </h3>
-          <p className="mt-2 max-w-[64ch] text-sm leading-5 text-cream-700">{opportunity.description}</p>
-        </div>
-      </div>
-    );
-  }
-
+function ContributionEmpty() {
   return (
     <div className="p-5">
       <div className="rounded-[8px] border border-cream-200 bg-cream-50 p-5">
@@ -174,7 +160,7 @@ function ContributionSection() {
         />
       ) : null}
       {!query.isLoading && !query.isError && (query.data?.cards.length ?? 0) === 0 ? (
-        <ContributionEmpty opportunity={query.data?.empty_opportunity} />
+        <ContributionEmpty />
       ) : null}
     </PulseSectionShell>
   );

@@ -4,6 +4,7 @@ import type { BuyerCatalogItem } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
+import { guardPendingBuyerCatalogAccess } from '@/lib/server/buyer-pending-guard';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
@@ -20,6 +21,13 @@ export async function GET(
 
   const db = supabaseAdmin;
   const profile = await requireBuyerAccessProfile(request).catch(() => null);
+
+  // Pending / access-disabled buyers never get buyer-specific prices, stock or campaign
+  // pricing: 403 unless the tenant's public catalog allows public browsing, then GUEST data only.
+  const gate = profile
+    ? await guardPendingBuyerCatalogAccess(db as any, profile)
+    : { pending: false, blocked: null, publicCatalog: null, guestPricing: null };
+  if (gate.blocked) return gate.blocked;
 
   // Resolve catalog by share_token — must be published and not deleted
   const { data: catalog, error: catalogError } = await db
@@ -65,7 +73,15 @@ export async function GET(
     display_order: number | null;
     is_featured: boolean | null;
   }>;
-  const tenantProductIds = items.map((item) => item.tenant_product_id);
+  // A signed-in session (approved or pending) may only open catalogs of its OWN tenant: never resolve
+  // another tenant's campaign pricing/stock against a buyer of a different distributor.
+  if (profile?.context.tenant_id && profile.context.tenant_id !== catalog.tenant_id) {
+    return NextResponse.json({ error: 'Catalog not found or not active' }, { status: 404 });
+  }
+  const excludedForGuest = new Set(gate.guestPricing?.excludedProductIds ?? []);
+  const tenantProductIds = items
+    .map((item) => item.tenant_product_id)
+    .filter((id) => !excludedForGuest.has(id));
 
   if (tenantProductIds.length === 0) {
     return NextResponse.json({
@@ -84,7 +100,9 @@ export async function GET(
     ?? null;
   const itemMap = await enrichBuyerProducts(db as any, {
     tenantId: catalog.tenant_id,
-    buyerId: profile?.buyer?.id ?? null,
+    buyerId: gate.pending ? null : (profile?.buyer?.id ?? null),
+    guestPricing: gate.guestPricing,
+    publicCatalog: gate.publicCatalog,
     tenantProductIds,
     inventoryWarehouseId,
     campaignByProductId: new Map(
@@ -102,7 +120,7 @@ export async function GET(
     .map((id) => itemMap.get(id))
     .filter((item): item is BuyerCatalogItem => Boolean(item));
 
-  if (profile?.buyer?.id) {
+  if (profile?.buyer?.id && !gate.pending) {
     await recordCampaignView(db, {
       tenantId: catalog.tenant_id,
       buyerId: profile.buyer.id,

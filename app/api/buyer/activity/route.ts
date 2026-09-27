@@ -4,6 +4,7 @@ import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { isPendingBuyerCatalogSession } from '@/lib/server/buyer-pending-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -13,7 +14,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ items: [], next_cursor: null }, { status: 401 });
     }
 
-    if (!profile.buyer?.id) {
+    // Pending / access-disabled sessions never see buyer activity.
+    if (isPendingBuyerCatalogSession(profile) || !profile.buyer?.id) {
       return NextResponse.json({ items: [], next_cursor: null });
     }
 

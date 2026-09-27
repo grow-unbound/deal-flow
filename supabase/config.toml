@@ -52,6 +52,9 @@ verify_jwt = false
 [functions.push-order-to-zoho]
 verify_jwt = false
 
+[functions.push-buyer-to-zoho]
+verify_jwt = false
+
 [functions.sync-contact-persons]
 verify_jwt = false
 

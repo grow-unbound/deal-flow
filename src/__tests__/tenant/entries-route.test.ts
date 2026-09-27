@@ -81,6 +81,7 @@ describe('tenant entries routes', () => {
       p_limit: 2,
       p_cursor_priority_at: null,
       p_cursor_id: null,
+      p_actor_user_id: 'seller-1',
     });
     expect(body.entries).toEqual([{ id: 'entry-2', priority_at: '2026-09-06T07:00:00.000Z' }]);
     expect(body.nextCursor).toEqual(expect.any(String));
@@ -99,6 +100,19 @@ describe('tenant entries routes', () => {
     expect(rpcMock).toHaveBeenCalledWith('list_entries', expect.objectContaining({
       p_location_ids: ['loc-1'],
     }));
+  });
+
+  it('always passes the verified user id so the DB can hide approval entries from assistants', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'asst-9',
+      tenant_id: 'tenant-a',
+      role: 'seller_assistant',
+      location_ids: ['loc-1'],
+    });
+
+    await GET(new NextRequest('http://localhost/api/tenant/entries', { method: 'GET' }) as any);
+
+    expect(rpcMock).toHaveBeenCalledWith('list_entries', expect.objectContaining({ p_actor_user_id: 'asst-9' }));
   });
 
   it('blocks buyer users from listing entries', async () => {

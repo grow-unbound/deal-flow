@@ -53,6 +53,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       claims,
       lookup,
     );
+    // The JWT alone is not proof of an approved buyer (a stale buyer_admin token can outlive a
+    // disabled buyer). If the caller's own buyer is access-disabled, expose nothing.
+    const ownCandidate = candidates.find(
+      (candidate) => candidate.tenant_id === claims.tenant_id && candidate.buyer_id === claims.buyer_id,
+    );
+    if (ownCandidate && ownCandidate.buyer_app_enabled === false) {
+      return NextResponse.json({ siblings: [] }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+
     const seen = new Set<string>();
     const siblings: BuyerSiblingRow[] = [];
 
@@ -61,7 +70,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (seen.has(candidate.buyer_id)) continue;
       seen.add(candidate.buyer_id);
 
-      const winning = await resolveWinningPriceListForBuyer(claims.tenant_id, candidate.buyer_id);
+      // Never leak price-list identity for a sibling account whose app access is off.
+      const winning = candidate.buyer_app_enabled === false
+        ? { price_list_id: null, price_list_name: null }
+        : await resolveWinningPriceListForBuyer(claims.tenant_id, candidate.buyer_id);
       siblings.push({
         buyer_id: candidate.buyer_id,
         business_name: candidate.business_name,

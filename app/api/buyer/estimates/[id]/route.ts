@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { guardPendingBuyerAccount } from '@/lib/server/buyer-pending-guard';
 import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
 import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
@@ -50,6 +51,8 @@ export async function GET(
     if (!profile?.context.tenant_id || !profile.buyer?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const pendingBlock = guardPendingBuyerAccount(profile);
+    if (pendingBlock) return pendingBlock;
 
     const { tenant_id } = profile.context;
     const buyer_id = profile.buyer.id;

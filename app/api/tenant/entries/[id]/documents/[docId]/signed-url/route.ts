@@ -81,6 +81,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (entry.location_id && !canAccessDocumentLocation(claims, entry.location_id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // Buyer access requests (and their documents) are seller_admin only.
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
     if (entry.source_entity_type !== 'buyer' || !entry.source_entity_id) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
