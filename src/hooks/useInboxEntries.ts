@@ -2,7 +2,12 @@
 
 import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
-import { NAVIGATION_QUERY_STALE_TIME, NAVIGATION_QUERY_GC_TIME } from '@/lib/query-navigation';
+import {
+  NAVIGATION_QUERY_STALE_TIME,
+  NAVIGATION_QUERY_GC_TIME,
+  REFERENCE_QUERY_STALE_TIME,
+  REFERENCE_QUERY_GC_TIME,
+} from '@/lib/query-navigation';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 
@@ -108,6 +113,98 @@ interface ApprovalActionInput {
   action: 'approve' | 'decline' | 'request_more_info';
   note?: string;
   metadata?: Record<string, unknown>;
+  /** approve only: confirmed customer group (null = explicit "No group - use default pricing"). */
+  cohort_id?: string | null;
+  /** approve only: optional buyer-level price list override. */
+  price_list_id?: string | null;
+  /** approve only: must be true - the seller has confirmed the group / price list choice. */
+  assignment_confirmed?: boolean;
+}
+
+export interface ApprovalCohortOption {
+  id: string;
+  name: string;
+  membership_mode: 'manual' | 'automatic';
+  eligible: boolean;
+  member_count: number;
+  ineligible_reason: string | null;
+}
+
+export interface ApprovalPriceListOption {
+  id: string;
+  name: string;
+  priority: number | null;
+  has_zoho_pricebook: boolean;
+}
+
+export interface ApprovalAssignmentOptions {
+  cohorts: ApprovalCohortOption[];
+  price_lists: ApprovalPriceListOption[];
+  default_cohort_id: string | null;
+  zoho_active: boolean;
+}
+
+export interface ApprovalPriceSource {
+  tier: number;
+  source: 'buyer' | 'group' | 'all_buyers';
+  price_list_id: string;
+  name: string;
+  priority: number | null;
+}
+
+export interface ApprovalPricePreview {
+  headline: ApprovalPriceSource | null;
+  applicable: ApprovalPriceSource[];
+}
+
+export function useApprovalAssignmentOptions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['inbox-approval-options'],
+    enabled,
+    queryFn: async () => {
+      const res = await apiFetch('/api/tenant/entries/approval-options', { fresh: true });
+      if (!res.ok) throw new Error('Failed to load customer groups and price lists');
+      return (await res.json()) as ApprovalAssignmentOptions;
+    },
+    staleTime: REFERENCE_QUERY_STALE_TIME,
+    gcTime: REFERENCE_QUERY_GC_TIME,
+  });
+}
+
+export function useApprovalPricePreview(cohortId: string | null, priceListId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['inbox-approval-price-preview', cohortId, priceListId],
+    enabled,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (cohortId) params.set('cohort_id', cohortId);
+      if (priceListId) params.set('price_list_id', priceListId);
+      const res = await apiFetch(`/api/tenant/entries/approval-price-preview?${params.toString()}`, { fresh: true });
+      if (!res.ok) throw new Error('Failed to load price preview');
+      return (await res.json()) as ApprovalPricePreview;
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useRetryZohoSync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (entryId: string) => {
+      const res = await apiPost(`/api/tenant/entries/${entryId}/actions`, { action: 'retry_zoho_sync' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? 'Failed to retry Zoho sync');
+      }
+      return (await res.json()) as { data: InboxEntry };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['inbox-entry-history'] });
+    },
+  });
 }
 
 interface CollectionReminderInput {
@@ -137,6 +234,7 @@ export function useApplyApprovalEntryAction() {
       return payload.data;
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-approval-options'] });
       queryClient.invalidateQueries({ queryKey: ['inbox-entries'] });
       queryClient.invalidateQueries({ queryKey: ['inbox-entry-history'] });
     },

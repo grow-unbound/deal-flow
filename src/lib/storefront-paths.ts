@@ -175,6 +175,30 @@ export function isGuestCatalogApiPath(pathname: string): boolean {
   return false;
 }
 
+// A `buyer_pending` session must keep working on the identity/bootstrap endpoints that the
+// /pending + onboarding flow depends on (they are in the guest set only because guests need
+// them too). Everything else in the guest set is catalog/priced data and is blocked for pending
+// buyers on approved_buyers_only hosts. /api/buyer/onboarding/*, /api/buyer/documents/* and
+// /api/buyer/whatsapp-consent are NOT guest paths, so they never hit this gate.
+const PENDING_BUYER_ALLOWED_API_PATHS = new Set(['/api/buyer/me', '/api/buyer/nearest-location']);
+
+// Buyer-scoped catalog/priced/account endpoints that are not guest-cacheable (so they are not in
+// isGuestCatalogApiPath — adding them there would let anonymous visitors through on public hosts)
+// but that a pending buyer must still never reach on an approved_buyers_only host.
+const PENDING_BUYER_BLOCKED_EXTRA_API_PATHS = new Set([
+  '/api/buyer/catalogs',
+  '/api/buyer/home/promotions',
+  '/api/buyer/home/metrics',
+  '/api/buyer/activity',
+  '/api/buyer/reco/cart-bundles',
+  '/api/buyer/siblings',
+]);
+
+export function isPendingBuyerBlockedApiPath(pathname: string): boolean {
+  if (PENDING_BUYER_ALLOWED_API_PATHS.has(pathname)) return false;
+  return isGuestCatalogApiPath(pathname) || PENDING_BUYER_BLOCKED_EXTRA_API_PATHS.has(pathname);
+}
+
 export function isGuestSearchApiPath(pathname: string, search = ''): boolean {
   if (pathname === '/api/public/g/search') return true;
   if (pathname === '/api/public/g/catalog') return /(?:^|[?&])search=/.test(search);

@@ -23,7 +23,7 @@ function renderPulse() {
 }
 
 const contribution: PulseContributionResponse = {
-  source: 'app.get_buyer_app_dashboard_v4',
+  source: 'app.get_landing_metrics_v4',
   computed_at: '2026-09-22T04:00:00.000Z',
   source_watermark: '2026-09-22T03:45:00.000Z',
   freshness_label: new Date().toISOString(),
@@ -52,7 +52,7 @@ const contribution: PulseContributionResponse = {
 };
 
 const opportunities: PulseOpportunitiesResponse = {
-  source: 'app.get_buyer_app_dashboard_v4',
+  source: 'app.metrics_buyer_period_summary',
   computed_at: '2026-09-22T04:00:00.000Z',
   source_watermark: '2026-09-22T03:45:00.000Z',
   freshness_label: new Date().toISOString(),
@@ -79,12 +79,12 @@ const opportunities: PulseOpportunitiesResponse = {
       ],
     },
     {
-      id: 'previously_submitted_app_demand_now_inactive',
-      title: 'High-value customers going quiet',
-      description: 'Customers previously submitted Yukti demand but have become inactive against their own recent history.',
-      count: 4,
-      time_basis: 'NOW + 90D',
-      evidence: '₹1,75,000 prior Yukti demand · NOW + 90D',
+      id: 'dormant_customers_90d',
+      title: 'Dormant customers to win back',
+      description: 'Customers with meaningful past business who have not purchased in 90+ days.',
+      count: 294,
+      time_basis: 'Rolling 90 days',
+      evidence: '₹1,75,00,000 last-12-month value · no purchase in 90+ days',
       action_label: 'Review customers',
       action_href: '/customers',
       previews: [
@@ -92,31 +92,11 @@ const opportunities: PulseOpportunitiesResponse = {
           buyer_id: 'buyer-3',
           name: 'Quiet Retail',
           initials: 'QR',
-          prior_demand_value: 175000,
-          last_demand_day: '2026-08-10',
-          supporting_text: '₹1,75,000 prior Yukti demand · Last demand 10 Aug',
+          last_invoice_date: '2026-06-12',
+          days_since_last_invoice: 106,
+          value_12m: 1107286,
+          supporting_text: 'Last purchase 106 days ago · ₹11,07,286 last 12m',
           href: '/customers/buyer-3',
-        },
-      ],
-    },
-    {
-      id: 'access_enabled_but_never_used',
-      title: 'Convert interested customers',
-      description: 'Customers have access enabled but still do business outside Yukti.',
-      count: 7,
-      time_basis: 'NOW',
-      evidence: '₹3,20,000 business outside Yukti · NOW',
-      action_label: 'Review customer access',
-      action_href: '/buyer-app/access',
-      previews: [
-        {
-          buyer_id: 'buyer-2',
-          name: 'Enabled Retail',
-          initials: 'ER',
-          invoice_value_qtd: 320000,
-          invoice_count_qtd: 6,
-          supporting_text: '₹3,20,000 · 6 invoices',
-          href: '/customers/buyer-2',
         },
       ],
     },
@@ -247,11 +227,12 @@ describe('PulseDashboardClient', () => {
     expect(await screen.findByText('Activate valuable customers')).toBeInTheDocument();
     expect(await screen.findByText('₹4,10,000 qualifying assisted business · NOW + QTD')).toBeInTheDocument();
     expect(await screen.findByText('Open access management')).toBeInTheDocument();
-    expect(await screen.findByText('High-value customers going quiet')).toBeInTheDocument();
-    expect(await screen.findByText('₹1,75,000 prior Yukti demand · Last demand 10 Aug')).toBeInTheDocument();
-    expect(await screen.findByText('Convert interested customers')).toBeInTheDocument();
-    expect(await screen.findByText('₹3,20,000 · 6 invoices')).toBeInTheDocument();
-    expect(await screen.findByText('₹1,75,000 prior Yukti demand · NOW + 90D')).toBeInTheDocument();
+    expect(await screen.findByText('Dormant customers to win back')).toBeInTheDocument();
+    expect(await screen.findByText('Last purchase 106 days ago · ₹11,07,286 last 12m')).toBeInTheDocument();
+    expect(await screen.findByText('₹1,75,00,000 last-12-month value · no purchase in 90+ days')).toBeInTheDocument();
+    expect(await screen.findByText('294')).toBeInTheDocument();
+    expect(screen.queryByText(/going quiet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Convert interested customers')).not.toBeInTheDocument();
     expect(screen.queryByText(/Open access management/i)).toBeInTheDocument();
 
     expect(screen.queryByText('Business flow')).not.toBeInTheDocument();

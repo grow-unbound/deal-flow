@@ -539,6 +539,54 @@ describe('middleware auth redirects', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Approval required' });
   });
 
+  it.each([
+    '/api/buyer/catalogs',
+    '/api/buyer/home/promotions',
+    '/api/buyer/home/metrics',
+    '/api/buyer/activity',
+    '/api/buyer/reco/cart-bundles',
+    '/api/buyer/siblings',
+    '/api/buyer/search?q=a',
+    '/api/buyer/reco/brand/b1',
+  ])('blocks pending buyers from %s on approved-only storefronts', async (path) => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only', pricingMode: 'base_selling_rate', priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_pending', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest(path));
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    await expect(response.json()).resolves.toEqual({ error: 'Approval required' });
+  });
+
+  it.each([
+    '/api/buyer/me',
+    '/api/buyer/nearest-location',
+    '/api/buyer/onboarding/intake',
+    '/api/buyer/onboarding/existing-profiles',
+    '/api/buyer/documents/presign',
+    '/api/buyer/documents/upload',
+    '/api/buyer/whatsapp-consent',
+  ])('still lets pending buyers reach %s on approved-only storefronts', async (path) => {
+    resolveStorefrontMock.mockResolvedValue({
+      tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z',
+      accessMode: 'approved_buyers_only', pricingMode: 'base_selling_rate', priceListId: null,
+    });
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_pending', buyer_id: 'buyer-1' } },
+      error: null,
+    });
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(tenantRequest(path));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
   it('redirects anonymous unpublished tenant pages to catalog login, not tenant-local login', async () => {
     resolveStorefrontMock.mockResolvedValue({
       tenantId: 'tenant-x',

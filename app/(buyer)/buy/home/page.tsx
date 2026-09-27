@@ -7,6 +7,7 @@ import { getBuyerServerClaims } from '@/lib/server/buyer-server-claims';
 import { loadBuyerHomePromotions } from '@/lib/server/buyer-home-promotions';
 import { loadBuyerHomeReco } from '@/lib/server/buyer-home-reco';
 import { getBuyerServerProductScope } from '@/lib/server/buyer-server-product-scope';
+import { isBuyerAppAccessEnabledInDb } from '@/lib/server/buyer-pending-guard';
 import { fetchBuyerBrands, fetchBuyerCategories } from '@/lib/server/buyer-product-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerHomePromotionsResponse, BuyerHomeRecoResponse } from '@/lib/buyer-home-types';
@@ -27,6 +28,8 @@ async function loadInitialCatalogData(): Promise<CatalogInitialData> {
   const db = supabaseAdmin;
   const tenantId = claims.tenant_id;
   const buyerId = claims.buyer_id;
+  // The JWT role can be stale (buyer disabled after the token was issued): confirm against the DB.
+  if (!(await isBuyerAppAccessEnabledInDb(db, tenantId, buyerId))) return {};
 
   const [promotions, reco, scope] = await Promise.all([
     loadBuyerHomePromotions(db, tenantId, buyerId).catch((error) => {

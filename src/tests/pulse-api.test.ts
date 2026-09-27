@@ -8,6 +8,7 @@ const redirectMock = vi.fn((url: string) => {
   throw Object.assign(new Error('NEXT_REDIRECT'), { digest: `NEXT_REDIRECT;replace;${url};307;` });
 });
 const requireSellerServerTenantIdMock = vi.fn();
+const getSellerServerClaimsMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -19,6 +20,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/server/seller-server-claims', () => ({
   requireSellerServerTenantId: (...args: unknown[]) => requireSellerServerTenantIdMock(...args),
+  getSellerServerClaims: (...args: unknown[]) => getSellerServerClaimsMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -73,10 +75,22 @@ describe('Pulse API routes', () => {
     vi.clearAllMocks();
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
-      role: 'seller_assistant',
-      location_ids: ['loc-1'],
+      role: 'seller_admin',
+      location_ids: null,
     });
-    rpcMock.mockResolvedValue({ data: rpcPortfolio, error: null });
+    getSellerServerClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_admin', location_ids: null });
+    rpcMock.mockImplementation((name: string) => Promise.resolve(
+      name === 'get_pulse_dormant_buyers'
+        ? {
+          data: [{
+            buyer_id: 'buyer-quiet', business_name: 'Quiet Retail', last_invoice_date: '2026-06-10', days_since_last_invoice: 108,
+            value_12m: 90000, invoice_count_12m: 3, source_watermark: '2026-09-21T03:45:00.000Z', computed_at: '2026-09-21T04:00:00.000Z',
+            total_count: 4, total_value_12m: 400000,
+          }],
+          error: null,
+        }
+        : { data: rpcPortfolio, error: null },
+    ));
     fromMock.mockImplementation((table: string) => {
       const filters = new Map<string, unknown>();
       const builder: any = {
@@ -96,20 +110,11 @@ describe('Pulse API routes', () => {
               error: null,
             });
           }
-          if (table === 'metrics_buyer_period_summary' && filters.get('period_start') === '2026-04-01') {
-            return Promise.resolve({
-              data: [{ buyer_id: 'buyer-quiet', app_demand_value: 90000, app_demand_count: 2, period_end_exclusive: '2026-07-01', source_watermark: '2026-09-21T03:45:00.000Z', computed_at: '2026-09-21T04:00:00.000Z' }],
-              error: null,
-            });
-          }
           return Promise.resolve({ data: [], error: null });
         }),
         in: vi.fn(() => {
           if (table === 'buyers' && filters.get('buyer_app_enabled') === false) {
             return Promise.resolve({ data: [{ id: 'buyer-1', business_name: 'Alpha Retail' }], error: null });
-          }
-          if (table === 'buyers' && filters.get('buyer_app_enabled') === true) {
-            return Promise.resolve({ data: [{ id: 'buyer-quiet', business_name: 'Quiet Retail' }], error: null });
           }
           return Promise.resolve({ data: [], error: null });
         }),
@@ -117,21 +122,6 @@ describe('Pulse API routes', () => {
       return builder;
     });
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
-  });
-
-  it('loads contribution from the existing buyer-app v4 RPC with assistant location scope', async () => {
-    const response = await getContribution(new NextRequest('http://localhost/api/tenant/pulse/contribution'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.cards[0].id).toBe('demand_captured');
-    expect(rpcMock).toHaveBeenCalledWith('get_buyer_app_dashboard_v4', {
-      p_tenant_id: 'tenant-1',
-      p_role: 'seller_assistant',
-      p_location_ids: ['loc-1'],
-    });
-    expect(response.headers.get('Cache-Control')).toContain('private');
-    expect(response.headers.get('Server-Timing')).toContain('pulse_contribution_api');
   });
 
   it('loads seller-admin contribution from landing metrics instead of the heavier portfolio RPC', async () => {
@@ -202,25 +192,18 @@ describe('Pulse API routes', () => {
     expect(body.source).toBe('app.metrics_buyer_period_summary');
     expect(body.groups.map((group: { id: string }) => group.id)).toEqual([
       'valuable_assisted_customers_without_access',
-      'previously_submitted_app_demand_now_inactive',
+      'dormant_customers_90d',
     ]);
     expect(body.groups[0].previews[0]).toEqual(expect.objectContaining({
       buyer_id: 'buyer-1',
       supporting_text: '₹1,50,000 · 3 invoices',
     }));
+    expect(body.groups[1]).toEqual(expect.objectContaining({ count: 4, time_basis: 'Rolling 90 days' }));
+    expect(body.groups[1].previews[0].supporting_text).toBe('Last purchase 108 days ago · ₹90,000 last 12m');
     expect(rpcMock).not.toHaveBeenCalledWith('get_buyer_app_dashboard_v4', expect.anything());
+    expect(rpcMock).toHaveBeenCalledWith('get_pulse_dormant_buyers', expect.objectContaining({ p_tenant_id: 'tenant-1' }));
     expect(fromMock).toHaveBeenCalledWith('metrics_buyer_period_summary');
     expect(fromMock).toHaveBeenCalledWith('buyers');
-  });
-
-  it('omits location-scoped assistant opportunities when no scoped summary read exists', async () => {
-    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.groups).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalledWith('get_buyer_app_dashboard_v4', expect.anything());
-    expect(fromMock).not.toHaveBeenCalled();
   });
 
   it('loads demand signals from the local landing snapshot boundary', async () => {
@@ -296,19 +279,24 @@ describe('Pulse API routes', () => {
     expect(response.headers.get('Server-Timing')).toContain('pulse_opportunity_buyers_api');
   });
 
-  it('does not query the database for an unassigned seller assistant', async () => {
-    getVerifiedClaimsMock.mockResolvedValue({
-      tenant_id: 'tenant-1',
-      role: 'seller_assistant',
-      location_ids: [],
-    });
+  it('returns the dormant buyer sheet page and 404s retired opportunity ids', async () => {
+    const ok = await getOpportunityBuyers(
+      new NextRequest('http://localhost/api/tenant/pulse/opportunities/dormant_customers_90d/buyers?limit=20'),
+      { params: Promise.resolve({ id: 'dormant_customers_90d' }) },
+    );
+    const body = await ok.json();
+    expect(ok.status).toBe(200);
+    expect(body.total).toBe(4);
+    expect(body.rows[0].buyer_id).toBe('buyer-quiet');
+    expect(body.nextCursor).toBe('1');
 
-    const response = await getOpportunities(new NextRequest('http://localhost/api/tenant/pulse/opportunities'));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.groups).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalled();
+    for (const id of ['previously_submitted_app_demand_now_inactive', 'access_enabled_but_never_used', 'used_app_but_no_demand']) {
+      const gone = await getOpportunityBuyers(
+        new NextRequest(`http://localhost/api/tenant/pulse/opportunities/${id}/buyers`),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(gone.status).toBe(404);
+    }
   });
 
   it('rejects non-seller roles before the RPC', async () => {
@@ -324,11 +312,17 @@ describe('Pulse API routes', () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('redirects the archived buyer-app analytics page to Pulse', async () => {
+  it('redirects the archived buyer-app analytics page to Pulse for admins', async () => {
     await expect(BuyerAppPage()).rejects.toThrow('NEXT_REDIRECT');
 
     expect(requireSellerServerTenantIdMock).toHaveBeenCalled();
     expect(redirectMock).toHaveBeenCalledWith('/pulse');
+  });
+
+  it('sends assistants from the archived buyer-app page to Today, not Pulse', async () => {
+    getSellerServerClaimsMock.mockResolvedValue({ tenant_id: 'tenant-1', role: 'seller_assistant', location_ids: ['loc-1'] });
+    await expect(BuyerAppPage()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirectMock).toHaveBeenCalledWith('/today');
   });
 
   it('preserves the buyer-app access management page', async () => {

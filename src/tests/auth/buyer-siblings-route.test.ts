@@ -98,4 +98,49 @@ describe('GET /api/buyer/siblings', () => {
     expect(body.siblings).toHaveLength(2);
     expect(resolveWinningPriceListForBuyerMock).not.toHaveBeenCalledWith(TENANT_ID, victimBuyer.buyer_id);
   });
+
+  const ownClaims = () => ({
+    sub: 'user-1', tenant_id: TENANT_ID, role: 'buyer_admin', buyer_id: buyerCandidate.buyer_id, location_ids: null,
+  });
+  const phoneUser = () => ({
+    data: { user: { user_metadata: { phone: '9990009902' }, app_metadata: {} } },
+    error: null,
+  });
+
+  it('returns no siblings when the caller own buyer is access-disabled (outdated JWT)', async () => {
+    getVerifiedClaimsMock.mockResolvedValue(ownClaims());
+    getUserByIdMock.mockResolvedValue(phoneUser());
+    findBuyerLoginCandidatesMock.mockResolvedValue([{ ...buyerCandidate, buyer_app_enabled: false }]);
+
+    const { GET } = await import('../../../app/api/buyer/siblings/route');
+    const response = await GET(new Request('http://tenant.localhost/api/buyer/siblings') as any);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).siblings).toEqual([]);
+    expect(resolveWinningPriceListForBuyerMock).not.toHaveBeenCalled();
+  });
+
+  it('never resolves a price list for a disabled sibling account', async () => {
+    getVerifiedClaimsMock.mockResolvedValue(ownClaims());
+    getUserByIdMock.mockResolvedValue(phoneUser());
+    const disabledSibling = { ...buyerCandidate, buyer_id: '33333333-3333-3333-3333-333333333333', business_name: 'Off', buyer_app_enabled: false };
+    findBuyerLoginCandidatesMock.mockResolvedValue([buyerCandidate, disabledSibling]);
+    resolveWinningPriceListForBuyerMock.mockResolvedValue({ price_list_id: 'pl-1', price_list_name: 'Gold' });
+
+    const { GET } = await import('../../../app/api/buyer/siblings/route');
+    const body = await (await GET(new Request('http://tenant.localhost/api/buyer/siblings') as any)).json();
+
+    expect(resolveWinningPriceListForBuyerMock).toHaveBeenCalledTimes(1);
+    expect(body.siblings).toEqual([
+      expect.objectContaining({ buyer_id: buyerCandidate.buyer_id, price_list_name: 'Gold' }),
+      expect.objectContaining({ buyer_id: disabledSibling.buyer_id, price_list_id: null, price_list_name: null }),
+    ]);
+  });
+
+  it('rejects a buyer_pending JWT outright', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({ ...ownClaims(), role: 'buyer_pending' });
+    const { GET } = await import('../../../app/api/buyer/siblings/route');
+    const response = await GET(new Request('http://tenant.localhost/api/buyer/siblings') as any);
+    expect(response.status).toBe(403);
+  });
 });

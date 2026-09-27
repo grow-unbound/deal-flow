@@ -18,6 +18,7 @@ import type {
   BuyerCatalogSummary,
   BuyerCategory,
 } from '@/types/buyer';
+import { isPendingBuyerCatalogSession } from '@/lib/server/buyer-pending-guard';
 import {
   getCachedGuestPricingContext,
   resolveGuestPricingContext,
@@ -916,10 +917,7 @@ export function fetchCachedBuyerBrands(
   )();
 }
 
-function isPendingBuyerCatalogSession(profile: BuyerAccessProfile): boolean {
-  return profile.context.mode !== 'preview'
-    && (profile.context.role === 'buyer_pending' || profile.buyer?.buyer_app_enabled === false);
-}
+export { isPendingBuyerCatalogSession };
 
 export function isCatalogApprovalRequiredForProfile(
   profile: BuyerAccessProfile,

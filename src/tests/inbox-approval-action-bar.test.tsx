@@ -5,9 +5,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const applyGenericMutateAsyncMock = vi.fn().mockResolvedValue({});
 const applyApprovalMutateAsyncMock = vi.fn().mockResolvedValue({});
 
+const retryMutateAsyncMock = vi.fn().mockResolvedValue({});
+const roleState = { isSellerAdmin: true };
+
+vi.mock('@/hooks/useRole', () => ({
+  useRole: () => ({ isSellerAdmin: roleState.isSellerAdmin, isSellerAssistant: !roleState.isSellerAdmin }),
+}));
+
 vi.mock('@/hooks/useInboxEntries', () => ({
   useApplyGenericEntryAction: () => ({ mutateAsync: applyGenericMutateAsyncMock, isPending: false }),
   useApplyApprovalEntryAction: () => ({ mutateAsync: applyApprovalMutateAsyncMock, isPending: false }),
+  useRetryZohoSync: () => ({ mutateAsync: retryMutateAsyncMock, isPending: false }),
+  useApprovalAssignmentOptions: () => ({
+    data: { cohorts: [], price_lists: [], default_cohort_id: null, zoho_active: false },
+    isError: false,
+  }),
+  useApprovalPricePreview: () => ({ data: { headline: null, applicable: [] }, isPending: false }),
 }));
 
 import { InboxApprovalActionBar } from '@/components/seller/inbox/InboxApprovalActionBar';
@@ -48,6 +61,8 @@ describe('InboxApprovalActionBar', () => {
   beforeEach(() => {
     applyGenericMutateAsyncMock.mockClear();
     applyApprovalMutateAsyncMock.mockClear();
+    retryMutateAsyncMock.mockClear();
+    roleState.isSellerAdmin = true;
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -66,12 +81,60 @@ describe('InboxApprovalActionBar', () => {
     expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument();
   });
 
-  it('approve calls the real mutation and shows an "Approved" success state, no confirmation needed', async () => {
+  it('Approve opens the confirmation dialog instead of approving immediately', () => {
     renderBar(businessEntry);
     fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
 
-    expect(applyApprovalMutateAsyncMock).toHaveBeenCalledWith({ entryId: 'e1', action: 'approve' });
+    expect(applyApprovalMutateAsyncMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Customer group')).toBeInTheDocument();
+  });
+
+  it('confirming in the dialog approves with the confirmed assignment and shows "Approved"', async () => {
+    renderBar(businessEntry);
+    fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm and approve' }));
+
+    await waitFor(() =>
+      expect(applyApprovalMutateAsyncMock).toHaveBeenCalledWith({
+        entryId: 'e1',
+        action: 'approve',
+        cohort_id: null,
+        price_list_id: null,
+        assignment_confirmed: true,
+      }),
+    );
     await waitFor(() => expect(screen.getByRole('button', { name: /Approved/ })).toBeInTheDocument());
+  });
+
+  it('seller_assistant sees no approve / request info / decline controls', () => {
+    roleState.isSellerAdmin = false;
+    renderBar(businessEntry);
+
+    expect(screen.queryByRole('button', { name: /^Approve$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request info' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument();
+  });
+
+  it('shows a failed Zoho sync with its error and lets an admin retry', () => {
+    renderBar({
+      ...businessEntry,
+      status: 'resolved',
+      external_sync_status: 'failed',
+      external_sync_error: 'Zoho down',
+      allowed_actions: ['reopen', 'view_details', 'view_buyer'],
+    });
+
+    expect(screen.getByTestId('zoho-sync-status')).toHaveTextContent('Zoho sync failed: Zoho down');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry now' }));
+    expect(retryMutateAsyncMock).toHaveBeenCalledWith('e1');
+  });
+
+  it('shows the pending Zoho state without a retry button', () => {
+    renderBar({ ...businessEntry, status: 'resolved', external_sync_status: 'pending', allowed_actions: [] });
+
+    expect(screen.getByTestId('zoho-sync-status')).toHaveTextContent('Syncing to Zoho');
+    expect(screen.queryByRole('button', { name: 'Retry now' })).not.toBeInTheDocument();
   });
 
   it('decline requires a note before the confirm button is enabled', () => {

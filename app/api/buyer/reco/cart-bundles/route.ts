@@ -4,6 +4,8 @@ import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assem
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { BUYER_CACHE_PRICED } from '@/lib/server/buyer-cache-headers';
+import { guardPendingBuyerCatalogAccess } from '@/lib/server/buyer-pending-guard';
+import { getCachedGuestPricingContext } from '@/lib/server/public-catalog';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import type { CartBundle, CartBundleSlot, CartBundlesResponse } from '@/types/buyer-reco';
@@ -24,7 +26,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
   }
 
   const tenantId = profile.context.tenant_id!;
-  const buyerId = profile.buyer?.id ?? null;
+  const gate = await guardPendingBuyerCatalogAccess(supabaseAdmin as any, profile);
+  if (gate.blocked) return gate.blocked as NextResponse<{ error: string }>;
+  const buyerId = gate.pending ? null : (profile.buyer?.id ?? null);
+  const guestPricing = gate.pending
+    ? gate.guestPricing
+    : profile.context.mode === 'guest' ? await getCachedGuestPricingContext(tenantId) : null;
 
   try {
     // Fetch bundle definitions with top_product_ids per slot from the pre-computed RPC
@@ -66,6 +73,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
             campaignName: null,
             campaignValidUntil: null,
             priceOverrides: new Map(),
+            guestPricing,
           })
         : new Map<string, BuyerCatalogItem>();
 

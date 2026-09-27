@@ -32,6 +32,8 @@ export interface InboxEntry {
   allowed_actions: string[];
   time_bucket: InboxTimeBucket;
   customer_entry_count: number;
+  /** Last Zoho push error for an approved buyer access request (external_sync_status = 'failed'). */
+  external_sync_error?: string | null;
 }
 
 export interface InboxGroupedBuyer {
