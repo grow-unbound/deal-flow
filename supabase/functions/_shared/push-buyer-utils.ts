@@ -36,7 +36,11 @@ export function isBusinessBuyer(buyer: Pick<BuyerForZoho, 'custom_fields' | 'gst
   return Boolean(buyer.gstin?.trim());
 }
 
-const catalogueField = () => [{ api_name: ZOHO_CATALOGUE_ACCESS_FIELD, value: true }];
+// cf_online_catalogue_access ("Online Catalog Access") is a Zoho Books Dropdown
+// custom field with two options, "YES"/"NO" (all caps, exact) — not a Checkbox.
+// Zoho rejects a JSON boolean or wrong-case string here ("Illegal value specified
+// for a Dropdown field: ..."); it wants the option's own string value verbatim.
+const catalogueField = () => [{ api_name: ZOHO_CATALOGUE_ACCESS_FIELD, value: 'YES' }];
 
 /** Body for POST /contacts (new contact). */
 export function buildZohoContactCreatePayload(

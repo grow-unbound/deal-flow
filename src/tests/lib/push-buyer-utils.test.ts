@@ -24,9 +24,9 @@ const buyer: BuyerForZoho = {
 };
 
 describe('push-buyer-utils', () => {
-  it('always sets cf_online_catalogue_access = true on create', () => {
+  it('always sets cf_online_catalogue_access = "YES" on create (Zoho Dropdown field, not Checkbox)', () => {
     const body = buildZohoContactCreatePayload(buyer);
-    expect(body.custom_fields).toEqual([{ api_name: ZOHO_CATALOGUE_ACCESS_FIELD, value: true }]);
+    expect(body.custom_fields).toEqual([{ api_name: ZOHO_CATALOGUE_ACCESS_FIELD, value: 'YES' }]);
     expect(ZOHO_CATALOGUE_ACCESS_FIELD).toBe('cf_online_catalogue_access');
   });
 
@@ -62,7 +62,7 @@ describe('push-buyer-utils', () => {
   it('update payload only echoes the name and sets the catalogue flag', () => {
     expect(buildZohoContactUpdatePayload('Existing Name')).toEqual({
       contact_name: 'Existing Name',
-      custom_fields: [{ api_name: 'cf_online_catalogue_access', value: true }],
+      custom_fields: [{ api_name: 'cf_online_catalogue_access', value: 'YES' }],
     });
   });
 
