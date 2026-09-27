@@ -111,8 +111,21 @@ async function sendTemplateMessage(options: {
   tenantId: string;
   buyerId: string | null;
   triggerSource: 'access_request_received' | 'access_request_resolved';
+  /** Dynamic "Review Request" button — only the seller-received templates set this. Deep-links
+   * to `/today/{{1}}`, which InboxDetailClient groups entries by buyer_id, so this must be the
+   * buyer id, not the entry id (buyer_id is always set on these entries — an entry-id value
+   * here would never match InboxDetailClient's grouping filter). */
+  reviewRequestButtonBuyerId?: string;
 }): Promise<boolean> {
-  const { metaTemplateName, bodyValues, destinationPhone, tenantId, buyerId, triggerSource } = options;
+  const {
+    metaTemplateName,
+    bodyValues,
+    destinationPhone,
+    tenantId,
+    buyerId,
+    triggerSource,
+    reviewRequestButtonBuyerId,
+  } = options;
 
   const templateMeta = await lookupApprovedTemplateMeta(metaTemplateName);
   if (!templateMeta) {
@@ -127,11 +140,22 @@ async function sendTemplateMessage(options: {
     meta_template_name: metaTemplateName,
     locale: templateMeta.locale,
     body_params: bodyValues.map((value) => ({ text: value.text, parameter_name: value.key })),
+    ...(reviewRequestButtonBuyerId
+      ? { button_params: [{ type: 'url' as const, index: '0', text: reviewRequestButtonBuyerId }] }
+      : {}),
   };
 
   try {
     assertTemplatePayloadValid(
-      { meta_template_name: metaTemplateName, variables: options.variables },
+      {
+        meta_template_name: metaTemplateName,
+        variables: options.variables,
+        // "Review Request" (seller-received templates) is the only button here that carries a
+        // dynamic {{1}} — Login/none on the other templates need no button_params at send time.
+        buttons_config: reviewRequestButtonBuyerId
+          ? [{ type: 'url', index: '0', variable_source: 'buyer_id' }]
+          : undefined,
+      },
       sendPayload,
     );
   } catch (error) {
@@ -228,6 +252,7 @@ export async function queueAccessRequestReceivedMessages(
       tenantId,
       buyerId,
       triggerSource: 'access_request_received',
+      reviewRequestButtonBuyerId: buyerId,
     });
   } else {
     console.error('[buyer-approval-notify] tenant has no valid WhatsApp number, skipping seller template', { tenantId });

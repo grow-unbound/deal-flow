@@ -114,14 +114,22 @@ describe('buyer-approval-notify', () => {
     const [buyerCall, sellerCall] = enqueueWhatsAppMessageMock.mock.calls.map((call) => call[0]);
 
     expect(buyerCall.sendPayload.meta_template_name).toBe('access_request_received_buyer');
+    expect(buyerCall.sendPayload.button_params).toBeUndefined();
     expect(() => assertTemplatePayloadValid(
       { meta_template_name: 'access_request_received_buyer', variables: [] },
       buyerCall.sendPayload,
     )).not.toThrow();
 
     expect(sellerCall.sendPayload.meta_template_name).toBe('access_request_received_seller_business');
+    // "Review Request" deep-links to /today/{buyerId} — InboxDetailClient groups these entries
+    // by buyer_id (always set here), so the button param must be the buyer id, not the entry id.
+    expect(sellerCall.sendPayload.button_params).toEqual([{ type: 'url', index: '0', text: 'buyer-1' }]);
     expect(() => assertTemplatePayloadValid(
-      { meta_template_name: 'access_request_received_seller_business', variables: [] },
+      {
+        meta_template_name: 'access_request_received_seller_business',
+        variables: [],
+        buttons_config: [{ type: 'url', index: '0', variable_source: 'buyer_id' }],
+      },
       sellerCall.sendPayload,
     )).not.toThrow();
   });
@@ -134,8 +142,13 @@ describe('buyer-approval-notify', () => {
     const sellerCall = enqueueWhatsAppMessageMock.mock.calls[1][0];
 
     expect(sellerCall.sendPayload.meta_template_name).toBe('access_request_received_seller_individual');
+    expect(sellerCall.sendPayload.button_params).toEqual([{ type: 'url', index: '0', text: 'buyer-2' }]);
     expect(() => assertTemplatePayloadValid(
-      { meta_template_name: 'access_request_received_seller_individual', variables: [] },
+      {
+        meta_template_name: 'access_request_received_seller_individual',
+        variables: [],
+        buttons_config: [{ type: 'url', index: '0', variable_source: 'buyer_id' }],
+      },
       sellerCall.sendPayload,
     )).not.toThrow();
   });
