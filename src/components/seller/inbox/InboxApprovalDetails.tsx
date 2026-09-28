@@ -19,11 +19,11 @@ export function InboxApprovalDetails({ entry }: { entry: InboxEntry }) {
   if (visible.length === 0) return null;
 
   return (
-    <dl className="grid grid-cols-[minmax(6.5rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-base">
+    <dl className="space-y-3.5">
       {visible.map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-cream-600">{label}</dt>
-          <dd className="min-w-0 break-words font-medium text-cream-900">{value}</dd>
+        <div key={label}>
+          <dt className="text-base text-cream-600">{label}</dt>
+          <dd className="mt-0.5 min-w-0 break-words text-md font-medium text-cream-900">{value}</dd>
         </div>
       ))}
     </dl>

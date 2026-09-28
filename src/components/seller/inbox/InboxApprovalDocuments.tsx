@@ -55,11 +55,11 @@ function ShopImagePreview({ entryId, doc, onOpen }: { entryId: string; doc: Entr
       type="button"
       onClick={onOpen}
       aria-label="Open shop image"
-      className="block h-48 w-full overflow-hidden rounded-[10px] border border-cream-300 bg-cream-100 md:h-56 md:w-80"
+      className="block h-48 w-full overflow-hidden rounded-[10px] border border-cream-300 bg-white md:h-56 md:w-80"
     >
       {preview.data ? (
         // eslint-disable-next-line @next/next/no-img-element -- short-lived signed R2 URL, not an optimizable asset
-        <img src={preview.data.url} alt="Shop image" className="h-full w-full object-cover" />
+        <img src={preview.data.url} alt="Shop image" className="h-full w-full object-contain" />
       ) : (
         <div className="h-full w-full animate-pulse bg-cream-200" aria-hidden />
       )}

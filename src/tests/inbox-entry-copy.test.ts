@@ -60,7 +60,7 @@ describe('buildListSupportingLine — dues', () => {
     entry({ id, entry_type: type, amount, currency: 'INR' });
 
   it('says "overdue" (not "due") when every invoice in the group is overdue', () => {
-    expect(buildListSupportingLine([due('a', 'invoice_overdue', 22000)])).toBe('1 invoice · ₹22,000 overdue');
+    expect(buildListSupportingLine([due('a', 'invoice_overdue', 22000)])).toBe('₹22,000 overdue · 1 invoice');
   });
 
   it('splits due vs overdue counts when mixed', () => {
@@ -68,6 +68,6 @@ describe('buildListSupportingLine — dues', () => {
       due('a', 'invoice_due', 90690), due('b', 'invoice_due', 4440),
       due('c', 'invoice_overdue', 6500), due('d', 'invoice_overdue', 14550),
     ]);
-    expect(line).toBe('4 invoices · ₹1,16,180 due · 2 overdue');
+    expect(line).toBe('₹1,16,180 due · 4 invoices · 2 overdue');
   });
 });

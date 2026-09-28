@@ -57,16 +57,13 @@ function ageLabel(entry: InboxEntry): string | null {
   return dueDate ? `due ${dueDate}` : null;
 }
 
-/** "N invoices · ₹X due" — all-overdue drops the "due"/"overdue" split into one clear word. */
+/** Amount first: "₹X overdue · N invoices", "₹X due in 7 days · N invoices", or "₹X due · N invoices · Z overdue" when mixed. */
 export function buildDuesSummaryLine(total: number, invoiceCount: number, overdueCount: number): string {
   const totalLabel = formatNumberValue(total, 'CURRENCY_EXACT');
   const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
-  if (invoiceCount > 0 && overdueCount === invoiceCount) {
-    return `${invoiceLabel} · ${totalLabel} overdue`;
-  }
-  const parts = [invoiceLabel, `${totalLabel} due`];
-  if (overdueCount > 0) parts.push(`${overdueCount} overdue`);
-  return parts.join(' · ');
+  if (invoiceCount > 0 && overdueCount === invoiceCount) return `${totalLabel} overdue · ${invoiceLabel}`;
+  if (overdueCount === 0) return `${totalLabel} due in 7 days · ${invoiceLabel}`;
+  return `${totalLabel} due · ${invoiceLabel} · ${overdueCount} overdue`;
 }
 
 /** "₹X over your ₹Y limit" — names both numbers so it isn't read against the wrong total (Dues, outstanding). */

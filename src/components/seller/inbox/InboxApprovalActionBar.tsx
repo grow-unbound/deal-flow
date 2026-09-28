@@ -292,8 +292,8 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:justify-between md:gap-3">
+        <div className="order-1 flex min-w-0 items-center gap-2">
           {leftActions.map((action) => {
             const Icon = action === 'remind_later' ? Bell : StickyNote;
             return (
@@ -310,14 +310,14 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
             );
           })}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="contents md:flex md:shrink-0 md:items-center md:justify-end md:gap-2">
           {canDecide && entry.allowed_actions.includes('request_more_info') ? (
-            <Button type="button" variant="outline" onClick={() => setMoreInfoOpen(true)}>
+            <Button type="button" variant="outline" className="order-3 flex-1 md:order-none md:flex-none" onClick={() => setMoreInfoOpen(true)}>
               Request more info
             </Button>
           ) : null}
           {canReopen ? (
-            <Button type="button" variant="outline" onClick={() => runGenericAction('reopen')}>
+            <Button type="button" variant="outline" className="order-2 flex-1 md:order-none md:flex-none" onClick={() => runGenericAction('reopen')}>
               {ACTION_LABELS.reopen}
             </Button>
           ) : null}
@@ -325,14 +325,20 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
             <Button
               type="button"
               variant="outline"
-              className="border-danger-500 text-danger-700 hover:border-danger-700 hover:bg-danger-50"
+              className="order-3 flex-1 border-danger-500 text-danger-700 hover:border-danger-700 hover:bg-danger-50 md:order-none md:flex-none"
               onClick={() => setDeclineOpen(true)}
             >
               Decline
             </Button>
           ) : null}
           {canDecide && entry.allowed_actions.includes('approve') ? (
-            <Button type="button" variant="primary" onClick={() => setApproveOpen(true)} disabled={approveState !== 'idle'}>
+            <Button
+              type="button"
+              variant="primary"
+              className="order-2 min-w-0 flex-1 basis-[calc(100%-5rem)] md:order-none md:flex-none md:basis-auto"
+              onClick={() => setApproveOpen(true)}
+              disabled={approveState !== 'idle'}
+            >
               <CheckCircle2 className="h-4 w-4" aria-hidden />
               {approveState === 'done' ? 'Approved' : 'Approve'}
             </Button>

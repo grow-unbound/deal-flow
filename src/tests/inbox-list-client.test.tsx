@@ -66,7 +66,7 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
-    expect(screen.getByText('1 invoice · ₹22,000 overdue')).toBeInTheDocument();
+    expect(screen.getByText('₹22,000 overdue · 1 invoice')).toBeInTheDocument();
   });
 
   it('fetches the next page when the 75% sentinel intersects', () => {
