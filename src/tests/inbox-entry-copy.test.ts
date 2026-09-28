@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCreditLimitSupportingLine, buildEntryAmountLabel, buildListSupportingLine, buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
+import { buildCreditLimitSupportingLine, buildLiveCreditLimitLine, buildEntryAmountLabel, buildListSupportingLine, buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
 describe('buildTargetRangeLabel', () => {
@@ -60,7 +60,7 @@ describe('buildListSupportingLine — dues', () => {
     entry({ id, entry_type: type, amount, currency: 'INR' });
 
   it('says "overdue" (not "due") when every invoice in the group is overdue', () => {
-    expect(buildListSupportingLine([due('a', 'invoice_overdue', 22000)])).toBe('1 invoice · ₹22,000 overdue');
+    expect(buildListSupportingLine([due('a', 'invoice_overdue', 22000)])).toBe('₹22,000 overdue · 1 invoice');
   });
 
   it('splits due vs overdue counts when mixed', () => {
@@ -68,6 +68,32 @@ describe('buildListSupportingLine — dues', () => {
       due('a', 'invoice_due', 90690), due('b', 'invoice_due', 4440),
       due('c', 'invoice_overdue', 6500), due('d', 'invoice_overdue', 14550),
     ]);
-    expect(line).toBe('4 invoices · ₹1,16,180 due · 2 overdue');
+    expect(line).toBe('₹1,16,180 due · 4 invoices · 2 overdue');
+  });
+});
+
+describe('buildLiveCreditLimitLine', () => {
+  const breach = entry({
+    id: 'c', entry_type: 'credit_limit_breach', amount: 502480,
+    metadata: { credit_limit: 200000, outstanding_balance: 702480, over_limit_amount: 502480 },
+  });
+
+  it('recomputes the over-limit amount from live outstanding and notes the change', () => {
+    expect(buildLiveCreditLimitLine(breach, 712819)).toEqual({
+      line: '₹5,12,819 over your ₹2,00,000 limit',
+      changeNote: 'Was ₹5,02,480 over when flagged',
+    });
+  });
+
+  it('shows no change note when live matches the snapshot', () => {
+    expect(buildLiveCreditLimitLine(breach, 702480)?.changeNote).toBeNull();
+  });
+
+  it('says the buyer is within the limit once outstanding drops below it', () => {
+    expect(buildLiveCreditLimitLine(breach, 150000)?.line).toBe('Now within your ₹2,00,000 limit');
+  });
+
+  it('returns null without a saved limit', () => {
+    expect(buildLiveCreditLimitLine(entry({ id: 'x', entry_type: 'credit_limit_breach', metadata: {} }), 1)).toBeNull();
   });
 });

@@ -9,6 +9,19 @@ export function isPinnedEntry(entry: InboxEntry): boolean {
   return false;
 }
 
+/**
+ * A buyer that has gone from a phone-only visitor to a submitted business
+ * onboarding must surface as one approval, not two: drop `new_user_login` when a
+ * `business_approval` entry exists for the same buyer.
+ */
+export function dedupeApprovalEntries(entries: InboxEntry[]): InboxEntry[] {
+  const businessBuyerIds = new Set(
+    entries.filter((entry) => entry.entry_type === 'business_approval' && entry.buyer_id).map((entry) => entry.buyer_id),
+  );
+  if (businessBuyerIds.size === 0) return entries;
+  return entries.filter((entry) => !(entry.entry_type === 'new_user_login' && entry.buyer_id && businessBuyerIds.has(entry.buyer_id)));
+}
+
 export function sortEntriesForStack(entries: InboxEntry[]): InboxEntry[] {
   return [...entries].sort((a, b) => {
     const pinnedA = isPinnedEntry(a);

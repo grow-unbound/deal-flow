@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const useEntryHistoryMock = vi.fn();
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useEntryHistory: (...args: unknown[]) => useEntryHistoryMock(...args),
 }));
 

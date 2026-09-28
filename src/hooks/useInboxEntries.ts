@@ -8,6 +8,8 @@ import {
   REFERENCE_QUERY_STALE_TIME,
   REFERENCE_QUERY_GC_TIME,
 } from '@/lib/query-navigation';
+import { dedupeApprovalEntries } from '@/lib/inbox/inbox-grouping';
+import type { OutstandingInvoice } from '@/lib/inbox/inbox-detail-groups';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 
@@ -51,12 +53,26 @@ export function useInboxEntries(status: 'active' | 'resolved', entryTypes?: stri
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     select: (data) => ({
-      entries: data.pages.flatMap((page) => page.entries),
+      entries: dedupeApprovalEntries(data.pages.flatMap((page) => page.entries)),
       nextCursor: data.pages[data.pages.length - 1]?.nextCursor ?? null,
     }),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useBuyerOutstandingInvoices(buyerId: string | null) {
+  return useQuery({
+    queryKey: ['inbox-buyer-outstanding-invoices', buyerId],
+    enabled: buyerId != null,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/outstanding-invoices`, { fresh: true });
+      if (!res.ok) throw new Error('Failed to load outstanding invoices');
+      return (await res.json()) as { invoices: OutstandingInvoice[] };
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const useInboxEntriesMock = vi.fn();
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -89,5 +90,13 @@ describe('InboxDetailClient on mobile', () => {
 
     fireEvent.click(duesCard);
     expect(pushMock).toHaveBeenCalledWith('/today/b1/dues');
+  });
+
+  it('opens the only open entry directly instead of a one-row list', () => {
+    const [orderEntry] = ENTRIES.filter((e) => e.entry_type !== 'invoice_due' && e.entry_type !== 'invoice_overdue');
+    useInboxEntriesMock.mockReturnValue({ data: { entries: [orderEntry], nextCursor: null }, isLoading: false });
+    renderDetail();
+    expect(screen.getByRole('heading', { name: /New order/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New order/ })).not.toBeInTheDocument();
   });
 });

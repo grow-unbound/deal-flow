@@ -9,6 +9,7 @@ const replaceMock = vi.fn();
 const useEnquiryTriageByIdsMock = vi.fn(() => new Map());
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useEnquiryTriageByIds: (...args: unknown[]) => useEnquiryTriageByIdsMock(...args),
 }));
@@ -66,7 +67,7 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
-    expect(screen.getByText('1 invoice · ₹22,000 overdue')).toBeInTheDocument();
+    expect(screen.getByText('₹22,000 overdue · 1 invoice')).toBeInTheDocument();
   });
 
   it('fetches the next page when the 75% sentinel intersects', () => {
@@ -114,21 +115,21 @@ describe('InboxListClient', () => {
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
   });
 
-  it('keeps mobile on the entry list when landing on Today without a selected buyer', () => {
+  it('never client-redirects; the server resolves the default buyer', () => {
     useParamsMock.mockReturnValue({});
-    mockMedia(false);
+    mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('opens the first buyer on desktop when landing on Today without a selected buyer', () => {
+  it('records the viewport in a cookie for the server-side default-buyer redirect', () => {
     useParamsMock.mockReturnValue({});
     mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    expect(replaceMock).toHaveBeenCalledWith('/today/b1');
+    expect(document.cookie).toContain('yukti_today_vp=desktop');
   });
 
   it('enriches an enquiry row with estimate number, item preview, and an at-risk badge', () => {

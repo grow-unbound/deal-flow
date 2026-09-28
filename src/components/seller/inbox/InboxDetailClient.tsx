@@ -6,11 +6,16 @@ import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useRouter } from 'next/navigation';
 import { Bot, ChevronLeft, ChevronRight, ExternalLink, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
 import { DetailActions, DetailHeader } from '@/components/seller/detail';
+import { StatusTag } from '@/components/seller/layout';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
 import { buildCollectionGroup, isCollectionEntry, sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
+import { TODAY_LAST_OPENED_COOKIE, writeClientCookie } from '@/lib/inbox/inbox-default-buyer';
+import { InboxDetailSkeleton } from './InboxDetailSkeleton';
+import { InboxDuesDetailPage } from './InboxDuesDetailPage';
+import { InboxEntryDetailPage } from './InboxEntryDetailPage';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxEntryListRow } from './InboxEntryListRow';
 import { InboxHistorySheet } from './InboxHistorySheet';
@@ -30,30 +35,6 @@ const CHANNEL_ICON: Record<InboxChannel, typeof ShoppingBag> = {
 function channelIcon(entries: InboxEntry[]) {
   const Icon = CHANNEL_ICON[sourceChannelForEntries(entries)] ?? Bot;
   return <Icon className="h-5 w-5" aria-hidden />;
-}
-
-export function InboxDetailSkeleton() {
-  return (
-    <div className="mx-auto flex h-full w-full max-w-[1920px] flex-col" role="status" aria-label="Loading">
-      <div className="shrink-0 px-4 py-4 md:px-6 md:py-4">
-        <div className="flex items-start gap-3">
-          <div className="h-12 w-12 shrink-0 animate-pulse rounded-[14px] bg-cream-200" />
-          <div className="min-w-0 flex-1 space-y-2 pt-1">
-            <div className="h-5 w-48 animate-pulse rounded-full bg-cream-200" />
-            <div className="h-3.5 w-32 animate-pulse rounded-full bg-cream-200" />
-          </div>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 md:px-8">
-        {[0, 1].map((i) => (
-          <div key={i} className="rounded-[14px] border border-cream-300 bg-white px-6 py-5">
-            <div className="h-4 w-40 animate-pulse rounded-full bg-cream-200" />
-            <div className="mt-2 h-3.5 w-24 animate-pulse rounded-full bg-cream-200" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function InboxDetailClient({ buyerId }: { buyerId: string }) {
@@ -95,28 +76,40 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const prevBuyerKey = currentIndex > 0 ? orderedBuyerKeys[currentIndex - 1] : null;
   const nextBuyerKey = currentIndex >= 0 && currentIndex < orderedBuyerKeys.length - 1 ? orderedBuyerKeys[currentIndex + 1] : null;
 
-  useMobileHeaderTitle(buyerEntries[0]?.buyer_name);
+  useEffect(() => {
+    writeClientCookie(TODAY_LAST_OPENED_COOKIE, buyerId);
+  }, [buyerId]);
+
+  const collectionGroup = buildCollectionGroup(buyerEntries);
+  const nonCollectionEntries = buyerEntries.filter((entry) => !isCollectionEntry(entry));
+  const visibleGroupCount = (collectionGroup ? 1 : 0) + nonCollectionEntries.length;
+  // Mobile: a customer with exactly one open item opens it directly (details + CTAs) instead of a one-row list.
+  const opensSingleEntry = !isDesktop && visibleGroupCount === 1;
+  useMobileHeaderTitle(opensSingleEntry ? null : buyerEntries[0]?.buyer_name, { phone: buyerEntries[0]?.buyer_phone });
 
   if (isLoading) {
     return <InboxDetailSkeleton />;
   }
 
   if (buyerEntries.length === 0) {
-    return <div className="p-6 text-sm text-cream-500">This item is no longer in your active list.</div>;
+    return <div className="p-6 text-base text-cream-500">This item is no longer in your active list.</div>;
+  }
+
+  if (opensSingleEntry) {
+    return collectionGroup
+      ? <InboxDuesDetailPage buyerId={buyerId} />
+      : <InboxEntryDetailPage buyerId={buyerId} entryId={nonCollectionEntries[0].id} />;
   }
 
   const buyerName = buyerEntries[0].buyer_name;
   const buyerPhone = buyerEntries[0].buyer_phone;
   const linkedBuyerId = buyerEntries[0].buyer_id;
   const tenantId = buyerEntries[0].tenant_id;
-  const collectionGroup = buildCollectionGroup(buyerEntries);
-  const nonCollectionEntries = buyerEntries.filter((entry) => !isCollectionEntry(entry));
-  const visibleGroupCount = (collectionGroup ? 1 : 0) + nonCollectionEntries.length;
   const openCount = buyerEntries.length;
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[1920px] flex-col">
-      <div className="shrink-0 px-4 py-4 md:px-6 md:py-4">
+      <div className="hidden shrink-0 px-4 py-4 md:block md:px-6 md:py-4">
         {/* Today has no "closed" state — a customer is always open, so the pane's
             close (X) affordance (rendered automatically by DetailHeader whenever
             SplitPaneCloseContext is present) is suppressed here on purpose. */}
@@ -207,7 +200,11 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
             ))}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 pt-4">
+            <StatusTag
+              label={`${openCount} open issue${openCount === 1 ? '' : 's'}`}
+              tone={openCount > 0 ? 'warning' : 'success'}
+            />
             {collectionGroup ? (
               <section className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
                 <button
@@ -217,7 +214,7 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                 >
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold tracking-[-0.015em] text-cream-900">{DUES_TITLE}</h3>
-                    {duesSubtitle(collectionGroup) ? <p className="mt-1.5 text-sm text-cream-600">{duesSubtitle(collectionGroup)}</p> : null}
+                    {duesSubtitle(collectionGroup) ? <p className="mt-1.5 text-base text-cream-600">{duesSubtitle(collectionGroup)}</p> : null}
                   </div>
                   <ChevronRight size={16} className="mt-1 shrink-0 text-cream-500" aria-hidden />
                 </button>

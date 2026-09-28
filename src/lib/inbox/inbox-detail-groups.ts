@@ -145,3 +145,82 @@ export function sourceChannelForEntries(entries: InboxEntry[]): InboxChannel {
   }
   return 'unknown';
 }
+
+export interface OutstandingInvoice {
+  id: string;
+  invoice_number: string;
+  due_date: string | null;
+  outstanding_amount: number;
+}
+
+export interface DuesSectionRow {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  dateLabel: string;
+  amountLabel: string;
+}
+
+export interface DuesSection {
+  key: string;
+  label: string;
+  count: number;
+  totalAmountLabel: string;
+  rows: DuesSectionRow[];
+}
+
+const OUTSTANDING_SECTIONS: Array<{ key: string; label: string; test: (daysOverdue: number | null) => boolean }> = [
+  { key: '30d+', label: COLLECTION_AGING_LABEL['30d+'], test: (d) => d != null && d > 30 },
+  { key: '16-30d', label: COLLECTION_AGING_LABEL['16-30d'], test: (d) => d != null && d >= 16 && d <= 30 },
+  { key: '8-15d', label: COLLECTION_AGING_LABEL['8-15d'], test: (d) => d != null && d >= 8 && d <= 15 },
+  { key: '1-7d', label: COLLECTION_AGING_LABEL['1-7d'], test: (d) => d != null && d >= 1 && d <= 7 },
+  { key: 'not_due', label: 'Not yet due', test: (d) => d == null || d <= 0 },
+];
+
+function istDateKey(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+}
+
+function daysOverdue(dueDate: string | null, now: Date): number | null {
+  if (!dueDate) return null;
+  const due = Date.parse(`${dueDate.slice(0, 10)}T00:00:00Z`);
+  const today = Date.parse(`${istDateKey(now)}T00:00:00Z`);
+  if (Number.isNaN(due)) return null;
+  return Math.round((today - due) / 86_400_000);
+}
+
+function outstandingDateLabel(days: number | null): string {
+  if (days == null) return 'No due date';
+  if (days > 0) return days === 1 ? '1 day overdue' : `${days} days overdue`;
+  if (days === 0) return 'Due today';
+  return days === -1 ? 'Due tomorrow' : `Due in ${-days} days`;
+}
+
+/** Groups a buyer's open invoices by aging (oldest first) with a grand total -- the same shape the dues screens render. */
+export function buildOutstandingSections(
+  invoices: OutstandingInvoice[],
+  now: Date = new Date(),
+): { sections: DuesSection[]; totalAmount: number; totalAmountLabel: string } {
+  const enriched = invoices.map((invoice) => ({ invoice, days: daysOverdue(invoice.due_date, now) }));
+  const sections: DuesSection[] = [];
+  for (const def of OUTSTANDING_SECTIONS) {
+    const members = enriched.filter((row) => def.test(row.days));
+    if (members.length === 0) continue;
+    const total = members.reduce((sum, row) => sum + row.invoice.outstanding_amount, 0);
+    sections.push({
+      key: def.key,
+      label: def.label,
+      count: members.length,
+      totalAmountLabel: formatNumberValue(total, 'CURRENCY_EXACT'),
+      rows: members.map(({ invoice, days }) => ({
+        id: invoice.id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+        dateLabel: outstandingDateLabel(days),
+        amountLabel: formatNumberValue(invoice.outstanding_amount, 'CURRENCY_EXACT'),
+      })),
+    });
+  }
+  const totalAmount = invoices.reduce((sum, invoice) => sum + invoice.outstanding_amount, 0);
+  return { sections, totalAmount, totalAmountLabel: formatNumberValue(totalAmount, 'CURRENCY_EXACT') };
+}

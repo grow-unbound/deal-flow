@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mutateAsyncMock = vi.fn().mockResolvedValue({});
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useApplyGenericEntryAction: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
 }));
 vi.mock('next/navigation', () => ({

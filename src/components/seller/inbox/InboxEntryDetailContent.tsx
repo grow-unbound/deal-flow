@@ -1,6 +1,10 @@
 import dynamic from 'next/dynamic';
-import { formatNumberValue } from '@/lib/utils';
+import { useMemo } from 'react';
+import { useBuyerOutstandingInvoices } from '@/hooks/useInboxEntries';
+import { buildOutstandingSections } from '@/lib/inbox/inbox-detail-groups';
+import { InboxApprovalDetails } from './InboxApprovalDetails';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
+import { DuesSectionList } from './InboxCollectionGroupCard';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
 const InboxEnquiryPanel = dynamic(
@@ -14,49 +18,21 @@ export function isApprovalEntry(entry: InboxEntry): boolean {
   return APPROVAL_ENTRY_TYPES.has(entry.entry_type);
 }
 
-function numericMeta(entry: InboxEntry, key: string): number | null {
-  const raw = entry.metadata?.[key];
-  const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
-  return Number.isFinite(value) ? value : null;
-}
+/** Open invoices behind an over-limit entry, grouped by aging with the total outstanding. */
+function OutstandingInvoices({ buyerId }: { buyerId: string }) {
+  const { data, isLoading, isError } = useBuyerOutstandingInvoices(buyerId);
+  const outstanding = useMemo(() => buildOutstandingSections(data?.invoices ?? []), [data?.invoices]);
 
-function paymentTermsLabel(days: number | null): string {
-  if (days == null || days <= 0) return 'Due on receipt';
-  return `Net ${days} days`;
-}
-
-function CreditLimitContext({ entry }: { entry: InboxEntry }) {
-  if (entry.entry_type !== 'credit_limit_breach') return null;
-
-  const overLimit = numericMeta(entry, 'over_limit_amount') ?? entry.amount;
-  const creditLimit = numericMeta(entry, 'credit_limit');
-  const outstanding = numericMeta(entry, 'outstanding_balance') ?? numericMeta(entry, 'total_outstanding');
-  const paymentTerms = numericMeta(entry, 'payment_terms_days') ?? numericMeta(entry, 'net_payment_terms_days');
+  if (isLoading) return <div className="h-40 animate-pulse rounded-[10px] bg-cream-100" aria-hidden />;
+  if (isError) return <p className="text-base text-cream-600">Couldn&apos;t load outstanding invoices.</p>;
+  if (outstanding.sections.length === 0) return null;
 
   return (
-    <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
-      {overLimit != null ? (
-        <p className="text-sm font-semibold text-cream-950">
-          {formatNumberValue(overLimit, 'CURRENCY_EXACT')} over limit
-        </p>
-      ) : null}
-      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Credit limit</p>
-          <p className="mt-0.5 font-mono font-semibold tabular-nums text-cream-900">
-            {creditLimit != null ? formatNumberValue(creditLimit, 'CURRENCY_EXACT') : 'Not set'}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Net payment terms</p>
-          <p className="mt-0.5 font-semibold text-cream-900">{paymentTermsLabel(paymentTerms)}</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Total outstanding</p>
-          <p className="mt-0.5 font-mono font-semibold tabular-nums text-cream-900">
-            {outstanding != null ? formatNumberValue(outstanding, 'CURRENCY_EXACT') : 'Not available'}
-          </p>
-        </div>
+    <div className="space-y-5">
+      <DuesSectionList sections={outstanding.sections} />
+      <div className="flex items-baseline justify-between gap-3 border-t border-cream-200 pt-4">
+        <p className="text-base font-semibold text-cream-800">Total outstanding</p>
+        <p className="font-mono text-md font-bold tabular-nums text-cream-950">{outstanding.totalAmountLabel}</p>
       </div>
     </div>
   );
@@ -77,9 +53,12 @@ export function InboxEntryDetailContent({ entry }: { entry: InboxEntry }) {
           Last reminder sent {new Date(String(entry.metadata.last_reminder_at)).toLocaleDateString()}.
         </p>
       ) : null}
-      <CreditLimitContext entry={entry} />
+      {entry.entry_type === 'credit_limit_breach' && entry.buyer_id ? <OutstandingInvoices buyerId={entry.buyer_id} /> : null}
       {isApprovalEntry(entry) ? (
-        <InboxApprovalDocuments entryId={entry.id} />
+        <>
+          <InboxApprovalDetails entry={entry} />
+          <InboxApprovalDocuments entryId={entry.id} />
+        </>
       ) : entry.entry_type === 'new_enquiry' ? (
         <InboxEnquiryPanel entryId={entry.id} />
       ) : null}

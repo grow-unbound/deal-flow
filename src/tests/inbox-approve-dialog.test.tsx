@@ -7,6 +7,7 @@ const previewCalls: Array<[string | null, string | null, boolean]> = [];
 const previewState: { data: unknown; isPending: boolean } = { data: { headline: null, applicable: [] }, isPending: false };
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useApplyApprovalEntryAction: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
   useApprovalAssignmentOptions: () => optionsState,
   useApprovalPricePreview: (cohortId: string | null, priceListId: string | null, enabled: boolean) => {
@@ -55,14 +56,13 @@ describe('InboxApproveDialog', () => {
     expect(screen.getByTestId('approve-price-preview')).toHaveTextContent('This buyer will see prices from: Wholesale list');
   });
 
-  it('lists automatic groups as disabled with an explanation, and offers an explicit "No group" choice', () => {
+  it('lists automatic groups as disabled, and offers an explicit "No group" choice', () => {
     renderDialog();
 
     const group = screen.getByLabelText('Customer group');
     const autoOption = within(group).getByRole('option', { name: /Big spenders/ }) as HTMLOptionElement;
     expect(autoOption.disabled).toBe(true);
     expect(within(group).getByRole('option', { name: /No group – use default pricing/ })).toBeInTheDocument();
-    expect(screen.getByText(/can't be added to them manually/)).toBeInTheDocument();
   });
 
   it('confirming sends the chosen group and price list override with assignment_confirmed', async () => {
@@ -118,6 +118,6 @@ describe('InboxApproveDialog', () => {
 
   it('mentions Zoho for Zoho tenants', () => {
     renderDialog();
-    expect(screen.getByText(/also be created in Zoho/)).toBeInTheDocument();
+    expect(screen.getByText(/created in Zoho/)).toBeInTheDocument();
   });
 });

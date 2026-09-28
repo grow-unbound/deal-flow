@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useEnquiryTriage: () => ({ data: { lines: [{ id: 'l1' }, { id: 'l2' }] }, isLoading: false, isError: false }),
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));

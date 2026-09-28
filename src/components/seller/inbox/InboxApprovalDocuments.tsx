@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { FileText, Image as ImageIcon, Download, Loader2, BadgeCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
@@ -23,13 +24,44 @@ function DocThumbnail({ doc, onOpen }: { doc: EntryDocument; onOpen: () => void 
       <div className="flex h-16 w-full items-center justify-center rounded-sm bg-white">
         <Icon className="h-6 w-6 text-cream-500" aria-hidden />
       </div>
-      <p className="text-sm font-medium text-cream-900">{DOC_TYPE_LABEL[doc.doc_type] ?? doc.doc_type}</p>
+      <p className="text-base font-medium text-cream-900">{DOC_TYPE_LABEL[doc.doc_type] ?? doc.doc_type}</p>
       {doc.verified ? (
-        <span className="inline-flex items-center gap-1 text-xs text-teal-700">
+        <span className="inline-flex items-center gap-1 text-sm text-teal-700">
           <BadgeCheck className="h-3 w-3" aria-hidden /> Verified
         </span>
       ) : (
-        <span className="text-xs text-cream-500">{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+        <span className="text-sm text-cream-500">{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+      )}
+    </button>
+  );
+}
+
+// Signed R2 URLs are short-lived, so the preview is cached only briefly and never reused across sessions.
+const SHOP_IMAGE_PREVIEW_STALE_MS = 4 * 60 * 1000;
+
+/** Inline shop-image preview; a click still opens the full-size dialog. */
+function ShopImagePreview({ entryId, doc, onOpen }: { entryId: string; doc: EntryDocument; onOpen: () => void }) {
+  const preview = useQuery({
+    queryKey: ['inbox-doc-preview', entryId, doc.id],
+    queryFn: () => fetchDocumentSignedUrl(entryId, doc.id),
+    staleTime: SHOP_IMAGE_PREVIEW_STALE_MS,
+    gcTime: SHOP_IMAGE_PREVIEW_STALE_MS,
+  });
+
+  if (preview.isError) return <DocThumbnail doc={doc} onOpen={onOpen} />;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Open shop image"
+      className="block h-48 w-full overflow-hidden rounded-[10px] border border-cream-300 bg-white md:h-56 md:w-80"
+    >
+      {preview.data ? (
+        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed R2 URL, not an optimizable asset
+        <img src={preview.data.url} alt="Shop image" className="h-full w-full object-contain" />
+      ) : (
+        <div className="h-full w-full animate-pulse bg-cream-200" aria-hidden />
       )}
     </button>
   );
@@ -41,10 +73,9 @@ interface InboxApprovalDocumentsProps {
 
 /**
  * Submitted-documents section for a `business_approval` / `new_user_login`
- * expanded card (Task 12, item 1). Thumbnails never carry an image or a
- * signed URL — just a doc-type icon/label — because signed R2 URLs are
- * short-lived and must not be fetched or embedded until the seller actually
- * opens a document (Yukti_Public-Signup_Frontend-Spec_v1.md §6/§1.2).
+ * card. The shop image previews inline (its short-lived signed URL is fetched
+ * on mount and re-minted on expiry); other documents stay click-to-open, and
+ * the full-size preview/download always mints a brand-new signed URL.
  */
 export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps) {
   const { data, isLoading } = useEntryDocuments(entryId);
@@ -86,7 +117,7 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
   }
 
   if (isLoading) {
-    return <p className="text-sm text-cream-500">Loading documents…</p>;
+    return <p className="text-base text-cream-500">Loading documents…</p>;
   }
   if (documents.length === 0) {
     return null;
@@ -94,11 +125,15 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-cream-800">Submitted documents</p>
+      <p className="text-base font-medium text-cream-800">Submitted documents</p>
       <div className="flex flex-wrap gap-3">
-        {documents.map((doc) => (
-          <DocThumbnail key={doc.id} doc={doc} onOpen={() => openPreview(doc)} />
-        ))}
+        {documents.map((doc) =>
+          doc.doc_type === 'shop_image' ? (
+            <ShopImagePreview key={doc.id} entryId={entryId} doc={doc} onOpen={() => openPreview(doc)} />
+          ) : (
+            <DocThumbnail key={doc.id} doc={doc} onOpen={() => openPreview(doc)} />
+          ),
+        )}
       </div>
 
       <Dialog open={openDoc != null} onOpenChange={(open) => !open && setOpenDoc(null)}>
@@ -117,7 +152,7 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
             ) : previewUrl ? (
               <iframe title="Document preview" src={previewUrl} className="h-[60vh] w-full rounded-sm border border-cream-200" />
             ) : (
-              <p className="text-sm text-cream-500">Could not load a preview for this document.</p>
+              <p className="text-base text-cream-500">Could not load a preview for this document.</p>
             )}
           </DialogBody>
           <DialogFooter>

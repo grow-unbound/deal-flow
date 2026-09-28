@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
 import { CountChip } from '@/components/ui/badge';
+import { PageHeader } from '@/components/seller/layout/PageHeader';
+import { PageWrap } from '@/components/seller/layout/PageWrap';
+import { StickyListHeader } from '@/components/seller/layout/StickyListHeader';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
 import { useEnquiryTriageByIds, useInboxEntries } from '@/hooks/useInboxEntries';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
@@ -16,9 +19,8 @@ import { buildListSupportingLine } from '@/lib/inbox/inbox-entry-copy';
 import { buildEnquiryPreviewLine, enquiryHasAtRiskLine } from '@/lib/inbox/inbox-list-entry-copy';
 import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 import { sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
+import { TODAY_LAST_OPENED_COOKIE, TODAY_VIEWPORT_COOKIE, writeClientCookie } from '@/lib/inbox/inbox-default-buyer';
 import { InboxEmptyState } from './InboxEmptyState';
-
-const LAST_OPENED_STORAGE_KEY = 'inbox-last-opened-buyer';
 
 const FILTER_CHIPS: Array<{ label: string; types: InboxEntryType[] }> = [
   { label: 'Approvals', types: ['business_approval', 'new_user_login'] },
@@ -66,25 +68,21 @@ function buyerListItem(
     primary: buyer.buyerName,
     supporting: enquiry ? buildEnquiryPreviewLine(enquiry.lines, enquiry.totalAmount) : buildListSupportingLine(buyer.entries),
     trailing: buyer.totalCount > 1 ? <CountChip>{buyer.totalCount}</CountChip> : undefined,
-    status: atRisk ? { label: 'At risk', tone: 'danger' } : undefined,
+    status: atRisk
+      ? { label: 'At risk', tone: 'danger' }
+      : primary?.entry_type === 'business_approval'
+        ? { label: 'Business', tone: 'info' }
+        : undefined,
     badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
-    onClick: () => {
-      try {
-        window.localStorage.setItem(LAST_OPENED_STORAGE_KEY, buyer.buyerKey);
-      } catch {
-        // Storage unavailable — the redirect-on-load below just falls back to the first row.
-      }
-    },
+    onClick: () => writeClientCookie(TODAY_LAST_OPENED_COOKIE, buyer.buyerKey),
   };
 }
 
 export function InboxListClient() {
-  const router = useRouter();
   const params = useParams<{ id?: string }>();
   const [tab, setTab] = useState<'active' | 'resolved'>('active');
   const [activeChip, setActiveChip] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   const chipTypes = activeChip ? FILTER_CHIPS.find((c) => c.label === activeChip)?.types : undefined;
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInboxEntries(tab, chipTypes);
@@ -132,49 +130,34 @@ export function InboxListClient() {
   );
   const enquiryByEntryId = useEnquiryTriageByIds(primaryEnquiryEntryIds);
 
+  // Lets the server-side /today default-buyer redirect know the real viewport
+  // (it otherwise only has the user-agent) so a narrowed desktop window stays on the list.
   useEffect(() => {
     const query = window.matchMedia('(min-width: 768px)');
-    setIsDesktop(query.matches);
-    const onChange = () => setIsDesktop(query.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
+    const sync = () => writeClientCookie(TODAY_VIEWPORT_COOKIE, query.matches ? 'desktop' : 'mobile');
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
   }, []);
 
-  // Today has no "closed" state — a customer is always open. On landing at bare
-  // /today (no detail param), jump straight to the last customer this device had
-  // open on desktop, or the first row in the list if there's no remembered one.
-  // Mobile stays on the list so the user can choose the entry item first.
-  useEffect(() => {
-    if (params.id != null) return;
-    if (!isDesktop) return;
-    if (isLoading || sections.length === 0) return;
-
-    const allBuyers = sections.flatMap((section) => section.buyers);
-    if (allBuyers.length === 0) return;
-
-    let target = allBuyers[0];
-    try {
-      const lastKey = window.localStorage.getItem(LAST_OPENED_STORAGE_KEY);
-      const match = lastKey ? allBuyers.find((b) => b.buyerKey === lastKey) : undefined;
-      if (match) target = match;
-    } catch {
-      // Storage unavailable — fall back to the first row.
-    }
-
-    router.replace(`/today/${target.buyerId ?? target.buyerKey}`);
-  }, [params.id, isDesktop, isLoading, sections, router]);
-
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-5 pt-5">
-        <p className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
-        <h1 className="mt-1 pb-4 text-xl font-bold tracking-[-0.02em] text-cream-950">
-          {tab === 'active' ? `${totalCount}${countSuffix} need${totalCount === 1 && !countSuffix ? 's' : ''} your attention` : 'Resolved'}
-        </h1>
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <StickyListHeader>
+        <PageHeader
+          eyebrow="Today"
+          title={tab === 'active' ? `${totalCount}${countSuffix} need${totalCount === 1 && !countSuffix ? 's' : ''} your attention` : 'Resolved'}
+          subtitle={
+            tab === 'active'
+              ? 'Approvals, enquiries, orders and collections waiting on you'
+              : 'Items you have already handled'
+          }
+          horizon=""
+          showHorizonControl={false}
+        />
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'active' | 'resolved')}>
-          <TabsList className="flex w-full gap-0">
-            <TabsTrigger value="active" className="flex-1">Needs attention</TabsTrigger>
-            <TabsTrigger value="resolved" className="flex-1">Resolved</TabsTrigger>
+          <TabsList className="flex w-full">
+            <TabsTrigger value="active">Needs attention</TabsTrigger>
+            <TabsTrigger value="resolved">Resolved</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap gap-2 py-4">
@@ -195,9 +178,9 @@ export function InboxListClient() {
             </button>
           ))}
         </div>
-      </div>
+      </StickyListHeader>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
         {isLoading ? (
           <div className="pt-4">
             <SellerMobileListSkeleton forceVisible showLeading />
@@ -231,6 +214,6 @@ export function InboxListClient() {
           })
         )}
       </div>
-    </div>
+    </PageWrap>
   );
 }
