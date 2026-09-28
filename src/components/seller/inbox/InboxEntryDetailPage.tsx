@@ -61,7 +61,7 @@ export function InboxEntryDetailPage({ buyerId, entryId }: { buyerId: string; en
         />
       )}
     >
-      <InboxEntrySummary entry={entry} size="page" />
+      <InboxEntrySummary entry={entry} size="page" live />
       <InboxEntryDetailContent entry={entry} />
     </InboxEntryFrame>
   );

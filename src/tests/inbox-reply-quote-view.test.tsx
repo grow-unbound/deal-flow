@@ -34,6 +34,7 @@ vi.mock('@/hooks/useEstimates', () => ({
 }));
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useEnquiryTriage: () => ({
     data: {
       lines: [

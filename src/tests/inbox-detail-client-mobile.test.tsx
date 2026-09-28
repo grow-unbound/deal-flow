@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const useInboxEntriesMock = vi.fn();
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),

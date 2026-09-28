@@ -75,6 +75,27 @@ export function buildCreditLimitSupportingLine(entry: InboxEntry): string | null
   return creditLimit != null ? `${overLabel} over your ${formatNumberValue(creditLimit, 'CURRENCY_EXACT')} limit` : `${overLabel} over limit`;
 }
 
+/**
+ * Detail-view over-limit line from live open invoices (the entry's own numbers are a snapshot
+ * from the last refresh). `changeNote` is set only when the live figure differs from that snapshot.
+ */
+export function buildLiveCreditLimitLine(
+  entry: InboxEntry,
+  liveOutstanding: number,
+): { line: string; changeNote: string | null } | null {
+  const creditLimit = numericMeta(entry, 'credit_limit');
+  if (creditLimit == null) return null;
+  const money = (value: number) => formatNumberValue(value, 'CURRENCY_EXACT');
+  const liveOver = liveOutstanding - creditLimit;
+  const line = liveOver > 0 ? `${money(liveOver)} over your ${money(creditLimit)} limit` : `Now within your ${money(creditLimit)} limit`;
+
+  const snapshotOutstanding = numericMeta(entry, 'outstanding_balance');
+  const snapshotOver = numericMeta(entry, 'over_limit_amount') ?? entry.amount;
+  const changed = snapshotOutstanding != null && Math.round(snapshotOutstanding) !== Math.round(liveOutstanding);
+  const changeNote = changed && snapshotOver != null ? `Was ${money(snapshotOver)} over when flagged` : null;
+  return { line, changeNote };
+}
+
 export function buildListSupportingLine(entries: InboxEntry[]): string {
   if (entries.length === 0) return '';
   const collections = entries.filter((entry) => entry.entry_type === 'invoice_due' || entry.entry_type === 'invoice_overdue');

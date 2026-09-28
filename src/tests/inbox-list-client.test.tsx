@@ -9,6 +9,7 @@ const replaceMock = vi.fn();
 const useEnquiryTriageByIdsMock = vi.fn(() => new Map());
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useEnquiryTriageByIds: (...args: unknown[]) => useEnquiryTriageByIdsMock(...args),
 }));

@@ -13,6 +13,7 @@ vi.mock('@/hooks/useRole', () => ({
 }));
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useApplyGenericEntryAction: () => ({ mutateAsync: applyGenericMutateAsyncMock, isPending: false }),
   useApplyApprovalEntryAction: () => ({ mutateAsync: applyApprovalMutateAsyncMock, isPending: false }),
   useRetryZohoSync: () => ({ mutateAsync: retryMutateAsyncMock, isPending: false }),

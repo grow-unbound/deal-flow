@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const substituteMutateAsync = vi.fn().mockResolvedValue({});
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useEnquiryTriage: () => ({
     data: {
       estimateId: 'est-1',

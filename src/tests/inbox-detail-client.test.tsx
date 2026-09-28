@@ -83,6 +83,8 @@ describe('InboxDetailClient', () => {
       })),
     });
     useInboxEntriesMock.mockReset();
+    useBuyerOutstandingInvoicesMock.mockReset();
+    useBuyerOutstandingInvoicesMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false });
   });
 
@@ -173,6 +175,8 @@ describe('InboxDetailClient', () => {
     });
     renderDetail();
 
+    expect(screen.getByText('₹25,000 over your ₹1,00,000 limit')).toBeInTheDocument();
+    expect(screen.queryByText(/when flagged/)).not.toBeInTheDocument();
     expect(screen.getByText('INV-1')).toBeInTheDocument();
     expect(screen.getByText(/30\+ days overdue/)).toBeInTheDocument();
     expect(screen.getByText('Not yet due')).toBeInTheDocument();

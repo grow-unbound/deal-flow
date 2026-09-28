@@ -7,6 +7,7 @@ const previewCalls: Array<[string | null, string | null, boolean]> = [];
 const previewState: { data: unknown; isPending: boolean } = { data: { headline: null, applicable: [] }, isPending: false };
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useApplyApprovalEntryAction: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
   useApprovalAssignmentOptions: () => optionsState,
   useApprovalPricePreview: (cohortId: string | null, priceListId: string | null, enabled: boolean) => {
