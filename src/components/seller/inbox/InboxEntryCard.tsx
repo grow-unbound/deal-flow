@@ -6,7 +6,6 @@ import { InboxActionBar } from './InboxActionBar';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxEntryDetailContent, isApprovalEntry } from './InboxEntryDetailContent';
 import { InboxEntryFrame } from './InboxEntryFrame';
-import { isPinnedEntry } from '@/lib/inbox/inbox-grouping';
 import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
 import { buildCreditLimitSupportingLine } from '@/lib/inbox/inbox-entry-copy';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
@@ -61,8 +60,8 @@ export function InboxEntrySummary({ entry }: { entry: InboxEntry }) {
         ) : null}
       </h3>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        {itemCount != null ? <p className="text-sm text-cream-600">{itemCount} item{itemCount === 1 ? '' : 's'}</p> : null}
-        {amountLabel ? <p className="text-sm text-cream-600">{amountLabel}</p> : null}
+        {itemCount != null ? <p className="text-base text-cream-600">{itemCount} item{itemCount === 1 ? '' : 's'}</p> : null}
+        {amountLabel ? <p className="text-base text-cream-600">{amountLabel}</p> : null}
         {entry.status === 'waiting' && entry.remind_at ? (
           <StatusPill label={`Snoozed until ${formatDate(entry.remind_at)}`} tone="neutral" />
         ) : null}
@@ -89,9 +88,6 @@ interface InboxEntryCardProps {
 export function InboxEntryCard({ entry, expanded, onToggle, tenantId, historyEvents, localEvents, applyLocalAction }: InboxEntryCardProps) {
   return (
     <section id={`inbox-entry-${entry.id}`} className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-      {isPinnedEntry(entry) ? (
-        <span className="absolute right-4 top-4 h-2 w-2 rounded-full bg-ember-400" aria-label="Pinned — needs attention first" />
-      ) : null}
       <div
         role="button"
         tabIndex={0}

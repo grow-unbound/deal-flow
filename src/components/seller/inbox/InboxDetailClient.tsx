@@ -102,7 +102,7 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   }
 
   if (buyerEntries.length === 0) {
-    return <div className="p-6 text-sm text-cream-500">This item is no longer in your active list.</div>;
+    return <div className="p-6 text-base text-cream-500">This item is no longer in your active list.</div>;
   }
 
   const buyerName = buyerEntries[0].buyer_name;
@@ -217,7 +217,7 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
                 >
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold tracking-[-0.015em] text-cream-900">{DUES_TITLE}</h3>
-                    {duesSubtitle(collectionGroup) ? <p className="mt-1.5 text-sm text-cream-600">{duesSubtitle(collectionGroup)}</p> : null}
+                    {duesSubtitle(collectionGroup) ? <p className="mt-1.5 text-base text-cream-600">{duesSubtitle(collectionGroup)}</p> : null}
                   </div>
                   <ChevronRight size={16} className="mt-1 shrink-0 text-cream-500" aria-hidden />
                 </button>

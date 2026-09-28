@@ -6,6 +6,9 @@ import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
 import { CountChip } from '@/components/ui/badge';
+import { PageHeader } from '@/components/seller/layout/PageHeader';
+import { PageWrap } from '@/components/seller/layout/PageWrap';
+import { StickyListHeader } from '@/components/seller/layout/StickyListHeader';
 import { SellerMobileList, SellerMobileListSkeleton, type SellerMobileListItem } from '@/components/seller/mobile/SellerMobileList';
 import { useEnquiryTriageByIds, useInboxEntries } from '@/hooks/useInboxEntries';
 import { useInfiniteScroll, getSentinelInsertIndex } from '@/hooks/useInfiniteScroll';
@@ -165,12 +168,19 @@ export function InboxListClient() {
   }, [params.id, isDesktop, isLoading, sections, router]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-5 pt-5">
-        <p className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Today</p>
-        <h1 className="mt-1 pb-4 text-xl font-bold tracking-[-0.02em] text-cream-950">
-          {tab === 'active' ? `${totalCount}${countSuffix} need${totalCount === 1 && !countSuffix ? 's' : ''} your attention` : 'Resolved'}
-        </h1>
+    <PageWrap className="flex h-full min-h-0 flex-col">
+      <StickyListHeader>
+        <PageHeader
+          eyebrow="Today"
+          title={tab === 'active' ? `${totalCount}${countSuffix} need${totalCount === 1 && !countSuffix ? 's' : ''} your attention` : 'Resolved'}
+          subtitle={
+            tab === 'active'
+              ? 'Approvals, enquiries, orders and collections waiting on you'
+              : 'Items you have already handled'
+          }
+          horizon=""
+          showHorizonControl={false}
+        />
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'active' | 'resolved')}>
           <TabsList className="flex w-full gap-0">
             <TabsTrigger value="active" className="flex-1">Needs attention</TabsTrigger>
@@ -195,9 +205,9 @@ export function InboxListClient() {
             </button>
           ))}
         </div>
-      </div>
+      </StickyListHeader>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
         {isLoading ? (
           <div className="pt-4">
             <SellerMobileListSkeleton forceVisible showLeading />
@@ -231,6 +241,6 @@ export function InboxListClient() {
           })
         )}
       </div>
-    </div>
+    </PageWrap>
   );
 }

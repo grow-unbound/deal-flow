@@ -188,7 +188,7 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
 
   if (forceVisible && density === 'roomy') {
     return (
-      <div ref={listRootRef} className={cn('flex flex-col gap-1', className)}>
+      <div ref={listRootRef} className={cn('flex flex-col', className)}>
         {items.map((item, index) => (
           <Fragment key={item.id}>
             {index === sentinelIndex && sentinelRef ? (
@@ -201,7 +201,7 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
               aria-current={item.selected ? 'page' : undefined}
               ref={registerItemRef?.(item.id)}
               className={cn(
-                'block rounded-[12px] px-3.5 py-4 text-left no-underline transition-colors',
+                'block border-b border-cream-200 px-3.5 py-4 text-left no-underline transition-colors last:border-b-0',
                 item.selected ? 'bg-ember-50' : 'hover:bg-cream-100/70',
               )}
             >

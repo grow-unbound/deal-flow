@@ -37,7 +37,7 @@ export function DuesSections({ group }: { group: InboxDetailGroup }) {
       {rowsByAging.map((section) => (
         <div key={section.key} className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.06em] text-cream-800">
+            <p className="text-base font-semibold uppercase tracking-[0.06em] text-cream-800">
               {section.label} <span className="font-medium text-cream-500">({section.count})</span>
             </p>
             <p className="font-mono text-base font-bold tabular-nums text-cream-950">{section.totalAmountLabel}</p>
@@ -47,12 +47,12 @@ export function DuesSections({ group }: { group: InboxDetailGroup }) {
               <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-x-3 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7.5rem]">
                 <Link
                   href={`/invoices/${row.invoiceId}`}
-                  className="min-w-0 truncate font-mono text-sm font-semibold text-cream-950 underline-offset-4 hover:underline"
+                  className="min-w-0 truncate font-mono text-base font-semibold text-cream-950 underline-offset-4 hover:underline"
                 >
                   {row.invoiceNumber}
                 </Link>
-                <p className="min-w-0 truncate text-sm text-cream-600 max-sm:col-start-1 max-sm:row-start-2">{row.dateLabel}</p>
-                <p className="text-right font-mono text-sm font-semibold tabular-nums text-cream-900 max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1 max-sm:self-center">{row.amountLabel}</p>
+                <p className="min-w-0 truncate text-base text-cream-600 max-sm:col-start-1 max-sm:row-start-2">{row.dateLabel}</p>
+                <p className="text-right font-mono text-base font-semibold tabular-nums text-cream-900 max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1 max-sm:self-center">{row.amountLabel}</p>
               </div>
             ))}
           </div>
@@ -115,13 +115,13 @@ export function DuesActions({ group, buyerId, historyEvents, localEvents }: Pick
                 <Bell className="h-4 w-4" aria-hidden />
               </button>
               <div className="invisible absolute bottom-full left-0 z-10 mb-2 flex min-w-36 flex-col rounded-[10px] border border-cream-200 bg-white p-1 opacity-0 shadow-lg transition group-hover/remind:visible group-hover/remind:opacity-100 group-focus-within/remind:visible group-focus-within/remind:opacity-100">
-                <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-cream-500">Remind later</p>
+                <p className="px-3 py-2 text-sm font-semibold uppercase tracking-[0.08em] text-cream-500">Remind later</p>
                 {REMIND_OPTIONS.map((option) => (
                   <button
                     key={option.label}
                     type="button"
                     onClick={() => void remindLater(option.days)}
-                    className="rounded-[8px] px-3 py-2 text-left text-sm text-cream-800 hover:bg-cream-100"
+                    className="rounded-[8px] px-3 py-2 text-left text-base text-cream-800 hover:bg-cream-100"
                   >
                     {option.label}
                   </button>
@@ -169,7 +169,7 @@ export function InboxCollectionGroupCard({ group, buyerId, historyEvents, localE
       >
         <div className="min-w-0">
           <h3 className="text-base font-semibold tracking-[-0.015em] text-cream-900">{DUES_TITLE}</h3>
-          {subtitle ? <p className="mt-1 text-sm text-cream-600">{subtitle}</p> : null}
+          {subtitle ? <p className="mt-1 text-base text-cream-600">{subtitle}</p> : null}
         </div>
         <ChevronDown
           size={16}

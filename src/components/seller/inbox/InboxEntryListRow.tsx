@@ -1,5 +1,4 @@
 import { ChevronRight } from 'lucide-react';
-import { isPinnedEntry } from '@/lib/inbox/inbox-grouping';
 import { InboxEntrySummary } from './InboxEntryCard';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
@@ -13,9 +12,6 @@ import type { InboxEntry } from '@/lib/inbox/inbox-types';
 export function InboxEntryListRow({ entry, onOpen }: { entry: InboxEntry; onOpen: () => void }) {
   return (
     <section id={`inbox-entry-${entry.id}`} className="relative overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-      {isPinnedEntry(entry) ? (
-        <span className="absolute right-4 top-4 h-2 w-2 rounded-full bg-ember-400" aria-label="Pinned — needs attention first" />
-      ) : null}
       <button
         type="button"
         onClick={onOpen}

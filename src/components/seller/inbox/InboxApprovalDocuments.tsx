@@ -23,13 +23,13 @@ function DocThumbnail({ doc, onOpen }: { doc: EntryDocument; onOpen: () => void 
       <div className="flex h-16 w-full items-center justify-center rounded-sm bg-white">
         <Icon className="h-6 w-6 text-cream-500" aria-hidden />
       </div>
-      <p className="text-sm font-medium text-cream-900">{DOC_TYPE_LABEL[doc.doc_type] ?? doc.doc_type}</p>
+      <p className="text-base font-medium text-cream-900">{DOC_TYPE_LABEL[doc.doc_type] ?? doc.doc_type}</p>
       {doc.verified ? (
-        <span className="inline-flex items-center gap-1 text-xs text-teal-700">
+        <span className="inline-flex items-center gap-1 text-sm text-teal-700">
           <BadgeCheck className="h-3 w-3" aria-hidden /> Verified
         </span>
       ) : (
-        <span className="text-xs text-cream-500">{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+        <span className="text-sm text-cream-500">{new Date(doc.uploaded_at).toLocaleDateString()}</span>
       )}
     </button>
   );
@@ -86,7 +86,7 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
   }
 
   if (isLoading) {
-    return <p className="text-sm text-cream-500">Loading documents…</p>;
+    return <p className="text-base text-cream-500">Loading documents…</p>;
   }
   if (documents.length === 0) {
     return null;
@@ -94,7 +94,7 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-cream-800">Submitted documents</p>
+      <p className="text-base font-medium text-cream-800">Submitted documents</p>
       <div className="flex flex-wrap gap-3">
         {documents.map((doc) => (
           <DocThumbnail key={doc.id} doc={doc} onOpen={() => openPreview(doc)} />
@@ -117,7 +117,7 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
             ) : previewUrl ? (
               <iframe title="Document preview" src={previewUrl} className="h-[60vh] w-full rounded-sm border border-cream-200" />
             ) : (
-              <p className="text-sm text-cream-500">Could not load a preview for this document.</p>
+              <p className="text-base text-cream-500">Could not load a preview for this document.</p>
             )}
           </DialogBody>
           <DialogFooter>
