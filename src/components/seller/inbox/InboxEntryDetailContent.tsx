@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic';
 import { formatNumberValue } from '@/lib/utils';
+import { InboxApprovalDetails } from './InboxApprovalDetails';
 import { InboxApprovalDocuments } from './InboxApprovalDocuments';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
@@ -79,7 +80,10 @@ export function InboxEntryDetailContent({ entry }: { entry: InboxEntry }) {
       ) : null}
       <CreditLimitContext entry={entry} />
       {isApprovalEntry(entry) ? (
-        <InboxApprovalDocuments entryId={entry.id} />
+        <>
+          <InboxApprovalDetails entry={entry} />
+          <InboxApprovalDocuments entryId={entry.id} />
+        </>
       ) : entry.entry_type === 'new_enquiry' ? (
         <InboxEnquiryPanel entryId={entry.id} />
       ) : null}

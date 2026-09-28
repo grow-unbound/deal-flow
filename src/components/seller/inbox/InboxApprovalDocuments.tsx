@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { FileText, Image as ImageIcon, Download, Loader2, BadgeCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
@@ -35,16 +36,46 @@ function DocThumbnail({ doc, onOpen }: { doc: EntryDocument; onOpen: () => void 
   );
 }
 
+// Signed R2 URLs are short-lived, so the preview is cached only briefly and never reused across sessions.
+const SHOP_IMAGE_PREVIEW_STALE_MS = 4 * 60 * 1000;
+
+/** Inline shop-image preview; a click still opens the full-size dialog. */
+function ShopImagePreview({ entryId, doc, onOpen }: { entryId: string; doc: EntryDocument; onOpen: () => void }) {
+  const preview = useQuery({
+    queryKey: ['inbox-doc-preview', entryId, doc.id],
+    queryFn: () => fetchDocumentSignedUrl(entryId, doc.id),
+    staleTime: SHOP_IMAGE_PREVIEW_STALE_MS,
+    gcTime: SHOP_IMAGE_PREVIEW_STALE_MS,
+  });
+
+  if (preview.isError) return <DocThumbnail doc={doc} onOpen={onOpen} />;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Open shop image"
+      className="block h-48 w-full overflow-hidden rounded-[10px] border border-cream-300 bg-cream-100 md:h-56 md:w-80"
+    >
+      {preview.data ? (
+        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed R2 URL, not an optimizable asset
+        <img src={preview.data.url} alt="Shop image" className="h-full w-full object-cover" />
+      ) : (
+        <div className="h-full w-full animate-pulse bg-cream-200" aria-hidden />
+      )}
+    </button>
+  );
+}
+
 interface InboxApprovalDocumentsProps {
   entryId: string;
 }
 
 /**
  * Submitted-documents section for a `business_approval` / `new_user_login`
- * expanded card (Task 12, item 1). Thumbnails never carry an image or a
- * signed URL — just a doc-type icon/label — because signed R2 URLs are
- * short-lived and must not be fetched or embedded until the seller actually
- * opens a document (Yukti_Public-Signup_Frontend-Spec_v1.md §6/§1.2).
+ * card. The shop image previews inline (its short-lived signed URL is fetched
+ * on mount and re-minted on expiry); other documents stay click-to-open, and
+ * the full-size preview/download always mints a brand-new signed URL.
  */
 export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps) {
   const { data, isLoading } = useEntryDocuments(entryId);
@@ -96,9 +127,13 @@ export function InboxApprovalDocuments({ entryId }: InboxApprovalDocumentsProps)
     <div className="space-y-2">
       <p className="text-base font-medium text-cream-800">Submitted documents</p>
       <div className="flex flex-wrap gap-3">
-        {documents.map((doc) => (
-          <DocThumbnail key={doc.id} doc={doc} onOpen={() => openPreview(doc)} />
-        ))}
+        {documents.map((doc) =>
+          doc.doc_type === 'shop_image' ? (
+            <ShopImagePreview key={doc.id} entryId={entryId} doc={doc} onOpen={() => openPreview(doc)} />
+          ) : (
+            <DocThumbnail key={doc.id} doc={doc} onOpen={() => openPreview(doc)} />
+          ),
+        )}
       </div>
 
       <Dialog open={openDoc != null} onOpenChange={(open) => !open && setOpenDoc(null)}>
