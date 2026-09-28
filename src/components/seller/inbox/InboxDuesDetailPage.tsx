@@ -5,8 +5,9 @@ import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { buildCollectionGroup, isCollectionEntry } from '@/lib/inbox/inbox-detail-groups';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { DuesActions, DuesSections, DUES_TITLE, duesHeaderTitle, duesSubtitle } from './InboxCollectionGroupCard';
-import { InboxDetailSkeleton } from './InboxDetailClient';
+import { DuesActions, DuesSections, DUES_TITLE, duesSubtitle } from './InboxCollectionGroupCard';
+import { InboxDetailSkeleton } from './InboxDetailSkeleton';
+import { InboxEntryHeading } from './InboxEntryHeading';
 import { InboxEntryFrame } from './InboxEntryFrame';
 
 /** Mobile full-screen dues screen (`/today/[buyerId]/dues`): invoices in the body, actions pinned in the footer. */
@@ -22,7 +23,7 @@ export function InboxDuesDetailPage({ buyerId }: { buyerId: string }) {
     return buildCollectionGroup(entries);
   }, [data, buyerId, overrides]);
 
-  useMobileHeaderTitle(group ? duesHeaderTitle(group) : null, { eyebrow: group?.entries[0]?.buyer_name });
+  useMobileHeaderTitle(group?.entries[0]?.buyer_name, { phone: group?.entries[0]?.buyer_phone });
 
   if (isLoading) return <InboxDetailSkeleton />;
   if (!group) {
@@ -34,10 +35,7 @@ export function InboxDuesDetailPage({ buyerId }: { buyerId: string }) {
       variant="stacked"
       footer={<DuesActions group={group} buyerId={buyerId} historyEvents={history.data?.events} localEvents={localEvents} />}
     >
-      <div>
-        <h2 className="text-base font-semibold tracking-[-0.015em] text-cream-900">{DUES_TITLE}</h2>
-        <p className="mt-1 text-sm text-cream-600">{duesSubtitle(group)}</p>
-      </div>
+      <InboxEntryHeading title={DUES_TITLE} subtitle={duesSubtitle(group)} />
       <DuesSections group={group} />
     </InboxEntryFrame>
   );

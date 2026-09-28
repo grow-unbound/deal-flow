@@ -4,14 +4,14 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 
 interface MobileHeader {
   title: string | null;
-  eyebrow: string | null;
+  phone: string | null;
 }
 
 interface MobileHeaderTitleValue extends MobileHeader {
   setHeader: (header: MobileHeader) => void;
 }
 
-const EMPTY_HEADER: MobileHeader = { title: null, eyebrow: null };
+const EMPTY_HEADER: MobileHeader = { title: null, phone: null };
 
 const MobileHeaderTitleContext = createContext<MobileHeaderTitleValue>({ ...EMPTY_HEADER, setHeader: () => {} });
 
@@ -27,18 +27,18 @@ export function useMobileHeaderTitleValue(): string | null {
   return useContext(MobileHeaderTitleContext).title;
 }
 
-/** Parent-context line shown above the title on depth-2 screens (e.g. the buyer name). */
-export function useMobileHeaderEyebrowValue(): string | null {
-  return useContext(MobileHeaderTitleContext).eyebrow;
+/** Phone number the top bar exposes as a tap-to-call icon (deep customer screens). */
+export function useMobileHeaderPhoneValue(): string | null {
+  return useContext(MobileHeaderTitleContext).phone;
 }
 
-/** Sets the mobile top-bar title (and optional parent-context eyebrow) while the calling screen
+/** Sets the mobile top-bar title (and optional tap-to-call phone) while the calling screen
  * is mounted. Pass null to keep the default. */
-export function useMobileHeaderTitle(title: string | null | undefined, options?: { eyebrow?: string | null }) {
+export function useMobileHeaderTitle(title: string | null | undefined, options?: { phone?: string | null }) {
   const { setHeader } = useContext(MobileHeaderTitleContext);
-  const eyebrow = options?.eyebrow ?? null;
+  const phone = options?.phone ?? null;
   useEffect(() => {
-    setHeader({ title: title ?? null, eyebrow: title ? eyebrow : null });
+    setHeader({ title: title ?? null, phone: title ? phone : null });
     return () => setHeader(EMPTY_HEADER);
-  }, [title, eyebrow, setHeader]);
+  }, [title, phone, setHeader]);
 }

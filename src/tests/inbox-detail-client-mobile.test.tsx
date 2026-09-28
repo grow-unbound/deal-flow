@@ -90,4 +90,12 @@ describe('InboxDetailClient on mobile', () => {
     fireEvent.click(duesCard);
     expect(pushMock).toHaveBeenCalledWith('/today/b1/dues');
   });
+
+  it('opens the only open entry directly instead of a one-row list', () => {
+    const [orderEntry] = ENTRIES.filter((e) => e.entry_type !== 'invoice_due' && e.entry_type !== 'invoice_overdue');
+    useInboxEntriesMock.mockReturnValue({ data: { entries: [orderEntry], nextCursor: null }, isLoading: false });
+    renderDetail();
+    expect(screen.getByRole('heading', { name: /New order/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New order/ })).not.toBeInTheDocument();
+  });
 });

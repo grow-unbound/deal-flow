@@ -2,36 +2,34 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import {
   MobileHeaderTitleProvider,
-  useMobileHeaderEyebrowValue,
+  useMobileHeaderPhoneValue,
   useMobileHeaderTitle,
   useMobileHeaderTitleValue,
 } from '@/components/layout/MobileHeaderTitle';
-import { duesHeaderTitle } from '@/components/seller/inbox/InboxCollectionGroupCard';
-import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
 
-function Screen({ title, eyebrow }: { title: string | null; eyebrow?: string | null }) {
-  useMobileHeaderTitle(title, { eyebrow });
+function Screen({ title, phone }: { title: string | null; phone?: string | null }) {
+  useMobileHeaderTitle(title, { phone });
   return null;
 }
 
 function Bar() {
   const title = useMobileHeaderTitleValue();
-  const eyebrow = useMobileHeaderEyebrowValue();
-  return <p data-testid="bar">{`${eyebrow ?? '-'}|${title ?? '-'}`}</p>;
+  const phone = useMobileHeaderPhoneValue();
+  return <p data-testid="bar">{`${phone ?? '-'}|${title ?? '-'}`}</p>;
 }
 
 describe('useMobileHeaderTitle', () => {
-  it('publishes the title and the parent-context eyebrow', () => {
+  it('publishes the title and the tap-to-call phone', () => {
     render(
       <MobileHeaderTitleProvider>
-        <Screen title="Overdue" eyebrow="Ramesh Traders" />
+        <Screen title="Ramesh Traders" phone="9990001111" />
         <Bar />
       </MobileHeaderTitleProvider>,
     );
-    expect(screen.getByTestId('bar')).toHaveTextContent('Ramesh Traders|Overdue');
+    expect(screen.getByTestId('bar')).toHaveTextContent('9990001111|Ramesh Traders');
   });
 
-  it('keeps the title-only behaviour when no eyebrow is passed', () => {
+  it('keeps the title-only behaviour when no phone is passed', () => {
     render(
       <MobileHeaderTitleProvider>
         <Screen title="Ramesh Traders" />
@@ -44,7 +42,7 @@ describe('useMobileHeaderTitle', () => {
   it('clears both lines when the screen unmounts', () => {
     const { rerender } = render(
       <MobileHeaderTitleProvider>
-        <Screen title="Overdue" eyebrow="Ramesh Traders" />
+        <Screen title="Ramesh Traders" phone="9990001111" />
         <Bar />
       </MobileHeaderTitleProvider>,
     );
@@ -54,16 +52,5 @@ describe('useMobileHeaderTitle', () => {
       </MobileHeaderTitleProvider>,
     );
     expect(screen.getByTestId('bar')).toHaveTextContent('-|-');
-  });
-});
-
-describe('duesHeaderTitle', () => {
-  const group = (overdueCount: number, total: number) =>
-    ({ summary: { overdueCount, entryIds: Array.from({ length: total }, (_, i) => `e${i}`) } }) as unknown as InboxDetailGroup;
-
-  it('names what the group contains', () => {
-    expect(duesHeaderTitle(group(0, 2))).toBe('Upcoming dues');
-    expect(duesHeaderTitle(group(2, 2))).toBe('Overdue');
-    expect(duesHeaderTitle(group(1, 3))).toBe('Dues & overdue');
   });
 });

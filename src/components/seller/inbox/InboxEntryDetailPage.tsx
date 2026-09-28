@@ -4,12 +4,12 @@ import { useMemo } from 'react';
 import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { ENTRY_TYPE_LABEL } from '@/lib/inbox/inbox-entry-copy';
 import { InboxActionBar } from './InboxActionBar';
+import { InboxEntrySummary } from './InboxEntryCard';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxEntryDetailContent, isApprovalEntry } from './InboxEntryDetailContent';
 import { InboxEntryFrame } from './InboxEntryFrame';
-import { InboxDetailSkeleton } from './InboxDetailClient';
+import { InboxDetailSkeleton } from './InboxDetailSkeleton';
 
 /**
  * Mobile full-screen route for a single entry (`/today/[buyerId]/[entryId]`).
@@ -28,11 +28,7 @@ export function InboxEntryDetailPage({ buyerId, entryId }: { buyerId: string; en
     return overrides[found.id] ? { ...found, ...overrides[found.id] } : found;
   }, [data, entryId, overrides]);
 
-  const estimateNumberForTitle = entry && typeof entry.metadata.estimate_number === 'string' ? entry.metadata.estimate_number : null;
-  const headerTitle = entry
-    ? `${ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}${entry.entry_type === 'new_enquiry' && estimateNumberForTitle ? ` · ${estimateNumberForTitle}` : ''}`
-    : null;
-  useMobileHeaderTitle(headerTitle, { eyebrow: entry?.buyer_name });
+  useMobileHeaderTitle(entry?.buyer_name, { phone: entry?.buyer_phone });
 
   if (isLoading) return <InboxDetailSkeleton />;
 
@@ -65,6 +61,7 @@ export function InboxEntryDetailPage({ buyerId, entryId }: { buyerId: string; en
         />
       )}
     >
+      <InboxEntrySummary entry={entry} size="page" />
       <InboxEntryDetailContent entry={entry} />
     </InboxEntryFrame>
   );

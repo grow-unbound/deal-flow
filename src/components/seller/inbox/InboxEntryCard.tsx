@@ -25,7 +25,7 @@ const AGING_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = {
  * desktop's clickable toggle header (InboxEntryCard, below) and mobile's
  * tappable list row (InboxEntryListRow), so the two never drift apart.
  */
-export function InboxEntrySummary({ entry }: { entry: InboxEntry }) {
+export function InboxEntrySummary({ entry, size = 'card' }: { entry: InboxEntry; size?: 'card' | 'page' }) {
   const agingTier = typeof entry.metadata.aging_tier === 'string' ? entry.metadata.aging_tier : null;
   const isEnquiry = entry.entry_type === 'new_enquiry';
   const enquiry = useEnquiryTriage(entry.id, isEnquiry);
@@ -43,7 +43,7 @@ export function InboxEntrySummary({ entry }: { entry: InboxEntry }) {
 
   return (
     <div className="min-w-0">
-      <h3 className="flex items-center gap-1.5 text-base font-semibold tracking-[-0.015em] text-cream-900">
+      <h3 className={cn('flex items-center gap-1.5 font-semibold tracking-[-0.015em] text-cream-900', size === 'page' ? 'text-lg' : 'text-md')}>
         <span className="truncate">{title}{isEnquiry && estimateNumber ? ` · ${estimateNumber}` : ''}</span>
         {isEnquiry && entry.source_entity_type === 'estimate' ? (
           <a
