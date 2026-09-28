@@ -21,7 +21,7 @@ export default async function TodayPage() {
 
   const { data } = await fetchSellerPageBootstrap<{ entries: InboxEntry[] }>('/api/tenant/entries?status=active&limit=50');
   const lastOpened = cookieStore.get(TODAY_LAST_OPENED_COOKIE)?.value;
-  const target = pickDefaultBuyerRouteId(data?.entries ?? [], lastOpened ? decodeURIComponent(lastOpened) : undefined);
+  const target = pickDefaultBuyerRouteId(data?.entries ?? [], lastOpened);
   if (target) redirect(`/today/${target}`);
   return null;
 }

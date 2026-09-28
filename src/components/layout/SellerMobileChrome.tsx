@@ -365,7 +365,7 @@ export function SellerMobileTopbar({
           </p>
           {headerPhone ? (
             <a
-              href={`tel:${headerPhone}`}
+              href={`tel:${headerPhone.replace(/[^\d+]/g, '')}`}
               aria-label={`Call ${headerPhone}`}
               title={headerPhone}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-cream-700 active:bg-cream-100"
