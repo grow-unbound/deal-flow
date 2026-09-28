@@ -155,9 +155,9 @@ export function InboxListClient() {
           showHorizonControl={false}
         />
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'active' | 'resolved')}>
-          <TabsList className="flex w-full gap-0">
-            <TabsTrigger value="active" className="flex-1">Needs attention</TabsTrigger>
-            <TabsTrigger value="resolved" className="flex-1">Resolved</TabsTrigger>
+          <TabsList className="flex w-full">
+            <TabsTrigger value="active">Needs attention</TabsTrigger>
+            <TabsTrigger value="resolved">Resolved</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap gap-2 py-4">
