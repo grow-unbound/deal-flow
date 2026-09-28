@@ -32,6 +32,19 @@ describe('useInboxEntries', () => {
     expect(result.current.data?.entries).toHaveLength(1);
   });
 
+  it('fetches the next page with the cursor and flattens pages', async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [{ id: 'e1' }], nextCursor: 'cur1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [{ id: 'e2' }], nextCursor: null }) });
+    const { result } = renderHook(() => useInboxEntries('active'), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.hasNextPage).toBe(true);
+    await result.current.fetchNextPage();
+    await waitFor(() => expect(result.current.data?.entries).toHaveLength(2));
+    expect(apiFetchMock).toHaveBeenLastCalledWith(expect.stringContaining('cursor=cur1'), expect.anything());
+    expect(result.current.hasNextPage).toBe(false);
+  });
+
   it('posts a generic action', async () => {
     apiPostMock.mockResolvedValue({ ok: true, json: async () => ({ data: { id: 'e1', status: 'waiting' } }) });
     const { result } = renderHook(() => useApplyGenericEntryAction(), { wrapper });
