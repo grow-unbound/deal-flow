@@ -54,3 +54,39 @@ describe('useMobileHeaderTitle', () => {
     expect(screen.getByTestId('bar')).toHaveTextContent('-|-');
   });
 });
+
+describe('useMobileHeaderTitle ownership', () => {
+  it('keeps the new screen title when the previous screen unmounts afterwards', () => {
+    const { rerender } = render(
+      <MobileHeaderTitleProvider>
+        <Screen title="Old Customer" />
+        <Bar />
+      </MobileHeaderTitleProvider>,
+    );
+    rerender(
+      <MobileHeaderTitleProvider>
+        <Screen title="Old Customer" />
+        <Screen title="New Customer" phone="9990001111" />
+        <Bar />
+      </MobileHeaderTitleProvider>,
+    );
+    rerender(
+      <MobileHeaderTitleProvider>
+        <Screen title="New Customer" phone="9990001111" />
+        <Bar />
+      </MobileHeaderTitleProvider>,
+    );
+    expect(screen.getByTestId('bar')).toHaveTextContent('9990001111|New Customer');
+  });
+
+  it('does not touch the header for a screen without a title', () => {
+    render(
+      <MobileHeaderTitleProvider>
+        <Screen title="Ramesh Traders" />
+        <Screen title={null} />
+        <Bar />
+      </MobileHeaderTitleProvider>,
+    );
+    expect(screen.getByTestId('bar')).toHaveTextContent('-|Ramesh Traders');
+  });
+});

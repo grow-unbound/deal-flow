@@ -199,7 +199,8 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
             ))}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 pt-4">
+            <p className="text-base font-semibold text-cream-800">{`${openCount} open issue${openCount === 1 ? '' : 's'}`}</p>
             {collectionGroup ? (
               <section className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
                 <button
