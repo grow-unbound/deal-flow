@@ -32,7 +32,7 @@ export function InboxEntryDetailPage({ buyerId, entryId }: { buyerId: string; en
   const headerTitle = entry
     ? `${ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type}${entry.entry_type === 'new_enquiry' && estimateNumberForTitle ? ` · ${estimateNumberForTitle}` : ''}`
     : null;
-  useMobileHeaderTitle(headerTitle);
+  useMobileHeaderTitle(headerTitle, { eyebrow: entry?.buyer_name });
 
   if (isLoading) return <InboxDetailSkeleton />;
 

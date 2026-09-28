@@ -24,6 +24,13 @@ interface InboxCollectionGroupCardProps {
 
 export const DUES_TITLE = 'Upcoming dues or overdue';
 
+/** Short screen title for the mobile header: names what the group actually contains. */
+export function duesHeaderTitle(group: InboxDetailGroup): string {
+  const summary = group.summary;
+  if (!summary || summary.overdueCount === 0) return 'Upcoming dues';
+  return summary.overdueCount === summary.entryIds.length ? 'Overdue' : 'Dues & overdue';
+}
+
 export function duesSubtitle(group: InboxDetailGroup): string {
   const summary = group.summary;
   return summary ? buildDuesSummaryLine(summary.totalAmount, summary.entryIds.length, summary.overdueCount) : '';

@@ -5,7 +5,7 @@ import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { buildCollectionGroup, isCollectionEntry } from '@/lib/inbox/inbox-detail-groups';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
-import { DuesActions, DuesSections, DUES_TITLE, duesSubtitle } from './InboxCollectionGroupCard';
+import { DuesActions, DuesSections, DUES_TITLE, duesHeaderTitle, duesSubtitle } from './InboxCollectionGroupCard';
 import { InboxDetailSkeleton } from './InboxDetailClient';
 import { InboxEntryFrame } from './InboxEntryFrame';
 
@@ -22,7 +22,7 @@ export function InboxDuesDetailPage({ buyerId }: { buyerId: string }) {
     return buildCollectionGroup(entries);
   }, [data, buyerId, overrides]);
 
-  useMobileHeaderTitle(group ? 'Dues' : null);
+  useMobileHeaderTitle(group ? duesHeaderTitle(group) : null, { eyebrow: group?.entries[0]?.buyer_name });
 
   if (isLoading) return <InboxDetailSkeleton />;
   if (!group) {

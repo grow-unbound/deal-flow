@@ -22,7 +22,7 @@ export function InboxReplyQuoteScreen({ buyerId, entryId }: { buyerId: string; e
   const entry = (data?.entries ?? []).find((e) => e.id === entryId);
   const draft = useInboxReplyQuoteDraft(entry ?? { id: entryId, entry_type: 'new_enquiry', source_entity_type: '', source_entity_id: '' } as any);
 
-  useMobileHeaderTitle('Reply with a quote');
+  useMobileHeaderTitle('Reply with a quote', { eyebrow: entry?.buyer_name });
 
   if (isLoading) return <InboxDetailSkeleton />;
   if (!entry) {
