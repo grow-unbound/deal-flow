@@ -126,10 +126,10 @@ function RequestMoreInfoDialog({
           />
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" size="sm" onClick={submit} disabled={applyApprovalAction.isPending}>
+          <Button type="button" onClick={submit} disabled={applyApprovalAction.isPending}>
             {applyApprovalAction.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             Send request
           </Button>
@@ -284,7 +284,7 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
                 : `Zoho sync failed${entry.external_sync_error ? `: ${entry.external_sync_error}` : ''}. Approval is unaffected; retrying automatically.`}
           </p>
           {entry.external_sync_status === 'failed' && isSellerAdmin ? (
-            <Button type="button" size="sm" variant="outline" onClick={handleRetryZoho} disabled={retryZohoSync.isPending}>
+            <Button type="button" variant="outline" onClick={handleRetryZoho} disabled={retryZohoSync.isPending}>
               {retryZohoSync.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
               Retry now
             </Button>
@@ -311,30 +311,30 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
           })}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {canDecide && entry.allowed_actions.includes('approve') ? (
-            <Button type="button" size="sm" variant="primary" onClick={() => setApproveOpen(true)} disabled={approveState !== 'idle'}>
-              <CheckCircle2 className="h-4 w-4" aria-hidden />
-              {approveState === 'done' ? 'Approved' : 'Approve'}
-            </Button>
-          ) : null}
           {canDecide && entry.allowed_actions.includes('request_more_info') ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => setMoreInfoOpen(true)}>
-              Request info
+            <Button type="button" variant="outline" onClick={() => setMoreInfoOpen(true)}>
+              Request more info
             </Button>
           ) : null}
           {canReopen ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => runGenericAction('reopen')}>
+            <Button type="button" variant="outline" onClick={() => runGenericAction('reopen')}>
               {ACTION_LABELS.reopen}
             </Button>
           ) : null}
           {canDecide && entry.allowed_actions.includes('decline') ? (
             <Button
               type="button"
-              size="sm"
               variant="outline"
+              className="border-danger-500 text-danger-700 hover:border-danger-700 hover:bg-danger-50"
               onClick={() => setDeclineOpen(true)}
             >
               Decline
+            </Button>
+          ) : null}
+          {canDecide && entry.allowed_actions.includes('approve') ? (
+            <Button type="button" variant="primary" onClick={() => setApproveOpen(true)} disabled={approveState !== 'idle'}>
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+              {approveState === 'done' ? 'Approved' : 'Approve'}
             </Button>
           ) : null}
         </div>

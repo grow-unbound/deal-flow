@@ -77,7 +77,7 @@ describe('InboxApprovalActionBar', () => {
   it('renders Approve / Request more info / Decline for a fresh business_approval entry', () => {
     renderBar(businessEntry);
     expect(screen.getByRole('button', { name: /^Approve$/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Request info' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Request more info' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument();
   });
 
@@ -112,7 +112,7 @@ describe('InboxApprovalActionBar', () => {
     renderBar(businessEntry);
 
     expect(screen.queryByRole('button', { name: /^Approve$/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Request info' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request more info' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument();
   });
 
@@ -163,7 +163,7 @@ describe('InboxApprovalActionBar', () => {
 
   it('request-more-info checklist shows only contact_name/address for new_user_login, not business fields', () => {
     renderBar(individualEntry);
-    fireEvent.click(screen.getByRole('button', { name: 'Request info' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Request more info' }));
 
     expect(screen.getByText('contact name')).toBeInTheDocument();
     expect(screen.getByText('address')).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe('InboxApprovalActionBar', () => {
 
   it('request-more-info checklist shows all 6 fields for business_approval', () => {
     renderBar(businessEntry);
-    fireEvent.click(screen.getByRole('button', { name: 'Request info' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Request more info' }));
 
     expect(screen.getByText('GSTIN')).toBeInTheDocument();
     expect(screen.getByText('business name')).toBeInTheDocument();
@@ -183,7 +183,7 @@ describe('InboxApprovalActionBar', () => {
 
   it('request-more-info submits the checked fields as metadata.missing_fields', async () => {
     renderBar(businessEntry);
-    fireEvent.click(screen.getByRole('button', { name: 'Request info' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Request more info' }));
     fireEvent.click(screen.getByText('GST certificate'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
@@ -203,5 +203,15 @@ describe('InboxApprovalActionBar', () => {
     expect(screen.queryByRole('button', { name: /^Approve$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument();
+  });
+});
+
+describe('InboxApprovalActionBar CTA order', () => {
+  it('puts Approve rightmost, after Decline and Request more info', () => {
+    renderBar(businessEntry);
+    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    const approve = labels.indexOf('Approve');
+    expect(approve).toBeGreaterThan(labels.indexOf('Decline'));
+    expect(labels.indexOf('Decline')).toBeGreaterThan(labels.indexOf('Request more info'));
   });
 });
