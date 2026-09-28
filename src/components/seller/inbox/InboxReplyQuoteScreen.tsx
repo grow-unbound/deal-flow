@@ -7,7 +7,7 @@ import { useInboxEntries } from '@/hooks/useInboxEntries';
 import { InboxEntryHeading } from './InboxEntryHeading';
 import { InboxEntryFrame } from './InboxEntryFrame';
 import { InboxReplyQuoteBody, useInboxReplyQuoteDraft } from './InboxReplyQuoteView';
-import { InboxDetailSkeleton } from './InboxDetailSkeleton';
+import { InboxEntryScreenSkeleton } from './InboxDetailSkeleton';
 
 /**
  * Mobile full-screen route for the quote editor (`/today/[buyerId]/[entryId]/quote`).
@@ -25,7 +25,7 @@ export function InboxReplyQuoteScreen({ buyerId, entryId }: { buyerId: string; e
 
   useMobileHeaderTitle(entry?.buyer_name, { phone: entry?.buyer_phone });
 
-  if (isLoading) return <InboxDetailSkeleton />;
+  if (isLoading) return <InboxEntryScreenSkeleton />;
   if (!entry) {
     return (
       <div className="p-6 text-sm text-cream-500">This item is no longer in your active list.</div>

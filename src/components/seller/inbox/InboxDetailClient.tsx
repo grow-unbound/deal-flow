@@ -6,6 +6,7 @@ import { useMobileHeaderTitle } from '@/components/layout/MobileHeaderTitle';
 import { useRouter } from 'next/navigation';
 import { Bot, ChevronLeft, ChevronRight, ExternalLink, Mail, MessageCircle, Phone, ShoppingBag, UserRound, Workflow } from 'lucide-react';
 import { DetailActions, DetailHeader } from '@/components/seller/detail';
+import { StatusTag } from '@/components/seller/layout';
 import { SplitPaneCloseContext } from '@/components/seller/layout/EntitySplitShell';
 import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
@@ -200,7 +201,10 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
           </div>
         ) : (
           <div className="space-y-3 pt-4">
-            <p className="text-base font-semibold text-cream-800">{`${openCount} open issue${openCount === 1 ? '' : 's'}`}</p>
+            <StatusTag
+              label={`${openCount} open issue${openCount === 1 ? '' : 's'}`}
+              tone={openCount > 0 ? 'warning' : 'success'}
+            />
             {collectionGroup ? (
               <section className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
                 <button

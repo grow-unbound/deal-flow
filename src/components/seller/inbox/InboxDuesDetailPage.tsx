@@ -6,7 +6,7 @@ import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { buildCollectionGroup, isCollectionEntry } from '@/lib/inbox/inbox-detail-groups';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
 import { DuesActions, DuesSections, DUES_TITLE, duesSubtitle } from './InboxCollectionGroupCard';
-import { InboxDetailSkeleton } from './InboxDetailSkeleton';
+import { InboxEntryScreenSkeleton } from './InboxDetailSkeleton';
 import { InboxEntryHeading } from './InboxEntryHeading';
 import { InboxEntryFrame } from './InboxEntryFrame';
 
@@ -25,7 +25,7 @@ export function InboxDuesDetailPage({ buyerId }: { buyerId: string }) {
 
   useMobileHeaderTitle(group?.entries[0]?.buyer_name, { phone: group?.entries[0]?.buyer_phone });
 
-  if (isLoading) return <InboxDetailSkeleton />;
+  if (isLoading) return <InboxEntryScreenSkeleton />;
   if (!group) {
     return <div className="p-6 text-sm text-cream-500">No dues in your active list.</div>;
   }

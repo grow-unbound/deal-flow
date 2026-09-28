@@ -9,7 +9,7 @@ import { InboxEntrySummary } from './InboxEntryCard';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxEntryDetailContent, isApprovalEntry } from './InboxEntryDetailContent';
 import { InboxEntryFrame } from './InboxEntryFrame';
-import { InboxDetailSkeleton } from './InboxDetailSkeleton';
+import { InboxEntryScreenSkeleton } from './InboxDetailSkeleton';
 
 /**
  * Mobile full-screen route for a single entry (`/today/[buyerId]/[entryId]`).
@@ -30,7 +30,7 @@ export function InboxEntryDetailPage({ buyerId, entryId }: { buyerId: string; en
 
   useMobileHeaderTitle(entry?.buyer_name, { phone: entry?.buyer_phone });
 
-  if (isLoading) return <InboxDetailSkeleton />;
+  if (isLoading) return <InboxEntryScreenSkeleton />;
 
   if (!entry) {
     return (
