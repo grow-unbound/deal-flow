@@ -68,7 +68,11 @@ function buyerListItem(
     primary: buyer.buyerName,
     supporting: enquiry ? buildEnquiryPreviewLine(enquiry.lines, enquiry.totalAmount) : buildListSupportingLine(buyer.entries),
     trailing: buyer.totalCount > 1 ? <CountChip>{buyer.totalCount}</CountChip> : undefined,
-    status: atRisk ? { label: 'At risk', tone: 'danger' } : undefined,
+    status: atRisk
+      ? { label: 'At risk', tone: 'danger' }
+      : primary?.entry_type === 'business_approval'
+        ? { label: 'Business', tone: 'info' }
+        : undefined,
     badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
     onClick: () => writeClientCookie(TODAY_LAST_OPENED_COOKIE, buyer.buyerKey),

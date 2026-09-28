@@ -65,6 +65,7 @@ export function InboxEntrySummary({ entry }: { entry: InboxEntry }) {
         {entry.status === 'waiting' && entry.remind_at ? (
           <StatusPill label={`Snoozed until ${formatDate(entry.remind_at)}`} tone="neutral" />
         ) : null}
+        {entry.entry_type === 'business_approval' ? <StatusPill label="Business" tone="info" /> : null}
         {agingTier ? <StatusPill label={agingTier} tone={AGING_TONE[agingTier] ?? 'neutral'} /> : null}
       </div>
     </div>
