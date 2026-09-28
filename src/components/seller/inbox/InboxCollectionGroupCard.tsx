@@ -10,7 +10,7 @@ import { useApplyGenericEntryAction, useSendCollectionReminder, type EntryHistor
 import { buildDuesSummaryLine } from '@/lib/inbox/inbox-entry-copy';
 import { cn, formatDate } from '@/lib/utils';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
-import type { InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
+import type { DuesSection, InboxDetailGroup } from '@/lib/inbox/inbox-detail-groups';
 import { InboxNoteHost, InboxRemindSheet, REMIND_OPTIONS } from './InboxActionSheets';
 
 interface InboxCollectionGroupCardProps {
@@ -36,12 +36,11 @@ export function duesSubtitle(group: InboxDetailGroup): string {
   return summary ? buildDuesSummaryLine(summary.totalAmount, summary.entryIds.length, summary.overdueCount) : '';
 }
 
-/** The aged invoice sections -- shared by the desktop expandable card and the mobile dues screen. */
-export function DuesSections({ group }: { group: InboxDetailGroup }) {
-  const rowsByAging = group.rowsByAging ?? [];
+/** Aged invoice sections -- shared by the dues card/screen and the over-limit body. */
+export function DuesSectionList({ sections }: { sections: DuesSection[] }) {
   return (
     <div className="space-y-7">
-      {rowsByAging.map((section) => (
+      {sections.map((section) => (
         <div key={section.key} className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-base font-semibold uppercase tracking-[0.06em] text-cream-800">
@@ -67,6 +66,10 @@ export function DuesSections({ group }: { group: InboxDetailGroup }) {
       ))}
     </div>
   );
+}
+
+export function DuesSections({ group }: { group: InboxDetailGroup }) {
+  return <DuesSectionList sections={group.rowsByAging ?? []} />;
 }
 
 /**

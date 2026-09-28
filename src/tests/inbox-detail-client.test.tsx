@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const useInboxEntriesMock = vi.fn();
 const pushMock = vi.fn();
+const useBuyerOutstandingInvoicesMock = vi.fn();
 
 vi.mock('@/hooks/useInboxEntries', () => ({
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
@@ -12,6 +13,7 @@ vi.mock('@/hooks/useInboxEntries', () => ({
   useEntryHistory: () => ({ data: { events: [] }, isLoading: false }),
   useEnquiryTriage: () => ({ data: undefined, isLoading: false, isError: false }),
   useEntryDocuments: () => ({ data: { documents: [] }, isLoading: false }),
+  useBuyerOutstandingInvoices: (...args: unknown[]) => useBuyerOutstandingInvoicesMock(...args),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -157,14 +159,26 @@ describe('InboxDetailClient', () => {
     expect(screen.queryByRole('button', { name: /show history/i })).not.toBeInTheDocument();
   });
 
-  it('shows credit-limit context and keeps the primary reminder CTA rightmost, after adjust-limit, on over-limit cards', () => {
+  it('renders over-limit cards as grouped open invoices with the total outstanding, without a repeated context box', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: [CREDIT_LIMIT_ENTRY], nextCursor: null }, isLoading: false });
+    useBuyerOutstandingInvoicesMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        invoices: [
+          { id: 'i1', invoice_number: 'INV-1', due_date: '2020-01-01', outstanding_amount: 100000 },
+          { id: 'i2', invoice_number: 'INV-2', due_date: '2999-01-01', outstanding_amount: 25000 },
+        ],
+      },
+    });
     renderDetail();
 
-    expect(screen.getByText('₹25,000 over limit')).toBeInTheDocument();
-    expect(screen.getByText('₹1,00,000')).toBeInTheDocument();
-    expect(screen.getByText('Net 30 days')).toBeInTheDocument();
-    expect(screen.getByText('₹1,25,000')).toBeInTheDocument();
+    expect(screen.getByText('INV-1')).toBeInTheDocument();
+    expect(screen.getByText(/30\+ days overdue/)).toBeInTheDocument();
+    expect(screen.getByText('Not yet due')).toBeInTheDocument();
+    expect(screen.getByText('Total outstanding')).toBeInTheDocument();
+    expect(screen.getAllByText('₹1,25,000').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Net payment terms')).not.toBeInTheDocument();
 
     const actions = screen.getAllByRole('button').map((button) => button.textContent?.trim()).filter(Boolean);
     expect(actions.indexOf('Adjust limit')).toBeLessThan(actions.indexOf('Send reminder'));
