@@ -114,21 +114,21 @@ describe('InboxListClient', () => {
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
   });
 
-  it('keeps mobile on the entry list when landing on Today without a selected buyer', () => {
+  it('never client-redirects; the server resolves the default buyer', () => {
     useParamsMock.mockReturnValue({});
-    mockMedia(false);
+    mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('opens the first buyer on desktop when landing on Today without a selected buyer', () => {
+  it('records the viewport in a cookie for the server-side default-buyer redirect', () => {
     useParamsMock.mockReturnValue({});
     mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    expect(replaceMock).toHaveBeenCalledWith('/today/b1');
+    expect(document.cookie).toContain('yukti_today_vp=desktop');
   });
 
   it('enriches an enquiry row with estimate number, item preview, and an at-risk badge', () => {

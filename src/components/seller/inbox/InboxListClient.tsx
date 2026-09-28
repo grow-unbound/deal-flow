@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Bot, Mail, MessageCircle, Phone, Smartphone, UserRound, Workflow } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -19,9 +19,8 @@ import { buildListSupportingLine } from '@/lib/inbox/inbox-entry-copy';
 import { buildEnquiryPreviewLine, enquiryHasAtRiskLine } from '@/lib/inbox/inbox-list-entry-copy';
 import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 import { sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
+import { TODAY_LAST_OPENED_COOKIE, TODAY_VIEWPORT_COOKIE, writeClientCookie } from '@/lib/inbox/inbox-default-buyer';
 import { InboxEmptyState } from './InboxEmptyState';
-
-const LAST_OPENED_STORAGE_KEY = 'inbox-last-opened-buyer';
 
 const FILTER_CHIPS: Array<{ label: string; types: InboxEntryType[] }> = [
   { label: 'Approvals', types: ['business_approval', 'new_user_login'] },
@@ -72,22 +71,14 @@ function buyerListItem(
     status: atRisk ? { label: 'At risk', tone: 'danger' } : undefined,
     badge: buyer.entries.some((entry) => entry.status === 'new') ? 'new' : undefined,
     selected: activeId === buyer.buyerId || activeId === buyer.buyerKey,
-    onClick: () => {
-      try {
-        window.localStorage.setItem(LAST_OPENED_STORAGE_KEY, buyer.buyerKey);
-      } catch {
-        // Storage unavailable — the redirect-on-load below just falls back to the first row.
-      }
-    },
+    onClick: () => writeClientCookie(TODAY_LAST_OPENED_COOKIE, buyer.buyerKey),
   };
 }
 
 export function InboxListClient() {
-  const router = useRouter();
   const params = useParams<{ id?: string }>();
   const [tab, setTab] = useState<'active' | 'resolved'>('active');
   const [activeChip, setActiveChip] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   const chipTypes = activeChip ? FILTER_CHIPS.find((c) => c.label === activeChip)?.types : undefined;
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInboxEntries(tab, chipTypes);
@@ -135,37 +126,15 @@ export function InboxListClient() {
   );
   const enquiryByEntryId = useEnquiryTriageByIds(primaryEnquiryEntryIds);
 
+  // Lets the server-side /today default-buyer redirect know the real viewport
+  // (it otherwise only has the user-agent) so a narrowed desktop window stays on the list.
   useEffect(() => {
     const query = window.matchMedia('(min-width: 768px)');
-    setIsDesktop(query.matches);
-    const onChange = () => setIsDesktop(query.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
+    const sync = () => writeClientCookie(TODAY_VIEWPORT_COOKIE, query.matches ? 'desktop' : 'mobile');
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
   }, []);
-
-  // Today has no "closed" state — a customer is always open. On landing at bare
-  // /today (no detail param), jump straight to the last customer this device had
-  // open on desktop, or the first row in the list if there's no remembered one.
-  // Mobile stays on the list so the user can choose the entry item first.
-  useEffect(() => {
-    if (params.id != null) return;
-    if (!isDesktop) return;
-    if (isLoading || sections.length === 0) return;
-
-    const allBuyers = sections.flatMap((section) => section.buyers);
-    if (allBuyers.length === 0) return;
-
-    let target = allBuyers[0];
-    try {
-      const lastKey = window.localStorage.getItem(LAST_OPENED_STORAGE_KEY);
-      const match = lastKey ? allBuyers.find((b) => b.buyerKey === lastKey) : undefined;
-      if (match) target = match;
-    } catch {
-      // Storage unavailable — fall back to the first row.
-    }
-
-    router.replace(`/today/${target.buyerId ?? target.buyerKey}`);
-  }, [params.id, isDesktop, isLoading, sections, router]);
 
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">

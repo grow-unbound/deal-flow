@@ -11,6 +11,7 @@ import { useEntryHistory, useInboxEntries } from '@/hooks/useInboxEntries';
 import { sortEntriesForStack, groupEntriesByDateAndCustomer } from '@/lib/inbox/inbox-grouping';
 import { useLocalEntryActions } from '@/lib/inbox/inbox-local-actions';
 import { buildCollectionGroup, isCollectionEntry, sourceChannelForEntries, type InboxChannel } from '@/lib/inbox/inbox-detail-groups';
+import { TODAY_LAST_OPENED_COOKIE, writeClientCookie } from '@/lib/inbox/inbox-default-buyer';
 import { InboxEntryCard } from './InboxEntryCard';
 import { InboxEntryListRow } from './InboxEntryListRow';
 import { InboxHistorySheet } from './InboxHistorySheet';
@@ -96,6 +97,9 @@ export function InboxDetailClient({ buyerId }: { buyerId: string }) {
   const nextBuyerKey = currentIndex >= 0 && currentIndex < orderedBuyerKeys.length - 1 ? orderedBuyerKeys[currentIndex + 1] : null;
 
   useMobileHeaderTitle(buyerEntries[0]?.buyer_name);
+  useEffect(() => {
+    writeClientCookie(TODAY_LAST_OPENED_COOKIE, buyerId);
+  }, [buyerId]);
 
   if (isLoading) {
     return <InboxDetailSkeleton />;
