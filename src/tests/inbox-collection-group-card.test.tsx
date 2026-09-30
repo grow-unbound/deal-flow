@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useApplyGenericEntryAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSendCollectionReminder: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -37,12 +38,12 @@ describe('InboxCollectionGroupCard — title/subtitle', () => {
   it('uses a static title and puts the amount + counts in the subtitle when mixed', () => {
     renderCard([dueEntry('a', 'invoice_due', 90690), dueEntry('b', 'invoice_overdue', 25490)]);
     expect(screen.getByText('Upcoming dues or overdue')).toBeInTheDocument();
-    expect(screen.getByText('2 invoices · ₹1,16,180 due · 1 overdue')).toBeInTheDocument();
+    expect(screen.getByText('₹1,16,180 due · 2 invoices · 1 overdue')).toBeInTheDocument();
   });
 
   it('says "overdue" only when every invoice in the group is overdue', () => {
     renderCard([dueEntry('a', 'invoice_overdue', 22000)]);
     expect(screen.getByText('Upcoming dues or overdue')).toBeInTheDocument();
-    expect(screen.getByText('1 invoice · ₹22,000 overdue')).toBeInTheDocument();
+    expect(screen.getByText('₹22,000 overdue · 1 invoice')).toBeInTheDocument();
   });
 });

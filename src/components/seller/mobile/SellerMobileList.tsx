@@ -188,22 +188,26 @@ export function SellerMobileList({ items, className, emptyState, forceVisible, s
 
   if (forceVisible && density === 'roomy') {
     return (
-      <div ref={listRootRef} className={cn('flex flex-col gap-1', className)}>
-        {items.map((item) => (
-          <Link
-            key={item.id}
-            href={item.href}
-            onClick={item.onClick}
-            data-split-list-id={item.id}
-            aria-current={item.selected ? 'page' : undefined}
-            ref={registerItemRef?.(item.id)}
-            className={cn(
-              'block rounded-[12px] px-3.5 py-4 text-left no-underline transition-colors',
-              item.selected ? 'bg-ember-50' : 'hover:bg-cream-100/70',
-            )}
-          >
-            <SellerSplitListItemContent item={item} />
-          </Link>
+      <div ref={listRootRef} className={cn('flex flex-col', className)}>
+        {items.map((item, index) => (
+          <Fragment key={item.id}>
+            {index === sentinelIndex && sentinelRef ? (
+              <div ref={sentinelRef} className="h-px" aria-hidden />
+            ) : null}
+            <Link
+              href={item.href}
+              onClick={item.onClick}
+              data-split-list-id={item.id}
+              aria-current={item.selected ? 'page' : undefined}
+              ref={registerItemRef?.(item.id)}
+              className={cn(
+                'block border-b border-cream-200 px-3.5 py-4 text-left no-underline transition-colors last:border-b-0',
+                item.selected ? 'bg-ember-50' : 'hover:bg-cream-100/70',
+              )}
+            >
+              <SellerSplitListItemContent item={item} />
+            </Link>
+          </Fragment>
         ))}
       </div>
     );

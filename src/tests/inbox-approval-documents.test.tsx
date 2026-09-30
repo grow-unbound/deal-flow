@@ -25,48 +25,42 @@ describe('InboxApprovalDocuments', () => {
     apiFetchMock.mockReset();
   });
 
-  it('renders a thumbnail per document without ever fetching a signed URL up front', async () => {
-    apiFetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        documents: [
-          { id: 'd1', doc_type: 'shop_image', subject_scope: 'personal', uploaded_at: '2026-09-01T00:00:00Z', verified: false },
-          { id: 'd2', doc_type: 'gst_certificate', subject_scope: 'business', uploaded_at: '2026-09-01T00:00:00Z', verified: true },
-        ],
-      }),
-    });
+  const DOCS = {
+    documents: [
+      { id: 'd1', doc_type: 'shop_image', subject_scope: 'personal', uploaded_at: '2026-09-01T00:00:00Z', verified: false },
+      { id: 'd2', doc_type: 'gst_certificate', subject_scope: 'business', uploaded_at: '2026-09-01T00:00:00Z', verified: true },
+    ],
+  };
 
+  function mockApi() {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/signed-url')) return { ok: true, json: async () => ({ url: 'https://r2.example/signed', doc_type: 'shop_image' }) };
+      return { ok: true, json: async () => DOCS };
+    });
+  }
+
+  it('previews the shop image inline and keeps other documents as click-to-open tiles', async () => {
+    mockApi();
     renderDocs();
 
-    await waitFor(() => expect(screen.getByText('Shop image')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Shop image' })).toHaveAttribute('src', 'https://r2.example/signed'));
     expect(screen.getByText('GST certificate')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
-    // Only the list call happened -- no signed-url fetch until a thumbnail is clicked.
-    expect(apiFetchMock).toHaveBeenCalledTimes(1);
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/entries/e1/documents', expect.anything());
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/entries/e1/documents/d1/signed-url', expect.anything());
+    // The GST certificate is never fetched until opened.
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/tenant/entries/e1/documents/d2/signed-url', expect.anything());
   });
 
-  it('fetches a fresh signed URL only when a thumbnail is opened', async () => {
-    apiFetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        documents: [{ id: 'd1', doc_type: 'shop_image', subject_scope: 'personal', uploaded_at: '2026-09-01T00:00:00Z', verified: false }],
-      }),
-    });
-    apiFetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ url: 'https://r2.example/signed', doc_type: 'shop_image' }),
-    });
-
+  it('opens the full-size dialog with a freshly minted signed URL', async () => {
+    mockApi();
     renderDocs();
-    await waitFor(() => expect(screen.getByText('Shop image')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Shop image' })).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText('Shop image'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open shop image' }));
 
-    await waitFor(() =>
-      expect(apiFetchMock).toHaveBeenCalledWith('/api/tenant/entries/e1/documents/d1/signed-url', expect.anything()),
-    );
-    await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', 'https://r2.example/signed'));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: 'Shop image', hidden: true })).toHaveLength(2));
+    const signedCalls = apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith('/d1/signed-url'));
+    expect(signedCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders nothing when there are no documents', async () => {

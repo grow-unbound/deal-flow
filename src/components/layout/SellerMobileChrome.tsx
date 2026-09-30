@@ -3,12 +3,12 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, LogOut, Menu, Search, ShoppingBag, Users } from 'lucide-react';
+import { Bell, LogOut, Menu, Phone, Search, ShoppingBag, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Pressable } from '@/components/ui/pressable';
-import { useMobileHeaderTitleValue } from '@/components/layout/MobileHeaderTitle';
+import { useMobileHeaderPhoneValue, useMobileHeaderTitleValue } from '@/components/layout/MobileHeaderTitle';
 import { MobileBackButton } from '@/components/seller/mobile/MobileBackButton';
 import { SellerNotificationDrawer } from '@/components/layout/SellerNotificationDrawer';
 import { SellerOpenCatalogCta } from '@/components/layout/SellerOpenCatalogCta';
@@ -213,6 +213,7 @@ export function SellerMobileTopbar({
   const tenantBranding = tenantBrandingOverride ?? streamedTenantBranding;
   const featureAvailability = featureAvailabilityOverride ?? streamedFeatureAvailability;
   const headerTitleOverride = useMobileHeaderTitleValue();
+  const headerPhone = useMobileHeaderPhoneValue();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount } = useSellerRealtimeContext();
@@ -362,7 +363,18 @@ export function SellerMobileTopbar({
           >
             {headerTitleOverride ?? getRouteTitle(pathname)}
           </p>
-          <span className="h-10 w-10 shrink-0" aria-hidden />
+          {headerPhone ? (
+            <a
+              href={`tel:${headerPhone.replace(/[^\d+]/g, '')}`}
+              aria-label={`Call ${headerPhone}`}
+              title={headerPhone}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-cream-700 active:bg-cream-100"
+            >
+              <Phone size={18} aria-hidden />
+            </a>
+          ) : (
+            <span className="h-10 w-10 shrink-0" aria-hidden />
+          )}
         </header>
       ) : null}
 

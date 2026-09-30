@@ -94,7 +94,7 @@ export function InboxApproveDialog({ entry, open, onOpenChange, onApproved }: In
         <DialogHeader>
           <DialogTitle>Approve {entry.buyer_name}</DialogTitle>
           <DialogDescription>
-            Choose the customer group and price list this buyer should get. Without one, they only see default pricing.
+            Set how this buyer is priced.
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-5">
@@ -122,12 +122,6 @@ export function InboxApproveDialog({ entry, open, onOpenChange, onApproved }: In
                 </option>
               ))}
             </select>
-            {automaticCohorts.length > 0 ? (
-              <p className="text-caption text-cream-600">
-                Automatic groups add members by rules, so a buyer can&apos;t be added to them manually. They join
-                automatically if they match.
-              </p>
-            ) : null}
             {optionsQuery.isError ? (
               <p className="text-caption text-danger-600">Could not load customer groups. Close and try again.</p>
             ) : null}
@@ -135,7 +129,7 @@ export function InboxApproveDialog({ entry, open, onOpenChange, onApproved }: In
 
           <div className="space-y-1.5">
             <label htmlFor={`approve-price-list-${entry.id}`} className="text-body-sm font-medium text-cream-800">
-              Price list (optional override)
+              Price list (optional)
             </label>
             <select
               id={`approve-price-list-${entry.id}`}
@@ -144,16 +138,13 @@ export function InboxApproveDialog({ entry, open, onOpenChange, onApproved }: In
               disabled={!ready}
               onChange={(event) => setPriceListChoice(event.target.value)}
             >
-              <option value={NO_PRICE_LIST}>None – use group / default pricing</option>
+              <option value={NO_PRICE_LIST}>None</option>
               {(options?.price_lists ?? []).map((list) => (
                 <option key={list.id} value={list.id}>
                   {list.name}
                 </option>
               ))}
             </select>
-            <p className="text-caption text-cream-600">
-              A price list chosen here applies to this buyer only and wins over their group&apos;s and the default lists.
-            </p>
           </div>
 
           <div
@@ -172,20 +163,15 @@ export function InboxApproveDialog({ entry, open, onOpenChange, onApproved }: In
             )}
           </div>
 
-          {options?.zoho_active ? (
-            <p className="text-caption text-cream-600">
-              This customer will also be created in Zoho with online catalogue access. If Zoho is unavailable the
-              approval still goes through and the sync is retried automatically.
-            </p>
-          ) : null}
+          {options?.zoho_active ? <p className="text-caption text-cream-600">Will also be created in Zoho.</p> : null}
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             type="button"
-            size="sm"
+           
             variant="primary"
             onClick={confirm}
             disabled={!ready || applyApprovalAction.isPending}
