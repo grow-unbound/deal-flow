@@ -19,7 +19,8 @@ export type WhatsAppTriggerSource =
   | 'broadcast'
   | 'buyer_app_enabled'
   | 'access_request_received'
-  | 'access_request_resolved';
+  | 'access_request_resolved'
+  | 'whatsapp_inbox_reply';
 
 export interface LogWhatsAppMessageInput {
   tenantId: string;

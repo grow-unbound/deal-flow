@@ -97,3 +97,16 @@ describe('buildLiveCreditLimitLine', () => {
     expect(buildLiveCreditLimitLine(entry({ id: 'x', entry_type: 'credit_limit_breach', metadata: {} }), 1)).toBeNull();
   });
 });
+
+describe('buildListSupportingLine — WhatsApp', () => {
+  it('uses the last inbound message preview for WhatsApp buyer messages', () => {
+    expect(buildListSupportingLine([
+      entry({
+        entry_type: 'whatsapp_buyer_message',
+        source_channel: 'whatsapp',
+        source_entity_type: 'whatsapp_thread',
+        metadata: { last_inbound_text: 'Do you have stock for SKU 123?' },
+      }),
+    ])).toBe('Do you have stock for SKU 123?');
+  });
+});

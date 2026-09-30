@@ -20,12 +20,17 @@ interface BuyerRealtimeContextType {
 
 const BuyerRealtimeContext = createContext<BuyerRealtimeContextType | undefined>(undefined);
 
+function buyerIdForRealtime(buyerId: string | null | undefined): string {
+  if (!buyerId || buyerId === 'preview' || buyerId === 'guest') return '';
+  return buyerId;
+}
+
 export function BuyerRealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, currentTenantId, currentBuyerId } = useAuth();
   const { data: buyerMe } = useBuyerMe();
   const userId = user?.id ?? null;
   const tenantId = currentTenantId ?? buyerMe?.tenant.id ?? '';
-  const buyerId = currentBuyerId ?? (buyerMe?.buyer_id && buyerMe.buyer_id !== 'preview' ? buyerMe.buyer_id : '') ?? '';
+  const buyerId = buyerIdForRealtime(currentBuyerId ?? buyerMe?.buyer_id);
 
   const [refreshFn, setRefreshFnState] = React.useState<(() => Promise<void> | void) | null>(null);
   const setRefreshFn = useCallback((fn: (() => Promise<void> | void) | null) => setRefreshFnState(() => fn), []);

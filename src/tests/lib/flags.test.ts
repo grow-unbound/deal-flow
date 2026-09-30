@@ -66,6 +66,15 @@ describe('getFlag', () => {
     expect(mockEvaluateFlags).not.toHaveBeenCalled();
   });
 
+  it('defaults the WhatsApp inbox flag off when PostHog is not configured', async () => {
+    delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
+
+    const result = await getFlag('df_whatsapp_inbox', 'tenant-whatsapp-inbox');
+
+    expect(result).toBe(false);
+    expect(mockEvaluateFlags).not.toHaveBeenCalled();
+  });
+
   it('caches evaluations per tenant and flag key', async () => {
     mockEvaluateFlags.mockResolvedValue({
       isEnabled: vi.fn().mockReturnValue(true),

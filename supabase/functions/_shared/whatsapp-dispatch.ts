@@ -15,9 +15,12 @@ export function createAdminClient() {
 }
 
 interface SendPayload {
-  meta_template_name: string;
-  locale: string;
-  body_params: Array<{ text: string; parameter_name?: string }>;
+  type?: 'template' | 'text';
+  meta_template_name?: string;
+  locale?: string;
+  text_body?: string;
+  preview_url?: boolean;
+  body_params?: Array<{ text: string; parameter_name?: string }>;
   header_params?: { type: 'image'; media_id?: string; link?: string };
   button_params?: Array<{ type: 'url'; index: string; text: string }>;
 }
@@ -77,8 +80,14 @@ export async function dispatchMessageIds(
     }
 
     const payload = msg.send_payload;
-    if (!payload?.meta_template_name) {
+    const payloadType = payload?.type === 'text' ? 'text' : 'template';
+    if (payloadType === 'template' && !payload?.meta_template_name) {
       await completeSend(admin, messageId, false, null, 'missing send_payload');
+      failed += 1;
+      continue;
+    }
+    if (payloadType === 'text' && !payload?.text_body?.trim()) {
+      await completeSend(admin, messageId, false, null, 'missing text_body');
       failed += 1;
       continue;
     }
@@ -97,29 +106,36 @@ export async function dispatchMessageIds(
         tenantId: msg.tenant_id ?? null,
         credentialSource,
         recipientPhone: msg.recipient_phone,
-        metaTemplateName: payload.meta_template_name,
+        sendType: payloadType,
+        metaTemplateName: payload.meta_template_name ?? null,
       });
-      const result = await resolvedClient.sendTemplate({
-        to: msg.recipient_phone,
-        templateName: payload.meta_template_name,
-        locale: payload.locale,
-        bodyParams: (payload.body_params ?? []).map((p) => ({
-          text: p.text,
-          parameterName: p.parameter_name,
-        })),
-        headerParams: payload.header_params?.type === 'image'
-          ? {
-              type: 'image',
-              mediaId: payload.header_params.media_id,
-              link: payload.header_params.link,
-            }
-          : undefined,
-        buttonParams: payload.button_params?.map((b) => ({
-          type: 'url' as const,
-          index: b.index,
-          text: b.text,
-        })),
-      });
+      const result = payloadType === 'text'
+        ? await resolvedClient.sendText({
+            to: msg.recipient_phone,
+            body: payload.text_body!.trim(),
+            previewUrl: payload.preview_url === true,
+          })
+        : await resolvedClient.sendTemplate({
+            to: msg.recipient_phone,
+            templateName: payload.meta_template_name,
+            locale: payload.locale ?? 'en',
+            bodyParams: (payload.body_params ?? []).map((p) => ({
+              text: p.text,
+              parameterName: p.parameter_name,
+            })),
+            headerParams: payload.header_params?.type === 'image'
+              ? {
+                  type: 'image',
+                  mediaId: payload.header_params.media_id,
+                  link: payload.header_params.link,
+                }
+              : undefined,
+            buttonParams: payload.button_params?.map((b) => ({
+              type: 'url' as const,
+              index: b.index,
+              text: b.text,
+            })),
+          });
 
       console.info('[whatsapp-dispatch] provider send succeeded', {
         messageId,
@@ -127,7 +143,8 @@ export async function dispatchMessageIds(
         tenantId: msg.tenant_id ?? null,
         credentialSource,
         recipientPhone: msg.recipient_phone,
-        metaTemplateName: payload.meta_template_name,
+        sendType: payloadType,
+        metaTemplateName: payload.meta_template_name ?? null,
         providerMessageId: result.providerMessageId,
       });
       await completeSend(admin, messageId, true, result.providerMessageId, null);
@@ -142,7 +159,8 @@ export async function dispatchMessageIds(
         tenantId: msg.tenant_id ?? null,
         credentialSource,
         recipientPhone: msg.recipient_phone,
-        metaTemplateName: payload.meta_template_name,
+        sendType: payloadType,
+        metaTemplateName: payload.meta_template_name ?? null,
         providerError: reason,
       });
       await completeSend(admin, messageId, false, null, reason);
