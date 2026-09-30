@@ -8,13 +8,23 @@
 
 import type { WhatsAppMetaCategory, WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
 
-export interface WhatsAppSendPayload {
+export interface WhatsAppTemplateSendPayload {
+  type?: 'template';
   meta_template_name: string;
   locale: string;
   body_params: Array<{ text: string; parameter_name?: string }>;
   header_params?: { type: 'image'; media_id?: string; link?: string };
   button_params?: Array<{ type: 'url'; index: string; text: string }>;
 }
+
+export interface WhatsAppTextSendPayload {
+  type: 'text';
+  text_body: string;
+  preview_url?: boolean;
+  body_params?: [];
+}
+
+export type WhatsAppSendPayload = WhatsAppTemplateSendPayload | WhatsAppTextSendPayload;
 
 export interface EnqueueWhatsAppMessageInput {
   tenantId: string;
@@ -24,7 +34,7 @@ export interface EnqueueWhatsAppMessageInput {
   triggerSource: WhatsAppTriggerSource;
   sendPayload: WhatsAppSendPayload;
   whatsappBroadcastId?: string | null;
-  relatedEntityType?: 'estimates' | 'orders' | 'invoices' | null;
+  relatedEntityType?: 'estimates' | 'orders' | 'invoices' | 'whatsapp_thread' | null;
   relatedEntityId?: string | null;
   priority?: 1 | 5;
   scheduledSendAt?: string | null;
@@ -60,6 +70,10 @@ function queuePriorityForTriggerSource(
   return TRANSACTIONAL_TRIGGER_SOURCES.has(triggerSource)
     ? QUEUE_PRIORITY_TRANSACTIONAL
     : QUEUE_PRIORITY_BROADCAST;
+}
+
+function payloadTemplateName(payload: WhatsAppSendPayload): string | null {
+  return payload.type === 'text' ? null : payload.meta_template_name;
 }
 
 async function lookupApprovedTemplate(
@@ -134,7 +148,7 @@ export async function enqueueWhatsAppMessage(
         buyerId: input.buyerId ?? null,
         relatedEntityType: input.relatedEntityType ?? null,
         relatedEntityId: input.relatedEntityId ?? null,
-        metaTemplateName: input.sendPayload.meta_template_name,
+        metaTemplateName: payloadTemplateName(input.sendPayload),
         error: error.message,
       });
       return { messageId: null, enqueued: false, skipped: 'no_db' };
@@ -160,7 +174,7 @@ export async function enqueueWhatsAppMessage(
       buyerId: input.buyerId ?? null,
       relatedEntityType: input.relatedEntityType ?? null,
       relatedEntityId: input.relatedEntityId ?? null,
-      metaTemplateName: input.sendPayload.meta_template_name,
+        metaTemplateName: payloadTemplateName(input.sendPayload),
       error: err instanceof Error ? err.message : String(err),
     });
     return { messageId: null, enqueued: false, skipped: 'no_db' };

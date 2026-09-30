@@ -1,5 +1,5 @@
 import { firstNameFromValue, formatWhatsappDestination, isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
-import type { EnqueueWhatsAppMessageInput, WhatsAppSendPayload } from '@/lib/server/whatsapp-enqueue';
+import type { EnqueueWhatsAppMessageInput, WhatsAppSendPayload, WhatsAppTemplateSendPayload } from '@/lib/server/whatsapp-enqueue';
 import {
   buildBuyerInvoiceSummaries,
   type BuyerInvoiceSummary,
@@ -188,7 +188,7 @@ function buildSendPayload(args: {
   variableBindings: Record<string, string>;
   headerMediaId?: string | null;
   headerImageLink?: string | null;
-}): WhatsAppSendPayload {
+}): WhatsAppTemplateSendPayload {
   const manualKeys = requiredManualVariableKeys(args.template);
   const bodyParams = args.template.variables.map((variable) => {
     const text = resolveVariableValue({

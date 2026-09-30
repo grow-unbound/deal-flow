@@ -71,3 +71,16 @@ describe('buildListSupportingLine — dues', () => {
     expect(line).toBe('4 invoices · ₹1,16,180 due · 2 overdue');
   });
 });
+
+describe('buildListSupportingLine — WhatsApp', () => {
+  it('uses the last inbound message preview for WhatsApp buyer messages', () => {
+    expect(buildListSupportingLine([
+      entry({
+        entry_type: 'whatsapp_buyer_message',
+        source_channel: 'whatsapp',
+        source_entity_type: 'whatsapp_thread',
+        metadata: { last_inbound_text: 'Do you have stock for SKU 123?' },
+      }),
+    ])).toBe('Do you have stock for SKU 123?');
+  });
+});

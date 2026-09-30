@@ -31,7 +31,9 @@ function normalizeIndianPhone(input: string): string {
 }
 
 interface MetaInboundMessage {
+  id?: string;
   from?: string;
+  timestamp?: string;
   type?: string;
   text?: { body?: string };
   button?: { text?: string };
@@ -48,6 +50,10 @@ interface MetaWebhookEntry {
   changes?: Array<{
     field?: string;
     value?: {
+      metadata?: {
+        display_phone_number?: string;
+        phone_number_id?: string;
+      };
       messages?: MetaInboundMessage[];
       statuses?: MetaStatusUpdate[];
     };
@@ -138,6 +144,192 @@ const STATUS_ORDER: Record<'sent' | 'delivered' | 'read' | 'failed', number> = {
   read: 3,
   failed: 4,
 };
+
+const WHATSAPP_INBOX_FLAG = 'df_whatsapp_inbox';
+
+async function resolveTenantIdForPhoneNumberId(
+  admin: ReturnType<typeof createAdminClient>,
+  phoneNumberId: string | null | undefined,
+): Promise<string | null> {
+  const normalizedPhoneNumberId = phoneNumberId?.trim();
+  if (!normalizedPhoneNumberId) return null;
+
+  const { data: integration, error } = await admin
+    .schema('app')
+    .from('tenant_integrations')
+    .select('tenant_id')
+    .eq('integration_type_id', 'whatsapp_business')
+    .eq('status', 'connected')
+    .eq('config->>phone_number_id', normalizedPhoneNumberId)
+    .is('deleted_at', null)
+    .order('connected_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[whatsapp-inbound-webhook] tenant-owned WABA lookup failed', {
+      phoneNumberId: normalizedPhoneNumberId,
+      error: error.message,
+    });
+  }
+  if (integration?.tenant_id) return integration.tenant_id as string;
+
+  const platformPhoneNumberId =
+    Deno.env.get('WHATSAPP_PLATFORM_PHONE_NUMBER_ID')
+    ?? Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')
+    ?? Deno.env.get('NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID');
+  const platformTenantId = Deno.env.get('WHATSAPP_PLATFORM_TENANT_ID');
+  if (platformPhoneNumberId?.trim() === normalizedPhoneNumberId && platformTenantId?.trim()) {
+    return platformTenantId.trim();
+  }
+
+  return null;
+}
+
+async function isWhatsAppInboxFlagEnabled(tenantId: string | null): Promise<boolean> {
+  if (!tenantId) return false;
+
+  const key = Deno.env.get('NEXT_PUBLIC_POSTHOG_KEY')?.trim();
+  if (!key) return false;
+
+  const host = (Deno.env.get('NEXT_PUBLIC_POSTHOG_HOST')?.trim() || 'https://us.i.posthog.com').replace(/\/$/, '');
+  try {
+    const response = await fetch(`${host}/decide/?v=3`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: key,
+        distinct_id: tenantId,
+      }),
+    });
+    if (!response.ok) {
+      console.error('[whatsapp-inbound-webhook] PostHog flag check failed', {
+        tenantId,
+        status: response.status,
+      });
+      return false;
+    }
+    const body = (await response.json().catch(() => null)) as {
+      featureFlags?: Record<string, unknown>;
+    } | null;
+    return body?.featureFlags?.[WHATSAPP_INBOX_FLAG] === true;
+  } catch (error) {
+    console.error('[whatsapp-inbound-webhook] PostHog flag check errored', {
+      tenantId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+async function handleInboundMessages(
+  admin: ReturnType<typeof createAdminClient>,
+  changes: NonNullable<MetaWebhookEntry['changes']>,
+): Promise<void> {
+  const platformPhoneNumberId =
+    Deno.env.get('WHATSAPP_PLATFORM_PHONE_NUMBER_ID')
+    ?? Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')
+    ?? Deno.env.get('NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID')
+    ?? null;
+  const platformTenantId = Deno.env.get('WHATSAPP_PLATFORM_TENANT_ID') ?? null;
+
+  for (const change of changes) {
+    if (change.field !== 'messages') continue;
+    const metadata = change.value?.metadata;
+    const phoneNumberId = metadata?.phone_number_id?.trim() ?? null;
+    const displayPhoneNumber = metadata?.display_phone_number?.trim() ?? null;
+    const tenantId = await resolveTenantIdForPhoneNumberId(admin, phoneNumberId);
+    const featureEnabled = await isWhatsAppInboxFlagEnabled(tenantId);
+
+    for (const message of change.value?.messages ?? []) {
+      if (!message.from) continue;
+
+      const textBody = message.type === 'button' ? message.button?.text : message.text?.body;
+      if (isOptOutMessage(textBody)) {
+        const phone = normalizeIndianPhone(message.from);
+        if (!phone) continue;
+        console.info('[whatsapp-inbound-webhook] inbound opt-out received', {
+          phone,
+          tenantId: tenantId ?? null,
+        });
+
+        let query = admin
+          .schema('app')
+          .from('buyers')
+          .update({ whatsapp_opt_out_at: new Date().toISOString() })
+          .eq('phone', phone)
+          .is('whatsapp_opt_out_at', null)
+          .is('deleted_at', null);
+        if (tenantId) {
+          query = query.eq('tenant_id', tenantId);
+        }
+        const { error } = await query;
+
+        if (error) {
+          console.error('[whatsapp-inbound-webhook] failed to stamp opt-out', {
+            phone,
+            tenantId: tenantId ?? null,
+            error: error.message,
+          });
+        }
+        continue;
+      }
+
+      if (message.type !== 'text' && message.type !== 'button') continue;
+      if (!message.id || !textBody) continue;
+      if (!phoneNumberId) {
+        console.warn('[whatsapp-inbound-webhook] inbound message missing phone_number_id', {
+          providerMessageId: message.id,
+        });
+        continue;
+      }
+
+      const receivedAt = message.timestamp
+        ? new Date(Number(message.timestamp) * 1000).toISOString()
+        : new Date().toISOString();
+      const { data, error } = await admin
+        .schema('app')
+        .rpc('process_whatsapp_inbound_message', {
+          p_provider_message_id: message.id,
+          p_sender_phone: message.from,
+          p_recipient_phone_number_id: phoneNumberId,
+          p_recipient_display_phone: displayPhoneNumber,
+          p_message_type: message.type,
+          p_text_body: textBody,
+          p_received_at: receivedAt,
+          p_raw_payload: {
+            id: message.id,
+            from: message.from,
+            type: message.type,
+            timestamp: message.timestamp ?? null,
+            metadata: metadata ?? null,
+          },
+          p_platform_phone_number_id: platformPhoneNumberId,
+          p_platform_tenant_id: platformTenantId,
+          p_feature_enabled: featureEnabled,
+        });
+
+      if (error) {
+        console.error('[whatsapp-inbound-webhook] inbound processing failed', {
+          providerMessageId: message.id,
+          phoneNumberId,
+          tenantId: tenantId ?? null,
+          error: error.message,
+        });
+      } else {
+        const result = (data ?? {}) as { processed?: boolean; skipped?: string; duplicate?: boolean };
+        console.info('[whatsapp-inbound-webhook] inbound processing complete', {
+          providerMessageId: message.id,
+          phoneNumberId,
+          tenantId: tenantId ?? null,
+          processed: result.processed === true,
+          skipped: result.skipped ?? null,
+          duplicate: result.duplicate === true,
+        });
+      }
+    }
+  }
+}
 
 async function handleStatusUpdates(
   admin: ReturnType<typeof createAdminClient>,
@@ -322,10 +514,6 @@ Deno.serve(async (req: Request) => {
 
     const changes = (body.entry ?? []).flatMap((entry) => entry.changes ?? []);
 
-    const messages: MetaInboundMessage[] = changes
-      .filter((change) => change.field === 'messages')
-      .flatMap((change) => change.value?.messages ?? []);
-
     const statuses: MetaStatusUpdate[] = changes
       .flatMap((change) => change.value?.statuses ?? []);
 
@@ -333,34 +521,7 @@ Deno.serve(async (req: Request) => {
       await handleStatusUpdates(admin, statuses);
     }
 
-    for (const message of messages) {
-      if (!message.from) continue;
-
-      const textBody = message.type === 'button' ? message.button?.text : message.text?.body;
-      if (!isOptOutMessage(textBody)) continue;
-
-      const phone = normalizeIndianPhone(message.from);
-      if (!phone) continue;
-      console.info('[whatsapp-inbound-webhook] inbound opt-out received', {
-        phone,
-        textBody: textBody ?? null,
-      });
-
-      const { error } = await admin
-        .schema('app')
-        .from('buyers')
-        .update({ whatsapp_opt_out_at: new Date().toISOString() })
-        .eq('phone', phone)
-        .is('whatsapp_opt_out_at', null)
-        .is('deleted_at', null);
-
-      if (error) {
-        console.error('[whatsapp-inbound-webhook] failed to stamp opt-out', {
-          phone,
-          error: error.message,
-        });
-      }
-    }
+    await handleInboundMessages(admin, changes);
 
     return ok('processed');
   } catch (err) {

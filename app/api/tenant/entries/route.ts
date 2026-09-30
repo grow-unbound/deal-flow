@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
@@ -17,6 +19,7 @@ const EntryTypeSchema = z.enum([
   'invoice_due',
   'invoice_overdue',
   'credit_limit_breach',
+  'whatsapp_buyer_message',
 ]);
 
 const QuerySchema = z.object({
@@ -107,7 +110,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch entries' }, { status: 500 });
     }
 
-    const rows = (data ?? []) as Array<{ id: string; priority_at: string } & Record<string, unknown>>;
+    const whatsappInboxEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_INBOX, claims.tenant_id);
+    const rows = ((data ?? []) as Array<{ id: string; priority_at: string; entry_type?: string } & Record<string, unknown>>)
+      .filter((row) => whatsappInboxEnabled || row.entry_type !== 'whatsapp_buyer_message');
     const entries = rows.slice(0, parsed.data.limit);
     const last = entries[entries.length - 1];
     const nextCursor = rows.length > parsed.data.limit && last

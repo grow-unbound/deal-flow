@@ -46,6 +46,7 @@ export const ACTION_LABELS: Record<string, string> = {
   adjust_limit: 'Adjust limit',
   view_account: 'View account',
   reopen: 'Reopen',
+  reply_whatsapp: 'Reply',
 };
 
 export const DESTRUCTIVE_ACTIONS: Record<string, { title: string; description: (entry: InboxEntry) => string; confirmLabel: string }> = {
@@ -62,8 +63,8 @@ export const DESTRUCTIVE_ACTIONS: Record<string, { title: string; description: (
 };
 
 const LEFT_ICON_ACTIONS = new Set(['add_note', 'remind_later']);
-/** Hidden until the flow exists. */
-const HIDDEN_ACTIONS = new Set(['contact_buyer']);
+/** Hidden because the flow lives inside the detail body rather than the sticky action bar. */
+const HIDDEN_ACTIONS = new Set(['contact_buyer', 'reply_whatsapp']);
 const CARD_HEADER_ACTIONS = new Set(['view_buyer', 'view_account']);
 
 const ACTION_ICON: Record<string, typeof StickyNote> = {

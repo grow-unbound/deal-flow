@@ -10,6 +10,7 @@ export const ENTRY_TYPE_LABEL: Record<InboxEntryType, string> = {
   invoice_due: 'Invoice due',
   invoice_overdue: 'Invoice overdue',
   credit_limit_breach: 'Over credit limit',
+  whatsapp_buyer_message: 'WhatsApp message',
 };
 
 export function buildEntryAmountLabel(entry: InboxEntry): string | null {
@@ -93,6 +94,10 @@ export function buildListSupportingLine(entries: InboxEntry[]): string {
   }
   if (primary.entry_type === 'business_approval') return 'New account';
   if (primary.entry_type === 'new_user_login') return 'New visitor';
+  if (primary.entry_type === 'whatsapp_buyer_message') {
+    const text = typeof primary.metadata.last_inbound_text === 'string' ? primary.metadata.last_inbound_text.trim() : '';
+    return text || 'Buyer message';
+  }
   if (primary.entry_type === 'invoice_due' || primary.entry_type === 'invoice_overdue') {
     return [buildEntryAmountLabel(primary), ageLabel(primary)].filter(Boolean).join(' · ');
   }
