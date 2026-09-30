@@ -24,7 +24,12 @@ export default function BuyerPendingPage() {
 
   const notPending = !isLoading && (!me || me.mode !== 'pending');
   const needsIntake = !isLoading && me?.mode === 'pending' && !me.pending?.intake_submitted;
+  const needsMoreInfo = !isLoading && me?.mode === 'pending' && me.pending?.onboarding_status === 'needs_more_info';
   useEffect(() => {
+    if (needsMoreInfo) {
+      router.replace('/resubmit-documents');
+      return;
+    }
     if (notPending) {
       router.replace(me ? STOREFRONT.home : '/login');
       return;
@@ -32,8 +37,8 @@ export default function BuyerPendingPage() {
     if (needsIntake) {
       router.replace('/onboarding');
     }
-  }, [notPending, needsIntake, me, router]);
-  if (notPending || needsIntake) return null;
+  }, [notPending, needsIntake, needsMoreInfo, me, router]);
+  if (notPending || needsIntake || needsMoreInfo) return null;
 
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;

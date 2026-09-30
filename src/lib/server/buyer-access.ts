@@ -926,6 +926,26 @@ export async function acquireBuyerForStorefront(
   };
 }
 
+export const RESUBMIT_DOCUMENTS_PATH = '/resubmit-documents';
+const NEEDS_MORE_INFO_PATH_STATUS = 'needs_more_info';
+
+/**
+ * `/resubmit-documents` when the buyer's request was sent back for more info, else null. For
+ * callers (workspace picker) whose default pending destination is not resolvePendingBuyerRedirect.
+ */
+export async function resolveNeedsMoreInfoRedirect(buyerId: string | null): Promise<string | null> {
+  if (!buyerId || !supabaseAdmin) return null;
+  const { data } = await supabaseAdmin
+    .schema('app')
+    .from('buyers')
+    .select('onboarding_status')
+    .eq('id', buyerId)
+    .maybeSingle();
+  return (data as { onboarding_status?: string | null } | null)?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS
+    ? RESUBMIT_DOCUMENTS_PATH
+    : null;
+}
+
 /**
  * Where to send a `buyer_pending` session next: /onboarding if this is a
  * fresh self-registration that hasn't submitted the intake form yet;
@@ -952,11 +972,16 @@ export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost:
   const { data } = await supabaseAdmin
     .schema('app')
     .from('buyers')
-    .select('custom_fields')
+    .select('custom_fields, onboarding_status')
     .eq('id', buyerId)
     .maybeSingle();
 
-  const customFields = (data as { custom_fields?: Record<string, unknown> | null } | null)?.custom_fields;
+  const row = data as { custom_fields?: Record<string, unknown> | null; onboarding_status?: string | null } | null;
+  // Seller asked for more info: the buyer must land on the prefilled resubmission form, not the
+  // storefront pill or the "request sent" screen, or they have no way to answer the request.
+  if (row?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS) return RESUBMIT_DOCUMENTS_PATH;
+
+  const customFields = row?.custom_fields;
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
   const storefrontHome = isTenantHost ? '/' : '/buy/home';

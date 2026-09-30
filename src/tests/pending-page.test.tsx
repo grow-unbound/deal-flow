@@ -75,4 +75,13 @@ describe('BuyerPendingPage', () => {
     expect(replaceMock).toHaveBeenCalledWith('/onboarding');
     expect(screen.queryByRole('link', { name: /browse the public catalog/i })).toBeNull();
   });
+
+  it('sends a needs_more_info buyer to the resubmission form instead of the request-sent screen', async () => {
+    useBuyerMeMock.mockReturnValue(pendingMe({ onboarding_status: 'needs_more_info' }));
+    const { default: BuyerPendingPage } = await import('../../app/pending/page');
+    render(<BuyerPendingPage />);
+
+    expect(replaceMock).toHaveBeenCalledWith('/resubmit-documents');
+    expect(screen.queryByText(/request sent/i)).toBeNull();
+  });
 });
