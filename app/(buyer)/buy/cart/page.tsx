@@ -140,11 +140,12 @@ export default function CartPage() {
   // (which the backend would otherwise reject, or silently mishandle).
   // Approved buyers and guests (whose carts stay empty by construction, per
   // ProductCard/BuyerProductDetailClient's openLogin gate) are unaffected.
+  const pendingDestination = pendingBuyerDestination(meData);
   useEffect(() => {
     if (meData?.mode === 'pending') {
-      router.replace(pendingBuyerDestination(meData));
+      router.replace(pendingDestination);
     }
-  }, [meData, router]);
+  }, [meData?.mode, pendingDestination, router]);
 
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
