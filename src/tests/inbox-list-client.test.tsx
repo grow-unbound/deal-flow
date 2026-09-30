@@ -9,6 +9,7 @@ const replaceMock = vi.fn();
 const useEnquiryTriageByIdsMock = vi.fn(() => new Map());
 
 vi.mock('@/hooks/useInboxEntries', () => ({
+  useBuyerOutstandingInvoices: () => ({ data: undefined, isLoading: false, isError: false }),
   useInboxEntries: (...args: unknown[]) => useInboxEntriesMock(...args),
   useEnquiryTriageByIds: (...args: unknown[]) => useEnquiryTriageByIdsMock(...args),
 }));
@@ -66,7 +67,32 @@ describe('InboxListClient', () => {
     renderWithClient(<InboxListClient />);
     expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
-    expect(screen.getByText('1 invoice · ₹22,000 overdue')).toBeInTheDocument();
+    expect(screen.getByText('₹22,000 overdue · 1 invoice')).toBeInTheDocument();
+  });
+
+  it('fetches the next page when the 75% sentinel intersects', () => {
+    let trigger: ((entries: Array<{ isIntersecting: boolean }>) => void) | undefined;
+    const observe = vi.fn();
+    vi.stubGlobal('IntersectionObserver', vi.fn().mockImplementation(function (this: unknown, cb: typeof trigger) {
+      trigger = cb;
+      return { observe, disconnect: vi.fn(), unobserve: vi.fn() };
+    }));
+    const fetchNextPage = vi.fn();
+    const entries = Array.from({ length: 8 }, (_, i) => ({
+      ...ENTRIES[0], id: `e${i}`, buyer_id: `b${i}`, buyer_name: `Buyer ${i}`, source_entity_id: `inv${i}`,
+    }));
+    useInboxEntriesMock.mockReturnValue({
+      data: { entries, nextCursor: 'cur' }, isLoading: false, isError: false,
+      hasNextPage: true, isFetchingNextPage: false, fetchNextPage,
+    });
+    renderWithClient(<InboxListClient />);
+    expect(observe).toHaveBeenCalledTimes(1);
+    const sentinel = observe.mock.calls[0][0] as HTMLElement;
+    // 8 rows -> sentinel placed before row index floor(8 * 0.75) - 1 = 5, i.e. mid-list, not the end.
+    expect(sentinel.nextElementSibling?.textContent).toContain('Buyer 5');
+    trigger?.([{ isIntersecting: true }]);
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it('links the row to the buyer detail route', () => {
@@ -89,21 +115,21 @@ describe('InboxListClient', () => {
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
   });
 
-  it('keeps mobile on the entry list when landing on Today without a selected buyer', () => {
+  it('never client-redirects; the server resolves the default buyer', () => {
     useParamsMock.mockReturnValue({});
-    mockMedia(false);
+    mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('opens the first buyer on desktop when landing on Today without a selected buyer', () => {
+  it('records the viewport in a cookie for the server-side default-buyer redirect', () => {
     useParamsMock.mockReturnValue({});
     mockMedia(true);
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    expect(replaceMock).toHaveBeenCalledWith('/today/b1');
+    expect(document.cookie).toContain('yukti_today_vp=desktop');
   });
 
   it('enriches an enquiry row with estimate number, item preview, and an at-risk badge', () => {

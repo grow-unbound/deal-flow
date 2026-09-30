@@ -126,10 +126,10 @@ function RequestMoreInfoDialog({
           />
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" size="sm" onClick={submit} disabled={applyApprovalAction.isPending}>
+          <Button type="button" onClick={submit} disabled={applyApprovalAction.isPending}>
             {applyApprovalAction.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             Send request
           </Button>
@@ -284,7 +284,7 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
                 : `Zoho sync failed${entry.external_sync_error ? `: ${entry.external_sync_error}` : ''}. Approval is unaffected; retrying automatically.`}
           </p>
           {entry.external_sync_status === 'failed' && isSellerAdmin ? (
-            <Button type="button" size="sm" variant="outline" onClick={handleRetryZoho} disabled={retryZohoSync.isPending}>
+            <Button type="button" variant="outline" onClick={handleRetryZoho} disabled={retryZohoSync.isPending}>
               {retryZohoSync.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
               Retry now
             </Button>
@@ -292,8 +292,8 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:justify-between md:gap-3">
+        <div className="order-2 mr-auto flex min-w-0 items-center gap-2 md:order-none md:mr-0">
           {leftActions.map((action) => {
             const Icon = action === 'remind_later' ? Bell : StickyNote;
             return (
@@ -310,31 +310,37 @@ export function InboxApprovalActionBar({ entry, tenantId, historyEvents, localEv
             );
           })}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {canDecide && entry.allowed_actions.includes('approve') ? (
-            <Button type="button" size="sm" variant="primary" onClick={() => setApproveOpen(true)} disabled={approveState !== 'idle'}>
-              <CheckCircle2 className="h-4 w-4" aria-hidden />
-              {approveState === 'done' ? 'Approved' : 'Approve'}
-            </Button>
-          ) : null}
+        <div className="contents md:flex md:shrink-0 md:items-center md:justify-end md:gap-2">
           {canDecide && entry.allowed_actions.includes('request_more_info') ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => setMoreInfoOpen(true)}>
-              Request info
+            <Button type="button" variant="outline" className="order-1 w-full md:order-none md:w-auto" onClick={() => setMoreInfoOpen(true)}>
+              Request more info
             </Button>
           ) : null}
           {canReopen ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => runGenericAction('reopen')}>
+            <Button type="button" variant="outline" className="order-3 md:order-none" onClick={() => runGenericAction('reopen')}>
               {ACTION_LABELS.reopen}
             </Button>
           ) : null}
           {canDecide && entry.allowed_actions.includes('decline') ? (
             <Button
               type="button"
-              size="sm"
               variant="outline"
+              className="order-3 border-danger-500 text-danger-700 hover:border-danger-700 hover:bg-danger-50 md:order-none"
               onClick={() => setDeclineOpen(true)}
             >
               Decline
+            </Button>
+          ) : null}
+          {canDecide && entry.allowed_actions.includes('approve') ? (
+            <Button
+              type="button"
+              variant="primary"
+              className="order-4 md:order-none"
+              onClick={() => setApproveOpen(true)}
+              disabled={approveState !== 'idle'}
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+              {approveState === 'done' ? 'Approved' : 'Approve'}
             </Button>
           ) : null}
         </div>

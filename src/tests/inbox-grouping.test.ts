@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupEntriesByDateAndCustomer, isPinnedEntry, sortEntriesForStack } from '@/lib/inbox/inbox-grouping';
+import { dedupeApprovalEntries, groupEntriesByDateAndCustomer, isPinnedEntry, sortEntriesForStack } from '@/lib/inbox/inbox-grouping';
 import { buildCollectionGroup } from '@/lib/inbox/inbox-detail-groups';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 
@@ -102,5 +102,16 @@ describe('groupEntriesByDateAndCustomer', () => {
     const visitor = makeEntry({ id: 'v1', buyer_id: null, entry_type: 'new_user_login', buyer_name: 'Unknown visitor', customer_entry_count: 1 });
     const grouped = groupEntriesByDateAndCustomer([visitor]);
     expect(grouped[0].buyers[0].buyerKey).toBe('v1');
+  });
+});
+
+describe('dedupeApprovalEntries', () => {
+  it('drops new_user_login when the same buyer has a business_approval', () => {
+    const result = dedupeApprovalEntries([
+      makeEntry({ id: 'a', buyer_id: 'b1', entry_type: 'new_user_login' }),
+      makeEntry({ id: 'b', buyer_id: 'b1', entry_type: 'business_approval' }),
+      makeEntry({ id: 'c', buyer_id: 'b2', entry_type: 'new_user_login' }),
+    ]);
+    expect(result.map((e) => e.id)).toEqual(['b', 'c']);
   });
 });

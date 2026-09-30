@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useQueries, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import {
   NAVIGATION_QUERY_STALE_TIME,
@@ -8,6 +8,8 @@ import {
   REFERENCE_QUERY_STALE_TIME,
   REFERENCE_QUERY_GC_TIME,
 } from '@/lib/query-navigation';
+import { dedupeApprovalEntries } from '@/lib/inbox/inbox-grouping';
+import type { OutstandingInvoice } from '@/lib/inbox/inbox-detail-groups';
 import type { InboxEntry } from '@/lib/inbox/inbox-types';
 import type { EnquiryTriagePayload } from '@/lib/inbox/enquiry-triage';
 
@@ -27,19 +29,50 @@ export function inboxEntriesQueryKey(status: 'active' | 'resolved', entryTypes?:
   return ['inbox-entries', status, (entryTypes ?? []).join(',')] as const;
 }
 
+interface InboxEntriesPage {
+  entries: InboxEntry[];
+  nextCursor: string | null;
+}
+
+/**
+ * Cursor-paginated Inbox list. `data` is the flattened `{ entries }` of every
+ * page fetched so far; the list client fetches the next page via
+ * `fetchNextPage` when the scroll sentinel comes into view.
+ */
 export function useInboxEntries(status: 'active' | 'resolved', entryTypes?: string[]) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: inboxEntriesQueryKey(status, entryTypes),
-    queryFn: async () => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ status });
       if (entryTypes && entryTypes.length > 0) params.set('type', entryTypes.join(','));
+      if (pageParam) params.set('cursor', pageParam);
       const res = await apiFetch(`/api/tenant/entries?${params.toString()}`, { fresh: true });
       if (!res.ok) throw new Error('Failed to load Inbox entries');
-      return (await res.json()) as { entries: InboxEntry[]; nextCursor: string | null };
+      return (await res.json()) as InboxEntriesPage;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    select: (data) => ({
+      entries: dedupeApprovalEntries(data.pages.flatMap((page) => page.entries)),
+      nextCursor: data.pages[data.pages.length - 1]?.nextCursor ?? null,
+    }),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useBuyerOutstandingInvoices(buyerId: string | null) {
+  return useQuery({
+    queryKey: ['inbox-buyer-outstanding-invoices', buyerId],
+    enabled: buyerId != null,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/outstanding-invoices`, { fresh: true });
+      if (!res.ok) throw new Error('Failed to load outstanding invoices');
+      return (await res.json()) as { invoices: OutstandingInvoice[] };
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 

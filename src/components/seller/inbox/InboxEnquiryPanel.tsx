@@ -11,7 +11,7 @@ import { buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
 import { cn, formatNumberValue } from '@/lib/utils';
 import { StockCell, VelocityCell, velocityLabel } from './EnquiryLineDisplay';
 
-const HEAD_CLASS = 'text-xs font-medium uppercase tracking-[0.08em] text-cream-500';
+const HEAD_CLASS = 'text-sm font-medium uppercase tracking-[0.08em] text-cream-500';
 
 function money(value: number) {
   return formatNumberValue(value, 'CURRENCY_EXACT');
@@ -35,7 +35,7 @@ function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine
 
   return (
     <div className="border-t border-cream-200 bg-cream-50 px-4 py-4">
-      <p className="text-sm text-cream-700">
+      <p className="text-base text-cream-700">
         Buyer asked for {line.qty}; {line.onHand} available.
         {line.alternates.length > 0
           ? ' In-stock alternatives, same category first — substituting updates this line in place:'
@@ -51,24 +51,24 @@ function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine
                 className="flex items-center justify-between gap-4 rounded-[10px] border border-cream-300 bg-white px-4 py-2.5"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-cream-900">{alt.name}</p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+                  <p className="truncate text-base font-medium text-cream-900">{alt.name}</p>
+                  <p className="mt-0.5 truncate font-mono text-sm text-cream-500">
                     {alt.sku}
                     {alt.sameCategory ? ' · same category' : ''}
                     {alt.sameBrand ? ' · same brand' : alt.brandName ? ` · ${alt.brandName}` : ''}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-4 text-right">
-                  <span className="font-mono text-sm font-semibold tabular-nums text-cream-900">
+                  <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
                     {alt.buyerPrice != null ? money(alt.buyerPrice) : '—'}
                   </span>
-                  <span className="font-mono text-sm tabular-nums text-cream-800">{alt.available} in stock</span>
-                  <span className="hidden font-mono text-xs tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
+                  <span className="font-mono text-base tabular-nums text-cream-800">{alt.available} in stock</span>
+                  <span className="hidden font-mono text-sm tabular-nums text-cream-500 sm:inline">{velocityLabel(alt.velocity)}</span>
                   <button
                     type="button"
                     disabled={substitute.isPending}
                     onClick={() => void handleSubstitute(alt)}
-                    className="inline-flex items-center rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-sm font-medium text-cream-900 transition-colors hover:bg-cream-100 disabled:opacity-50"
+                    className="inline-flex items-center rounded-[10px] border border-cream-300 bg-white px-3 py-1.5 text-base font-medium text-cream-900 transition-colors hover:bg-cream-100 disabled:opacity-50"
                   >
                     {isPending ? 'Substituting…' : 'Substitute'}
                   </button>
@@ -103,11 +103,11 @@ function ReadOnlyLineCard({ line, imageUrl, estimateId, entryId }: { line: Enqui
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-cream-900">{line.name}</p>
-            <p className="mt-0.5 truncate font-mono text-xs text-cream-500">
+            <p className="truncate text-base font-medium text-cream-900">{line.name}</p>
+            <p className="mt-0.5 truncate font-mono text-sm text-cream-500">
               {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
             </p>
-            {line.buyerNote ? <p className="mt-1 text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
+            {line.buyerNote ? <p className="mt-1 text-sm italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
           </div>
         </div>
 
@@ -117,18 +117,18 @@ function ReadOnlyLineCard({ line, imageUrl, estimateId, entryId }: { line: Enqui
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
           <div className="order-1">
             <p className={HEAD_CLASS}>Buyer target</p>
-            <p className="mt-0.5 font-mono text-sm text-cream-700">{targetLabel ?? 'None given'}</p>
+            <p className="mt-0.5 font-mono text-base text-cream-700">{targetLabel ?? 'None given'}</p>
           </div>
           <div className="order-2">
             <p className={HEAD_CLASS}>Resolved price</p>
-            <p className="mt-0.5 font-mono text-sm text-cream-700">{line.resolvedPrice != null ? money(line.resolvedPrice) : '—'}</p>
+            <p className="mt-0.5 font-mono text-base text-cream-700">{line.resolvedPrice != null ? money(line.resolvedPrice) : '—'}</p>
           </div>
           <div className="order-4 sm:order-3">
             <p className={HEAD_CLASS}>Your quote</p>
             {line.unitPrice != null && line.unitPrice > 0 ? (
-              <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-cream-900">{money(line.unitPrice)}</p>
+              <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-cream-900">{money(line.unitPrice)}</p>
             ) : (
-              <p className="mt-0.5 text-sm text-cream-500">Not quoted yet</p>
+              <p className="mt-0.5 text-base text-cream-500">Not quoted yet</p>
             )}
           </div>
           <div className="order-5 sm:order-4">
@@ -141,7 +141,7 @@ function ReadOnlyLineCard({ line, imageUrl, estimateId, entryId }: { line: Enqui
           </div>
           <div className="order-3 sm:order-6">
             <p className={HEAD_CLASS}>Buyer quantity</p>
-            <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-cream-900">{line.qty}</p>
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-cream-900">{line.qty}</p>
           </div>
         </div>
 
@@ -150,7 +150,7 @@ function ReadOnlyLineCard({ line, imageUrl, estimateId, entryId }: { line: Enqui
             type="button"
             onClick={() => setAltsOpen((v) => !v)}
             aria-expanded={altsOpen}
-            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-cream-800 hover:text-cream-950"
+            className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-cream-800 hover:text-cream-950"
           >
             {altLabel}
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', altsOpen && 'rotate-180')} aria-hidden />
@@ -178,7 +178,7 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
 
   if (isLoading) return <InboxEnquirySkeleton />;
   if (isError || !data) {
-    return <p className="text-sm text-cream-600">Couldn&apos;t load enquiry items.</p>;
+    return <p className="text-base text-cream-600">Couldn&apos;t load enquiry items.</p>;
   }
 
   const imageById = new Map((composer?.items ?? []).map((item) => [item.id, item.image_url ?? null]));
@@ -200,7 +200,7 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
 
       {hasTotals ? (
         <div className="rounded-[14px] border border-cream-300 bg-cream-50 px-4 py-4">
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-base">
             <div className="flex items-center justify-between">
               <span className="text-cream-700">Subtotal</span>
               <span className="font-mono text-cream-900">{money(Number(composer?.subtotal ?? 0))}</span>
@@ -220,7 +220,7 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
       {composer?.seller_note ? (
         <div className="rounded-[14px] border border-cream-200 px-4 py-3">
           <p className={HEAD_CLASS}>Your note to the buyer</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-cream-800">{composer.seller_note}</p>
+          <p className="mt-1 whitespace-pre-wrap text-base text-cream-800">{composer.seller_note}</p>
         </div>
       ) : null}
     </div>

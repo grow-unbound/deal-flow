@@ -58,16 +58,13 @@ function ageLabel(entry: InboxEntry): string | null {
   return dueDate ? `due ${dueDate}` : null;
 }
 
-/** "N invoices · ₹X due" — all-overdue drops the "due"/"overdue" split into one clear word. */
+/** Amount first: "₹X overdue · N invoices", "₹X due in 7 days · N invoices", or "₹X due · N invoices · Z overdue" when mixed. */
 export function buildDuesSummaryLine(total: number, invoiceCount: number, overdueCount: number): string {
   const totalLabel = formatNumberValue(total, 'CURRENCY_EXACT');
   const invoiceLabel = `${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
-  if (invoiceCount > 0 && overdueCount === invoiceCount) {
-    return `${invoiceLabel} · ${totalLabel} overdue`;
-  }
-  const parts = [invoiceLabel, `${totalLabel} due`];
-  if (overdueCount > 0) parts.push(`${overdueCount} overdue`);
-  return parts.join(' · ');
+  if (invoiceCount > 0 && overdueCount === invoiceCount) return `${totalLabel} overdue · ${invoiceLabel}`;
+  if (overdueCount === 0) return `${totalLabel} due in 7 days · ${invoiceLabel}`;
+  return `${totalLabel} due · ${invoiceLabel} · ${overdueCount} overdue`;
 }
 
 /** "₹X over your ₹Y limit" — names both numbers so it isn't read against the wrong total (Dues, outstanding). */
@@ -77,6 +74,27 @@ export function buildCreditLimitSupportingLine(entry: InboxEntry): string | null
   const overLabel = formatNumberValue(overLimit, 'CURRENCY_EXACT');
   const creditLimit = numericMeta(entry, 'credit_limit');
   return creditLimit != null ? `${overLabel} over your ${formatNumberValue(creditLimit, 'CURRENCY_EXACT')} limit` : `${overLabel} over limit`;
+}
+
+/**
+ * Detail-view over-limit line from live open invoices (the entry's own numbers are a snapshot
+ * from the last refresh). `changeNote` is set only when the live figure differs from that snapshot.
+ */
+export function buildLiveCreditLimitLine(
+  entry: InboxEntry,
+  liveOutstanding: number,
+): { line: string; changeNote: string | null } | null {
+  const creditLimit = numericMeta(entry, 'credit_limit');
+  if (creditLimit == null) return null;
+  const money = (value: number) => formatNumberValue(value, 'CURRENCY_EXACT');
+  const liveOver = liveOutstanding - creditLimit;
+  const line = liveOver > 0 ? `${money(liveOver)} over your ${money(creditLimit)} limit` : `Now within your ${money(creditLimit)} limit`;
+
+  const snapshotOutstanding = numericMeta(entry, 'outstanding_balance');
+  const snapshotOver = numericMeta(entry, 'over_limit_amount') ?? entry.amount;
+  const changed = snapshotOutstanding != null && Math.round(snapshotOutstanding) !== Math.round(liveOutstanding);
+  const changeNote = changed && snapshotOver != null ? `Was ${money(snapshotOver)} over when flagged` : null;
+  return { line, changeNote };
 }
 
 export function buildListSupportingLine(entries: InboxEntry[]): string {

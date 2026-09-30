@@ -26,11 +26,13 @@ interface InboxEntryFrameProps {
  */
 export function InboxEntryFrame({ header, children, footer, variant }: InboxEntryFrameProps) {
   if (variant === 'stacked') {
+    // Fills the viewport below the mobile top bar (--topbar-h) so the footer pins to the bottom
+    // edge (sticky) instead of floating under short content; long content scrolls the page.
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-[calc(100dvh-var(--topbar-h))] flex-col">
         {header ? <div className="shrink-0">{header}</div> : null}
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5">{children}</div>
-        <div className="shrink-0 border-t border-cream-200 bg-white/95 px-4 py-3 backdrop-blur">{footer}</div>
+        <div className="flex-1 space-y-5 px-4 py-5">{children}</div>
+        <div className="sticky bottom-0 z-10 border-t border-cream-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3">{footer}</div>
       </div>
     );
   }
