@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import type { BuyerMeData } from '@/hooks/useBuyerMe';
+import { pendingBuyerDestination } from '@/lib/buyer-pending-destination';
 
 interface StorefrontLoginContextValue {
   loginOpen: boolean;
@@ -33,7 +34,7 @@ export function StorefrontLoginProvider({ children }: { children: ReactNode }) {
   const openLogin = useCallback(() => {
     const cached = queryClient.getQueryData<BuyerMeData>(['buyer-me']);
     if (cached?.mode === 'pending') {
-      router.push('/pending');
+      router.push(pendingBuyerDestination(cached));
       return;
     }
     setLoginOpen(true);
