@@ -68,6 +68,17 @@ function retryable(reason: string): Response {
 // and return 200 before the wall is hit (avoiding orphaned "received" rows).
 const PERSIST_TIMEOUT_MS = 100_000;
 
+function webhookDebugEnabled(): boolean {
+  const value = Deno.env.get('WEBHOOK_LOG_LEVEL') ?? Deno.env.get('LOG_LEVEL') ?? '';
+  return value.toLowerCase() === 'debug';
+}
+
+function debugLog(message: string): void {
+  if (webhookDebugEnabled()) {
+    console.log(message);
+  }
+}
+
 // Postgres/PostgREST failures where nothing (or only idempotent upserts —
 // see the "All persisters are idempotent" note atop integrations-persist.ts)
 // happened before the error: safe to hand back to Zoho for retry, same
@@ -229,7 +240,7 @@ async function logWebhookError(
 
 Deno.serve(async (req: Request) => {
   const traceId = crypto.randomUUID().slice(0, 8);
-  console.log(`[${traceId}] webhook start | method=${req.method}`);
+  debugLog(`[${traceId}] webhook start | method=${req.method}`);
 
   let eventId: string | null = null;
   let catchCtx: {
@@ -243,21 +254,21 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (req.method !== 'POST') {
-      console.log(`[${traceId}] non-POST request, returning ok`);
+      debugLog(`[${traceId}] non-POST request, returning ok`);
       return ok('ok');
     }
 
     const url = new URL(req.url);
-    console.log(`[${traceId}] url=${url.pathname}${url.search}`);
+    debugLog(`[${traceId}] url=${url.pathname}${url.search}`);
 
     const endpointToken =
       extractTokenFromPath(url.pathname) ??
       url.searchParams.get('endpoint_token') ??
       req.headers.get('x-endpoint-token');
 
-    console.log(`[${traceId}] endpoint_token=${endpointToken ? 'present' : 'missing'}`);
+    debugLog(`[${traceId}] endpoint_token=${endpointToken ? 'present' : 'missing'}`);
     if (!endpointToken) {
-      console.log(`[${traceId}] FAIL: no_token`);
+      debugLog(`[${traceId}] FAIL: no_token`);
       return ok('no_token');
     }
 
@@ -266,14 +277,14 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
-    console.log(`[${traceId}] admin client created`);
+    debugLog(`[${traceId}] admin client created`);
 
-    console.log(`[${traceId}] loading webhook by token`);
+    debugLog(`[${traceId}] loading webhook by token`);
     const webhook = await loadWebhookByToken(admin, endpointToken);
-    console.log(`[${traceId}] webhook loaded | id=${webhook?.id ?? 'null'} | entity_type=${webhook?.entity_type} | is_active=${webhook?.is_active} | status=${webhook?.status}`);
+    debugLog(`[${traceId}] webhook loaded | id=${webhook?.id ?? 'null'} | entity_type=${webhook?.entity_type} | is_active=${webhook?.is_active} | status=${webhook?.status}`);
 
     if (!webhook || !webhook.is_active || webhook.status !== 'active') {
-      console.log(`[${traceId}] FAIL: inactive webhook`);
+      debugLog(`[${traceId}] FAIL: inactive webhook`);
       if (webhook) {
         await logWebhookError(admin, {
           tenantId: webhook.tenant_id,
@@ -290,9 +301,9 @@ Deno.serve(async (req: Request) => {
       return ok('inactive');
     }
 
-    console.log(`[${traceId}] validating webhook secret`);
+    debugLog(`[${traceId}] validating webhook secret`);
     if (!validateWebhookSecret(req, webhook.secret)) {
-      console.log(`[${traceId}] FAIL: auth_failed - secret mismatch`);
+      debugLog(`[${traceId}] FAIL: auth_failed - secret mismatch`);
       // This is exactly the failure mode that caused the WineYard contacts
       // outage (2026-08-31 to 2026-09-05): a stale/drifted secret silently
       // ate every inbound event with no trace anywhere. Always 200 Zoho
@@ -310,14 +321,14 @@ Deno.serve(async (req: Request) => {
       });
       return ok('auth_failed');
     }
-    console.log(`[${traceId}] secret validated ✓`);
+    debugLog(`[${traceId}] secret validated ✓`);
 
     const entityType: string = webhook.entity_type;
     const phase = PHASE_BY_ENTITY[entityType];
-    console.log(`[${traceId}] entity_type=${entityType} | phase=${phase}`);
+    debugLog(`[${traceId}] entity_type=${entityType} | phase=${phase}`);
 
     if (!phase) {
-      console.log(`[${traceId}] FAIL: unsupported_entity`);
+      debugLog(`[${traceId}] FAIL: unsupported_entity`);
       await logWebhookError(admin, {
         tenantId: webhook.tenant_id,
         tenantIntegrationId: webhook.tenant_integration_id,
@@ -335,11 +346,11 @@ Deno.serve(async (req: Request) => {
     const webhookConfig = (webhook.webhook_config ?? {}) as Record<string, unknown>;
     const integrationTypeId: string =
       (webhookConfig['integration_type_id'] as string) ?? 'zoho_books';
-    console.log(`[${traceId}] integration_type_id=${integrationTypeId}`);
+    debugLog(`[${traceId}] integration_type_id=${integrationTypeId}`);
 
-    console.log(`[${traceId}] parsing body...`);
+    debugLog(`[${traceId}] parsing body...`);
     const body = await parseWebhookBody(req);
-    console.log(`[${traceId}] body parsed | body_present=${!!body} | body_keys=${body ? Object.keys(body).slice(0, 5).join(',') : 'none'}`);
+    debugLog(`[${traceId}] body parsed | body_present=${!!body} | body_keys=${body ? Object.keys(body).slice(0, 5).join(',') : 'none'}`);
 
     // Derive operation from event_types stored on the DB row.
     // Delete rows store only *.deleted events; add_edit rows store *.created/*.updated.
@@ -349,7 +360,7 @@ Deno.serve(async (req: Request) => {
       : [];
     const isDeleteRow = rowEventTypes.length > 0 && rowEventTypes.every((e) => e.endsWith('.deleted'));
     const eventTypeParam = url.searchParams.get('event_type');
-    console.log(`[${traceId}] row_event_types=${rowEventTypes.join(',')} is_delete_row=${isDeleteRow} event_type_param=${eventTypeParam}`);
+    debugLog(`[${traceId}] row_event_types=${rowEventTypes.join(',')} is_delete_row=${isDeleteRow} event_type_param=${eventTypeParam}`);
 
     const operation: 'upsert' | 'delete' | null =
       isDeleteRow ? 'delete' :
@@ -358,10 +369,10 @@ Deno.serve(async (req: Request) => {
       eventTypeParam === 'upsert' ? 'upsert' :
       (body ? resolveWebhookOperation(body) : null);
 
-    console.log(`[${traceId}] operation=${operation}`);
+    debugLog(`[${traceId}] operation=${operation}`);
 
     if (!operation) {
-      console.log(`[${traceId}] FAIL: no operation — logging as skipped`);
+      debugLog(`[${traceId}] FAIL: no operation — logging as skipped`);
       // No operation determinable — create placeholder and mark skipped
       eventId = await createWebhookEventPlaceholder(admin, {
         tenantId: webhook.tenant_id,
@@ -382,10 +393,10 @@ Deno.serve(async (req: Request) => {
       return ok('skipped');
     }
 
-    console.log(`[${traceId}] extracting entity payload...`);
+    debugLog(`[${traceId}] extracting entity payload...`);
     const entityPayload = body ? extractEntityPayload(body, entityType) : null;
     const externalId = resolveExternalId(entityPayload, entityType);
-    console.log(`[${traceId}] entity_payload=${entityPayload ? 'present' : 'null'} | external_id=${externalId ?? 'null'}`);
+    debugLog(`[${traceId}] entity_payload=${entityPayload ? 'present' : 'null'} | external_id=${externalId ?? 'null'}`);
 
     // Create placeholder event record FIRST
     eventId = await createWebhookEventPlaceholder(admin, {
@@ -406,7 +417,7 @@ Deno.serve(async (req: Request) => {
         externalId,
       });
       if (isGuarded) {
-        console.log(`[${traceId}] ECHO GUARDED: skipping locally-created record`);
+        debugLog(`[${traceId}] ECHO GUARDED: skipping locally-created record`);
         if (eventId) {
           await updateWebhookEventResult(admin, {
             eventId,
@@ -420,17 +431,17 @@ Deno.serve(async (req: Request) => {
     }
 
     if (operation === 'delete') {
-      console.log(`[${traceId}] processing DELETE operation`);
+      debugLog(`[${traceId}] processing DELETE operation`);
       if (externalId) {
         const table = TABLE_BY_PHASE[phase];
-        console.log(`[${traceId}] soft-deleting from table=${table}`);
+        debugLog(`[${traceId}] soft-deleting from table=${table}`);
         if (table) {
           const result = await admin.schema('app').from(table)
             .update({ deleted_at: new Date().toISOString() })
             .eq('tenant_id', webhook.tenant_id)
             .eq('external_ref', externalId)
             .is('deleted_at', null);
-          console.log(`[${traceId}] soft-delete result | error=${result.error ? result.error.message : 'none'}`);
+          debugLog(`[${traceId}] soft-delete result | error=${result.error ? result.error.message : 'none'}`);
         }
       }
       await touchWebhookLastReceived(admin, webhook.id);
@@ -441,13 +452,13 @@ Deno.serve(async (req: Request) => {
           delta: { operation: 'soft_delete', external_id: externalId, table: TABLE_BY_PHASE[phase] },
         });
       }
-      console.log(`[${traceId}] SUCCESS: deleted | external_id=${externalId}`);
+      debugLog(`[${traceId}] SUCCESS: deleted | external_id=${externalId}`);
       return ok('deleted');
     }
 
     // Upsert path
     if (!entityPayload) {
-      console.log(`[${traceId}] FAIL: no entity payload for upsert`);
+      debugLog(`[${traceId}] FAIL: no entity payload for upsert`);
       if (eventId) {
         await updateWebhookEventResult(admin, {
           eventId,
@@ -475,7 +486,7 @@ Deno.serve(async (req: Request) => {
       const credentials = await loadIntegrationCredentials(admin, webhook.tenant_integration_id, integrationTypeId);
       const tokenCache = createDbTokenCache(admin, webhook.tenant_integration_id);
       adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
-      console.log(`[${traceId}] adapter created for FK-failsafe fetching`);
+      debugLog(`[${traceId}] adapter created for FK-failsafe fetching`);
     } catch (adapterErr) {
       console.warn(`[${traceId}] adapter creation failed, proceeding without FK-failsafe: ${String(adapterErr)}`);
     }
@@ -485,7 +496,7 @@ Deno.serve(async (req: Request) => {
     // FK-failsafe Zoho calls happen before the DB persist, so normal paths
     // complete well under this limit; only pathological cases (all Zoho calls
     // timing out at max retry budget) would approach it.
-    console.log(`[${traceId}] calling persistZohoEntityPage...`);
+    debugLog(`[${traceId}] calling persistZohoEntityPage...`);
     const persistResult = await Promise.race([
       persistZohoEntityPage(
         admin,
@@ -501,7 +512,7 @@ Deno.serve(async (req: Request) => {
         setTimeout(() => reject(new Error('persist_timeout: exceeded 100s budget')), PERSIST_TIMEOUT_MS)
       ),
     ]);
-    console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
+    debugLog(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
 
     await touchWebhookLastReceived(admin, webhook.id);
     if (eventId) {
@@ -518,7 +529,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    console.log(`[${traceId}] SUCCESS: processed | external_id=${externalId} | phase=${phase}`);
+    debugLog(`[${traceId}] SUCCESS: processed | external_id=${externalId} | phase=${phase}`);
     return ok('processed');
   } catch (err) {
     console.error(`[${traceId}] EXCEPTION: ${String(err)}`);
@@ -553,11 +564,11 @@ Deno.serve(async (req: Request) => {
       });
     }
     if (err instanceof LockTimeoutError) {
-      console.log(`[${traceId}] lock_timeout — returning 503 so Zoho retries`);
+      debugLog(`[${traceId}] lock_timeout — returning 503 so Zoho retries`);
       return retryable('lock_timeout');
     }
     if (isTransientPersistError(err)) {
-      console.log(`[${traceId}] transient_db_error — returning 503 so Zoho retries`);
+      debugLog(`[${traceId}] transient_db_error — returning 503 so Zoho retries`);
       return retryable('transient_db_error');
     }
     return ok('error');
