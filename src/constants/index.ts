@@ -38,6 +38,7 @@ export const FEATURE_FLAGS = {
   BUSY_INTEGRATION: 'df_busy_integration',
   WHATSAPP_INTEGRATION: 'df_whatsapp_integration',
   WHATSAPP_BROADCAST: 'df_whatsapp_broadcast',
+  WHATSAPP_INBOX: 'df_whatsapp_inbox',
   // Phase 2 (default off)
   AI_INTAKE: 'df_ai_intake',
   REPLENISHMENT: 'df_replenishment',

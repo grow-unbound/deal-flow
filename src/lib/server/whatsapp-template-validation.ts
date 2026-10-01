@@ -1,4 +1,4 @@
-import type { WhatsAppSendPayload } from '@/lib/server/whatsapp-enqueue';
+import type { WhatsAppTemplateSendPayload } from '@/lib/server/whatsapp-enqueue';
 
 export interface WhatsAppTemplateVariable {
   key: string;
@@ -177,7 +177,7 @@ export function getBroadcastTemplateEligibility(
 
 export function validateTemplatePayload(
   template: WhatsAppTemplateValidationShape,
-  payload: WhatsAppSendPayload,
+  payload: WhatsAppTemplateSendPayload,
 ): string[] {
   const errors: string[] = [];
   const expectedVariables = template.variables.length > 0
@@ -230,7 +230,7 @@ export function validateTemplatePayload(
 
 export function assertTemplatePayloadValid(
   template: WhatsAppTemplateValidationShape,
-  payload: WhatsAppSendPayload,
+  payload: WhatsAppTemplateSendPayload,
 ): void {
   const errors = validateTemplatePayload(template, payload);
   if (errors.length > 0) {

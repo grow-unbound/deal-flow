@@ -16,6 +16,7 @@ import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
 import { BuyerScrollChromeProvider, useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BuyerRealtimeProvider, useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { isNeedsMoreInfoBuyer, pendingBuyerDestination } from '@/lib/buyer-pending-destination';
 import { prefetchBuyerSiblings, useBuyerSiblings } from '@/hooks/useBuyerSiblings';
 import { readStoredBuyAsBuyerId } from '@/lib/buy-as-storage';
 import { supabaseBrowser } from '@/lib/supabase-browser';
@@ -170,10 +171,15 @@ export function BuyerShell({ children }: BuyerShellProps) {
   // Self-registered, not yet approved (Yukti_Inbox_Feature-Spec_v1.md §7.1) —
   // bounce out of the catalog shell to the intake form or the blocked screen,
   // same pattern as the WhatsApp consent gate above.
+  const pendingDestination = pendingBuyerDestination(me);
   useEffect(() => {
     if (me?.mode !== 'pending') return;
-    router.replace(me.pending?.intake_submitted ? '/pending' : '/onboarding');
-  }, [me?.mode, me?.pending?.intake_submitted, router]);
+    router.replace(pendingDestination);
+  }, [me?.mode, pendingDestination, router]);
+
+  // A needs_more_info buyer must never see the catalog, even for the frame before the redirect
+  // lands (public_link storefronts serve the catalog to pending sessions like guests).
+  if (isNeedsMoreInfoBuyer(me)) return null;
 
   return (
     <BuyerRealtimeProvider>

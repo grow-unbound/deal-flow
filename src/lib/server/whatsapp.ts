@@ -7,6 +7,7 @@ import {
   lookupApprovedTemplateMeta,
   triggerWhatsAppDispatch,
   type WhatsAppSendPayload,
+  type WhatsAppTemplateSendPayload,
 } from '@/lib/server/whatsapp-enqueue';
 import type { WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
 import { assertTemplatePayloadValid, type WhatsAppTemplateValidationShape } from '@/lib/server/whatsapp-template-validation';
@@ -155,7 +156,7 @@ function buildSendPayload(
   locale: string,
   bodyParams: WhatsappTemplateBodyParam[],
   buttonParam?: string,
-): WhatsAppSendPayload {
+): WhatsAppTemplateSendPayload {
   return {
     meta_template_name: templateName,
     locale,
@@ -167,7 +168,7 @@ function buildSendPayload(
   };
 }
 
-function validateTransactionalPayload(templateName: string, payload: WhatsAppSendPayload) {
+function validateTransactionalPayload(templateName: string, payload: WhatsAppTemplateSendPayload) {
   const shape = TRANSACTIONAL_TEMPLATE_SHAPES[templateName];
   if (!shape) return;
   assertTemplatePayloadValid(shape, payload);

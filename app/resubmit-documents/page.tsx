@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { DocumentUploadField } from '@/components/buyer/onboarding/DocumentUploa
 import { apiFetch } from '@/lib/api-fetch';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { markLoggedInOnDevice } from '@/lib/auth-device-login';
+import { MISSING_FIELD_LABELS } from '@/lib/inbox/missing-field-labels';
 
 /**
  * /resubmit-documents
@@ -52,7 +53,15 @@ import { markLoggedInOnDevice } from '@/lib/auth-device-login';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
-type Phase = 'phone' | 'otp' | 'loading_profile' | 'form' | 'not_applicable' | 'submitted';
+// Mirrors RESUBMISSION_OTP_FRESHNESS_MS in src/lib/server/buyer-access.ts (enforced server-side on submit).
+const OTP_FRESHNESS_MS = 15 * 60 * 1000;
+
+function requestedFieldLabel(key: string): string {
+  const label = MISSING_FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+type Phase = 'checking' | 'phone' | 'otp' | 'loading_profile' | 'form' | 'not_applicable' | 'submitted';
 
 interface ResubmissionProfile {
   full_name: string;
@@ -83,7 +92,7 @@ function isFlagged(missingFields: string[], key: string): boolean {
 
 export default function ResubmitDocumentsPage() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('phone');
+  const [phase, setPhase] = useState<Phase>('checking');
   const [phone, setPhone] = useState('');
   const [refId, setRefId] = useState('');
   const [sendError, setSendError] = useState('');
@@ -107,6 +116,32 @@ export default function ResubmitDocumentsPage() {
   const [gstCertDocId, setGstCertDocId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // Arriving straight from the login OTP (the WhatsApp "Login" link) already carries a fresh,
+  // server-stamped OTP claim — don't make the buyer verify twice. The server re-checks freshness
+  // on submit, so this only spares the redundant prompt; a stale/absent claim falls back to OTP.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const stampedAt = (sessionData.session?.user?.app_metadata as Record<string, unknown> | undefined)
+          ?.otp_verified_phone_at;
+        const stampedMs = typeof stampedAt === 'string' ? new Date(stampedAt).getTime() : Number.NaN;
+        if (!cancelled && !Number.isNaN(stampedMs) && Date.now() - stampedMs < OTP_FRESHNESS_MS) {
+          await loadResubmissionProfile();
+          return;
+        }
+      } catch {
+        // fall through to the OTP step
+      }
+      if (!cancelled) setPhase('phone');
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSendOtp(phoneNumber: string) {
     setSendError('');
@@ -306,12 +341,20 @@ export default function ResubmitDocumentsPage() {
           <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
         </div>
 
+        {(phase === 'checking' || phase === 'loading_profile') && (
+          <div className="space-y-3">
+            <div className="h-4 w-48 rounded bg-cream-200 animate-pulse" />
+            <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
+            <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
+          </div>
+        )}
+
         {phase === 'phone' && (
           <>
             <h1 className="text-h3 font-display text-cream-900 mb-1">Verify your number</h1>
             <p className="text-body-sm text-cream-600 mb-6">
-              For document resubmission, we need to confirm it&apos;s really you -- please verify your
-              WhatsApp number again, even if you&apos;re already logged in.
+              To update your details, we need to confirm it&apos;s really you -- please verify your
+              WhatsApp number.
             </p>
             <PhoneInput onSubmit={handleSendOtp} loading={sending} error={sendError} />
           </>
@@ -335,14 +378,6 @@ export default function ResubmitDocumentsPage() {
           </>
         )}
 
-        {phase === 'loading_profile' && (
-          <div className="space-y-3">
-            <div className="h-4 w-48 rounded bg-cream-200 animate-pulse" />
-            <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
-            <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
-          </div>
-        )}
-
         {phase === 'not_applicable' && (
           <div className="space-y-4">
             <h1 className="text-h3 font-display text-cream-900 mb-1">Nothing to resubmit</h1>
@@ -360,9 +395,20 @@ export default function ResubmitDocumentsPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <h1 className="text-h3 font-display text-cream-900 mb-1">A few things need fixing</h1>
             <p className="text-body-sm text-cream-600 mb-2">
-              The seller asked for updates to the highlighted field(s) below. Everything else is shown
-              for context and can&apos;t be changed here.
+              The seller needs a bit more information before approving your account. Your earlier
+              details are filled in below — update the field(s) marked &quot;needs update&quot; and resubmit.
             </p>
+
+            {data.missing_fields.length > 0 && (
+              <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 mb-2">
+                <p className="text-body-sm font-medium text-warning-700">Requested by the seller:</p>
+                <ul className="mt-1 list-disc pl-5 text-body-sm text-warning-700/90">
+                  {data.missing_fields.map((key) => (
+                    <li key={key}>{requestedFieldLabel(key)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <ReadOnlyOrEditableText
               id="full_name"

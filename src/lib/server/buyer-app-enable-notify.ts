@@ -5,6 +5,7 @@ import {
   lookupApprovedTemplateMeta,
   triggerWhatsAppDispatch,
   type WhatsAppSendPayload,
+  type WhatsAppTemplateSendPayload,
 } from '@/lib/server/whatsapp-enqueue';
 import { assertTemplatePayloadValid } from '@/lib/server/whatsapp-template-validation';
 import type { BuyerAppEnablePreviewResponse } from '@/types/buyer-app-enable';
@@ -124,7 +125,7 @@ function buildSendPayload(
   locale: string,
   buyerName: string,
   sellerName: string,
-): WhatsAppSendPayload {
+): WhatsAppTemplateSendPayload {
   return {
     meta_template_name: BUYER_APP_ENABLED_TEMPLATE,
     locale,

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // the sibling `storefrontHome` computation in phone-otp/verify/route.ts.
 
 let mockCustomFields: Record<string, unknown> | null = null;
+let mockOnboardingStatus: string | null = 'pending_approval';
 
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
@@ -19,7 +20,7 @@ vi.mock('@/lib/supabase', () => ({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
             maybeSingle: vi.fn(async () => ({
-              data: { custom_fields: mockCustomFields },
+              data: { custom_fields: mockCustomFields, onboarding_status: mockOnboardingStatus },
               error: null,
             })),
           })),
@@ -32,6 +33,7 @@ vi.mock('@/lib/supabase', () => ({
 describe('resolvePendingBuyerRedirect', () => {
   beforeEach(() => {
     mockCustomFields = null;
+    mockOnboardingStatus = 'pending_approval';
   });
 
   it('sends a fresh self-registration that has not submitted intake to /onboarding, regardless of host', async () => {
@@ -64,5 +66,22 @@ describe('resolvePendingBuyerRedirect', () => {
     mockCustomFields = { storefront_self_registered: true, intake_submitted_at: '2026-09-11T00:00:00Z' };
     const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
     await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/buy/home');
+  });
+
+  it('sends a buyer whose request was sent back for more info to /resubmit-documents, not the storefront/pending', async () => {
+    mockCustomFields = { storefront_self_registered: true, intake_submitted_at: '2026-09-11T00:00:00Z' };
+    mockOnboardingStatus = 'needs_more_info';
+    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
+    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/resubmit-documents');
+    await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/resubmit-documents');
+  });
+
+  it('resolveNeedsMoreInfoRedirect returns the resubmit path only for needs_more_info', async () => {
+    const { resolveNeedsMoreInfoRedirect } = await import('@/lib/server/buyer-access');
+    mockOnboardingStatus = 'needs_more_info';
+    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBe('/resubmit-documents');
+    mockOnboardingStatus = 'pending_approval';
+    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBeNull();
+    await expect(resolveNeedsMoreInfoRedirect(null)).resolves.toBeNull();
   });
 });

@@ -17,6 +17,11 @@
 
 let seq = 0;
 
+function syncDebugEnabled(): boolean {
+  const value = Deno.env.get('SYNC_LOG_LEVEL') ?? Deno.env.get('LOG_LEVEL') ?? '';
+  return value.toLowerCase() === 'debug';
+}
+
 /**
  * Logs one checkpoint. `elapsedMs` (if the caller tracked a start time) makes
  * it possible to spot "this step alone took 40s" without cross-referencing
@@ -28,6 +33,8 @@ export function logCheckpoint(
   step: string,
   extra?: Record<string, unknown>,
 ): void {
+  if (!syncDebugEnabled()) return;
+
   seq += 1;
   const parts: string[] = [
     `[sync-checkpoint #${seq}]`,

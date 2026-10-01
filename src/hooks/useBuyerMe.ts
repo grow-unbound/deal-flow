@@ -68,6 +68,8 @@ export interface BuyerMeData {
   /** mode:'pending' only — self-registered, awaiting seller approval. */
   pending?: {
     intake_submitted: boolean;
+    self_registered: boolean;
+    access_requested: boolean;
     is_returning_yukti_user: boolean;
     seller_whatsapp_number: string | null;
     prefill_full_name: string | null;

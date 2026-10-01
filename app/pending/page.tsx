@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Store } from 'lucide-react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { apiFetch } from '@/lib/api-fetch';
+import { needsIntakeForm } from '@/lib/buyer-pending-destination';
+import { Button } from '@/components/ui/button';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { DeclinedContactScreen } from '@/components/buyer/onboarding/DeclinedContactScreen';
@@ -20,11 +23,18 @@ import { STOREFRONT } from '@/lib/storefront-paths';
  */
 export default function BuyerPendingPage() {
   const router = useRouter();
-  const { data: me, isLoading } = useBuyerMe();
+  const { data: me, isLoading, refetch } = useBuyerMe();
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState('');
 
   const notPending = !isLoading && (!me || me.mode !== 'pending');
-  const needsIntake = !isLoading && me?.mode === 'pending' && !me.pending?.intake_submitted;
+  const needsIntake = !isLoading && needsIntakeForm(me);
+  const needsMoreInfo = !isLoading && me?.mode === 'pending' && me.pending?.onboarding_status === 'needs_more_info';
   useEffect(() => {
+    if (needsMoreInfo) {
+      router.replace('/resubmit-documents');
+      return;
+    }
     if (notPending) {
       router.replace(me ? STOREFRONT.home : '/login');
       return;
@@ -32,13 +42,39 @@ export default function BuyerPendingPage() {
     if (needsIntake) {
       router.replace('/onboarding');
     }
-  }, [notPending, needsIntake, me, router]);
-  if (notPending || needsIntake) return null;
+  }, [notPending, needsIntake, needsMoreInfo, me, router]);
+  if (notPending || needsIntake || needsMoreInfo) return null;
 
   const sellerName = me?.tenant?.name ?? 'the seller';
   const sellerWhatsappNumber = me?.pending?.seller_whatsapp_number ?? null;
   const isDeclined = me?.pending?.onboarding_status === 'declined';
   const publicBrowseAllowed = me?.buyer_catalog?.public_browse_allowed === true;
+
+  // An existing buyer (seller/ERP-created, app access disabled) has nothing to register — they
+  // ask the seller to switch access on. The request is a seller-inbox entry, not an intake form.
+  const canRequestAccess =
+    me?.pending?.self_registered === false &&
+    !me.pending.access_requested &&
+    !me.pending.intake_submitted &&
+    me.pending.onboarding_status !== 'needs_more_info';
+
+  async function handleRequestAccess() {
+    setRequesting(true);
+    setRequestError('');
+    try {
+      const res = await apiFetch('/api/buyer/access/request', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setRequestError(typeof data?.error === 'string' ? data.error : 'Could not send your request. Please try again.');
+        return;
+      }
+      await refetch();
+    } catch {
+      setRequestError('Could not send your request. Please try again.');
+    } finally {
+      setRequesting(false);
+    }
+  }
 
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
@@ -63,15 +99,34 @@ export default function BuyerPendingPage() {
           <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
         </div>
 
-        <h1 className="text-h3 font-display text-cream-900 mb-1">Request sent</h1>
-        <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2 mb-6 mt-4">
-          <p className="text-body-sm text-warning-700 font-medium">
-            {sellerName} needs to approve your access before you can view pricing or place orders.
-          </p>
-          <p className="text-body-sm text-warning-700/90">
-            They typically approve within 24 hours. We'll let you in as soon as that happens.
-          </p>
-        </div>
+        <h1 className="text-h3 font-display text-cream-900 mb-1">
+          {canRequestAccess ? 'Access needed' : 'Request sent'}
+        </h1>
+        {canRequestAccess ? (
+          <div className="mb-6 mt-4 space-y-4">
+            <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2">
+              <p className="text-body-sm text-warning-700 font-medium">
+                Your account with {sellerName} doesn't have app access yet.
+              </p>
+              <p className="text-body-sm text-warning-700/90">
+                Request access and {sellerName} will be notified to switch it on.
+              </p>
+            </div>
+            {requestError ? <p className="text-body-sm text-danger-500">{requestError}</p> : null}
+            <Button className="w-full" onClick={() => void handleRequestAccess()} disabled={requesting}>
+              {requesting ? 'Sending request…' : 'Request access'}
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2 mb-6 mt-4">
+            <p className="text-body-sm text-warning-700 font-medium">
+              {sellerName} needs to approve your access before you can view pricing or place orders.
+            </p>
+            <p className="text-body-sm text-warning-700/90">
+              They typically approve within 24 hours. We'll let you in as soon as that happens.
+            </p>
+          </div>
+        )}
 
         {publicBrowseAllowed ? (
           <Link

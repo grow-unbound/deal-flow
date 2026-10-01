@@ -10,7 +10,76 @@ export const ENTRY_TYPE_LABEL: Record<InboxEntryType, string> = {
   invoice_due: 'Invoice due',
   invoice_overdue: 'Invoice overdue',
   credit_limit_breach: 'Over credit limit',
+  whatsapp_buyer_message: 'WhatsApp message',
 };
+
+/** Approval entry raised by an existing buyer (app access disabled) tapping "Request access". */
+export const EXISTING_BUYER_ACCESS_LABEL = 'Existing customer · app access';
+
+export function isExistingBuyerAccessEntry(entry: Pick<InboxEntry, 'metadata'>): boolean {
+  return entry.metadata?.request_kind === 'existing_buyer_access';
+}
+
+/** Type label, specialised for existing-buyer access requests (the SQL summary stays generic). */
+export function entryTypeLabel(entry: Pick<InboxEntry, 'entry_type' | 'metadata'>): string {
+  if (isExistingBuyerAccessEntry(entry)) return EXISTING_BUYER_ACCESS_LABEL;
+  return ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type;
+}
+
+export interface ExistingBuyerPeriodPair<T> {
+  current: T;
+  previous: T;
+}
+
+export interface ExistingBuyerContext {
+  sales: ExistingBuyerPeriodPair<{ invoice_value: number; invoice_count: number }>;
+  demand: { kind: 'orders' | 'estimates' | 'none' } & ExistingBuyerPeriodPair<{ value: number; count: number }>;
+  dues: {
+    receivable_amount: number;
+    receivable_invoice_count: number;
+    overdue_amount: number;
+    overdue_invoice_count: number;
+    credit_limit: number;
+    credit_available: number | null;
+  };
+  computed_at: string | null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function num(value: unknown): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Sales / demand / dues snapshot app.request_buyer_app_access stored on the entry, or null. */
+export function readExistingBuyerContext(entry: Pick<InboxEntry, 'metadata'>): ExistingBuyerContext | null {
+  if (!isExistingBuyerAccessEntry(entry)) return null;
+  const ctx = asRecord(entry.metadata?.buyer_context);
+  if (Object.keys(ctx).length === 0) return null;
+  const sales = asRecord(ctx.sales);
+  const demand = asRecord(ctx.demand);
+  const dues = asRecord(ctx.dues);
+  const sale = (v: unknown) => ({ invoice_value: num(asRecord(v).invoice_value), invoice_count: num(asRecord(v).invoice_count) });
+  const dem = (v: unknown) => ({ value: num(asRecord(v).value), count: num(asRecord(v).count) });
+  const kind = demand.kind === 'orders' || demand.kind === 'estimates' ? demand.kind : 'none';
+  const creditAvailable = dues.credit_available;
+  return {
+    sales: { current: sale(sales.current), previous: sale(sales.previous) },
+    demand: { kind, current: dem(demand.current), previous: dem(demand.previous) },
+    dues: {
+      receivable_amount: num(dues.receivable_amount),
+      receivable_invoice_count: num(dues.receivable_invoice_count),
+      overdue_amount: num(dues.overdue_amount),
+      overdue_invoice_count: num(dues.overdue_invoice_count),
+      credit_limit: num(dues.credit_limit),
+      credit_available: creditAvailable == null ? null : num(creditAvailable),
+    },
+    computed_at: typeof ctx.computed_at === 'string' ? ctx.computed_at : null,
+  };
+}
 
 export function buildEntryAmountLabel(entry: InboxEntry): string | null {
   if (entry.amount == null) return null;
@@ -22,7 +91,7 @@ export function buildEntryAmountLabel(entry: InboxEntry): string | null {
 
 /** Type label + aging + count-formatted amount — never a currency symbol. */
 export function buildEntrySubtitleParts(entry: InboxEntry): string[] {
-  const parts: string[] = [ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type];
+  const parts: string[] = [entryTypeLabel(entry)];
   const amountLabel = buildEntryAmountLabel(entry);
   if (amountLabel) parts.push(amountLabel);
   return parts;
@@ -111,11 +180,15 @@ export function buildListSupportingLine(entries: InboxEntry[]): string {
   }
   if (primary.entry_type === 'business_approval') return 'New account';
   if (primary.entry_type === 'new_user_login') return 'New visitor';
+  if (primary.entry_type === 'whatsapp_buyer_message') {
+    const text = typeof primary.metadata.last_inbound_text === 'string' ? primary.metadata.last_inbound_text.trim() : '';
+    return text || 'Buyer message';
+  }
   if (primary.entry_type === 'invoice_due' || primary.entry_type === 'invoice_overdue') {
     return [buildEntryAmountLabel(primary), ageLabel(primary)].filter(Boolean).join(' · ');
   }
   const amount = buildEntryAmountLabel(primary);
-  return [amount, ENTRY_TYPE_LABEL[primary.entry_type] ?? primary.entry_type].filter(Boolean).join(' · ');
+  return [amount, entryTypeLabel(primary)].filter(Boolean).join(' · ');
 }
 
 export function buildDocumentDateLabel(entry: InboxEntry): string | null {

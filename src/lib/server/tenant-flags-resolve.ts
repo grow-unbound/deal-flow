@@ -10,6 +10,7 @@ const DEFAULT_CREATE_FLAGS: TenantCreateFlags = {
   create_sales_orders: true,
   create_invoices: true,
 };
+const DEFAULT_OFF_FLAGS = new Set<string>([FEATURE_FLAGS.WHATSAPP_INBOX]);
 
 let posthogClient: PostHog | null = null;
 
@@ -33,13 +34,13 @@ async function fetchAllPostHogFlags(tenantId: string): Promise<Record<string, bo
   // PostHog unavailable = not blocking; DB toggles in tenant_settings are the authority.
   // Only an explicit PostHog `false` acts as a global kill-switch.
   if (!client) {
-    return Object.fromEntries(flagNames.map((name) => [name, true]));
+    return Object.fromEntries(flagNames.map((name) => [name, !DEFAULT_OFF_FLAGS.has(name)]));
   }
   try {
     const flags = await client.evaluateFlags(tenantId);
     return Object.fromEntries(flagNames.map((name) => [name, flags.isEnabled(name) === true]));
   } catch {
-    return Object.fromEntries(flagNames.map((name) => [name, true]));
+    return Object.fromEntries(flagNames.map((name) => [name, !DEFAULT_OFF_FLAGS.has(name)]));
   }
 }
 

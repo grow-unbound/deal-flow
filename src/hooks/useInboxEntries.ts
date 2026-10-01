@@ -102,6 +102,24 @@ export function useApplyGenericEntryAction() {
   });
 }
 
+export function useSendWhatsAppInboxReply() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ entryId, body }: { entryId: string; body: string }) => {
+      const res = await apiPost(`/api/tenant/entries/${entryId}/whatsapp-reply`, { body });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? 'Failed to send WhatsApp reply');
+      }
+      return (await res.json()) as { data: { message_id: string; enqueued: boolean } };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['inbox-entry-history'] });
+    },
+  });
+}
+
 export interface EntryDocument {
   id: string;
   doc_type: 'shop_image' | 'gst_certificate';

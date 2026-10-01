@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
@@ -44,7 +46,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load count' }, { status: 500 });
     }
 
-    return NextResponse.json({ count: (data ?? []).length }, { headers: SELLER_CACHE_PERSONAL });
+    const whatsappInboxEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_INBOX, claims.tenant_id);
+    const rows = ((data ?? []) as Array<{ entry_type?: string }>)
+      .filter((row) => whatsappInboxEnabled || row.entry_type !== 'whatsapp_buyer_message');
+    return NextResponse.json({ count: rows.length }, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/entries/count]', error);
     return NextResponse.json({ error: 'Failed to load count' }, { status: 500 });

@@ -48,6 +48,12 @@ export interface WhatsAppSendResult {
   raw: unknown;
 }
 
+export interface WhatsAppSendTextRequest {
+  to: string;
+  body: string;
+  previewUrl?: boolean;
+}
+
 export class WhatsAppConfigError extends Error {
   constructor(message = 'WhatsApp Cloud API credentials are not configured') {
     super(message);
@@ -142,6 +148,50 @@ export class WhatsAppClient {
     const bodyText = await response.text();
     if (!response.ok) {
       throw new Error(`WhatsApp send failed [${request.templateName}] (${response.status}): ${bodyText}`);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      parsed = null;
+    }
+
+    const providerMessageId =
+      (parsed as { messages?: { id?: string }[] } | null)?.messages?.[0]?.id ?? null;
+
+    return { providerMessageId, raw: parsed };
+  }
+
+  /** Sends a customer-service-window text message via the Cloud API. */
+  async sendText(request: WhatsAppSendTextRequest): Promise<WhatsAppSendResult> {
+    if (!this.token || !this.phoneNumberId) {
+      throw new WhatsAppConfigError();
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${this.phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: request.to,
+          type: 'text',
+          text: {
+            preview_url: request.previewUrl === true,
+            body: request.body,
+          },
+        }),
+      },
+    );
+
+    const bodyText = await response.text();
+    if (!response.ok) {
+      throw new Error(`WhatsApp text send failed (${response.status}): ${bodyText}`);
     }
 
     let parsed: unknown;

@@ -7,6 +7,7 @@ const mintSellerSessionMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
 const resolvePendingBuyerRedirectMock = vi.fn().mockResolvedValue('/pending');
+const resolveNeedsMoreInfoRedirectMock = vi.fn().mockResolvedValue(null);
 
 vi.mock('@/lib/server/buyer-access', () => ({
   mintBuyerSession: (...args: unknown[]) => mintBuyerSessionMock(...args),
@@ -14,6 +15,7 @@ vi.mock('@/lib/server/buyer-access', () => ({
   toBuyerLoginCandidate: (c: unknown) => c,
   mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
   resolvePendingBuyerRedirect: (...args: unknown[]) => resolvePendingBuyerRedirectMock(...args),
+  resolveNeedsMoreInfoRedirect: (...args: unknown[]) => resolveNeedsMoreInfoRedirectMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-app-activity', () => ({
@@ -267,6 +269,31 @@ describe('phone-otp select-context route', () => {
     expect(body.handoff_url).toContain('/auth/storefront-handoff?token_hash=request-token');
     expect(body.handoff_url).toContain('next=%2Fonboarding');
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the resubmission form instead of onboarding when the buyer request needs more info', async () => {
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'resubmit-token', buyerId: 'buyer-1' });
+    resolveNeedsMoreInfoRedirectMock.mockResolvedValueOnce('/resubmit-documents');
+
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId,
+        kind: 'buyer',
+        tenant_id: 'tenant-1',
+        buyer_id: 'buyer-1',
+        role: 'buyer_admin',
+        request_access: true,
+      }),
+    }), {
+      nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context'),
+    });
+
+    const body = await (await POST(request as any)).json();
+    expect(body.handoff_url).toContain('next=%2Fresubmit-documents');
   });
 
   it('mints a seller session unaffected by the handoff branch (seller kind never handed off)', async () => {

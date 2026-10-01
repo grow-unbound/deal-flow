@@ -926,6 +926,26 @@ export async function acquireBuyerForStorefront(
   };
 }
 
+export const RESUBMIT_DOCUMENTS_PATH = '/resubmit-documents';
+const NEEDS_MORE_INFO_PATH_STATUS = 'needs_more_info';
+
+/**
+ * `/resubmit-documents` when the buyer's request was sent back for more info, else null. For
+ * callers (workspace picker) whose default pending destination is not resolvePendingBuyerRedirect.
+ */
+export async function resolveNeedsMoreInfoRedirect(buyerId: string | null): Promise<string | null> {
+  if (!buyerId || !supabaseAdmin) return null;
+  const { data } = await supabaseAdmin
+    .schema('app')
+    .from('buyers')
+    .select('onboarding_status')
+    .eq('id', buyerId)
+    .maybeSingle();
+  return (data as { onboarding_status?: string | null } | null)?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS
+    ? RESUBMIT_DOCUMENTS_PATH
+    : null;
+}
+
 /**
  * Where to send a `buyer_pending` session next: /onboarding if this is a
  * fresh self-registration that hasn't submitted the intake form yet;
@@ -934,9 +954,10 @@ export async function acquireBuyerForStorefront(
  * (or the resubmission flow) — /pending is no longer a forced landing page
  * for a session that has already completed intake and hasn't tried to reach
  * a gated feature. A known buyer a seller disabled outright (never
- * self-registered, never submitted intake) still lands on /pending, since
- * there is no onboarding flow for them to complete or storefront browsing
- * context to show a pill in.
+ * self-registered, never submitted intake) still lands on /pending, where
+ * they can request access (app.request_buyer_app_access) — there is no
+ * onboarding form for them to complete. The client mirrors this split via
+ * pending.self_registered (see buyer-pending-destination.ts).
  *
  * `isTenantHost` mirrors the sibling `storefrontHome` computation at each
  * call site (`request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home'`
@@ -952,11 +973,16 @@ export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost:
   const { data } = await supabaseAdmin
     .schema('app')
     .from('buyers')
-    .select('custom_fields')
+    .select('custom_fields, onboarding_status')
     .eq('id', buyerId)
     .maybeSingle();
 
-  const customFields = (data as { custom_fields?: Record<string, unknown> | null } | null)?.custom_fields;
+  const row = data as { custom_fields?: Record<string, unknown> | null; onboarding_status?: string | null } | null;
+  // Seller asked for more info: the buyer must land on the prefilled resubmission form, not the
+  // storefront pill or the "request sent" screen, or they have no way to answer the request.
+  if (row?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS) return RESUBMIT_DOCUMENTS_PATH;
+
+  const customFields = row?.custom_fields;
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
   const storefrontHome = isTenantHost ? '/' : '/buy/home';
