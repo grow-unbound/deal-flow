@@ -46,7 +46,7 @@ describe('BuyerShell pending gate', () => {
   });
 
   it('keeps sending a fresh pending buyer to /onboarding', async () => {
-    useBuyerMeMock.mockReturnValue(pendingMe({ onboarding_status: 'pending_approval', intake_submitted: false }));
+    useBuyerMeMock.mockReturnValue(pendingMe({ onboarding_status: 'pending_approval', intake_submitted: false, self_registered: true }));
     const { BuyerShell } = await import('@/components/layout/BuyerShell');
     render(<BuyerShell><div>catalog-content</div></BuyerShell>);
     expect(replaceMock).toHaveBeenCalledWith('/onboarding');

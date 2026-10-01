@@ -954,9 +954,10 @@ export async function resolveNeedsMoreInfoRedirect(buyerId: string | null): Prom
  * (or the resubmission flow) — /pending is no longer a forced landing page
  * for a session that has already completed intake and hasn't tried to reach
  * a gated feature. A known buyer a seller disabled outright (never
- * self-registered, never submitted intake) still lands on /pending, since
- * there is no onboarding flow for them to complete or storefront browsing
- * context to show a pill in.
+ * self-registered, never submitted intake) still lands on /pending, where
+ * they can request access (app.request_buyer_app_access) — there is no
+ * onboarding form for them to complete. The client mirrors this split via
+ * pending.self_registered (see buyer-pending-destination.ts).
  *
  * `isTenantHost` mirrors the sibling `storefrontHome` computation at each
  * call site (`request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home'`

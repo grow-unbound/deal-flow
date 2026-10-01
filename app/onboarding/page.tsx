@@ -160,7 +160,12 @@ export default function BuyerOnboardingPage() {
   // Not pending (approved, or not a self-registration at all) or intake
   // already submitted — nothing to do here, follow the buyer to where it
   // actually belongs.
-  const shouldSkip = !isLoading && !(isError && !me) && (!me || me.mode !== 'pending' || me.pending?.intake_submitted);
+  // A non-self-registered buyer (seller/ERP-created, app access disabled) has no intake to file —
+  // they request access from /pending.
+  const shouldSkip =
+    !isLoading &&
+    !(isError && !me) &&
+    (!me || me.mode !== 'pending' || me.pending?.intake_submitted || me.pending?.self_registered === false);
   useEffect(() => {
     if (!shouldSkip) return;
     if (!me || me.mode !== 'pending') {

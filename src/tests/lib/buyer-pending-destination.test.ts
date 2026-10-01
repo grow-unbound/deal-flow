@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNeedsMoreInfoBuyer, pendingBuyerDestination } from '@/lib/buyer-pending-destination';
+import { isNeedsMoreInfoBuyer, needsIntakeForm, pendingBuyerDestination } from '@/lib/buyer-pending-destination';
 
 const pending = (p: Record<string, unknown>) => ({ mode: 'pending', pending: p }) as never;
 
@@ -17,7 +17,13 @@ describe('pendingBuyerDestination', () => {
   });
 
   it('sends a fresh self-registration to /onboarding', () => {
-    expect(pendingBuyerDestination(pending({ onboarding_status: 'pending_approval', intake_submitted: false }))).toBe('/onboarding');
+    expect(pendingBuyerDestination(pending({ onboarding_status: 'pending_approval', intake_submitted: false, self_registered: true }))).toBe('/onboarding');
+  });
+
+  it('sends an existing buyer with app access disabled to /pending, never /onboarding', () => {
+    const me = pending({ onboarding_status: 'approved', intake_submitted: false, self_registered: false });
+    expect(needsIntakeForm(me)).toBe(false);
+    expect(pendingBuyerDestination(me)).toBe('/pending');
   });
 
   it('does not treat approved buyers or guests as needs_more_info', () => {
