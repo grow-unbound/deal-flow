@@ -37,6 +37,7 @@ import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location'
 import { computeBuyerCartTotals } from '@/lib/gst';
 import { postHogCorrelationHeaders, useBuyerAnalyticsProperties } from '@/lib/buyer-analytics';
 import type { BuyerCatalogItem } from '@/types/buyer';
+import { pendingBuyerDestination } from '@/lib/buyer-pending-destination';
 
 function hasInvalidTargetRange(cartItems: BuyerCartItem[]): boolean {
   return cartItems.some((item) => (
@@ -135,15 +136,16 @@ export default function CartPage() {
   // awaiting approval / needs_more_info / declined) reaching checkout — via a
   // stale cart from before a seller disabled them, a direct URL, or any path
   // not already covered by the openLogin() gate on add-to-cart — should be
-  // redirected to /pending rather than allowed to attempt order placement
+  // redirected to their pending destination rather than allowed to attempt order placement
   // (which the backend would otherwise reject, or silently mishandle).
   // Approved buyers and guests (whose carts stay empty by construction, per
   // ProductCard/BuyerProductDetailClient's openLogin gate) are unaffected.
+  const pendingDestination = pendingBuyerDestination(meData);
   useEffect(() => {
     if (meData?.mode === 'pending') {
-      router.replace('/pending');
+      router.replace(pendingDestination);
     }
-  }, [meData?.mode, router]);
+  }, [meData?.mode, pendingDestination, router]);
 
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
