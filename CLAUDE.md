@@ -9,7 +9,7 @@ Next.js App Router · React · Tailwind · shadcn/ui · Zod (client+server) · S
 
 ## Hard rules (always apply)
 **Prod safety**
-- dev = `yukti-dev` (`hcpzbnmumbykdqveyjhr`). prod = `yukti-prod` (`cckmurgapnkytbzxqesp`). Never run SQL, migrations, seeds, function/config/auth/storage changes, `--linked` commands or `db push` against prod without explicit user authorization naming the exact action. Earlier approval never carries over.
+- dev = `yukti-dev` (`hcpzbnmumbykdqveyjhr`). prod = `yukti-prod` (`cckmurgapnkytbzxqesp`). Prod **reads** (SELECT, `pg_get_functiondef`, cron/migration-history lookups, logs, advisors — any prod MCP/CLI call): ask once per session, naming the project and what you'll look at; a yes covers read-only queries for that session, not writes. Prod **writes** (SQL, migrations, seeds, function/config/auth/storage changes, `--linked` commands, `db push`): explicit authorization naming the exact action, every time. Earlier write approval never carries over.
 - The main checkout may be linked to prod. Before every `--linked` command read the linked ref and require it equals the dev ref; stop on mismatch.
 - No Docker/local Supabase (`supabase start`, `db reset --local`, `test db --local`). Never `db reset --linked` or `migration repair` without an explicit documented recovery authorization.
 - Persistent `db push --linked` (dev only) needs user approval, after `migration list --linked` and `db push --linked --dry-run`.
