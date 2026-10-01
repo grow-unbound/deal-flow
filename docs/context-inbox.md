@@ -27,5 +27,11 @@ Item format:
 - why: mismatched over-limit numbers traced to a job that failed every night with no alerting; wasted several queries to find.
 - cost: ~3 lines in MEMORY index + one memory file; on-demand
 
+### 2026-10-01 feat/existing-buyer-access-request — migration history drift: prod lacks inbox fixes; develop has 4 red tests
+- [ ] target: MEMORY.md (project)   change: add
+- text: `Migration history drift (checked 2026-10-01): 20260928042731 (sync_entry_from_buyer NULL-guard) and 20260928072642 are unrecorded on dev AND prod; dev's function already has the guard (applied out-of-band), prod does not -> nightly cron inbox-entries-daily-refresh created ~12.3k bogus approval entries on tenant d601c35c (09-27..09-30). db push to dev needs --include-all. Also develop has 4 pre-existing red test files (buyer-access.test.ts, buyer-idle-refetch, catalog-discovery-landing-streaming, sales-orders-landing-page): compare against a stash before blaming a diff.`
+- why: cost two queries + a stash run to establish; prod entries are user-visible noise until the migration is applied (needs explicit prod authorization).
+- cost: ~3 lines MEMORY index + one memory file; on-demand
+
 ## Applied log
 ## Rejected log

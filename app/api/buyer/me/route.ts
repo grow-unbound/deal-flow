@@ -77,6 +77,10 @@ interface BuyerMeResponse {
   /** mode:'pending' only — self-registered, awaiting seller approval. */
   pending?: {
     intake_submitted: boolean;
+    /** True for a buyer who signed up via the storefront; false for a seller/ERP-created buyer whose app access is disabled. */
+    self_registered: boolean;
+    /** True once an existing (non-self-registered) buyer has tapped "Request access". */
+    access_requested: boolean;
     is_returning_yukti_user: boolean;
     seller_whatsapp_number: string | null;
     prefill_full_name: string | null;
@@ -408,6 +412,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         whatsapp_consent_required: false,
         pending: {
           intake_submitted: Boolean(customFields.intake_submitted_at),
+          self_registered: isSelfRegistered,
+          access_requested: Boolean(customFields.access_requested_at),
           is_returning_yukti_user: customFields.existing_yukti_identity === true,
           seller_whatsapp_number: sellerWhatsappNumber,
           prefill_full_name: prefillFullName,

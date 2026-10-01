@@ -6,7 +6,7 @@ import { InboxActionBar } from './InboxActionBar';
 import { InboxApprovalActionBar } from './InboxApprovalActionBar';
 import { InboxEntryDetailContent, isApprovalEntry } from './InboxEntryDetailContent';
 import { InboxEntryFrame } from './InboxEntryFrame';
-import { ENTRY_TYPE_LABEL, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
+import { entryTypeLabel, buildEntryAmountLabel } from '@/lib/inbox/inbox-entry-copy';
 import { buildCreditLimitSupportingLine, buildLiveCreditLimitLine } from '@/lib/inbox/inbox-entry-copy';
 import type { EntryHistoryEvent } from '@/hooks/useInboxEntries';
 import type { LocalEntryEvent } from '@/lib/inbox/inbox-local-actions';
@@ -43,7 +43,7 @@ export function InboxEntrySummary({ entry, size = 'card', live = false }: { entr
       ? (enquiryTotal != null && enquiryTotal > 0 ? formatNumberValue(enquiryTotal, 'CURRENCY_EXACT') : null)
       : buildEntryAmountLabel(entry);
   const estimateNumber = typeof entry.metadata.estimate_number === 'string' ? entry.metadata.estimate_number : null;
-  const title = ENTRY_TYPE_LABEL[entry.entry_type] ?? entry.entry_type;
+  const title = entryTypeLabel(entry);
   const itemCount = isEnquiry ? enquiry.data?.lines.length : undefined;
 
   return (
