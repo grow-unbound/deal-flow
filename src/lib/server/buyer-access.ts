@@ -947,27 +947,17 @@ export async function resolveNeedsMoreInfoRedirect(buyerId: string | null): Prom
 }
 
 /**
- * Where to send a `buyer_pending` session next: /onboarding if this is a
- * fresh self-registration that hasn't submitted the intake form yet;
- * otherwise the storefront home (/), where the OnboardingStatusPill (Task 10)
- * surfaces the buyer's onboarding_status and lets them tap into /pending
- * (or the resubmission flow) — /pending is no longer a forced landing page
- * for a session that has already completed intake and hasn't tried to reach
- * a gated feature. A known buyer a seller disabled outright (never
- * self-registered, never submitted intake) still lands on /pending, where
- * they can request access (app.request_buyer_app_access) — there is no
- * onboarding form for them to complete. The client mirrors this split via
- * pending.self_registered (see buyer-pending-destination.ts).
+ * Where to send a `buyer_pending` session right after OTP: the resubmission form when the seller
+ * asked for more info, /onboarding for a fresh self-registration that hasn't filed its intake form,
+ * and /pending for everyone else (intake filed and awaiting approval, declined, or an existing
+ * seller/ERP-created buyer whose app access is off and who can request access there).
  *
- * `isTenantHost` mirrors the sibling `storefrontHome` computation at each
- * call site (`request.headers.get('x-verified-tenant-id') ? '/' : '/buy/home'`
- * in phone-otp/verify/route.ts) — a bare '/' is only a valid storefront
- * landing on a tenant's own subdomain; on the shared catalog host (reached
- * via select-context) it must be '/buy/home' instead. Task 10 review,
- * Important #1.
- * Yukti_Inbox_Feature-Spec_v1.md §7.1; Task 10 brief.
+ * Never the storefront home: the storefront shell sends every pending session on to /pending
+ * client-side, so landing on `/` only flashed the (gated, empty) catalog first. Mirrors
+ * pendingBuyerDestination (src/lib/buyer-pending-destination.ts) on the client.
+ * Yukti_Inbox_Feature-Spec_v1.md §7.1.
  */
-export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost: boolean): Promise<string> {
+export async function resolvePendingBuyerRedirect(buyerId: string): Promise<string> {
   if (!supabaseAdmin) return '/pending';
 
   const { data } = await supabaseAdmin
@@ -978,17 +968,15 @@ export async function resolvePendingBuyerRedirect(buyerId: string, isTenantHost:
     .maybeSingle();
 
   const row = data as { custom_fields?: Record<string, unknown> | null; onboarding_status?: string | null } | null;
-  // Seller asked for more info: the buyer must land on the prefilled resubmission form, not the
-  // storefront pill or the "request sent" screen, or they have no way to answer the request.
+  // Seller asked for more info: the buyer must land on the prefilled resubmission form, or they
+  // have no way to answer the request.
   if (row?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS) return RESUBMIT_DOCUMENTS_PATH;
 
   const customFields = row?.custom_fields;
   const selfRegistered = customFields?.storefront_self_registered === true;
   const intakeSubmitted = Boolean(customFields?.intake_submitted_at);
-  const storefrontHome = isTenantHost ? '/' : '/buy/home';
 
   if (selfRegistered && !intakeSubmitted) return '/onboarding';
-  if (intakeSubmitted) return storefrontHome;
   return '/pending';
 }
 

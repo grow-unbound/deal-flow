@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
-import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink, resolveNeedsMoreInfoRedirect } from '@/lib/server/buyer-access';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate, mintBuyerHandoffLink, resolvePendingBuyerRedirect } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 import { requirePhoneConsentRedirect } from '@/lib/server/phone-consent';
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const onboardingPath = await resolveNeedsMoreInfoRedirect(buyerCandidate.buyer_id) ?? '/onboarding';
+      const onboardingPath = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
       if (onCatalogHost || currentTenantId !== buyerCandidate.tenant_id) {
         const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
         const destinationHost = tenantStorefrontHostForRequest(

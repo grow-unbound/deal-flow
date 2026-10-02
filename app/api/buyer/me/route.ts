@@ -1,3 +1,4 @@
+import { hasOpenExistingBuyerAccessRequest } from '@/lib/server/buyer-access-accounts';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -79,7 +80,7 @@ interface BuyerMeResponse {
     intake_submitted: boolean;
     /** True for a buyer who signed up via the storefront; false for a seller/ERP-created buyer whose app access is disabled. */
     self_registered: boolean;
-    /** True once an existing (non-self-registered) buyer has tapped "Request access". */
+    /** True while an existing (non-self-registered) buyer's access request is still open (unresolved inbox entry). */
     access_requested: boolean;
     is_returning_yukti_user: boolean;
     seller_whatsapp_number: string | null;
@@ -381,6 +382,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // legitimately 'approved' (or null) and must not be relabeled as still
       // verifying. See resolvePendingSessionOnboardingStatus's doc.
       const isSelfRegistered = customFields.storefront_self_registered === true;
+
+      // "Request sent" must mean an access request is still OPEN for this buyer. custom_fields.
+      // access_requested_at is never cleared, so a buyer approved once and disabled again would
+      // otherwise see "Request sent" forever with no way to ask again (the RPC reopens a resolved
+      // entry, but only if the UI offers the button). Same open-entry rule as
+      // app.request_buyer_app_access's already_requested check.
+      const accessRequestOpen = isSelfRegistered
+        ? false
+        : await hasOpenExistingBuyerAccessRequest(db, context.tenant_id!, buyer.id);
+
       onboardingStatus = resolvePendingSessionOnboardingStatus(onboardingStatus, isSelfRegistered);
 
       const payload: BuyerMeResponse = {
@@ -413,7 +424,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         pending: {
           intake_submitted: Boolean(customFields.intake_submitted_at),
           self_registered: isSelfRegistered,
-          access_requested: Boolean(customFields.access_requested_at),
+          access_requested: accessRequestOpen,
           is_returning_yukti_user: customFields.existing_yukti_identity === true,
           seller_whatsapp_number: sellerWhatsappNumber,
           prefill_full_name: prefillFullName,

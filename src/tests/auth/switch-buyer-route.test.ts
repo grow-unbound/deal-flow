@@ -217,4 +217,61 @@ describe('POST /api/auth/switch-buyer', () => {
     expect(response.status).toBe(403);
     expect(getUserByIdMock).not.toHaveBeenCalled();
   });
+
+  describe('buyer_pending sessions (not-yet-approved buyer opening another account of the same phone)', () => {
+    const pendingClaims = {
+      sub: 'attacker-user-id',
+      tenant_id: TENANT_ID,
+      role: 'buyer_pending',
+      buyer_id: ATTACKER_BUYER_ID,
+      location_ids: null,
+    };
+
+    it('allows a pending session to open an enabled sibling when the phone is OTP-verified', async () => {
+      getVerifiedClaimsMock.mockResolvedValue(pendingClaims);
+      getUserByIdMock.mockResolvedValue({
+        data: { user: { app_metadata: { otp_verified_phone: '9990009902' } } },
+        error: null,
+      });
+      const enabledSibling = { ...attackerCandidate, buyer_id: ATTACKER_SECOND_BUYER_ID, buyer_app_enabled: true };
+      findBuyerLoginCandidatesMock.mockResolvedValue([{ ...attackerCandidate, buyer_app_enabled: false }, enabledSibling]);
+      mintBuyerSessionMock.mockResolvedValue({ session: { access_token: 'a', refresh_token: 'r' } });
+
+      const { POST } = await import('../../../app/api/auth/switch-buyer/route');
+      const response = await POST(buildRequest({ buyer_id: ATTACKER_SECOND_BUYER_ID }));
+
+      expect(response.status).toBe(200);
+      expect(mintBuyerSessionMock).toHaveBeenCalledWith(enabledSibling);
+    });
+
+    it('refuses a pending session whose phone proof is only the auth identity (no OTP-verified phone)', async () => {
+      getVerifiedClaimsMock.mockResolvedValue(pendingClaims);
+      getUserByIdMock.mockResolvedValue({
+        data: { user: { phone: '9990009902', app_metadata: {} } },
+        error: null,
+      });
+      findBuyerLoginCandidatesMock.mockResolvedValue([attackerCandidate]);
+
+      const { POST } = await import('../../../app/api/auth/switch-buyer/route');
+      const response = await POST(buildRequest({ buyer_id: ATTACKER_BUYER_ID }));
+
+      expect(response.status).toBe(403);
+      expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    });
+
+    it("still refuses a pending session switching to a buyer outside the caller's own phone/tenant", async () => {
+      getVerifiedClaimsMock.mockResolvedValue(pendingClaims);
+      getUserByIdMock.mockResolvedValue({
+        data: { user: { app_metadata: { otp_verified_phone: '9990009902' } } },
+        error: null,
+      });
+      findBuyerLoginCandidatesMock.mockResolvedValue([attackerCandidate]);
+
+      const { POST } = await import('../../../app/api/auth/switch-buyer/route');
+      const response = await POST(buildRequest({ buyer_id: VICTIM_BUYER_ID }));
+
+      expect(response.status).toBe(403);
+      expect(mintBuyerSessionMock).not.toHaveBeenCalled();
+    });
+  });
 });

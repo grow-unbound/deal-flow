@@ -10,14 +10,15 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/lib/api-fetch', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
 vi.mock('@/hooks/useBuyerMe', () => ({ useBuyerMe: () => useBuyerMeMock() }));
-vi.mock('@/lib/supabase-browser', () => ({ supabaseBrowser: { auth: { signOut: vi.fn() } } }));
+const setSessionMock = vi.fn();
+vi.mock('@/lib/supabase-browser', () => ({ supabaseBrowser: { auth: { signOut: vi.fn(), setSession: (...args: unknown[]) => setSessionMock(...args) } } }));
 vi.mock('@/components/brand/YuktiLogo', () => ({ YuktiLogo: () => null }));
 
 function pendingMe(overrides: Record<string, unknown> = {}, dataOverrides: Record<string, unknown> = {}) {
   return {
     data: {
       mode: 'pending',
-      tenant: { name: 'VBS Group' },
+      tenant: { id: 'tenant-1', name: 'VBS Group' },
       buyer_catalog: {
         id: 'catalog-1',
         pricing_mode: 'base_selling_rate',
@@ -45,6 +46,7 @@ describe('BuyerPendingPage', () => {
     replaceMock.mockReset();
     useBuyerMeMock.mockReset();
     apiFetchMock.mockReset();
+    setSessionMock.mockReset();
   });
 
   it('offers a link to browse the public catalog while approval is pending', async () => {
@@ -98,6 +100,8 @@ describe('BuyerPendingPage', () => {
     render(<BuyerPendingPage />);
 
     expect(replaceMock).not.toHaveBeenCalledWith('/onboarding');
+    // The button waits for the account lookup so it never offers the wrong account.
+    await waitFor(() => expect((screen.getByRole('button', { name: /request access/i }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: /request access/i }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/access/request', { method: 'POST' }));
     await waitFor(() => expect(me.refetch).toHaveBeenCalled());
@@ -109,6 +113,7 @@ describe('BuyerPendingPage', () => {
     const { default: BuyerPendingPage } = await import('../../app/pending/page');
     render(<BuyerPendingPage />);
 
+    await waitFor(() => expect((screen.getByRole('button', { name: /request access/i }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: /request access/i }));
     expect(await screen.findByText(/failed to send your request/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /request access/i })).toBeTruthy();
@@ -121,5 +126,131 @@ describe('BuyerPendingPage', () => {
 
     expect(screen.getByText(/request sent/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /request access/i })).toBeNull();
+  });
+
+  describe('account picker', () => {
+    const acct = (buyer_id: string, business_name: string, state: string, contact_name: string | null = null) => ({
+      buyer_id, business_name, contact_name, state,
+    });
+    const existingBuyer = { intake_submitted: false, self_registered: false, onboarding_status: 'approved' };
+
+    /** GET accounts -> `accounts`; every other call resolves per `others`. */
+    function mockApi(accounts: unknown[], others: (url: string, init?: Record<string, unknown>) => unknown = () => ({ ok: true, json: async () => ({ success: true }) })) {
+      apiFetchMock.mockImplementation(async (url: string, init?: Record<string, unknown>) => {
+        if (url === '/api/buyer/access/accounts') return { ok: true, json: async () => ({ accounts }) };
+        return others(url, init);
+      });
+    }
+
+    it('shows every account with its status and a "multiple accounts" notice when the phone matches several', async () => {
+      useBuyerMeMock.mockReturnValue(pendingMe(existingBuyer));
+      mockApi([
+        acct('a1', 'Shop Active', 'active'),
+        acct('b1', 'Shop Off', 'can_request', 'Ravi'),
+        acct('c1', 'Shop Sent', 'requested'),
+      ]);
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      expect(await screen.findByText(/we found multiple accounts for this number/i)).toBeTruthy();
+      expect(screen.getByText('Shop Active')).toBeTruthy();
+      expect(screen.getByText('Active')).toBeTruthy();
+      expect(screen.getByText('Access off')).toBeTruthy();
+      expect(screen.getByText('Ravi')).toBeTruthy();
+      expect(screen.getByText('Request sent')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy();
+    });
+
+    it('asks for the account the buyer chose, only after they choose one', async () => {
+      useBuyerMeMock.mockReturnValue(pendingMe(existingBuyer));
+      mockApi([acct('b1', 'Shop One', 'can_request'), acct('b2', 'Shop Two', 'can_request')]);
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      await screen.findByText(/we found multiple accounts for this number/i);
+      const requestButton = screen.getByRole('button', { name: /^request access$/i }) as HTMLButtonElement;
+      expect(requestButton.disabled).toBe(true);
+
+      fireEvent.click(screen.getByRole('radio', { name: /shop two/i }));
+      expect(requestButton.disabled).toBe(false);
+      fireEvent.click(requestButton);
+
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/buyer/access/request',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ buyer_id: 'b2' }) }),
+      ));
+    });
+
+    it('preselects the only switched-off account so one tap requests it', async () => {
+      useBuyerMeMock.mockReturnValue(pendingMe(existingBuyer));
+      mockApi([acct('a1', 'Shop Active', 'active'), acct('b1', 'Shop Off', 'can_request')]);
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      await screen.findByText(/we found multiple accounts for this number/i);
+      const requestButton = screen.getByRole('button', { name: /^request access$/i }) as HTMLButtonElement;
+      expect(requestButton.disabled).toBe(false);
+    });
+
+    it('opens an enabled account instead of forcing a request', async () => {
+      const assign = vi.fn();
+      Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+      useBuyerMeMock.mockReturnValue(pendingMe(existingBuyer));
+      mockApi(
+        [acct('a1', 'Shop Active', 'active'), acct('b1', 'Shop Off', 'can_request')],
+        (url) => (url === '/api/auth/switch-buyer'
+          ? { ok: true, json: async () => ({ session: { access_token: 'a', refresh_token: 'r' } }) }
+          : { ok: true, json: async () => ({}) }),
+      );
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/'));
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/auth/switch-buyer', expect.objectContaining({ body: JSON.stringify({ buyer_id: 'a1' }) }));
+      expect(setSessionMock).toHaveBeenCalledWith({ access_token: 'a', refresh_token: 'r' });
+    });
+
+    it.each([
+      ['needs_more_info', 'Resubmit documents', '/resubmit-documents'],
+      ['needs_intake', 'Complete details', '/onboarding'],
+    ])('takes a %s sibling to the right form via "%s"', async (state, label, path) => {
+      const assign = vi.fn();
+      Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+      useBuyerMeMock.mockReturnValue(pendingMe(existingBuyer));
+      mockApi(
+        [acct('b1', 'Shop Off', 'can_request'), acct('s1', 'Shop Sibling', state)],
+        (url) => (url === '/api/auth/switch-buyer'
+          ? { ok: true, json: async () => ({ session: { access_token: 'a', refresh_token: 'r' } }) }
+          : { ok: true, json: async () => ({}) }),
+      );
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith(path));
+    });
+
+    it('shows the plain "Request sent" view when every account has already asked', async () => {
+      useBuyerMeMock.mockReturnValue(pendingMe({ ...existingBuyer, access_requested: true }));
+      mockApi([acct('c1', 'Shop Sent', 'requested')]);
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/api/buyer/access/accounts'));
+      expect(screen.getByText(/request sent/i)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /^request access$/i })).toBeNull();
+    });
+
+    it('offers the button again for an account approved before and switched off again', async () => {
+      useBuyerMeMock.mockReturnValue(pendingMe({ ...existingBuyer, access_requested: false }));
+      mockApi([acct('c1', 'Shop Again', 'can_request')]);
+      const { default: BuyerPendingPage } = await import('../../app/pending/page');
+      render(<BuyerPendingPage />);
+
+      expect(await screen.findByRole('button', { name: /^request access$/i })).toBeTruthy();
+      expect(screen.getByText('Shop Again')).toBeTruthy();
+    });
   });
 });

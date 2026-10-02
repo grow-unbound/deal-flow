@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { loadAccessAccounts } from '@/lib/server/buyer-access-accounts';
 import { queueAccessRequestReceivedMessages } from '@/lib/server/buyer-approval-notify';
 import { supabaseAdmin } from '@/lib/supabase';
+import { z } from 'zod';
+
+const BodySchema = z.object({ buyer_id: z.string().uuid().optional() });
 
 /**
  * POST /api/buyer/access/request
@@ -12,6 +16,10 @@ import { supabaseAdmin } from '@/lib/supabase';
  * this route then notifies the seller admin and the buyer via the same WhatsApp templates the
  * self-registration flow uses. Idempotent: a second tap while the first request is still open
  * returns already_requested and sends nothing.
+ *
+ * Body (optional): { buyer_id } — when the caller's phone has several accounts at this tenant they
+ * choose which one to ask for. It must be one of the caller's own accounts (OTP-verified phone, see
+ * loadAccessAccounts) that is currently requestable; the default is the session's own buyer.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -29,9 +37,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
+    let requested: unknown = {};
+    try {
+      requested = await request.json();
+    } catch {
+      requested = {};
+    }
+    const parsedBody = BodySchema.safeParse(requested ?? {});
+    if (!parsedBody.success) {
+      return NextResponse.json({ error: 'Invalid account selection' }, { status: 400 });
+    }
+
+    // Default: the session's own buyer. A different buyer_id is only honoured when it is one of
+    // this caller's accounts at this tenant and still in a requestable state.
+    let targetBuyerId = profile.buyer.id;
+    if (parsedBody.data.buyer_id && parsedBody.data.buyer_id !== profile.buyer.id) {
+      const { accounts } = await loadAccessAccounts(profile.context);
+      const target = accounts.find((account) => account.buyer_id === parsedBody.data.buyer_id);
+      if (!target || target.state !== 'can_request') {
+        return NextResponse.json({ error: 'That account is not available to request access for.' }, { status: 403 });
+      }
+      targetBuyerId = target.buyer_id;
+    }
+
     const { data, error } = await (supabaseAdmin as any)
       .schema('app')
-      .rpc('request_buyer_app_access', { p_buyer_id: profile.buyer.id });
+      .rpc('request_buyer_app_access', { p_buyer_id: targetBuyerId });
 
     if (error) {
       const message = String((error as { message?: string }).message ?? '');
@@ -52,7 +83,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Non-critical: a WhatsApp outage must not fail an already-recorded request.
     try {
-      await queueAccessRequestReceivedMessages(supabaseAdmin, profile.context.tenant_id, profile.buyer.id);
+      await queueAccessRequestReceivedMessages(supabaseAdmin, profile.context.tenant_id, targetBuyerId);
     } catch (notifyError) {
       console.error('[POST /api/buyer/access/request] access-request-received notify failed', notifyError);
     }
