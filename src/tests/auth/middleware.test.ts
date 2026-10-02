@@ -587,6 +587,24 @@ describe('middleware auth redirects', () => {
     expect(response.headers.get('location')).toBeNull();
   });
 
+  it.each(['/pending', '/onboarding', '/resubmit-documents'])(
+    'keeps a pending buyer on %s instead of bouncing them to the storefront home',
+    async (path) => {
+      resolveStorefrontMock.mockResolvedValue({
+        tenantId: 'tenant-wy', slug: 'wineyard', catalogId: 'cat-1', liveAt: '2026-09-01T00:00:00Z',
+        accessMode: 'public_link', pricingMode: 'base_selling_rate', priceListId: null,
+      });
+      getClaimsMock.mockResolvedValue({
+        data: { claims: { sub: 'b1', tenant_id: 'tenant-wy', user_role: 'buyer_pending', buyer_id: 'buyer-1' } },
+        error: null,
+      });
+      const { middleware } = await import('../../../middleware');
+      const response = await middleware(tenantRequest(path));
+      expect(response.headers.get('location')).toBeNull();
+      expect(response.status).toBe(200);
+    },
+  );
+
   it('redirects anonymous unpublished tenant pages to catalog login, not tenant-local login', async () => {
     resolveStorefrontMock.mockResolvedValue({
       tenantId: 'tenant-x',

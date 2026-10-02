@@ -772,6 +772,7 @@ async function finalizeAuthenticated(
     || pathname.startsWith('/consent')
     || pathname.startsWith('/onboarding')
     || pathname.startsWith('/pending')
+    || pathname.startsWith('/resubmit-documents')
     || pathname.startsWith('/api')
     || pathname.startsWith('/auth')
     || isPublicRoute(pathname);
