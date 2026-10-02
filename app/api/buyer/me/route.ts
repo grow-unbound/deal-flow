@@ -388,9 +388,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // otherwise see "Request sent" forever with no way to ask again (the RPC reopens a resolved
       // entry, but only if the UI offers the button). Same open-entry rule as
       // app.request_buyer_app_access's already_requested check.
-      const accessRequestOpen = isSelfRegistered
-        ? false
-        : await hasOpenExistingBuyerAccessRequest(db, context.tenant_id!, buyer.id);
+      let accessRequestOpen = false;
+      if (!isSelfRegistered) {
+        try {
+          accessRequestOpen = await hasOpenExistingBuyerAccessRequest(db, context.tenant_id!, buyer.id);
+        } catch (lookupError) {
+          // Non-critical for the rest of the pending payload; the account list is the source of truth.
+          console.error('[GET /api/buyer/me] open access-request lookup failed:', lookupError);
+        }
+      }
 
       onboardingStatus = resolvePendingSessionOnboardingStatus(onboardingStatus, isSelfRegistered);
 

@@ -57,8 +57,8 @@ async function listBuyersWithOpenAccessRequest(
     .is('deleted_at', null)
     .limit(buyerIds.length * 2);
   if (error) {
-    console.error('[buyer-access-accounts] open access-request lookup failed', error);
-    return new Set();
+    // Do not fall back to "nothing open": that would show a requested account as requestable.
+    throw new Error(`open access-request lookup failed: ${error.message ?? String(error)}`);
   }
   return new Set(((data ?? []) as Array<{ source_entity_id: string }>).map((row) => row.source_entity_id));
 }

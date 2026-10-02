@@ -10,7 +10,7 @@ let buyerRows: Array<Record<string, unknown>> = [];
 let openEntryRows: Array<{ source_entity_id: string }> = [];
 const buyerFilters: Record<string, unknown> = {};
 
-function chain(result: () => unknown, capture?: Record<string, unknown>) {
+function chain(result: () => unknown, capture?: Record<string, unknown>, error: unknown = null) {
   const builder: Record<string, unknown> = {};
   for (const method of ['select', 'eq', 'neq', 'is', 'in', 'limit']) {
     builder[method] = (...args: unknown[]) => {
@@ -18,7 +18,7 @@ function chain(result: () => unknown, capture?: Record<string, unknown>) {
       return builder;
     };
   }
-  builder.then = (resolve: (value: unknown) => unknown) => resolve({ data: result(), error: null });
+  builder.then = (resolve: (value: unknown) => unknown) => resolve({ data: error ? null : result(), error });
   return builder;
 }
 
@@ -110,6 +110,14 @@ describe('loadAccessAccounts', () => {
   it('returns nothing for a session with no tenant or user', async () => {
     const { loadAccessAccounts } = await import('@/lib/server/buyer-access-accounts');
     await expect(loadAccessAccounts({ sub: null, tenant_id: null, buyer_id: null })).resolves.toEqual({ accounts: [], source: 'session_only' });
+  });
+});
+
+describe('lookup failures', () => {
+  it('throw instead of reporting "nothing open", so a requested account is never shown as requestable', async () => {
+    const { hasOpenExistingBuyerAccessRequest } = await import('@/lib/server/buyer-access-accounts');
+    const failing = { schema: () => ({ from: () => chain(() => null, undefined, { message: 'db down' }) }) };
+    await expect(hasOpenExistingBuyerAccessRequest(failing, TENANT, 'b1')).rejects.toThrow(/lookup failed/);
   });
 });
 

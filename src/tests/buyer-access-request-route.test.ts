@@ -131,6 +131,16 @@ describe('POST /api/buyer/access/request', () => {
       expect(rpcMock).not.toHaveBeenCalled();
     });
 
+    it('refuses to choose another account when the phone is not OTP-verified', async () => {
+      requireBuyerAccessProfileMock.mockResolvedValue(profile());
+      loadAccessAccountsMock.mockResolvedValue({ ...accountsWith('can_request'), source: 'authenticated_identity' });
+
+      const response = await post({ buyer_id: SIBLING });
+
+      expect(response.status).toBe(403);
+      expect(rpcMock).not.toHaveBeenCalled();
+    });
+
     it('400s a malformed buyer_id', async () => {
       requireBuyerAccessProfileMock.mockResolvedValue(profile());
       expect((await post({ buyer_id: 'not-a-uuid' })).status).toBe(400);

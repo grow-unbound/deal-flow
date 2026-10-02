@@ -52,7 +52,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // this caller's accounts at this tenant and still in a requestable state.
     let targetBuyerId = profile.buyer.id;
     if (parsedBody.data.buyer_id && parsedBody.data.buyer_id !== profile.buyer.id) {
-      const { accounts } = await loadAccessAccounts(profile.context);
+      // Choosing another account needs the same proof as switching to it (see /api/auth/switch-buyer):
+      // a phone verified by a real OTP, not the weaker auth-identity fallback.
+      const { accounts, source } = await loadAccessAccounts(profile.context);
+      if (source !== 'otp_verified') {
+        return NextResponse.json({ error: 'Please log in again to choose another account.' }, { status: 403 });
+      }
       const target = accounts.find((account) => account.buyer_id === parsedBody.data.buyer_id);
       if (!target || target.state !== 'can_request') {
         return NextResponse.json({ error: 'That account is not available to request access for.' }, { status: 403 });
