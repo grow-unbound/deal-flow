@@ -7,9 +7,8 @@
 -- Fix: move the snapshot into app.existing_buyer_context_snapshot(buyer) and, per section, fall back to
 -- a bounded live query for that ONE buyer when its summary row(s) are missing:
 --   * sales/demand: either quarter row missing -> live over [previous quarter start, next quarter start),
---     filtered by tenant_id + buyer_id (prod also has (tenant_id, buyer_id, metric_day_ist(...)) indexes on
---     invoices/estimates/orders, but they are not tracked in repo migrations; the reads are single-buyer
---     either way);
+--     filtered by tenant_id + buyer_id and served by the (tenant_id, buyer_id, metric_day_ist(...)) indexes
+--     on invoices/estimates/orders (tracked in 20261002020812_track_buyer_metric_day_indexes.sql);
 --   * dues: now-summary row missing -> live over invoices with outstanding_balance > 0
 --     (invoices_now_buyer_receivable_idx), same status helpers as the summary builder.
 -- The snapshot records which source each section used (`sources`) so the UI can say "live figures".

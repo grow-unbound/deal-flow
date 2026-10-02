@@ -38,6 +38,13 @@ interface ExistingBuyerAccountPickerProps {
   busyBuyerId: string | null;
   onSelect: (buyerId: string) => void;
   onAction: (account: AccessAccount, action: Exclude<AccountAction, 'select' | null>) => void;
+  /**
+   * 'select' (default): a switched-off row is highlighted and the caller's own button asks for it.
+   * 'inline': the row carries its own "Request access" button (compact lists on screens without a
+   * main request button, e.g. the declined and resubmission screens) — pass `onRequest`.
+   */
+  requestMode?: 'select' | 'inline';
+  onRequest?: (account: AccessAccount) => void;
 }
 
 /**
@@ -51,12 +58,15 @@ export function ExistingBuyerAccountPicker({
   busyBuyerId,
   onSelect,
   onAction,
+  requestMode = 'select',
+  onRequest,
 }: ExistingBuyerAccountPickerProps): React.ReactNode {
   return (
     <ul className="space-y-2" role="list" aria-label="Your accounts">
       {accounts.map((account) => {
         const copy = STATE_COPY[account.state];
-        const isSelectable = copy.action === 'select';
+        const isSelectable = copy.action === 'select' && requestMode === 'select';
+        const isInlineRequest = copy.action === 'select' && requestMode === 'inline';
         const isSelected = isSelectable && selectedBuyerId === account.buyer_id;
         const isBusy = busyBuyerId === account.buyer_id;
         const rowClass = cn(
@@ -96,6 +106,16 @@ export function ExistingBuyerAccountPicker({
                 {identity}
                 <span className="flex flex-col items-end gap-1.5">
                   {badge}
+                  {isInlineRequest ? (
+                    <button
+                      type="button"
+                      disabled={Boolean(busyBuyerId)}
+                      onClick={() => onRequest?.(account)}
+                      className="rounded-md bg-ember-400 px-3 py-1.5 text-caption font-semibold text-cream-50 transition-colors hover:bg-ember-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isBusy ? 'Sending…' : 'Request access'}
+                    </button>
+                  ) : null}
                   {copy.action && copy.action !== 'select' ? (
                     <button
                       type="button"

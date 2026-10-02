@@ -253,4 +253,22 @@ describe('BuyerPendingPage', () => {
       expect(screen.getByText('Shop Again')).toBeTruthy();
     });
   });
+
+  it('lets a buyer on a declined account open another account of the same phone', async () => {
+    useBuyerMeMock.mockReturnValue(pendingMe({ onboarding_status: 'declined', self_registered: false }, { buyer_id: 'own-1' }));
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url === '/api/buyer/access/accounts'
+        ? { ok: true, json: async () => ({ current_buyer_id: 'own-1', accounts: [
+            { buyer_id: 'own-1', business_name: 'Declined Shop', contact_name: null, state: 'declined' },
+            { buyer_id: 'a1', business_name: 'Other Active Shop', contact_name: null, state: 'active' },
+          ] }) }
+        : { ok: true, json: async () => ({}) });
+    const { default: BuyerPendingPage } = await import('../../app/pending/page');
+    render(<BuyerPendingPage />);
+
+    expect(screen.getByText(/access declined/i)).toBeTruthy();
+    expect(await screen.findByText('Other accounts for this number')).toBeTruthy();
+    expect(screen.getByText('Other Active Shop')).toBeTruthy();
+    expect(screen.queryByText('Declined Shop')).toBeNull();
+  });
 });

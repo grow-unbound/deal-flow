@@ -7,7 +7,6 @@ const mintSellerSessionMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
 const resolvePendingBuyerRedirectMock = vi.fn().mockResolvedValue('/pending');
-const resolveNeedsMoreInfoRedirectMock = vi.fn().mockResolvedValue(null);
 
 vi.mock('@/lib/server/buyer-access', () => ({
   mintBuyerSession: (...args: unknown[]) => mintBuyerSessionMock(...args),
@@ -15,7 +14,6 @@ vi.mock('@/lib/server/buyer-access', () => ({
   toBuyerLoginCandidate: (c: unknown) => c,
   mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
   resolvePendingBuyerRedirect: (...args: unknown[]) => resolvePendingBuyerRedirectMock(...args),
-  resolveNeedsMoreInfoRedirect: (...args: unknown[]) => resolveNeedsMoreInfoRedirectMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-app-activity', () => ({

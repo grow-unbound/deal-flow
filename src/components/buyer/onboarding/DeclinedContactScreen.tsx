@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
@@ -10,6 +11,8 @@ interface DeclinedContactScreenProps {
   sellerWhatsappNumber: string | null;
   publicBrowseAllowed: boolean;
   onLogout: () => void;
+  /** Optional "other accounts for this number" panel, shown under the contact actions. */
+  otherAccounts?: ReactNode;
 }
 
 /**
@@ -19,7 +22,7 @@ interface DeclinedContactScreenProps {
  * "in progress" framing, and deliberately no appeal CTA (locked decisions:
  * no in-app appeal flow for a decline).
  */
-export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, publicBrowseAllowed, onLogout }: DeclinedContactScreenProps) {
+export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, publicBrowseAllowed, onLogout, otherAccounts }: DeclinedContactScreenProps) {
   return (
     <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white border border-cream-300 rounded-xl shadow-md p-8">
@@ -66,6 +69,8 @@ export function DeclinedContactScreen({ sellerName, sellerWhatsappNumber, public
             Message {sellerName} on WhatsApp
           </button>
         )}
+
+        {otherAccounts}
 
         <button
           type="button"

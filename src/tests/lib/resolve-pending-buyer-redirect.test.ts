@@ -50,13 +50,4 @@ describe('resolvePendingBuyerRedirect', () => {
     const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
     await expect(resolvePendingBuyerRedirect('buyer-1')).resolves.toBe(expected);
   });
-
-  it('resolveNeedsMoreInfoRedirect returns the resubmit path only for needs_more_info', async () => {
-    const { resolveNeedsMoreInfoRedirect } = await import('@/lib/server/buyer-access');
-    mockOnboardingStatus = 'needs_more_info';
-    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBe('/resubmit-documents');
-    mockOnboardingStatus = 'pending_approval';
-    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBeNull();
-    await expect(resolveNeedsMoreInfoRedirect(null)).resolves.toBeNull();
-  });
 });

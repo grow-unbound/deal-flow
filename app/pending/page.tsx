@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Store } from 'lucide-react';
@@ -12,9 +12,9 @@ import { Button } from '@/components/ui/button';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { DeclinedContactScreen } from '@/components/buyer/onboarding/DeclinedContactScreen';
-import { ExistingBuyerAccountPicker, type AccountAction } from '@/components/buyer/onboarding/ExistingBuyerAccountPicker';
-import { writeStoredBuyAsBuyerId } from '@/lib/buy-as-storage';
-import type { AccessAccount } from '@/lib/server/buyer-access-accounts';
+import { ExistingBuyerAccountPicker } from '@/components/buyer/onboarding/ExistingBuyerAccountPicker';
+import { OtherAccountsPanel } from '@/components/buyer/onboarding/OtherAccountsPanel';
+import { useAccessAccounts, useAccountSwitch } from '@/hooks/useAccessAccounts';
 import { STOREFRONT } from '@/lib/storefront-paths';
 
 /**
@@ -29,11 +29,7 @@ export default function BuyerPendingPage() {
   const { data: me, isLoading, refetch } = useBuyerMe();
   const [requesting, setRequesting] = useState(false);
   const [requestError, setRequestError] = useState('');
-  // null = not loaded (or the lookup failed): fall back to what /api/buyer/me alone tells us.
-  const [accounts, setAccounts] = useState<AccessAccount[] | null>(null);
-  const [accountsLookupDone, setAccountsLookupDone] = useState(false);
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
-  const [busyBuyerId, setBusyBuyerId] = useState<string | null>(null);
 
   const notPending = !isLoading && (!me || me.mode !== 'pending');
   const needsIntake = !isLoading && needsIntakeForm(me);
@@ -55,22 +51,10 @@ export default function BuyerPendingPage() {
     !isLoading && me?.mode === 'pending' && !needsIntake && !needsMoreInfo && me.pending?.onboarding_status !== 'declined';
 
   // Every account this phone has at the tenant (some enabled, some not) — so the buyer can open an
-  // enabled one instead of being forced to request access for a disabled one.
-  const loadAccounts = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/buyer/access/accounts');
-      if (!res.ok) return;
-      const data = await res.json().catch(() => null);
-      if (Array.isArray(data?.accounts)) setAccounts(data.accounts as AccessAccount[]);
-    } catch {
-      // Non-critical: the screen still works from /api/buyer/me alone.
-    } finally {
-      setAccountsLookupDone(true);
-    }
-  }, []);
-  useEffect(() => {
-    if (showsMainCard) void loadAccounts();
-  }, [showsMainCard, me?.buyer_id, loadAccounts]);
+  // enabled one instead of being forced to request access for a disabled one. `accounts` stays null
+  // until the lookup succeeds; until then (or if it fails) we fall back to /api/buyer/me alone.
+  const { accounts, lookupDone: accountsLookupDone, reload: loadAccounts } = useAccessAccounts(showsMainCard, me?.buyer_id);
+  const { busyBuyerId, error: switchError, openAccount } = useAccountSwitch(me?.tenant?.id);
 
   if (notPending || needsIntake || needsMoreInfo) return null;
 
@@ -126,38 +110,6 @@ export default function BuyerPendingPage() {
     }
   }
 
-  // Open an enabled account, or step into one that still needs something from the buyer: re-mint the
-  // session for that account (OTP-verified phone only, see /api/auth/switch-buyer) and go there.
-  async function handleAccountAction(account: AccessAccount, action: Exclude<AccountAction, 'select' | null>) {
-    setBusyBuyerId(account.buyer_id);
-    setRequestError('');
-    try {
-      const res = await apiFetch('/api/auth/switch-buyer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ buyer_id: account.buyer_id }),
-      });
-      const data: { session?: { access_token: string; refresh_token: string }; error?: string } = await res.json().catch(() => ({}));
-      if (!res.ok || !data.session) {
-        setRequestError(data.error ?? 'Could not open that account. Please try again.');
-        return;
-      }
-      await supabaseBrowser.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-      });
-      if (action === 'open' && me?.tenant?.id) writeStoredBuyAsBuyerId(me.tenant.id, account.buyer_id);
-      // Hard navigation: a soft one can serve a cached payload for the previous account.
-      window.location.assign(
-        action === 'resubmit' ? '/resubmit-documents' : action === 'complete_details' ? '/onboarding' : STOREFRONT.home,
-      );
-    } catch {
-      setRequestError('Could not open that account. Please try again.');
-    } finally {
-      setBusyBuyerId(null);
-    }
-  }
-
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
     router.replace('/login');
@@ -170,6 +122,7 @@ export default function BuyerPendingPage() {
         sellerWhatsappNumber={sellerWhatsappNumber}
         publicBrowseAllowed={publicBrowseAllowed}
         onLogout={handleLogout}
+        otherAccounts={<OtherAccountsPanel tenantId={me?.tenant?.id} currentBuyerId={me?.buyer_id} />}
       />
     );
   }
@@ -205,9 +158,9 @@ export default function BuyerPendingPage() {
               selectedBuyerId={effectiveSelectedId}
               busyBuyerId={busyBuyerId}
               onSelect={setSelectedBuyerId}
-              onAction={(account, action) => void handleAccountAction(account, action)}
+              onAction={(account, action) => void openAccount(account, action)}
             />
-            {requestError ? <p className="text-body-sm text-danger-500">{requestError}</p> : null}
+            {requestError || switchError ? <p className="text-body-sm text-danger-500">{requestError || switchError}</p> : null}
             {requestableAccounts.length > 0 ? (
               <Button
                 className="w-full"

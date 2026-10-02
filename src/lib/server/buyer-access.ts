@@ -930,23 +930,6 @@ export const RESUBMIT_DOCUMENTS_PATH = '/resubmit-documents';
 const NEEDS_MORE_INFO_PATH_STATUS = 'needs_more_info';
 
 /**
- * `/resubmit-documents` when the buyer's request was sent back for more info, else null. For
- * callers (workspace picker) whose default pending destination is not resolvePendingBuyerRedirect.
- */
-export async function resolveNeedsMoreInfoRedirect(buyerId: string | null): Promise<string | null> {
-  if (!buyerId || !supabaseAdmin) return null;
-  const { data } = await supabaseAdmin
-    .schema('app')
-    .from('buyers')
-    .select('onboarding_status')
-    .eq('id', buyerId)
-    .maybeSingle();
-  return (data as { onboarding_status?: string | null } | null)?.onboarding_status === NEEDS_MORE_INFO_PATH_STATUS
-    ? RESUBMIT_DOCUMENTS_PATH
-    : null;
-}
-
-/**
  * Where to send a `buyer_pending` session right after OTP: the resubmission form when the seller
  * asked for more info, /onboarding for a fresh self-registration that hasn't filed its intake form,
  * and /pending for everyone else (intake filed and awaiting approval, declined, or an existing
