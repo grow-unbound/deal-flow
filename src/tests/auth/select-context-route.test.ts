@@ -7,7 +7,6 @@ const mintSellerSessionMock = vi.fn();
 const mintBuyerHandoffLinkMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
 const resolvePendingBuyerRedirectMock = vi.fn().mockResolvedValue('/pending');
-const resolveNeedsMoreInfoRedirectMock = vi.fn().mockResolvedValue(null);
 
 vi.mock('@/lib/server/buyer-access', () => ({
   mintBuyerSession: (...args: unknown[]) => mintBuyerSessionMock(...args),
@@ -15,7 +14,6 @@ vi.mock('@/lib/server/buyer-access', () => ({
   toBuyerLoginCandidate: (c: unknown) => c,
   mintBuyerHandoffLink: (...args: unknown[]) => mintBuyerHandoffLinkMock(...args),
   resolvePendingBuyerRedirect: (...args: unknown[]) => resolvePendingBuyerRedirectMock(...args),
-  resolveNeedsMoreInfoRedirect: (...args: unknown[]) => resolveNeedsMoreInfoRedirectMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-app-activity', () => ({
@@ -241,8 +239,9 @@ describe('phone-otp select-context route', () => {
     expect(mintBuyerHandoffLinkMock).not.toHaveBeenCalled();
   });
 
-  it('opens onboarding via handoff when request access is chosen for a disabled buyer account', async () => {
+  it('opens onboarding via handoff when request access is chosen for a self-registered buyer without intake', async () => {
     mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'request-token', buyerId: 'buyer-1' });
+    resolvePendingBuyerRedirectMock.mockResolvedValueOnce('/onboarding');
 
     const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
     const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
@@ -271,9 +270,27 @@ describe('phone-otp select-context route', () => {
     expect(mintBuyerSessionMock).not.toHaveBeenCalled();
   });
 
+  it('sends an existing (non-self-registered) disabled buyer straight to /pending, not /onboarding', async () => {
+    mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'pending-token', buyerId: 'buyer-1' });
+
+    const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
+    const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');
+    const request = Object.assign(new Request('https://catalog.useyukti.in/api/auth/phone-otp/select-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', host: 'catalog.useyukti.in' },
+      body: JSON.stringify({
+        ref_id: refId, kind: 'buyer', tenant_id: 'tenant-1', buyer_id: 'buyer-1', role: 'buyer_admin', request_access: true,
+      }),
+    }), { nextUrl: new URL('https://catalog.useyukti.in/api/auth/phone-otp/select-context') });
+
+    const body = await (await POST(request as any)).json();
+    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('buyer-1');
+    expect(body.handoff_url).toContain('next=%2Fpending');
+  });
+
   it('opens the resubmission form instead of onboarding when the buyer request needs more info', async () => {
     mintBuyerHandoffLinkMock.mockResolvedValue({ hashedToken: 'resubmit-token', buyerId: 'buyer-1' });
-    resolveNeedsMoreInfoRedirectMock.mockResolvedValueOnce('/resubmit-documents');
+    resolvePendingBuyerRedirectMock.mockResolvedValueOnce('/resubmit-documents');
 
     const refId = await writeVerifiedRecord([{ ...buyerCandidate, buyer_app_enabled: false }]);
     const { POST } = await import('../../../app/api/auth/phone-otp/select-context/route');

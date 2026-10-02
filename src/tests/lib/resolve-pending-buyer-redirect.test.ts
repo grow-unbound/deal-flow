@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Task 10: resolvePendingBuyerRedirect now sends an intake-complete
-// buyer_pending session to the storefront home ('/') instead of
-// unconditionally to '/pending' — '/pending' is reached via the
-// OnboardingStatusPill tap, not a forced landing page. The /onboarding
-// redirect for an incomplete self-registration must stay exactly as-is.
-//
-// Task 10 review fix (Important #1): the storefront-home branch is
-// host-aware — '/' only on a tenant host, '/buy/home' otherwise — mirroring
-// the sibling `storefrontHome` computation in phone-otp/verify/route.ts.
+// resolvePendingBuyerRedirect never returns the storefront home: the storefront shell sends every
+// pending session on to /pending client-side, so landing on '/' only flashed the gated catalog
+// first (and showed a blank screen). Intake-filed, declined and existing (seller/ERP-created)
+// buyers all go straight to /pending; /onboarding and /resubmit-documents are unchanged.
 
 let mockCustomFields: Record<string, unknown> | null = null;
 let mockOnboardingStatus: string | null = 'pending_approval';
@@ -36,52 +31,23 @@ describe('resolvePendingBuyerRedirect', () => {
     mockOnboardingStatus = 'pending_approval';
   });
 
-  it('sends a fresh self-registration that has not submitted intake to /onboarding, regardless of host', async () => {
-    mockCustomFields = { storefront_self_registered: true };
-    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/onboarding');
-    await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/onboarding');
-  });
+  const states: Array<[string, Record<string, unknown>, string, string]> = [
+    ['fresh self-registration without intake', { storefront_self_registered: true }, 'pending_approval', '/onboarding'],
+    ['self-registered, intake filed, awaiting approval', { storefront_self_registered: true, intake_submitted_at: 'x' }, 'pending_approval', '/pending'],
+    ['self-registered, declined', { storefront_self_registered: true, intake_submitted_at: 'x' }, 'declined', '/pending'],
+    ['existing buyer, app off, no request', {}, 'approved', '/pending'],
+    ['existing buyer, request open', { access_requested_at: 'x' }, 'approved', '/pending'],
+    ['existing buyer, resubmitted and awaiting', { access_requested_at: 'x', intake_submitted_at: 'x' }, 'pending_approval', '/pending'],
+    ['existing buyer, declined', { access_requested_at: 'x' }, 'declined', '/pending'],
+    ['self-registered, needs_more_info', { storefront_self_registered: true, intake_submitted_at: 'x' }, 'needs_more_info', '/resubmit-documents'],
+    ['self-registered, needs_more_info before any intake', { storefront_self_registered: true }, 'needs_more_info', '/resubmit-documents'],
+    ['existing buyer, needs_more_info', { access_requested_at: 'x' }, 'needs_more_info', '/resubmit-documents'],
+  ];
 
-  it('sends a self-registered buyer who has submitted intake to the storefront home, not /pending', async () => {
-    mockCustomFields = { storefront_self_registered: true, intake_submitted_at: '2026-09-11T00:00:00Z' };
+  it.each(states)('%s -> %s', async (_name, customFields, status, expected) => {
+    mockCustomFields = customFields;
+    mockOnboardingStatus = status;
     const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/');
-  });
-
-  it('sends a known (non-self-registered) buyer a seller disabled to /pending, regardless of host', async () => {
-    mockCustomFields = {};
-    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/pending');
-    await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/pending');
-  });
-
-  it('sends any buyer with intake_submitted_at set to the storefront home, regardless of self-registration', async () => {
-    mockCustomFields = { intake_submitted_at: '2026-09-11T00:00:00Z' };
-    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/');
-  });
-
-  it('sends an intake-complete buyer to /buy/home instead of / when not on a tenant host', async () => {
-    mockCustomFields = { storefront_self_registered: true, intake_submitted_at: '2026-09-11T00:00:00Z' };
-    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/buy/home');
-  });
-
-  it('sends a buyer whose request was sent back for more info to /resubmit-documents, not the storefront/pending', async () => {
-    mockCustomFields = { storefront_self_registered: true, intake_submitted_at: '2026-09-11T00:00:00Z' };
-    mockOnboardingStatus = 'needs_more_info';
-    const { resolvePendingBuyerRedirect } = await import('@/lib/server/buyer-access');
-    await expect(resolvePendingBuyerRedirect('buyer-1', true)).resolves.toBe('/resubmit-documents');
-    await expect(resolvePendingBuyerRedirect('buyer-1', false)).resolves.toBe('/resubmit-documents');
-  });
-
-  it('resolveNeedsMoreInfoRedirect returns the resubmit path only for needs_more_info', async () => {
-    const { resolveNeedsMoreInfoRedirect } = await import('@/lib/server/buyer-access');
-    mockOnboardingStatus = 'needs_more_info';
-    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBe('/resubmit-documents');
-    mockOnboardingStatus = 'pending_approval';
-    await expect(resolveNeedsMoreInfoRedirect('buyer-1')).resolves.toBeNull();
-    await expect(resolveNeedsMoreInfoRedirect(null)).resolves.toBeNull();
+    await expect(resolvePendingBuyerRedirect('buyer-1')).resolves.toBe(expected);
   });
 });

@@ -42,6 +42,9 @@ export interface ExistingBuyerContext {
     credit_limit: number;
     credit_available: number | null;
   };
+  /** Where each section's numbers came from: the metrics summaries, or a live single-buyer query. */
+  sources: { period: 'summary' | 'live'; dues: 'summary' | 'live' };
+  /** Stalest summary timestamp used; null when every section was computed live. */
   computed_at: string | null;
 }
 
@@ -76,6 +79,10 @@ export function readExistingBuyerContext(entry: Pick<InboxEntry, 'metadata'>): E
       overdue_invoice_count: num(dues.overdue_invoice_count),
       credit_limit: num(dues.credit_limit),
       credit_available: creditAvailable == null ? null : num(creditAvailable),
+    },
+    sources: {
+      period: asRecord(ctx.sources).period === 'live' ? 'live' : 'summary',
+      dues: asRecord(ctx.sources).dues === 'live' ? 'live' : 'summary',
     },
     computed_at: typeof ctx.computed_at === 'string' ? ctx.computed_at : null,
   };

@@ -32,7 +32,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    if (!claims.role || !(BUYER_ROLES as readonly string[]).includes(claims.role)) {
+    const isPendingSession = claims.role === 'buyer_pending';
+    if (!claims.role || (!isPendingSession && !(BUYER_ROLES as readonly string[]).includes(claims.role))) {
       return NextResponse.json({ error: 'Buyer session required' }, { status: 403 });
     }
 
@@ -55,6 +56,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { error: 'Please log in again to switch accounts.' },
         { status: 400 },
+      );
+    }
+
+    // A not-yet-approved (buyer_pending) session may switch only on the strength of a real OTP-
+    // verified phone — the same proof the multi-account login picker relies on. The weaker
+    // auth-identity fallback is never enough to move a pending session into another account.
+    if (isPendingSession && lookup.source !== 'otp_verified') {
+      return NextResponse.json(
+        { error: 'Please log in again to switch accounts.' },
+        { status: 403 },
       );
     }
 
