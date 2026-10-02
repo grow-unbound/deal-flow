@@ -763,7 +763,7 @@ describe('buyer phone otp routes', () => {
     expect(body.redirect).toBe('/onboarding');
     expect(body.session).toEqual({ access_token: 'access-token', refresh_token: 'refresh-token' });
     expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
-    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2', true);
+    expect(resolvePendingBuyerRedirectMock).toHaveBeenCalledWith('acquired-2');
   });
 
   it('hands a fresh self-registration verified on the catalog host off to the tenant /onboarding (no catalog-host session)', async () => {

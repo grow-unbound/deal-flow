@@ -12,6 +12,9 @@ import { Button } from '@/components/ui/button';
 import { buildWhatsAppChatUrl } from '@/constants/auth-login-copy';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { DeclinedContactScreen } from '@/components/buyer/onboarding/DeclinedContactScreen';
+import { ExistingBuyerAccountPicker } from '@/components/buyer/onboarding/ExistingBuyerAccountPicker';
+import { OtherAccountsPanel } from '@/components/buyer/onboarding/OtherAccountsPanel';
+import { useAccessAccounts, useAccountSwitch } from '@/hooks/useAccessAccounts';
 import { STOREFRONT } from '@/lib/storefront-paths';
 
 /**
@@ -26,6 +29,7 @@ export default function BuyerPendingPage() {
   const { data: me, isLoading, refetch } = useBuyerMe();
   const [requesting, setRequesting] = useState(false);
   const [requestError, setRequestError] = useState('');
+  const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
 
   const notPending = !isLoading && (!me || me.mode !== 'pending');
   const needsIntake = !isLoading && needsIntakeForm(me);
@@ -43,6 +47,15 @@ export default function BuyerPendingPage() {
       router.replace('/onboarding');
     }
   }, [notPending, needsIntake, needsMoreInfo, me, router]);
+  const showsMainCard =
+    !isLoading && me?.mode === 'pending' && !needsIntake && !needsMoreInfo && me.pending?.onboarding_status !== 'declined';
+
+  // Every account this phone has at the tenant (some enabled, some not) — so the buyer can open an
+  // enabled one instead of being forced to request access for a disabled one. `accounts` stays null
+  // until the lookup succeeds; until then (or if it fails) we fall back to /api/buyer/me alone.
+  const { accounts, lookupDone: accountsLookupDone, reload: loadAccounts } = useAccessAccounts(showsMainCard, me?.buyer_id);
+  const { busyBuyerId, error: switchError, openAccount } = useAccountSwitch(me?.tenant?.id);
+
   if (notPending || needsIntake || needsMoreInfo) return null;
 
   const sellerName = me?.tenant?.name ?? 'the seller';
@@ -50,25 +63,46 @@ export default function BuyerPendingPage() {
   const isDeclined = me?.pending?.onboarding_status === 'declined';
   const publicBrowseAllowed = me?.buyer_catalog?.public_browse_allowed === true;
 
+  const accountList = accounts ?? [];
+  const hasMultipleAccounts = accountList.length > 1;
+  const requestableAccounts = accountList.filter((account) => account.state === 'can_request');
+  // One requestable account is preselected; with several, the buyer must choose.
+  const effectiveSelectedId =
+    (selectedBuyerId && requestableAccounts.some((account) => account.buyer_id === selectedBuyerId) ? selectedBuyerId : null)
+    ?? (requestableAccounts.length === 1 ? requestableAccounts[0].buyer_id : null);
+
   // An existing buyer (seller/ERP-created, app access disabled) has nothing to register — they
   // ask the seller to switch access on. The request is a seller-inbox entry, not an intake form.
-  const canRequestAccess =
-    me?.pending?.self_registered === false &&
-    !me.pending.access_requested &&
-    !me.pending.intake_submitted &&
-    me.pending.onboarding_status !== 'needs_more_info';
+  // Once the accounts load they are the source of truth; until then (or if the lookup fails) fall
+  // back to what /api/buyer/me says about the session's own buyer.
+  const isExistingBuyer = me?.pending?.self_registered === false;
+  // Don't flash a request button for the session's own account while we may still find siblings.
+  const checkingAccounts = !accountsLookupDone && !accounts;
+  const canRequestAccess = accounts
+    ? requestableAccounts.length > 0
+    : isExistingBuyer &&
+      !me?.pending?.access_requested &&
+      !me?.pending?.intake_submitted &&
+      me?.pending?.onboarding_status !== 'needs_more_info';
+  const showAccountList = hasMultipleAccounts || (accounts !== null && isExistingBuyer && accountList.length === 1 && canRequestAccess);
 
   async function handleRequestAccess() {
     setRequesting(true);
     setRequestError('');
     try {
-      const res = await apiFetch('/api/buyer/access/request', { method: 'POST' });
+      const res = await apiFetch(
+        '/api/buyer/access/request',
+        effectiveSelectedId
+          ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buyer_id: effectiveSelectedId }) }
+          : { method: 'POST' },
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setRequestError(typeof data?.error === 'string' ? data.error : 'Could not send your request. Please try again.');
         return;
       }
-      await refetch();
+      setSelectedBuyerId(null);
+      await Promise.all([refetch(), loadAccounts()]);
     } catch {
       setRequestError('Could not send your request. Please try again.');
     } finally {
@@ -88,6 +122,7 @@ export default function BuyerPendingPage() {
         sellerWhatsappNumber={sellerWhatsappNumber}
         publicBrowseAllowed={publicBrowseAllowed}
         onLogout={handleLogout}
+        otherAccounts={<OtherAccountsPanel tenantId={me?.tenant?.id} currentBuyerId={me?.buyer_id} />}
       />
     );
   }
@@ -100,9 +135,50 @@ export default function BuyerPendingPage() {
         </div>
 
         <h1 className="text-h3 font-display text-cream-900 mb-1">
-          {canRequestAccess ? 'Access needed' : 'Request sent'}
+          {hasMultipleAccounts ? 'Choose your account' : canRequestAccess ? 'Access needed' : 'Request sent'}
         </h1>
-        {canRequestAccess ? (
+        {showAccountList ? (
+          <div className="mb-6 mt-4 space-y-4">
+            <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-1">
+              <p className="text-body-sm text-warning-700 font-medium">
+                {hasMultipleAccounts
+                  ? `We found multiple accounts for this number with ${sellerName}.`
+                  : `Your account with ${sellerName} doesn't have app access yet.`}
+              </p>
+              <p className="text-body-sm text-warning-700/90">
+                {hasMultipleAccounts
+                  ? requestableAccounts.length > 0
+                    ? 'Choose an account to open it, or request access for one that is switched off.'
+                    : "Open an active account, or finish what an in-progress one is waiting for."
+                  : `Request access and ${sellerName} will be notified to switch it on.`}
+              </p>
+            </div>
+            <ExistingBuyerAccountPicker
+              accounts={accountList}
+              selectedBuyerId={effectiveSelectedId}
+              busyBuyerId={busyBuyerId}
+              onSelect={setSelectedBuyerId}
+              onAction={(account, action) => void openAccount(account, action)}
+            />
+            {requestError || switchError ? <p className="text-body-sm text-danger-500">{requestError || switchError}</p> : null}
+            {requestableAccounts.length > 0 ? (
+              <Button
+                className="w-full"
+                onClick={() => void handleRequestAccess()}
+                disabled={requesting || !effectiveSelectedId}
+              >
+                {requesting ? 'Sending request…' : 'Request access'}
+              </Button>
+            ) : null}
+            {requestableAccounts.length === 0 &&
+            !accountList.some((account) => account.state === 'active') &&
+            accountList.some((account) => account.state === 'requested' || account.state === 'awaiting_approval') ? (
+              <p className="text-body-sm text-cream-700">
+                {sellerName} typically approves within 24 hours. We'll let you in as soon as that happens.
+              </p>
+            ) : null}
+          </div>
+        ) : canRequestAccess ? (
           <div className="mb-6 mt-4 space-y-4">
             <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2">
               <p className="text-body-sm text-warning-700 font-medium">
@@ -113,8 +189,8 @@ export default function BuyerPendingPage() {
               </p>
             </div>
             {requestError ? <p className="text-body-sm text-danger-500">{requestError}</p> : null}
-            <Button className="w-full" onClick={() => void handleRequestAccess()} disabled={requesting}>
-              {requesting ? 'Sending request…' : 'Request access'}
+            <Button className="w-full" onClick={() => void handleRequestAccess()} disabled={requesting || checkingAccounts}>
+              {requesting ? 'Sending request…' : checkingAccounts ? 'Checking your accounts…' : 'Request access'}
             </Button>
           </div>
         ) : (

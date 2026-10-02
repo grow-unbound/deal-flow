@@ -232,7 +232,7 @@ async function mintCandidateSession(
     // anywhere else, hand the session off to the tenant host and land on the
     // intake/pending screen there — same as select-context does.
     if (isCatalogRequest(request) || request.headers.get('x-verified-tenant-id') !== buyerCandidate.tenant_id) {
-      const pendingPath = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
+      const pendingPath = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
       const { hashedToken } = await mintBuyerHandoffLink(buyerCandidate, otpVerifiedPhone);
       const destinationHost = tenantStorefrontHostForRequest(
         request.headers.get('host') ?? '',
@@ -248,7 +248,7 @@ async function mintCandidateSession(
     }
 
     const { session } = await mintBuyerSession(buyerCandidate, otpVerifiedPhone);
-    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id, true);
+    const redirect = await resolvePendingBuyerRedirect(buyerCandidate.buyer_id);
     return { pending: false, session, redirect };
   }
 

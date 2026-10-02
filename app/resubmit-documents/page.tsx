@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
 import { DocumentUploadField } from '@/components/buyer/onboarding/DocumentUploadField';
+import { OtherAccountsPanel } from '@/components/buyer/onboarding/OtherAccountsPanel';
 import { apiFetch } from '@/lib/api-fetch';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { markLoggedInOnDevice } from '@/lib/auth-device-login';
@@ -392,6 +393,7 @@ export default function ResubmitDocumentsPage() {
         )}
 
         {phase === 'form' && data && (
+          <>
           <form onSubmit={handleSubmit} className="space-y-4">
             <h1 className="text-h3 font-display text-cream-900 mb-1">A few things need fixing</h1>
             <p className="text-body-sm text-cream-600 mb-2">
@@ -531,6 +533,9 @@ export default function ResubmitDocumentsPage() {
               {submitting ? 'Sending…' : 'Resubmit'}
             </Button>
           </form>
+          {/* The phone may match other accounts at this seller: let the buyer continue with one of those instead. */}
+          <OtherAccountsPanel tenantId={null} />
+          </>
         )}
       </div>
     </div>
