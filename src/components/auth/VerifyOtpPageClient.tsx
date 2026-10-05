@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { AuthHomeLogoLink } from '@/components/auth/AuthHomeLogoLink';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
 import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
@@ -109,7 +109,7 @@ function VerifyOtpForm({ initialSurface }: { initialSurface: AuthSurfaceInfo }) 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-5 sm:p-8">
       <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+        <AuthHomeLogoLink />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Enter OTP</h1>

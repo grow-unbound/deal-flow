@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronDown, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEnquiryTriage, useSubstituteEnquiryLine } from '@/hooks/useInboxEntries';
@@ -28,22 +28,41 @@ function hasOperationalDetails(line: EnquiryTriageLine): boolean {
     || line.alternates.length > 0;
 }
 
-function linePriceFacts(line: EnquiryTriageLine, hiddenPricing: boolean): Array<{ label: string; value: string; strong?: boolean }> {
-  const facts: Array<{ label: string; value: string; strong?: boolean }> = [];
-  const targetLabel = buildTargetRangeLabel(line.targetMin, line.targetMax);
+function quotedPriceLabel(line: EnquiryTriageLine) {
+  return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice) : '—';
+}
 
-  if (hiddenPricing) {
-    if (targetLabel) facts.push({ label: 'Buyer target', value: targetLabel });
-    if (line.resolvedPrice != null) facts.push({ label: 'Resolved price', value: money(line.resolvedPrice) });
-    if (line.unitPrice != null && line.unitPrice > 0) facts.push({ label: 'Your quote', value: money(line.unitPrice), strong: true });
-  } else if (line.unitPrice != null && line.unitPrice > 0) {
-    facts.push({ label: 'Your quote', value: money(line.unitPrice), strong: true });
-  } else if (line.resolvedPrice != null) {
-    facts.push({ label: 'Resolved price', value: money(line.resolvedPrice) });
-  }
+function expectedPriceLabel(line: EnquiryTriageLine) {
+  return buildTargetRangeLabel(line.targetMin, line.targetMax) ?? (line.resolvedPrice != null ? money(line.resolvedPrice) : '—');
+}
 
-  facts.push({ label: 'Buyer quantity', value: String(line.qty), strong: true });
-  return facts;
+function lineAmountLabel(line: EnquiryTriageLine) {
+  return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice * line.qty) : '—';
+}
+
+function lineSubtext(line: EnquiryTriageLine) {
+  const parts = [
+    line.sku,
+    line.brandName,
+    line.resolvedPrice != null ? `Base Price ${money(line.resolvedPrice)}` : null,
+    `Requested ${line.qty}`,
+    `Stock ${line.onHand}`,
+    hasVelocitySignal(line.velocity) ? velocityLabel(line.velocity) : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function ProductThumb({ src, name }: { src: string | null; name: string }) {
+  const [imgError, setImgError] = useState(false);
+  return (
+    <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100 md:h-10 md:w-10 md:rounded-[12px]">
+      {src && !imgError ? (
+        <Image src={src} alt={name} fill className="object-cover" sizes="56px" unoptimized onError={() => setImgError(true)} />
+      ) : (
+        <Package className="h-5 w-5 text-cream-400" />
+      )}
+    </div>
+  );
 }
 
 function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine; estimateId: string; entryId: string }) {
@@ -113,58 +132,38 @@ function AlternatesList({ line, estimateId, entryId }: { line: EnquiryTriageLine
   );
 }
 
-function ReadOnlyLineCard({
+function MobileLineCard({
   line,
   imageUrl,
   estimateId,
   entryId,
-  hiddenPricing,
 }: {
   line: EnquiryTriageLine;
   imageUrl: string | null;
   estimateId: string;
   entryId: string;
-  hiddenPricing: boolean;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [imgError, setImgError] = useState(false);
   const short = line.stock.tone !== 'ok';
   const showDetailsControl = hasOperationalDetails(line);
-  const facts = linePriceFacts(line, hiddenPricing);
 
   return (
-    <div className="overflow-hidden rounded-[14px] border border-cream-200">
-      <div className={cn('px-4 py-4', line.stock.tone === 'danger' && 'doc-line-stock-danger', line.stock.tone === 'warning' && 'doc-line-stock-warning')}>
+    <div className="overflow-hidden rounded-[14px] border border-cream-200 bg-white md:hidden">
+      <div className={cn('px-4 py-4', line.stock.tone === 'danger' && 'border-l-4 border-l-danger-600', line.stock.tone === 'warning' && 'border-l-4 border-l-warning-500')}>
         <div className="flex items-start gap-3">
-          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100">
-            {imageUrl && !imgError ? (
-              <Image src={imageUrl} alt="" fill className="object-cover" sizes="56px" unoptimized onError={() => setImgError(true)} />
-            ) : (
-              <Package className="h-5 w-5 text-cream-400" />
-            )}
-          </div>
+          <ProductThumb src={imageUrl} name={line.name} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-medium text-cream-900">{line.name}</p>
             <p className="mt-0.5 truncate font-mono text-sm text-cream-500">
-              {line.sku}{line.brandName ? ` · ${line.brandName}` : ''}
+              {lineSubtext(line)}
             </p>
             {line.buyerNote ? <p className="mt-1 text-sm italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
           </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-          {facts.map((fact) => (
-            <div key={fact.label}>
-              <p className={HEAD_CLASS}>{fact.label}</p>
-              <p className={cn(
-                'mt-0.5 font-mono text-base tabular-nums text-cream-700',
-                fact.strong && 'font-semibold text-cream-900',
-              )}
-              >
-                {fact.value}
-              </p>
-            </div>
-          ))}
+          <div className="shrink-0 text-right">
+            <p className="font-mono text-base font-semibold tabular-nums text-cream-950">{lineAmountLabel(line)}</p>
+            <p className="mt-1 font-mono text-xs tabular-nums text-cream-500">Quote {quotedPriceLabel(line)}</p>
+            <p className="font-mono text-xs tabular-nums text-cream-500">Expected {expectedPriceLabel(line)}</p>
+          </div>
         </div>
 
         {showDetailsControl ? (
@@ -206,6 +205,117 @@ function ReadOnlyLineCard({
   );
 }
 
+function DesktopLineDetails({ line, estimateId, entryId, open }: { line: EnquiryTriageLine; estimateId: string; entryId: string; open: boolean }) {
+  if (!open) return null;
+  const short = line.stock.tone !== 'ok';
+  return (
+    <tr>
+      <td colSpan={6} className="border-b border-cream-100 bg-cream-50 px-6 py-4">
+        <div className="grid gap-3 rounded-[10px] border border-cream-200 bg-white px-3 py-3 sm:grid-cols-2">
+          {(short || line.onHand > 0) ? (
+            <div>
+              <p className={HEAD_CLASS}>Stock</p>
+              <StockCell stock={line.stock} onHand={line.onHand} align="start" />
+            </div>
+          ) : null}
+          {hasVelocitySignal(line.velocity) ? (
+            <div>
+              <p className={HEAD_CLASS}>Recent sales</p>
+              <VelocityCell velocity={line.velocity} align="start" />
+            </div>
+          ) : null}
+        </div>
+        {short ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
+      </td>
+    </tr>
+  );
+}
+
+function DesktopLinesTable({
+  lines,
+  imageById,
+  estimateId,
+  entryId,
+}: {
+  lines: EnquiryTriageLine[];
+  imageById: Map<string, string | null>;
+  estimateId: string;
+  entryId: string;
+}) {
+  const [openLineId, setOpenLineId] = useState<string | null>(null);
+  const totalUnits = lines.reduce((sum, line) => sum + line.qty, 0);
+
+  return (
+    <section className="doc-lines hidden overflow-hidden rounded-[14px] border border-cream-300 bg-white md:block">
+      <div className="border-b border-cream-200 px-4 py-3">
+        <p className="title text-base font-semibold text-cream-950">
+          {lines.length} item{lines.length === 1 ? '' : 's'}. {totalUnits} unit{totalUnits === 1 ? '' : 's'}
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="lines-table w-full table-fixed text-left text-base">
+          <colgroup>
+            <col className="w-[4.25rem]" />
+            <col className="w-[38%]" />
+            <col className="w-[5.75rem]" />
+            <col className="w-[7rem]" />
+            <col className="w-[6.5rem]" />
+            <col className="w-[6.75rem]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-cream-200 bg-white">
+              <th className="table-label py-2 pl-6 pr-5 text-cream-700">#</th>
+              <th className="table-label px-3 py-2 text-cream-700">Product</th>
+              <th className="table-label num px-2 py-2 text-right text-cream-700">Quantity</th>
+              <th className="table-label num px-2 py-2 text-right text-cream-700">Expected</th>
+              <th className="table-label num px-2 py-2 text-right text-cream-700">Quote</th>
+              <th className="table-label num py-2 pl-2 pr-6 text-right text-cream-700">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, index) => {
+              const detailsOpen = openLineId === line.id;
+              const short = line.stock.tone !== 'ok';
+              return (
+                <Fragment key={line.id}>
+                  <tr className={cn('border-b border-cream-50', line.stock.tone === 'danger' && 'doc-line-stock-danger', line.stock.tone === 'warning' && 'doc-line-stock-warning')}>
+                    <td className="py-3 pl-6 pr-5 tabular-nums text-cream-600">{index + 1}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-start gap-3">
+                        <ProductThumb src={imageById.get(line.id) ?? null} name={line.name} />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-cream-900" title={line.name}>{line.name}</p>
+                          <p className="truncate text-xs text-cream-600">{lineSubtext(line)}</p>
+                          {line.buyerNote ? <p className="mt-1 truncate text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
+                          {hasOperationalDetails(line) ? (
+                            <button
+                              type="button"
+                              onClick={() => setOpenLineId((current) => (current === line.id ? null : line.id))}
+                              className={cn('mt-1.5 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors', short ? 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100' : 'border-cream-300 bg-white text-cream-700 hover:bg-cream-100')}
+                            >
+                              {short ? `Stock gap: ${line.stock.label}` : 'Stock and sales'}
+                              <ChevronDown className={cn('h-3 w-3 transition-transform', detailsOpen && 'rotate-180')} aria-hidden />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="num px-2 py-3 text-right tabular-nums text-cream-900">{line.qty}</td>
+                    <td className="num px-2 py-3 text-right font-mono tabular-nums text-cream-800">{expectedPriceLabel(line)}</td>
+                    <td className="num px-2 py-3 text-right font-mono font-semibold tabular-nums text-cream-900">{quotedPriceLabel(line)}</td>
+                    <td className="num-display py-3 pl-2 pr-6 text-right font-mono tabular-nums text-cream-900">{lineAmountLabel(line)}</td>
+                  </tr>
+                  <DesktopLineDetails line={line} estimateId={estimateId} entryId={entryId} open={detailsOpen} />
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function InboxEnquirySkeleton() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading enquiry">
@@ -230,18 +340,18 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
+      <div className="space-y-3 md:hidden">
         {data.lines.map((line) => (
-          <ReadOnlyLineCard
+          <MobileLineCard
             key={line.id}
             line={line}
             imageUrl={imageById.get(line.id) ?? null}
             estimateId={data.estimateId}
             entryId={entryId}
-            hiddenPricing={data.hiddenPricing}
           />
         ))}
       </div>
+      <DesktopLinesTable lines={data.lines} imageById={imageById} estimateId={data.estimateId} entryId={entryId} />
 
       {hasTotals ? (
         <div className="rounded-[14px] border border-cream-300 bg-cream-50 px-4 py-4">

@@ -105,7 +105,7 @@ describe('InboxDetailClient', () => {
     expect(screen.getByText('Due in 4 days')).toBeInTheDocument();
   });
 
-  it('never renders a close-pane button — Today has no closed state, even when the shell provides a close callback', () => {
+  it('never renders a close-pane button — Inbox has no closed state, even when the shell provides a close callback', () => {
     const closeMock = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(

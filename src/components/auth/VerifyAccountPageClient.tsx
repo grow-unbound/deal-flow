@@ -4,7 +4,7 @@ import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { VerifyAccountForm } from '@/components/auth/VerifyAccountForm';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { AuthHomeLogoLink } from '@/components/auth/AuthHomeLogoLink';
 
 function VerifyAccountInner() {
   const router = useRouter();
@@ -25,7 +25,7 @@ function VerifyAccountInner() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
       <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+        <AuthHomeLogoLink />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Verify your Supplier workspace account</h1>

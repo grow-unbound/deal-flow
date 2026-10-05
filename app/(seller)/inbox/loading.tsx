@@ -1,10 +1,10 @@
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { SellerMobileListSkeleton } from '@/components/seller/mobile/SellerMobileList';
 
-export default function TodayLoading() {
+export default function InboxLoading() {
   return (
     <PageWrap className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0" role="status" aria-label="Loading today">
+      <div className="shrink-0" role="status" aria-label="Loading inbox">
         <div className="mb-3 space-y-2 md:mb-4">
           <div className="h-3 w-12 animate-pulse rounded-full bg-cream-200" />
           <div className="h-6 w-56 animate-pulse rounded-full bg-cream-200" />

@@ -9,6 +9,9 @@ const replaceMock = vi.fn();
 const useEnquiryTriageByIdsMock = vi.fn(() => new Map());
 const markOpenMutateMock = vi.fn();
 const useAuthMock = vi.fn(() => ({ tenantProfile: { role: 'seller_admin' } }));
+const useTenantSettingsMock = vi.fn(() => ({
+  data: { modules: { orders: { features: { enquiries: true, sales_orders: true, invoices: true } } } },
+}));
 
 vi.mock('@/hooks/useInboxEntries', () => ({
   useApplyGenericEntryAction: () => ({ mutate: markOpenMutateMock }),
@@ -18,6 +21,12 @@ vi.mock('@/hooks/useInboxEntries', () => ({
 }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
+}));
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlagState: () => true,
+}));
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => useTenantSettingsMock(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -65,6 +74,10 @@ describe('InboxListClient', () => {
     markOpenMutateMock.mockReset();
     useAuthMock.mockReset();
     useAuthMock.mockReturnValue({ tenantProfile: { role: 'seller_admin' } });
+    useTenantSettingsMock.mockReset();
+    useTenantSettingsMock.mockReturnValue({
+      data: { modules: { orders: { features: { enquiries: true, sales_orders: true, invoices: true } } } },
+    });
     useEnquiryTriageByIdsMock.mockReset();
     useEnquiryTriageByIdsMock.mockReturnValue(new Map());
     window.localStorage?.clear?.();
@@ -74,6 +87,7 @@ describe('InboxListClient', () => {
   it('renders date sections with customer rows', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
+    expect(screen.getAllByText('Inbox').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
     expect(screen.getByText('Ramesh Traders')).toBeInTheDocument();
     expect(screen.getByText('₹22,000 overdue · 1 invoice')).toBeInTheDocument();
@@ -108,7 +122,7 @@ describe('InboxListClient', () => {
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
     const link = screen.getByText('Ramesh Traders').closest('a');
-    expect(link).toHaveAttribute('href', '/today/b1');
+    expect(link).toHaveAttribute('href', '/inbox/b1');
   });
 
   it('marks new entries opened and hides the new badge when a buyer row is reviewed', async () => {
@@ -146,13 +160,34 @@ describe('InboxListClient', () => {
     });
   });
 
-  it('hides approval copy and the approvals filter for seller assistants', () => {
+  it('keeps approvals visible for seller assistants because approvals are always on', () => {
     useAuthMock.mockReturnValue({ tenantProfile: { role: 'seller_assistant' } });
     useInboxEntriesMock.mockReturnValue({ data: { entries: ENTRIES, nextCursor: null }, isLoading: false, isError: false });
     renderWithClient(<InboxListClient />);
-    expect(screen.queryByRole('button', { name: /approvals/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/approvals, enquiries/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/enquiries, orders and collections waiting on you/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approvals/i })).toBeInTheDocument();
+    expect(screen.getByText(/approvals and work items waiting on you/i)).toBeInTheDocument();
+  });
+
+  it('hides disabled module filters and entries from tenant settings', () => {
+    useTenantSettingsMock.mockReturnValue({
+      data: { modules: { orders: { features: { enquiries: false, sales_orders: true, invoices: false } } } },
+    });
+    const enquiryEntry = {
+      ...ENTRIES[0],
+      id: 'e2',
+      entry_type: 'new_enquiry',
+      source_entity_type: 'estimate',
+      source_entity_id: 'est1',
+      buyer_id: 'b2',
+      buyer_name: 'Hidden Enquiry Buyer',
+      metadata: { estimate_number: 'EST-1' },
+    };
+    useInboxEntriesMock.mockReturnValue({ data: { entries: [...ENTRIES, enquiryEntry], nextCursor: null }, isLoading: false, isError: false });
+    renderWithClient(<InboxListClient />);
+    expect(screen.queryByRole('button', { name: /enquiries/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /collections/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Hidden Enquiry Buyer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ramesh Traders')).not.toBeInTheDocument();
   });
 
   it('shows the empty state when there are no active entries', () => {

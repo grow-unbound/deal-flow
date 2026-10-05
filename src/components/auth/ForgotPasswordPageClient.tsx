@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { AuthHomeLogoLink } from '@/components/auth/AuthHomeLogoLink';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
 import { supabaseBrowser } from '@/lib/supabase-browser';
@@ -145,7 +145,7 @@ function ForgotPasswordForm() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-5 sm:p-8">
       <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+        <AuthHomeLogoLink />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Reset Supplier workspace password</h1>

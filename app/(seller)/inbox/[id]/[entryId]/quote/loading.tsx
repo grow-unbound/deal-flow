@@ -1,5 +1,5 @@
 import { InboxEntryScreenSkeleton } from '@/components/seller/inbox/InboxDetailSkeleton';
 
-export default function TodayEntryQuoteLoading() {
+export default function InboxEntryQuoteLoading() {
   return <InboxEntryScreenSkeleton />;
 }

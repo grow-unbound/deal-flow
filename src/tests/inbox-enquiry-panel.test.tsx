@@ -85,9 +85,9 @@ describe('InboxEnquiryPanel', () => {
 
   it('shows read-only buyer quantity, the seller draft quote, totals and the seller note', () => {
     renderPanel();
-    expect(screen.getByText('Buyer quantity')).toBeInTheDocument();
-    expect(screen.getByText('Your quote')).toBeInTheDocument();
-    expect(screen.getByText('₹500')).toBeInTheDocument();
+    expect(screen.getByText('Quantity')).toBeInTheDocument();
+    expect(screen.getByText('Quote')).toBeInTheDocument();
+    expect(screen.getAllByText('₹500').length).toBeGreaterThan(0);
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.getByText('₹5,900')).toBeInTheDocument();
     expect(screen.getByText('Ships Friday')).toBeInTheDocument();
@@ -102,15 +102,16 @@ describe('InboxEnquiryPanel', () => {
 
   it('keeps the per-line buyer note', () => {
     renderPanel();
-    expect(screen.getByText('“urgent for install”')).toBeInTheDocument();
+    expect(screen.getAllByText('“urgent for install”').length).toBeGreaterThan(0);
   });
 
   it('keeps stock and sales velocity hidden until the stock gap control is opened', () => {
     renderPanel();
-    expect(screen.getByRole('button', { name: /stock gap: out of stock/i })).toBeInTheDocument();
+    const stockButtons = screen.getAllByRole('button', { name: /stock gap: out of stock/i });
+    expect(stockButtons.length).toBeGreaterThan(0);
     expect(screen.queryByText('Stock')).not.toBeInTheDocument();
     expect(screen.queryByText('Recent sales')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /stock gap: out of stock/i }));
+    fireEvent.click(stockButtons[0]);
     expect(screen.getByText('Stock')).toBeInTheDocument();
     expect(screen.getByText('Recent sales')).toBeInTheDocument();
     expect(screen.getByText('~3/wk')).toBeInTheDocument();
@@ -133,16 +134,15 @@ describe('InboxEnquiryPanel', () => {
       }],
     };
     renderPanel();
-    expect(screen.getByText('Buyer target')).toBeInTheDocument();
+    expect(screen.getByText('Expected')).toBeInTheDocument();
     expect(screen.getByText('₹450 – ₹475')).toBeInTheDocument();
-    expect(screen.getByText('Resolved price')).toBeInTheDocument();
-    expect(screen.getByText('₹500')).toBeInTheDocument();
+    expect(screen.getAllByText(/Base Price ₹500/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Your quote')).not.toBeInTheDocument();
   });
 
   it('shows the alternate’s buyer-resolved price and substitutes inline on click', async () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: /stock gap: out of stock/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /stock gap: out of stock/i })[0]);
     expect(screen.getByText('₹480')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Substitute' }));
     await waitFor(() => {

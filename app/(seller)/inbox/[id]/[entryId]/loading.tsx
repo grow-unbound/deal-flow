@@ -1,5 +1,5 @@
 import { InboxEntryScreenSkeleton } from '@/components/seller/inbox/InboxDetailSkeleton';
 
-export default function TodayDuesLoading() {
+export default function InboxEntryDetailLoading() {
   return <InboxEntryScreenSkeleton />;
 }

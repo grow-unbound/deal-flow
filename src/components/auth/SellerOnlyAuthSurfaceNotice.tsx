@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { AuthHomeLogoLink } from '@/components/auth/AuthHomeLogoLink';
 import type { AuthSurfaceInfo } from '@/lib/auth-surface';
 
 export function SellerOnlyAuthSurfaceNotice({
@@ -12,7 +12,7 @@ export function SellerOnlyAuthSurfaceNotice({
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-5 sm:p-8">
       <div className="mb-7 flex justify-center">
-        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
+        <AuthHomeLogoLink />
       </div>
       <h1 className="mb-2 text-h3 font-display text-cream-900">{title}</h1>
       <p className="mb-6 text-body-sm text-cream-600">

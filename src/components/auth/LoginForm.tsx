@@ -3,7 +3,10 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowRight, PlusCircle } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
+import { AuthHomeLogoLink } from '@/components/auth/AuthHomeLogoLink';
+import { AuthTenantBrand } from '@/components/auth/AuthTenantBrand';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { hasLoggedInOnDevice, markLoggedInOnDevice } from '@/lib/auth-device-login';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
@@ -324,18 +327,26 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
   }
 
   return (
-    <div className="bg-white border border-cream-300 rounded-xl shadow-md p-5 sm:p-8">
+    <div className="rounded-lg border border-cream-300 bg-white p-5 shadow-md sm:rounded-xl sm:p-8">
+      <div className="mb-7 flex justify-center">
+        {isTenantBuyerCatalog ? (
+          <AuthTenantBrand branding={tenantBranding} />
+        ) : (
+          <AuthHomeLogoLink />
+        )}
+      </div>
+
       <h1
         className={
           showWelcomeSubtitle
-            ? 'font-display text-h2 text-cream-900 mb-1'
-            : 'font-display text-h2 text-cream-900 mb-6'
+            ? 'mb-1 font-display text-h3 text-cream-900 sm:text-h2'
+            : 'mb-5 font-display text-h3 text-cream-900 sm:mb-6 sm:text-h2'
         }
       >
         {cardTitle}
       </h1>
       {showWelcomeSubtitle ? (
-        <p className="text-body-sm text-cream-600 mb-6">
+        <p className="mb-5 text-body-sm text-cream-600 sm:mb-6">
           {cardSubtitle}
         </p>
       ) : null}
@@ -357,7 +368,7 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
       )}
 
       {isSupplierWorkspace ? (
-        <div className="mb-6 grid grid-cols-2 rounded-lg border border-cream-200 bg-cream-100 p-1">
+        <div className="mb-5 grid grid-cols-2 rounded-lg border border-cream-200 bg-cream-100 p-1 sm:mb-6">
           <button
             type="button"
             onClick={() => {
@@ -390,9 +401,11 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
 
       {view === 'otp' || isBuyerCatalog ? (
         <>
-          <p className="text-body-sm text-cream-600 mb-6">
-            {AUTH_LOGIN_COPY.login.landingBody}
-          </p>
+          {isSupplierWorkspace ? null : (
+            <p className="mb-5 text-body-sm text-cream-600 sm:mb-6">
+              {AUTH_LOGIN_COPY.login.landingBody}
+            </p>
+          )}
 
           {resolution ? (
             <div className="space-y-4">
@@ -507,10 +520,6 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
         </>
       ) : (
         <>
-          <p className="text-body-sm text-cream-600 mb-6">
-            {AUTH_LOGIN_COPY.login.emailBody}
-          </p>
-
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
               <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
@@ -569,49 +578,41 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
               {emailLoading ? AUTH_LOGIN_COPY.login.signInLoading : AUTH_LOGIN_COPY.login.signIn}
             </button>
           </form>
-
-          {isSupplierWorkspace ? (
-            <div className="mt-6 pt-4 border-t border-cream-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setView('otp');
-                  setEmailError('');
-                }}
-                className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-              >
-                {AUTH_LOGIN_COPY.login.loginWithMobileOtp}
-              </button>
-            </div>
-          ) : null}
         </>
       )}
 
       {isSupplierWorkspace ? (
-        <div className="mt-6 space-y-3">
-          <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-4">
+        <div className="mt-5 space-y-3 sm:mt-6">
+          <a
+            href={authSurface.buyerLoginHref}
+            className="group flex items-center justify-between gap-3 rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-left transition-colors hover:border-ember-300 hover:bg-white"
+          >
+            <span className="min-w-0">
+              <span className="block text-caption font-semibold uppercase tracking-[0.08em] text-cream-600">
+                {AUTH_LOGIN_COPY.login.buyerOnSellerPrefix}
+              </span>
+              <span className="block text-body-sm font-semibold text-ember-500">
+                {AUTH_LOGIN_COPY.login.buyerOnSellerCta}
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-ember-500 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+          </a>
+
+          <div className="rounded-lg border border-cream-200 bg-cream-50/60 px-4 py-3">
             <p className="text-body-sm font-semibold text-teal-900">
               {AUTH_LOGIN_COPY.login.createSellerAccountCalloutTitle}
             </p>
-            <p className="mt-1 text-body-sm text-teal-800">
+            <p className="mt-1 text-body-sm text-cream-700">
               {AUTH_LOGIN_COPY.login.createSellerAccountCalloutBody}
             </p>
             <Link
               href="/signup"
-              className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-teal-500 px-4 py-2.5 text-body-sm font-semibold text-cream-50 transition-colors hover:bg-teal-600 sm:w-auto"
+              className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-cream-300 bg-white px-4 py-2.5 text-body-sm font-semibold text-cream-900 transition-colors hover:bg-cream-100 sm:w-auto"
             >
+              <PlusCircle className="h-4 w-4" aria-hidden="true" />
               {AUTH_LOGIN_COPY.login.createSellerAccount}
             </Link>
           </div>
-          <p className="text-center text-caption text-cream-600">
-            {AUTH_LOGIN_COPY.login.buyerOnSellerPrefix}{' '}
-            <a
-              href={authSurface.buyerLoginHref}
-              className="font-medium text-ember-400 transition-colors hover:text-ember-500"
-            >
-              {AUTH_LOGIN_COPY.login.buyerOnSellerCta}
-            </a>
-          </p>
         </div>
       ) : null}
     </div>
@@ -621,6 +622,9 @@ export function LoginForm({ initialSurface }: { initialSurface: AuthSurfaceInfo 
 function LoginFallback() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
+      <div className="mb-7 flex justify-center">
+        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
+      </div>
       <div className="mb-6 space-y-2">
         <div className="h-8 w-48 rounded bg-cream-200 animate-pulse" />
         <div className="h-4 w-full max-w-sm rounded bg-cream-200 animate-pulse" />

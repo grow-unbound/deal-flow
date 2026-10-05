@@ -75,7 +75,7 @@ describe('InboxDetailClient on mobile', () => {
     const row = screen.getByRole('button', { name: /New order/ });
     expect(row).toBeInTheDocument();
     fireEvent.click(row);
-    expect(pushMock).toHaveBeenCalledWith('/today/b1/e1');
+    expect(pushMock).toHaveBeenCalledWith('/inbox/b1/e1');
     // Row navigates away instead of expanding inline -- no per-item action CTA here.
     expect(screen.queryByRole('button', { name: 'Accept order' })).not.toBeInTheDocument();
   });
@@ -89,7 +89,7 @@ describe('InboxDetailClient on mobile', () => {
     expect(screen.queryByText('INV-1042')).not.toBeInTheDocument();
 
     fireEvent.click(duesCard);
-    expect(pushMock).toHaveBeenCalledWith('/today/b1/dues');
+    expect(pushMock).toHaveBeenCalledWith('/inbox/b1/dues');
   });
 
   it('opens the only open entry directly instead of a one-row list', () => {
