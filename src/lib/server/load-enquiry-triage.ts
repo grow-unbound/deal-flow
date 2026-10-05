@@ -29,18 +29,26 @@ export async function loadEnquiryTriage(
 ): Promise<EnquiryTriagePayload | null> {
   const d = db as any;
 
-  const [estimateRes, itemsRes] = await Promise.all([
+  const [estimateRes, itemsRes, catalogRes] = await Promise.all([
     d.schema('app').from('estimates')
       .select('id, tenant_id, buyer_id, location_id, estimate_number, status, total_amount, notes, estimate_type, price_visibility')
       .eq('id', estimateId).eq('tenant_id', tenantId).is('deleted_at', null).maybeSingle(),
     d.schema('app').from('estimate_items')
       .select('id, tenant_product_id, qty, unit_price, item_order, buyer_target_unit_price_min, buyer_target_unit_price_max, buyer_note')
       .eq('estimate_id', estimateId).is('deleted_at', null).order('item_order', { ascending: true }),
+    d.schema('app').from('catalogs')
+      .select('pricing_mode, collect_target_unit_price_range')
+      .eq('tenant_id', tenantId)
+      .eq('kind', 'public')
+      .is('deleted_at', null)
+      .maybeSingle(),
   ]);
   if (estimateRes.error) throw estimateRes.error;
   if (itemsRes.error) throw itemsRes.error;
+  if (catalogRes.error) throw catalogRes.error;
   const estimate = estimateRes.data as Record<string, unknown> | null;
   if (!estimate) return null;
+  const catalog = catalogRes.data as Record<string, unknown> | null;
 
   const buyerId = asString(estimate.buyer_id);
   const items = (itemsRes.data ?? []) as Array<Record<string, unknown>>;
@@ -258,6 +266,7 @@ export async function loadEnquiryTriage(
     estimateNumber: asString(estimate.estimate_number) ?? '—',
     status: asString(estimate.status) ?? 'unknown',
     hiddenPricing: estimate.estimate_type === 'without_price' || estimate.price_visibility === 'hide_price',
+    collectTargetUnitPriceRange: catalog?.pricing_mode === 'hide_price_collect_enquiry' && catalog.collect_target_unit_price_range === true,
     totalAmount: estimate.total_amount == null ? null : Number(estimate.total_amount),
     notes: asString(estimate.notes),
     lines,

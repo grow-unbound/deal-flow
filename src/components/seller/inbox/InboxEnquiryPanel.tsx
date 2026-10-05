@@ -9,7 +9,7 @@ import { useEstimateComposer } from '@/hooks/useEstimates';
 import type { EnquiryTriageLine } from '@/lib/inbox/enquiry-triage';
 import { buildTargetRangeLabel } from '@/lib/inbox/inbox-entry-copy';
 import { cn, formatNumberValue } from '@/lib/utils';
-import { StockCell, VelocityCell, velocityLabel } from './EnquiryLineDisplay';
+import { velocityLabel } from './EnquiryLineDisplay';
 
 const HEAD_CLASS = 'text-sm font-medium uppercase tracking-[0.08em] text-cream-500';
 
@@ -21,35 +21,38 @@ function hasVelocitySignal(velocity: EnquiryTriageLine['velocity']): boolean {
   return velocity.unitsPerWeek > 0 || velocity.daysCover != null || velocity.lastInvoiceAt != null;
 }
 
-function hasOperationalDetails(line: EnquiryTriageLine): boolean {
-  return line.stock.tone !== 'ok'
-    || line.onHand > 0
-    || hasVelocitySignal(line.velocity)
-    || line.alternates.length > 0;
+function quotedPriceLabel(line: EnquiryTriageLine) {
+  return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice) : '-';
 }
 
-function quotedPriceLabel(line: EnquiryTriageLine) {
-  return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice) : '—';
+function resolvedPriceLabel(line: EnquiryTriageLine) {
+  return line.resolvedPrice != null && line.resolvedPrice > 0 ? money(line.resolvedPrice) : '-';
 }
 
 function expectedPriceLabel(line: EnquiryTriageLine) {
-  return buildTargetRangeLabel(line.targetMin, line.targetMax) ?? (line.resolvedPrice != null ? money(line.resolvedPrice) : '—');
+  return buildTargetRangeLabel(line.targetMin, line.targetMax) ?? '-';
 }
 
-function lineAmountLabel(line: EnquiryTriageLine) {
-  return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice * line.qty) : '—';
+function lineAmountLabel(line: EnquiryTriageLine, showTargetPricing: boolean) {
+  if (showTargetPricing) {
+    return line.unitPrice != null && line.unitPrice > 0 ? money(line.unitPrice * line.qty) : '-';
+  }
+  return line.resolvedPrice != null && line.resolvedPrice > 0 ? money(line.resolvedPrice * line.qty) : '-';
 }
 
-function lineSubtext(line: EnquiryTriageLine) {
+function desktopLineSubtext(line: EnquiryTriageLine) {
   const parts = [
     line.sku,
-    line.brandName,
     line.resolvedPrice != null ? `Base Price ${money(line.resolvedPrice)}` : null,
-    `Requested ${line.qty}`,
     `Stock ${line.onHand}`,
     hasVelocitySignal(line.velocity) ? velocityLabel(line.velocity) : null,
   ].filter(Boolean);
   return parts.join(' · ');
+}
+
+function mobilePriceBasisLabel(line: EnquiryTriageLine, showTargetPricing: boolean) {
+  if (!showTargetPricing) return resolvedPriceLabel(line);
+  return line.resolvedPrice != null && line.resolvedPrice > 0 ? money(line.resolvedPrice) : quotedPriceLabel(line);
 }
 
 function ProductThumb({ src, name }: { src: string | null; name: string }) {
@@ -137,15 +140,18 @@ function MobileLineCard({
   imageUrl,
   estimateId,
   entryId,
+  showTargetPricing,
 }: {
   line: EnquiryTriageLine;
   imageUrl: string | null;
   estimateId: string;
   entryId: string;
+  showTargetPricing: boolean;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const short = line.stock.tone !== 'ok';
-  const showDetailsControl = hasOperationalDetails(line);
+  const showStockGapControl = short;
+  const priceBasis = mobilePriceBasisLabel(line, showTargetPricing);
 
   return (
     <div className="overflow-hidden rounded-[14px] border border-cream-200 bg-white md:hidden">
@@ -155,49 +161,32 @@ function MobileLineCard({
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-medium text-cream-900">{line.name}</p>
             <p className="mt-0.5 truncate font-mono text-sm text-cream-500">
-              {lineSubtext(line)}
+              {line.sku}
             </p>
+            <p className="mt-1 font-mono text-sm tabular-nums text-cream-700">{line.qty} unit x {priceBasis}</p>
+            {line.onHand > 0 ? <p className="mt-0.5 font-mono text-sm tabular-nums text-cream-500">Stock {line.onHand}</p> : null}
             {line.buyerNote ? <p className="mt-1 text-sm italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
           </div>
           <div className="shrink-0 text-right">
-            <p className="font-mono text-base font-semibold tabular-nums text-cream-950">{lineAmountLabel(line)}</p>
-            <p className="mt-1 font-mono text-xs tabular-nums text-cream-500">Quote {quotedPriceLabel(line)}</p>
-            <p className="font-mono text-xs tabular-nums text-cream-500">Expected {expectedPriceLabel(line)}</p>
+            <p className="font-mono text-base font-semibold tabular-nums text-cream-950">
+              {showTargetPricing ? quotedPriceLabel(line) : resolvedPriceLabel(line)}
+            </p>
+            {showTargetPricing ? (
+              <p className="mt-1 font-mono text-xs tabular-nums text-cream-500">Expected {expectedPriceLabel(line)}</p>
+            ) : null}
           </div>
         </div>
 
-        {showDetailsControl ? (
+        {showStockGapControl ? (
           <button
             type="button"
             onClick={() => setDetailsOpen((v) => !v)}
             aria-expanded={detailsOpen}
-            className={cn(
-              'mt-3 inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors',
-              short
-                ? 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100'
-                : 'border-cream-300 bg-white text-cream-700 hover:bg-cream-100',
-            )}
+            className="mt-3 inline-flex items-center gap-1 rounded-full border border-warning-200 bg-warning-50 px-3 py-1.5 text-sm font-semibold text-warning-700 transition-colors hover:bg-warning-100"
           >
-            {short ? `Stock gap: ${line.stock.label}` : 'Stock and sales'}
+            Stock gap: {line.stock.label}
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', detailsOpen && 'rotate-180')} aria-hidden />
           </button>
-        ) : null}
-
-        {detailsOpen ? (
-          <div className="mt-3 grid grid-cols-1 gap-3 rounded-[10px] border border-cream-200 bg-white px-3 py-3 sm:grid-cols-2">
-            {(short || line.onHand > 0) ? (
-              <div>
-                <p className={HEAD_CLASS}>Stock</p>
-                <StockCell stock={line.stock} onHand={line.onHand} align="start" />
-              </div>
-            ) : null}
-            {hasVelocitySignal(line.velocity) ? (
-              <div>
-                <p className={HEAD_CLASS}>Recent sales</p>
-                <VelocityCell velocity={line.velocity} align="start" />
-              </div>
-            ) : null}
-          </div>
         ) : null}
       </div>
       {short && detailsOpen ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
@@ -205,27 +194,26 @@ function MobileLineCard({
   );
 }
 
-function DesktopLineDetails({ line, estimateId, entryId, open }: { line: EnquiryTriageLine; estimateId: string; entryId: string; open: boolean }) {
+function DesktopLineDetails({
+  line,
+  estimateId,
+  entryId,
+  open,
+  colSpan,
+}: {
+  line: EnquiryTriageLine;
+  estimateId: string;
+  entryId: string;
+  open: boolean;
+  colSpan: number;
+}) {
   if (!open) return null;
   const short = line.stock.tone !== 'ok';
+  if (!short) return null;
   return (
     <tr>
-      <td colSpan={6} className="border-b border-cream-100 bg-cream-50 px-6 py-4">
-        <div className="grid gap-3 rounded-[10px] border border-cream-200 bg-white px-3 py-3 sm:grid-cols-2">
-          {(short || line.onHand > 0) ? (
-            <div>
-              <p className={HEAD_CLASS}>Stock</p>
-              <StockCell stock={line.stock} onHand={line.onHand} align="start" />
-            </div>
-          ) : null}
-          {hasVelocitySignal(line.velocity) ? (
-            <div>
-              <p className={HEAD_CLASS}>Recent sales</p>
-              <VelocityCell velocity={line.velocity} align="start" />
-            </div>
-          ) : null}
-        </div>
-        {short ? <AlternatesList line={line} estimateId={estimateId} entryId={entryId} /> : null}
+      <td colSpan={colSpan} className="border-b border-cream-100 bg-cream-50 px-6 py-4">
+        <AlternatesList line={line} estimateId={estimateId} entryId={entryId} />
       </td>
     </tr>
   );
@@ -236,14 +224,17 @@ function DesktopLinesTable({
   imageById,
   estimateId,
   entryId,
+  showTargetPricing,
 }: {
   lines: EnquiryTriageLine[];
   imageById: Map<string, string | null>;
   estimateId: string;
   entryId: string;
+  showTargetPricing: boolean;
 }) {
   const [openLineId, setOpenLineId] = useState<string | null>(null);
   const totalUnits = lines.reduce((sum, line) => sum + line.qty, 0);
+  const colSpan = showTargetPricing ? 6 : 5;
 
   return (
     <section className="doc-lines hidden overflow-hidden rounded-[14px] border border-cream-300 bg-white md:block">
@@ -256,9 +247,9 @@ function DesktopLinesTable({
         <table className="lines-table w-full table-fixed text-left text-base">
           <colgroup>
             <col className="w-[4.25rem]" />
-            <col className="w-[38%]" />
+            <col className={showTargetPricing ? 'w-[38%]' : 'w-[48%]'} />
             <col className="w-[5.75rem]" />
-            <col className="w-[7rem]" />
+            {showTargetPricing ? <col className="w-[7rem]" /> : null}
             <col className="w-[6.5rem]" />
             <col className="w-[6.75rem]" />
           </colgroup>
@@ -267,8 +258,10 @@ function DesktopLinesTable({
               <th className="table-label py-2 pl-6 pr-5 text-cream-700">#</th>
               <th className="table-label px-3 py-2 text-cream-700">Product</th>
               <th className="table-label num px-2 py-2 text-right text-cream-700">Quantity</th>
-              <th className="table-label num px-2 py-2 text-right text-cream-700">Expected</th>
-              <th className="table-label num px-2 py-2 text-right text-cream-700">Quote</th>
+              {showTargetPricing ? (
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Expected</th>
+              ) : null}
+              <th className="table-label num px-2 py-2 text-right text-cream-700">{showTargetPricing ? 'Quote' : 'Price/unit'}</th>
               <th className="table-label num py-2 pl-2 pr-6 text-right text-cream-700">Amount</th>
             </tr>
           </thead>
@@ -285,15 +278,15 @@ function DesktopLinesTable({
                         <ProductThumb src={imageById.get(line.id) ?? null} name={line.name} />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-cream-900" title={line.name}>{line.name}</p>
-                          <p className="truncate text-xs text-cream-600">{lineSubtext(line)}</p>
+                          <p className="truncate text-xs text-cream-600">{desktopLineSubtext(line)}</p>
                           {line.buyerNote ? <p className="mt-1 truncate text-xs italic text-cream-600">&ldquo;{line.buyerNote}&rdquo;</p> : null}
-                          {hasOperationalDetails(line) ? (
+                          {short ? (
                             <button
                               type="button"
                               onClick={() => setOpenLineId((current) => (current === line.id ? null : line.id))}
-                              className={cn('mt-1.5 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors', short ? 'border-warning-200 bg-warning-50 text-warning-700 hover:bg-warning-100' : 'border-cream-300 bg-white text-cream-700 hover:bg-cream-100')}
+                              className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-warning-200 bg-warning-50 px-2.5 py-1 text-xs font-semibold text-warning-700 transition-colors hover:bg-warning-100"
                             >
-                              {short ? `Stock gap: ${line.stock.label}` : 'Stock and sales'}
+                              Stock gap: {line.stock.label}
                               <ChevronDown className={cn('h-3 w-3 transition-transform', detailsOpen && 'rotate-180')} aria-hidden />
                             </button>
                           ) : null}
@@ -301,11 +294,15 @@ function DesktopLinesTable({
                       </div>
                     </td>
                     <td className="num px-2 py-3 text-right tabular-nums text-cream-900">{line.qty}</td>
-                    <td className="num px-2 py-3 text-right font-mono tabular-nums text-cream-800">{expectedPriceLabel(line)}</td>
-                    <td className="num px-2 py-3 text-right font-mono font-semibold tabular-nums text-cream-900">{quotedPriceLabel(line)}</td>
-                    <td className="num-display py-3 pl-2 pr-6 text-right font-mono tabular-nums text-cream-900">{lineAmountLabel(line)}</td>
+                    {showTargetPricing ? (
+                      <td className="num px-2 py-3 text-right font-mono tabular-nums text-cream-800">{expectedPriceLabel(line)}</td>
+                    ) : null}
+                    <td className="num px-2 py-3 text-right font-mono font-semibold tabular-nums text-cream-900">
+                      {showTargetPricing ? quotedPriceLabel(line) : resolvedPriceLabel(line)}
+                    </td>
+                    <td className="num-display py-3 pl-2 pr-6 text-right font-mono tabular-nums text-cream-900">{lineAmountLabel(line, showTargetPricing)}</td>
                   </tr>
-                  <DesktopLineDetails line={line} estimateId={estimateId} entryId={entryId} open={detailsOpen} />
+                  <DesktopLineDetails line={line} estimateId={estimateId} entryId={entryId} open={detailsOpen} colSpan={colSpan} />
                 </Fragment>
               );
             })}
@@ -337,6 +334,7 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
 
   const imageById = new Map((composer?.items ?? []).map((item) => [item.id, item.image_url ?? null]));
   const hasTotals = composer?.total_amount != null;
+  const showTargetPricing = data.hiddenPricing && data.collectTargetUnitPriceRange;
 
   return (
     <div className="space-y-4">
@@ -348,10 +346,17 @@ export function InboxEnquiryPanel({ entryId }: { entryId: string }) {
             imageUrl={imageById.get(line.id) ?? null}
             estimateId={data.estimateId}
             entryId={entryId}
+            showTargetPricing={showTargetPricing}
           />
         ))}
       </div>
-      <DesktopLinesTable lines={data.lines} imageById={imageById} estimateId={data.estimateId} entryId={entryId} />
+      <DesktopLinesTable
+        lines={data.lines}
+        imageById={imageById}
+        estimateId={data.estimateId}
+        entryId={entryId}
+        showTargetPricing={showTargetPricing}
+      />
 
       {hasTotals ? (
         <div className="rounded-[14px] border border-cream-300 bg-cream-50 px-4 py-4">
